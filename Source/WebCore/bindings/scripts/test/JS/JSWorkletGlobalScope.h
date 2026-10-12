@@ -31,9 +31,9 @@ class JSWorkletGlobalScope : public JSEventTarget {
 public:
     using Base = JSEventTarget;
     using DOMWrapped = WorkletGlobalScope;
-    static JSWorkletGlobalScope* create(JSC::VM& vm, JSC::Structure* structure, Ref<WorkletGlobalScope>&& impl, JSC::JSProxy* proxy)
+    static JSWorkletGlobalScope* create(JSC::VM& vm, JSC::Structure* structure, Ref<WorkletGlobalScope>&& impl, JSC::JSGlobalProxy* proxy)
     {
-        JSWorkletGlobalScope* ptr = new (NotNull, JSC::allocateCell<JSWorkletGlobalScope>(vm.heap)) JSWorkletGlobalScope(vm, structure, WTFMove(impl));
+        JSWorkletGlobalScope* ptr = new (NotNull, JSC::allocateCell<JSWorkletGlobalScope>(vm)) JSWorkletGlobalScope(vm, structure, WTFMove(impl));
         ptr->finishCreation(vm, proxy);
         return ptr;
     }
@@ -50,23 +50,28 @@ public:
     }
 
     static JSC::JSValue getConstructor(JSC::VM&, const JSC::JSGlobalObject*);
-    template<typename, JSC::SubspaceAccess mode> static JSC::IsoSubspace* subspaceFor(JSC::VM& vm)
+    template<typename, JSC::SubspaceAccess mode> static JSC::GCClient::IsoSubspace* subspaceFor(JSC::VM& vm)
     {
         if constexpr (mode == JSC::SubspaceAccess::Concurrently)
             return nullptr;
         return subspaceForImpl(vm);
     }
-    static JSC::IsoSubspace* subspaceForImpl(JSC::VM& vm);
+    static JSC::GCClient::IsoSubspace* subspaceForImpl(JSC::VM& vm);
     static void analyzeHeap(JSCell*, JSC::HeapAnalyzer&);
     WorkletGlobalScope& wrapped() const
     {
         return static_cast<WorkletGlobalScope&>(Base::wrapped());
     }
+
+    Ref<WorkletGlobalScope> protectedWrapped() const;
+
 public:
     static constexpr unsigned StructureFlags = Base::StructureFlags | JSC::HasStaticPropertyTable;
 protected:
     JSWorkletGlobalScope(JSC::VM&, JSC::Structure*, Ref<WorkletGlobalScope>&&);
-    void finishCreation(JSC::VM&, JSC::JSProxy*);
+#if ASSERT_ENABLED
+    void finishCreation(JSC::VM&, JSC::JSGlobalProxy*);
+#endif
 };
 
 
@@ -75,17 +80,17 @@ public:
     using Base = JSC::JSNonFinalObject;
     static JSWorkletGlobalScopePrototype* create(JSC::VM& vm, JSDOMGlobalObject* globalObject, JSC::Structure* structure)
     {
-        JSWorkletGlobalScopePrototype* ptr = new (NotNull, JSC::allocateCell<JSWorkletGlobalScopePrototype>(vm.heap)) JSWorkletGlobalScopePrototype(vm, globalObject, structure);
+        JSWorkletGlobalScopePrototype* ptr = new (NotNull, JSC::allocateCell<JSWorkletGlobalScopePrototype>(vm)) JSWorkletGlobalScopePrototype(vm, globalObject, structure);
         ptr->finishCreation(vm);
         return ptr;
     }
 
     DECLARE_INFO;
     template<typename CellType, JSC::SubspaceAccess>
-    static JSC::IsoSubspace* subspaceFor(JSC::VM& vm)
+    static JSC::GCClient::IsoSubspace* subspaceFor(JSC::VM& vm)
     {
         STATIC_ASSERT_ISO_SUBSPACE_SHARABLE(JSWorkletGlobalScopePrototype, Base);
-        return &vm.plainObjectSpace;
+        return &vm.plainObjectSpace();
     }
     static JSC::Structure* createStructure(JSC::VM& vm, JSC::JSGlobalObject* globalObject, JSC::JSValue prototype)
     {
@@ -99,6 +104,8 @@ private:
     }
 
     void finishCreation(JSC::VM&);
+public:
+    static constexpr unsigned StructureFlags = Base::StructureFlags | JSC::HasStaticPropertyTable;
 };
 STATIC_ASSERT_ISO_SUBSPACE_SHARABLE(JSWorkletGlobalScopePrototype, JSWorkletGlobalScopePrototype::Base);
 

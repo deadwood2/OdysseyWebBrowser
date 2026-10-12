@@ -29,6 +29,8 @@
 #include "IsoSharedPage.h"
 #include "StaticPerProcess.h"
 
+#if !BUSE(LIBPAS)
+
 namespace bmalloc {
 
 class AllIsoHeaps;
@@ -67,8 +69,10 @@ private:
     IsoSharedPage* m_currentPage { nullptr };
     VariadicBumpAllocator m_allocator;
 };
+BALLOW_DEPRECATED_DECLARATIONS_BEGIN
 DECLARE_STATIC_PER_PROCESS_STORAGE(IsoSharedHeap);
+BALLOW_DEPRECATED_DECLARATIONS_END
 
 } // namespace bmalloc
 
-
+#endif

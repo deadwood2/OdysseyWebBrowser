@@ -33,7 +33,7 @@ template <typename ResourceType, typename IDType>
 IDType AllocateEmptyObject(HandleAllocator *handleAllocator,
                            ResourceMap<ResourceType, IDType> *objectMap)
 {
-    IDType handle = FromGL<IDType>(handleAllocator->allocate());
+    IDType handle = PackParam<IDType>(handleAllocator->allocate());
     objectMap->assign(handle, nullptr);
     return handle;
 }
@@ -61,14 +61,17 @@ void ResourceManagerBase::release(const Context *context)
 template <typename ResourceType, typename ImplT, typename IDType>
 TypedResourceManager<ResourceType, ImplT, IDType>::~TypedResourceManager()
 {
-    ASSERT(mObjectMap.empty());
+    using UnsafeResourceMapIterTyped = UnsafeResourceMapIter<ResourceType, IDType>;
+    ASSERT(UnsafeResourceMapIterTyped(mObjectMap).empty());
 }
 
 template <typename ResourceType, typename ImplT, typename IDType>
 void TypedResourceManager<ResourceType, ImplT, IDType>::reset(const Context *context)
 {
+    // Note: this function is called when the last context in the share group is destroyed.  Thus
+    // there are no thread safety concerns.
     this->mHandleAllocator.reset();
-    for (const auto &resource : mObjectMap)
+    for (const auto &resource : UnsafeResourceMapIter(mObjectMap))
     {
         if (resource.second)
         {
@@ -97,16 +100,13 @@ void TypedResourceManager<ResourceType, ImplT, IDType>::deleteObject(const Conte
     }
 }
 
-// Unclear why Clang warns about weak vtables in this case.
-ANGLE_DISABLE_WEAK_TEMPLATE_VTABLES_WARNING
 template class TypedResourceManager<Buffer, BufferManager, BufferID>;
 template class TypedResourceManager<Texture, TextureManager, TextureID>;
 template class TypedResourceManager<Renderbuffer, RenderbufferManager, RenderbufferID>;
 template class TypedResourceManager<Sampler, SamplerManager, SamplerID>;
-template class TypedResourceManager<Sync, SyncManager, GLuint>;
+template class TypedResourceManager<Sync, SyncManager, SyncID>;
 template class TypedResourceManager<Framebuffer, FramebufferManager, FramebufferID>;
 template class TypedResourceManager<ProgramPipeline, ProgramPipelineManager, ProgramPipelineID>;
-ANGLE_REENABLE_WEAK_TEMPLATE_VTABLES_WARNING
 
 // BufferManager Implementation.
 BufferManager::~BufferManager() = default;
@@ -141,21 +141,30 @@ ShaderProgramManager::ShaderProgramManager() {}
 
 ShaderProgramManager::~ShaderProgramManager()
 {
-    ASSERT(mPrograms.empty());
-    ASSERT(mShaders.empty());
+    ASSERT(UnsafeResourceMapIter(mPrograms).empty());
+    ASSERT(UnsafeResourceMapIter(mShaders).empty());
 }
 
 void ShaderProgramManager::reset(const Context *context)
 {
-    while (!mPrograms.empty())
+    // Note: this function is called when the last context in the share group is destroyed.  Thus
+    // there are no thread safety concerns.
+    mHandleAllocator.reset();
+    for (const auto &program : UnsafeResourceMapIter(mPrograms))
     {
-        deleteProgram(context, {mPrograms.begin()->first});
+        if (program.second)
+        {
+            program.second->onDestroy(context);
+        }
+    }
+    for (const auto &shader : UnsafeResourceMapIter(mShaders))
+    {
+        if (shader.second)
+        {
+            shader.second->onDestroy(context);
+        }
     }
     mPrograms.clear();
-    while (!mShaders.empty())
-    {
-        deleteShader(context, {mShaders.begin()->first});
-    }
     mShaders.clear();
 }
 
@@ -241,7 +250,9 @@ TextureID TextureManager::createTexture()
 
 void TextureManager::signalAllTexturesDirty() const
 {
-    for (const auto &texture : mObjectMap)
+    // Note: this function is called with glRequestExtensionANGLE and glDisableExtensionANGLE.  The
+    // GL_ANGLE_request_extension explicitly requires the application to ensure thread safety.
+    for (const auto &texture : UnsafeResourceMapIter(mObjectMap))
     {
         if (texture.second)
         {
@@ -329,16 +340,16 @@ void SyncManager::DeleteObject(const Context *context, Sync *sync)
     sync->release(context);
 }
 
-GLuint SyncManager::createSync(rx::GLImplFactory *factory)
+SyncID SyncManager::createSync(rx::GLImplFactory *factory)
 {
-    GLuint handle = mHandleAllocator.allocate();
+    SyncID handle = {mHandleAllocator.allocate()};
     Sync *sync    = new Sync(factory, handle);
     sync->addRef();
     mObjectMap.assign(handle, sync);
     return handle;
 }
 
-Sync *SyncManager::getSync(GLuint handle) const
+Sync *SyncManager::getSync(SyncID handle) const
 {
     return mObjectMap.query(handle);
 }
@@ -350,12 +361,11 @@ FramebufferManager::~FramebufferManager() = default;
 // static
 Framebuffer *FramebufferManager::AllocateNewObject(rx::GLImplFactory *factory,
                                                    FramebufferID handle,
-                                                   const Caps &caps,
-                                                   egl::ShareGroup *shareGroup)
+                                                   const Context *context)
 {
     // Make sure the caller isn't using a reserved handle.
     ASSERT(handle != Framebuffer::kDefaultDrawFramebufferHandle);
-    return new Framebuffer(caps, factory, handle, shareGroup);
+    return new Framebuffer(context, factory, handle);
 }
 
 // static
@@ -381,9 +391,15 @@ void FramebufferManager::setDefaultFramebuffer(Framebuffer *framebuffer)
     mObjectMap.assign(Framebuffer::kDefaultDrawFramebufferHandle, framebuffer);
 }
 
+Framebuffer *FramebufferManager::getDefaultFramebuffer() const
+{
+    return getFramebuffer(Framebuffer::kDefaultDrawFramebufferHandle);
+}
+
 void FramebufferManager::invalidateFramebufferCompletenessCache() const
 {
-    for (const auto &framebuffer : mObjectMap)
+    // Note: framebuffer objects are private to context and so the map doesn't need locking
+    for (const auto &framebuffer : UnsafeResourceMapIter(mObjectMap))
     {
         if (framebuffer.second)
         {
@@ -427,14 +443,20 @@ MemoryObjectManager::MemoryObjectManager() {}
 
 MemoryObjectManager::~MemoryObjectManager()
 {
-    ASSERT(mMemoryObjects.empty());
+    ASSERT(UnsafeResourceMapIter(mMemoryObjects).empty());
 }
 
 void MemoryObjectManager::reset(const Context *context)
 {
-    while (!mMemoryObjects.empty())
+    // Note: this function is called when the last context in the share group is destroyed.  Thus
+    // there are no thread safety concerns.
+    mHandleAllocator.reset();
+    for (const auto &memoryObject : UnsafeResourceMapIter(mMemoryObjects))
     {
-        deleteMemoryObject(context, {mMemoryObjects.begin()->first});
+        if (memoryObject.second)
+        {
+            memoryObject.second->release(context);
+        }
     }
     mMemoryObjects.clear();
 }
@@ -476,14 +498,20 @@ SemaphoreManager::SemaphoreManager() {}
 
 SemaphoreManager::~SemaphoreManager()
 {
-    ASSERT(mSemaphores.empty());
+    ASSERT(UnsafeResourceMapIter(mSemaphores).empty());
 }
 
 void SemaphoreManager::reset(const Context *context)
 {
-    while (!mSemaphores.empty())
+    // Note: this function is called when the last context in the share group is destroyed.  Thus
+    // there are no thread safety concerns.
+    mHandleAllocator.reset();
+    for (const auto &semaphore : UnsafeResourceMapIter(mSemaphores))
     {
-        deleteSemaphore(context, {mSemaphores.begin()->first});
+        if (semaphore.second)
+        {
+            semaphore.second->release(context);
+        }
     }
     mSemaphores.clear();
 }

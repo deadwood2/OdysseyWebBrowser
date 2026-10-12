@@ -38,11 +38,18 @@ using std::vector;
 namespace tcu
 {
 
-RandomOrderExecutor::RandomOrderExecutor(TestPackageRoot &root, TestContext &testCtx)
+RandomOrderExecutor::RandomOrderExecutor(TestPackageRoot &root,
+                                         TestContext &testCtx,
+                                         bool enableRenderDocCapture)
     : m_testCtx(testCtx), m_inflater(testCtx)
 {
     m_nodeStack.push_back(NodeStackEntry(&root));
     root.getChildren(m_nodeStack[0].children);
+
+    if (enableRenderDocCapture)
+    {
+        mRenderDoc.attach();
+    }
 }
 
 RandomOrderExecutor::~RandomOrderExecutor(void)
@@ -189,13 +196,14 @@ TestStatus RandomOrderExecutor::execute(const std::string &casePath)
 tcu::TestStatus RandomOrderExecutor::executeInner(TestCase *testCase, const std::string &casePath)
 {
     TestLog &log                 = m_testCtx.getLog();
-    const deUint64 testStartTime = deGetMicroseconds();
+    const uint64_t testStartTime = deGetMicroseconds();
 
     m_testCtx.setTestResult(QP_TEST_RESULT_LAST, "");
 
     // Initialize, will return immediately if fails
     try
     {
+        mRenderDoc.startFrame();
         m_caseExecutor->init(testCase, casePath);
     }
     catch (const std::bad_alloc &)
@@ -217,6 +225,8 @@ tcu::TestStatus RandomOrderExecutor::executeInner(TestCase *testCase, const std:
         return TestStatus(QP_TEST_RESULT_FAIL, e.getMessage());
     }
 
+    bool isFirstFrameBeingCaptured = true;
+
     // Execute
     for (;;)
     {
@@ -226,6 +236,15 @@ tcu::TestStatus RandomOrderExecutor::executeInner(TestCase *testCase, const std:
 
         try
         {
+            // Make every iteration produce one renderdoc frame.  Include the init code in the first
+            // frame, and the deinit code in the last frame.
+            if (!isFirstFrameBeingCaptured)
+            {
+                mRenderDoc.endFrame();
+                mRenderDoc.startFrame();
+            }
+            isFirstFrameBeingCaptured = false;
+
             iterateResult = m_caseExecutor->iterate(testCase);
         }
         catch (const std::bad_alloc &)
@@ -259,6 +278,7 @@ tcu::TestStatus RandomOrderExecutor::executeInner(TestCase *testCase, const std:
     try
     {
         m_caseExecutor->deinit(testCase);
+        mRenderDoc.endFrame();
     }
     catch (const tcu::Exception &e)
     {

@@ -25,33 +25,14 @@
 
 #import "config.h"
 
+#import "DeprecatedGlobalValues.h"
 #import "PlatformUtilities.h"
 #import "Test.h"
 #import "TestNavigationDelegate.h"
-#import <WebKit/WKSnapshotConfiguration.h>
+#import "TestWKWebView.h"
+#import <WebKit/WKSnapshotConfigurationPrivate.h>
 #import <wtf/BlockPtr.h>
 #import <wtf/RetainPtr.h>
-
-static bool isDone;
-
-#if PLATFORM(MAC)
-typedef NSImage *PlatformImage;
-typedef NSWindow *PlatformWindow;
-
-static RetainPtr<CGImageRef> convertToCGImage(NSImage *image)
-{
-    return [image CGImageForProposedRect:nil context:nil hints:nil];
-}
-
-#else
-typedef UIImage *PlatformImage;
-typedef UIWindow *PlatformWindow;
-
-static RetainPtr<CGImageRef> convertToCGImage(UIImage *image)
-{
-    return image.CGImage;
-}
-#endif
 
 static NSInteger getPixelIndex(NSInteger x, NSInteger y, NSInteger width)
 {
@@ -68,8 +49,8 @@ static NSInteger getPixelIndex(NSInteger x, NSInteger y, NSInteger width)
 - (void)takeSnapshotWithWebView:(WKWebView *)webView configuration:(WKSnapshotConfiguration *)configuration completionHandler:(void (^)(void))completionHandler
 {
     auto completionBlock = makeBlockPtr(completionHandler);
-    [webView takeSnapshotWithConfiguration:configuration completionHandler:^(PlatformImage snapshotImage, NSError *error) {
-        _image = convertToCGImage(snapshotImage);
+    [webView takeSnapshotWithConfiguration:configuration completionHandler:^(TestWebKitAPI::Util::PlatformImage *snapshotImage, NSError *error) {
+        _image = TestWebKitAPI::Util::convertToCGImage(snapshotImage);
         _error = error;
         completionBlock();
     }];
@@ -77,11 +58,13 @@ static NSInteger getPixelIndex(NSInteger x, NSInteger y, NSInteger width)
 
 @end
 
+namespace TestWebKitAPI {
+
 TEST(WKWebView, SnapshotImageError)
 {
     CGFloat viewWidth = 800;
     CGFloat viewHeight = 600;
-    RetainPtr<WKWebView> webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, viewWidth, viewHeight)]);
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, viewWidth, viewHeight)]);
     
     [webView loadHTMLString:@"<body style='background-color: red;'></body>" baseURL:nil];
     [webView _test_waitForDidFinishNavigation];
@@ -92,7 +75,7 @@ TEST(WKWebView, SnapshotImageError)
     [snapshotConfiguration setSnapshotWidth:@(viewWidth)];
 
     isDone = false;
-    [webView takeSnapshotWithConfiguration:snapshotConfiguration.get() completionHandler:^(PlatformImage snapshotImage, NSError *error) {
+    [webView takeSnapshotWithConfiguration:snapshotConfiguration.get() completionHandler:^(Util::PlatformImage *snapshotImage, NSError *error) {
         EXPECT_NULL(snapshotImage);
         EXPECT_WK_STREQ(@"WKErrorDomain", error.domain);
 
@@ -106,7 +89,7 @@ TEST(WKWebView, SnapshotImageEmptyRect)
 {
     CGFloat viewWidth = 800;
     CGFloat viewHeight = 600;
-    RetainPtr<WKWebView> webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, viewWidth, viewHeight)]);
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, viewWidth, viewHeight)]);
 
     [webView loadHTMLString:@"<body style='background-color: red;'></body>" baseURL:nil];
     [webView _test_waitForDidFinishNavigation];
@@ -118,7 +101,7 @@ TEST(WKWebView, SnapshotImageEmptyRect)
     [snapshotConfiguration setSnapshotWidth:@(viewWidth)];
 
     isDone = false;
-    [webView takeSnapshotWithConfiguration:snapshotConfiguration.get() completionHandler:^(PlatformImage snapshotImage, NSError *error) {
+    [webView takeSnapshotWithConfiguration:snapshotConfiguration.get() completionHandler:^(Util::PlatformImage *snapshotImage, NSError *error) {
         EXPECT_NULL(error);
         EXPECT_EQ(0, snapshotImage.size.width);
         EXPECT_EQ(0, snapshotImage.size.height);
@@ -134,7 +117,7 @@ TEST(WKWebView, SnapshotImageZeroWidth)
 {
     CGFloat viewWidth = 800;
     CGFloat viewHeight = 600;
-    RetainPtr<WKWebView> webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, viewWidth, viewHeight)]);
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, viewWidth, viewHeight)]);
 
     [webView loadHTMLString:@"<body style='background-color: red;'></body>" baseURL:nil];
     [webView _test_waitForDidFinishNavigation];
@@ -146,7 +129,7 @@ TEST(WKWebView, SnapshotImageZeroWidth)
     [snapshotConfiguration setSnapshotWidth:@(0.0)]; // Will fall back to the view width.
 
     isDone = false;
-    [webView takeSnapshotWithConfiguration:snapshotConfiguration.get() completionHandler:^(PlatformImage snapshotImage, NSError *error) {
+    [webView takeSnapshotWithConfiguration:snapshotConfiguration.get() completionHandler:^(Util::PlatformImage *snapshotImage, NSError *error) {
         EXPECT_NULL(error);
         EXPECT_EQ(viewWidth, snapshotImage.size.width);
         isDone = true;
@@ -160,7 +143,7 @@ TEST(WKWebView, SnapshotImageZeroSizeView)
 {
     CGFloat viewWidth = 0;
     CGFloat viewHeight = 0;
-    RetainPtr<WKWebView> webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, viewWidth, viewHeight)]);
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, viewWidth, viewHeight)]);
 
     [webView loadHTMLString:@"<body style='background-color: red;'></body>" baseURL:nil];
     [webView _test_waitForDidFinishNavigation];
@@ -172,7 +155,7 @@ TEST(WKWebView, SnapshotImageZeroSizeView)
     [snapshotConfiguration setSnapshotWidth:@(100)];
 
     isDone = false;
-    [webView takeSnapshotWithConfiguration:snapshotConfiguration.get() completionHandler:^(PlatformImage snapshotImage, NSError *error) {
+    [webView takeSnapshotWithConfiguration:snapshotConfiguration.get() completionHandler:^(Util::PlatformImage *snapshotImage, NSError *error) {
         EXPECT_NULL(error);
         EXPECT_EQ(0, snapshotImage.size.width);
         EXPECT_EQ(0, snapshotImage.size.height);
@@ -188,7 +171,7 @@ TEST(WKWebView, SnapshotImageZeroSizeViewNoConfiguration)
 {
     CGFloat viewWidth = 0;
     CGFloat viewHeight = 0;
-    RetainPtr<WKWebView> webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, viewWidth, viewHeight)]);
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, viewWidth, viewHeight)]);
 
     [webView loadHTMLString:@"<body style='background-color: red;'></body>" baseURL:nil];
     [webView _test_waitForDidFinishNavigation];
@@ -196,7 +179,7 @@ TEST(WKWebView, SnapshotImageZeroSizeViewNoConfiguration)
     auto pid = [webView _webProcessIdentifier];
 
     isDone = false;
-    [webView takeSnapshotWithConfiguration:nil completionHandler:^(PlatformImage snapshotImage, NSError *error) {
+    [webView takeSnapshotWithConfiguration:nil completionHandler:^(Util::PlatformImage *snapshotImage, NSError *error) {
         EXPECT_NULL(error);
         EXPECT_EQ(0, snapshotImage.size.width);
         EXPECT_EQ(0, snapshotImage.size.height);
@@ -212,7 +195,7 @@ TEST(WKWebView, SnapshotImageEmptyWithOutOfScopeCompletionHandler)
 {
     CGFloat viewWidth = 0;
     CGFloat viewHeight = 0;
-    RetainPtr<WKWebView> webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, viewWidth, viewHeight)]);
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, viewWidth, viewHeight)]);
 
     [webView loadHTMLString:@"<body style='background-color: red;'></body>" baseURL:nil];
     [webView _test_waitForDidFinishNavigation];
@@ -245,9 +228,9 @@ TEST(WKWebView, SnapshotImageBaseCase)
 {
     NSInteger viewWidth = 800;
     NSInteger viewHeight = 600;
-    RetainPtr<WKWebView> webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, viewWidth, viewHeight)]);
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, viewWidth, viewHeight)]);
 
-    RetainPtr<PlatformWindow> window;
+    RetainPtr<Util::PlatformWindow> window;
     CGFloat backingScaleFactor;
 
 #if PLATFORM(MAC)
@@ -268,19 +251,19 @@ TEST(WKWebView, SnapshotImageBaseCase)
     [snapshotConfiguration setSnapshotWidth:@(viewWidth)];
 
     isDone = false;
-    [webView takeSnapshotWithConfiguration:snapshotConfiguration.get() completionHandler:^(PlatformImage snapshotImage, NSError *error) {
+    [webView takeSnapshotWithConfiguration:snapshotConfiguration.get() completionHandler:^(Util::PlatformImage *snapshotImage, NSError *error) {
         EXPECT_NULL(error);
 
         EXPECT_EQ(viewWidth, snapshotImage.size.width);
 
-        RetainPtr<CGImageRef> cgImage = convertToCGImage(snapshotImage);
+        RetainPtr cgImage = Util::convertToCGImage(snapshotImage);
         RetainPtr<CGColorSpaceRef> colorSpace = adoptCF(CGColorSpaceCreateDeviceRGB());
 
         NSInteger viewWidthInPixels = viewWidth * backingScaleFactor;
         NSInteger viewHeightInPixels = viewHeight * backingScaleFactor;
 
         uint8_t *rgba = (unsigned char *)calloc(viewWidthInPixels * viewHeightInPixels * 4, sizeof(unsigned char));
-        auto context = adoptCF(CGBitmapContextCreate(rgba, viewWidthInPixels, viewHeightInPixels, 8, 4 * viewWidthInPixels, colorSpace.get(), kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big));
+        auto context = adoptCF(CGBitmapContextCreate(rgba, viewWidthInPixels, viewHeightInPixels, 8, 4 * viewWidthInPixels, colorSpace.get(), static_cast<uint32_t>(kCGImageAlphaPremultipliedLast) | static_cast<uint32_t>(kCGBitmapByteOrder32Big)));
         CGContextDrawImage(context.get(), CGRectMake(0, 0, viewWidthInPixels, viewHeightInPixels), cgImage.get());
 
         NSInteger pixelIndex = getPixelIndex(0, 0, viewWidthInPixels);
@@ -312,7 +295,7 @@ TEST(WKWebView, SnapshotImageScale)
     CGFloat viewWidth = 800;
     CGFloat viewHeight = 600;
     CGFloat scaleFactor = 2;
-    RetainPtr<WKWebView> webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, viewWidth, viewHeight)]);
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, viewWidth, viewHeight)]);
 
     [webView loadHTMLString:@"<body style='background-color: red;'></body>" baseURL:nil];
     [webView _test_waitForDidFinishNavigation];
@@ -322,7 +305,7 @@ TEST(WKWebView, SnapshotImageScale)
     [snapshotConfiguration setSnapshotWidth:@(viewWidth * scaleFactor)];
 
     isDone = false;
-    [webView takeSnapshotWithConfiguration:snapshotConfiguration.get() completionHandler:^(PlatformImage snapshotImage, NSError *error) {
+    [webView takeSnapshotWithConfiguration:snapshotConfiguration.get() completionHandler:^(Util::PlatformImage *snapshotImage, NSError *error) {
         EXPECT_NULL(error);
         EXPECT_NOT_NULL(snapshotImage);
         EXPECT_EQ(viewWidth * scaleFactor, snapshotImage.size.width);
@@ -338,13 +321,13 @@ TEST(WKWebView, SnapshotImageNilConfiguration)
 {
     CGFloat viewWidth = 800;
     CGFloat viewHeight = 600;
-    RetainPtr<WKWebView> webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, viewWidth, viewHeight)]);
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, viewWidth, viewHeight)]);
 
     [webView loadHTMLString:@"<body style='background-color: red;'></body>" baseURL:nil];
     [webView _test_waitForDidFinishNavigation];
 
     isDone = false;
-    [webView takeSnapshotWithConfiguration:nil completionHandler:^(PlatformImage snapshotImage, NSError *error) {
+    [webView takeSnapshotWithConfiguration:nil completionHandler:^(Util::PlatformImage *snapshotImage, NSError *error) {
         EXPECT_NULL(error);
         EXPECT_NOT_NULL(snapshotImage);
         EXPECT_EQ([webView bounds].size.width, snapshotImage.size.width);
@@ -359,7 +342,7 @@ TEST(WKWebView, SnapshotImageUninitializedConfiguration)
 {
     CGFloat viewWidth = 800;
     CGFloat viewHeight = 600;
-    RetainPtr<WKWebView> webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, viewWidth, viewHeight)]);
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, viewWidth, viewHeight)]);
 
     [webView loadHTMLString:@"<body style='background-color: red;'></body>" baseURL:nil];
     [webView _test_waitForDidFinishNavigation];
@@ -367,7 +350,7 @@ TEST(WKWebView, SnapshotImageUninitializedConfiguration)
     RetainPtr<WKSnapshotConfiguration> snapshotConfiguration = adoptNS([[WKSnapshotConfiguration alloc] init]);
 
     isDone = false;
-    [webView takeSnapshotWithConfiguration:snapshotConfiguration.get() completionHandler:^(PlatformImage snapshotImage, NSError *error) {
+    [webView takeSnapshotWithConfiguration:snapshotConfiguration.get() completionHandler:^(Util::PlatformImage *snapshotImage, NSError *error) {
         EXPECT_NULL(error);
         EXPECT_NOT_NULL(snapshotImage);
         EXPECT_EQ([webView bounds].size.width, snapshotImage.size.width);
@@ -382,7 +365,7 @@ TEST(WKWebView, SnapshotImageUninitializedSnapshotWidth)
 {
     CGFloat viewWidth = 800;
     CGFloat viewHeight = 600;
-    RetainPtr<WKWebView> webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, viewWidth, viewHeight)]);
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, viewWidth, viewHeight)]);
 
     [webView loadHTMLString:@"<body style='background-color: red;'></body>" baseURL:nil];
     [webView _test_waitForDidFinishNavigation];
@@ -391,7 +374,7 @@ TEST(WKWebView, SnapshotImageUninitializedSnapshotWidth)
     [snapshotConfiguration setRect:NSMakeRect(0, 0, viewWidth, viewHeight)];
 
     isDone = false;
-    [webView takeSnapshotWithConfiguration:snapshotConfiguration.get() completionHandler:^(PlatformImage snapshotImage, NSError *error) {
+    [webView takeSnapshotWithConfiguration:snapshotConfiguration.get() completionHandler:^(Util::PlatformImage *snapshotImage, NSError *error) {
         EXPECT_NULL(error);
         EXPECT_NOT_NULL(snapshotImage);
         EXPECT_EQ([snapshotConfiguration rect].size.width, snapshotImage.size.width);
@@ -406,27 +389,28 @@ TEST(WKWebView, SnapshotImageLargeAsyncDecoding)
 {
     NSInteger viewWidth = 800;
     NSInteger viewHeight = 600;
-    RetainPtr<WKWebView> webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, viewWidth, viewHeight)]);
+    // FIXME: This test fails when adopting TestWKWebView; it might be interesting to investigate why.
+    auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, viewWidth, viewHeight)]);
 
     NSURL *fileURL = [[NSBundle mainBundle] URLForResource:@"large-red-square-image" withExtension:@"html" subdirectory:@"TestWebKitAPI.resources"];
     [webView loadFileURL:fileURL allowingReadAccessToURL:fileURL];
     [webView _test_waitForDidFinishNavigation];
 
-    RetainPtr<WKSnapshotConfiguration> snapshotConfiguration = adoptNS([[WKSnapshotConfiguration alloc] init]);
+    auto snapshotConfiguration = adoptNS([[WKSnapshotConfiguration alloc] init]);
     [snapshotConfiguration setRect:NSMakeRect(0, 0, viewWidth, viewHeight)];
     [snapshotConfiguration setSnapshotWidth:@(viewWidth)];
 
     isDone = false;
-    [webView takeSnapshotWithConfiguration:snapshotConfiguration.get() completionHandler:^(PlatformImage snapshotImage, NSError *error) {
+    [webView takeSnapshotWithConfiguration:snapshotConfiguration.get() completionHandler:^(Util::PlatformImage *snapshotImage, NSError *error) {
         EXPECT_NULL(error);
 
         EXPECT_EQ(viewWidth, snapshotImage.size.width);
 
-        RetainPtr<CGImageRef> cgImage = convertToCGImage(snapshotImage);
-        RetainPtr<CGColorSpaceRef> colorSpace = adoptCF(CGColorSpaceCreateDeviceRGB());
+        auto cgImage = Util::convertToCGImage(snapshotImage);
+        auto colorSpace = adoptCF(CGColorSpaceCreateDeviceRGB());
 
         uint8_t *rgba = (unsigned char *)calloc(viewWidth * viewHeight * 4, sizeof(unsigned char));
-        auto context = adoptCF(CGBitmapContextCreate(rgba, viewWidth, viewHeight, 8, 4 * viewWidth, colorSpace.get(), kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big));
+        auto context = adoptCF(CGBitmapContextCreate(rgba, viewWidth, viewHeight, 8, 4 * viewWidth, colorSpace.get(), static_cast<uint32_t>(kCGImageAlphaPremultipliedLast) | static_cast<uint32_t>(kCGBitmapByteOrder32Big)));
         CGContextDrawImage(context.get(), CGRectMake(0, 0, viewWidth, viewHeight), cgImage.get());
 
         // Top-left corner of the div (0, 0, 100, 100)
@@ -463,9 +447,9 @@ TEST(WKWebView, SnapshotAfterScreenUpdates)
     // pass this test.
     NSInteger viewWidth = 800;
     NSInteger viewHeight = 600;
-    RetainPtr<WKWebView> webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, viewWidth, viewHeight)]);
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, viewWidth, viewHeight)]);
     
-    RetainPtr<PlatformWindow> window;
+    RetainPtr<Util::PlatformWindow> window;
     CGFloat backingScaleFactor;
     
 #if PLATFORM(MAC)
@@ -489,19 +473,19 @@ TEST(WKWebView, SnapshotAfterScreenUpdates)
     [webView evaluateJavaScript:@"var div = document.getElementById('change-me');div.style.backgroundColor = 'blue';" completionHandler:nil];
 
     isDone = false;
-    [webView takeSnapshotWithConfiguration:snapshotConfiguration.get() completionHandler:^(PlatformImage snapshotImage, NSError *error) {
+    [webView takeSnapshotWithConfiguration:snapshotConfiguration.get() completionHandler:^(Util::PlatformImage *snapshotImage, NSError *error) {
         EXPECT_NULL(error);
         
         EXPECT_EQ(viewWidth, snapshotImage.size.width);
         
-        RetainPtr<CGImageRef> cgImage = convertToCGImage(snapshotImage);
+        RetainPtr cgImage = Util::convertToCGImage(snapshotImage);
         RetainPtr<CGColorSpaceRef> colorSpace = adoptCF(CGColorSpaceCreateDeviceRGB());
         
         NSInteger viewWidthInPixels = viewWidth * backingScaleFactor;
         NSInteger viewHeightInPixels = viewHeight * backingScaleFactor;
         
         uint8_t *rgba = (unsigned char *)calloc(viewWidthInPixels * viewHeightInPixels * 4, sizeof(unsigned char));
-        auto context = adoptCF(CGBitmapContextCreate(rgba, viewWidthInPixels, viewHeightInPixels, 8, 4 * viewWidthInPixels, colorSpace.get(), kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big));
+        auto context = adoptCF(CGBitmapContextCreate(rgba, viewWidthInPixels, viewHeightInPixels, 8, 4 * viewWidthInPixels, colorSpace.get(), static_cast<uint32_t>(kCGImageAlphaPremultipliedLast) | static_cast<uint32_t>(kCGBitmapByteOrder32Big)));
         CGContextDrawImage(context.get(), CGRectMake(0, 0, viewWidthInPixels, viewHeightInPixels), cgImage.get());
         
         NSInteger pixelIndex = getPixelIndex(0, 0, viewWidthInPixels);
@@ -526,9 +510,9 @@ TEST(WKWebView, SnapshotWithoutAfterScreenUpdates)
     // then we would expect the pixels to be red instead of blue.
     NSInteger viewWidth = 800;
     NSInteger viewHeight = 600;
-    RetainPtr<WKWebView> webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, viewWidth, viewHeight)]);
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, viewWidth, viewHeight)]);
     
-    RetainPtr<PlatformWindow> window;
+    RetainPtr<Util::PlatformWindow> window;
     CGFloat backingScaleFactor;
     
 #if PLATFORM(MAC)
@@ -552,19 +536,19 @@ TEST(WKWebView, SnapshotWithoutAfterScreenUpdates)
     [webView evaluateJavaScript:@"var div = document.getElementById('change-me');div.style.backgroundColor = 'blue';" completionHandler:nil];
     
     isDone = false;
-    [webView takeSnapshotWithConfiguration:snapshotConfiguration.get() completionHandler:^(PlatformImage snapshotImage, NSError *error) {
+    [webView takeSnapshotWithConfiguration:snapshotConfiguration.get() completionHandler:^(Util::PlatformImage *snapshotImage, NSError *error) {
         EXPECT_NULL(error);
         
         EXPECT_EQ(viewWidth, snapshotImage.size.width);
         
-        RetainPtr<CGImageRef> cgImage = convertToCGImage(snapshotImage);
+        RetainPtr cgImage = Util::convertToCGImage(snapshotImage);
         RetainPtr<CGColorSpaceRef> colorSpace = adoptCF(CGColorSpaceCreateDeviceRGB());
         
         NSInteger viewWidthInPixels = viewWidth * backingScaleFactor;
         NSInteger viewHeightInPixels = viewHeight * backingScaleFactor;
         
         uint8_t *rgba = (unsigned char *)calloc(viewWidthInPixels * viewHeightInPixels * 4, sizeof(unsigned char));
-        auto context = adoptCF(CGBitmapContextCreate(rgba, viewWidthInPixels, viewHeightInPixels, 8, 4 * viewWidthInPixels, colorSpace.get(), kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big));
+        auto context = adoptCF(CGBitmapContextCreate(rgba, viewWidthInPixels, viewHeightInPixels, 8, 4 * viewWidthInPixels, colorSpace.get(), static_cast<uint32_t>(kCGImageAlphaPremultipliedLast) | static_cast<uint32_t>(kCGBitmapByteOrder32Big)));
         CGContextDrawImage(context.get(), CGRectMake(0, 0, viewWidthInPixels, viewHeightInPixels), cgImage.get());
 
         NSInteger pixelIndex = getPixelIndex(0, 0, viewWidthInPixels);
@@ -586,9 +570,9 @@ TEST(WKWebView, SnapshotWebGL)
 {
     NSInteger viewWidth = 800;
     NSInteger viewHeight = 600;
-    RetainPtr<WKWebView> webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, viewWidth, viewHeight)]);
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, viewWidth, viewHeight)]);
 
-    RetainPtr<PlatformWindow> window;
+    RetainPtr<Util::PlatformWindow> window;
     CGFloat backingScaleFactor;
 
 #if PLATFORM(MAC)
@@ -610,19 +594,19 @@ TEST(WKWebView, SnapshotWebGL)
     [snapshotConfiguration setAfterScreenUpdates:YES];
 
     isDone = false;
-    [webView takeSnapshotWithConfiguration:snapshotConfiguration.get() completionHandler:^(PlatformImage snapshotImage, NSError *error) {
+    [webView takeSnapshotWithConfiguration:snapshotConfiguration.get() completionHandler:^(Util::PlatformImage *snapshotImage, NSError *error) {
         EXPECT_NULL(error);
 
         EXPECT_EQ(viewWidth, snapshotImage.size.width);
 
-        RetainPtr<CGImageRef> cgImage = convertToCGImage(snapshotImage);
+        RetainPtr cgImage = Util::convertToCGImage(snapshotImage);
         RetainPtr<CGColorSpaceRef> colorSpace = adoptCF(CGColorSpaceCreateDeviceRGB());
 
         NSInteger viewWidthInPixels = viewWidth * backingScaleFactor;
         NSInteger viewHeightInPixels = viewHeight * backingScaleFactor;
 
         uint8_t *rgba = (unsigned char *)calloc(viewWidthInPixels * viewHeightInPixels * 4, sizeof(unsigned char));
-        auto context = adoptCF(CGBitmapContextCreate(rgba, viewWidthInPixels, viewHeightInPixels, 8, 4 * viewWidthInPixels, colorSpace.get(), kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big));
+        auto context = adoptCF(CGBitmapContextCreate(rgba, viewWidthInPixels, viewHeightInPixels, 8, 4 * viewWidthInPixels, colorSpace.get(), static_cast<uint32_t>(kCGImageAlphaPremultipliedLast) | static_cast<uint32_t>(kCGBitmapByteOrder32Big)));
         CGContextDrawImage(context.get(), CGRectMake(0, 0, viewWidthInPixels, viewHeightInPixels), cgImage.get());
 
         NSInteger pixelIndex = getPixelIndex(0, 0, viewWidthInPixels);
@@ -639,3 +623,98 @@ TEST(WKWebView, SnapshotWebGL)
     TestWebKitAPI::Util::run(&isDone);
 }
 #endif
+
+#if PLATFORM(MAC)
+TEST(WKWebView, SnapshotWithoutSelectionHighlighting)
+{
+    NSInteger viewWidth = 800;
+    NSInteger viewHeight = 600;
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, viewWidth, viewHeight)]);
+
+    RetainPtr<Util::PlatformWindow> window = adoptNS([[NSWindow alloc] initWithContentRect:[webView frame] styleMask:NSBorderlessWindowMask backing:NSBackingStoreBuffered defer:NO]);
+    [[window contentView] addSubview:webView.get()];
+    CGFloat backingScaleFactor = [window backingScaleFactor];
+
+    // Select a line of underscore characters so we have a large selection highlight area that doesn't intersect with the character glyphs.
+    [webView loadHTMLString:@"<body> <div id='selectThis'>________</div> </body> <script> window.getSelection().selectAllChildren( document.getElementById('selectThis')); </script>" baseURL:nil];
+    [webView _test_waitForDidFinishNavigation];
+
+    RetainPtr<WKSnapshotConfiguration> snapshotConfiguration = adoptNS([[WKSnapshotConfiguration alloc] init]);
+    [snapshotConfiguration _setIncludesSelectionHighlighting:NO];
+
+    isDone = false;
+    [webView takeSnapshotWithConfiguration:snapshotConfiguration.get() completionHandler:^(Util::PlatformImage *snapshotImage, NSError *error) {
+        EXPECT_NULL(error);
+
+        EXPECT_EQ(viewWidth, snapshotImage.size.width);
+
+        RetainPtr cgImage = Util::convertToCGImage(snapshotImage);
+        RetainPtr<CGColorSpaceRef> colorSpace = adoptCF(CGColorSpaceCreateDeviceRGB());
+
+        NSInteger viewWidthInPixels = viewWidth * backingScaleFactor;
+        NSInteger viewHeightInPixels = viewHeight * backingScaleFactor;
+
+        uint8_t *rgba = (unsigned char *)calloc(viewWidthInPixels * viewHeightInPixels * 4, sizeof(unsigned char));
+        auto context = adoptCF(CGBitmapContextCreate(rgba, viewWidthInPixels, viewHeightInPixels, 8, 4 * viewWidthInPixels, colorSpace.get(), static_cast<uint32_t>(kCGImageAlphaPremultipliedLast) | static_cast<uint32_t>(kCGBitmapByteOrder32Big)));
+        CGContextDrawImage(context.get(), CGRectMake(0, 0, viewWidthInPixels, viewHeightInPixels), cgImage.get());
+
+        // Get a pixel from inside where the selection highlight would normally be and verify that the highlight isn't in the snapshot.
+        NSInteger pixelIndex = getPixelIndex(20 * backingScaleFactor, 20 * backingScaleFactor, viewWidthInPixels);
+        EXPECT_EQ(255, rgba[pixelIndex]);
+        EXPECT_EQ(255, rgba[pixelIndex + 1]);
+        EXPECT_EQ(255, rgba[pixelIndex + 2]);
+
+        free(rgba);
+
+        isDone = true;
+    }];
+
+    TestWebKitAPI::Util::run(&isDone);
+}
+
+TEST(WKWebView, SnapshotWithContentsRect)
+{
+    CGFloat viewWidth = 200;
+    CGFloat viewHeight = 200;
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, viewWidth, viewHeight)]);
+
+    auto window = adoptNS([[NSWindow alloc] initWithContentRect:[webView frame] styleMask:NSBorderlessWindowMask backing:NSBackingStoreBuffered defer:NO]);
+    [[window contentView] addSubview:webView.get()];
+    CGFloat backingScaleFactor = [window backingScaleFactor];
+
+    [webView loadHTMLString:@"<body><div style='position: absolute; left: 200px; width: 800px; height: 600px; background-color: blue;'></div>" baseURL:nil];
+    [webView _test_waitForDidFinishNavigation];
+
+    auto snapshotConfiguration = adoptNS([[WKSnapshotConfiguration alloc] init]);
+    [snapshotConfiguration _setUsesContentsRect:YES];
+
+    isDone = false;
+    [webView takeSnapshotWithConfiguration:snapshotConfiguration.get() completionHandler:^(Util::PlatformImage *snapshotImage, NSError *error) {
+        EXPECT_NULL(error);
+
+        NSInteger snapshotWidthInPixels = snapshotImage.size.width;
+        NSInteger snapshotHeightInPixels = snapshotImage.size.height;
+        EXPECT_GT(snapshotWidthInPixels, viewWidth);
+        EXPECT_GT(snapshotHeightInPixels, viewHeight);
+
+        auto cgImage = Util::convertToCGImage(snapshotImage);
+        auto colorSpace = adoptCF(CGColorSpaceCreateDeviceRGB());
+        uint8_t *rgba = (unsigned char *)calloc(snapshotWidthInPixels * snapshotHeightInPixels * 4, sizeof(unsigned char));
+        auto context = adoptCF(CGBitmapContextCreate(rgba, snapshotWidthInPixels, snapshotHeightInPixels, 8, 4 * snapshotWidthInPixels, colorSpace.get(), static_cast<uint32_t>(kCGImageAlphaPremultipliedLast) | static_cast<uint32_t>(kCGBitmapByteOrder32Big)));
+        CGContextDrawImage(context.get(), CGRectMake(0, 0, snapshotWidthInPixels, snapshotHeightInPixels), cgImage.get());
+
+        // Inside the blue div.
+        auto pixelIndex = getPixelIndex(300 * backingScaleFactor, 300 * backingScaleFactor, snapshotWidthInPixels);
+        EXPECT_EQ(0, rgba[pixelIndex]);
+        EXPECT_EQ(0, rgba[pixelIndex + 1]);
+        EXPECT_EQ(255, rgba[pixelIndex + 2]);
+        free(rgba);
+
+        isDone = true;
+    }];
+
+    TestWebKitAPI::Util::run(&isDone);
+}
+#endif
+
+} // namespace TestWebKitAPI

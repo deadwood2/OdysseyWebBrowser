@@ -32,14 +32,15 @@ class FloatPoint;
 }
 
 
-@class UIScrollView;
+@class WKVelocityTrackingScrollView;
 @class WebEvent;
+
 @protocol WKKeyboardScrollViewAnimatorDelegate;
 
 @interface WKKeyboardScrollViewAnimator : NSObject
 
 - (instancetype)init NS_UNAVAILABLE;
-- (instancetype)initWithScrollView:(UIScrollView *)scrollView;
+- (instancetype)initWithScrollView:(WKVelocityTrackingScrollView *)scrollView;
 
 - (void)invalidate;
 
@@ -49,6 +50,8 @@ class FloatPoint;
 - (void)handleKeyEvent:(::WebEvent *)event;
 
 - (BOOL)scrollTriggeringKeyIsPressed;
+
+- (void)stopScrollingImmediately;
 
 @property (nonatomic, weak) id <WKKeyboardScrollViewAnimatorDelegate> delegate;
 

@@ -4,7 +4,7 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2,1 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -31,17 +31,16 @@ public:
 
     MultiprocessTest()
         : m_mainLoop(g_main_loop_new(nullptr, TRUE))
-        , m_initializeWebExtensionsSignalCount(0)
+        , m_initializeWebProcessExtensionsSignalCount(0)
         , m_webViewBusNames(numViews)
         , m_webViews(numViews)
     {
-        webkit_web_context_set_process_model(m_webContext.get(), WEBKIT_PROCESS_MODEL_MULTIPLE_SECONDARY_PROCESSES);
     }
 
-    void initializeWebExtensions() override
+    void initializeWebProcessExtensions() override
     {
-        Test::initializeWebExtensions();
-        m_initializeWebExtensionsSignalCount++;
+        Test::initializeWebProcessExtensions();
+        m_initializeWebProcessExtensionsSignalCount++;
     }
 
     static void loadChanged(WebKitWebView* webView, WebKitLoadEvent loadEvent, MultiprocessTest* test)
@@ -62,7 +61,7 @@ public:
         webkit_web_view_load_html(m_webViews[index].get(), "<html></html>", nullptr);
         g_idle_add([](gpointer userData) -> gboolean {
             auto* test = static_cast<MultiprocessTest*>(userData);
-            if (!s_dbusConnectionPageMap.get(webkit_web_view_get_page_id(test->m_webViews[test->m_initializeWebExtensionsSignalCount - 1].get())))
+            if (!s_dbusConnectionPageMap.get(webkit_web_view_get_page_id(test->m_webViews[test->m_initializeWebProcessExtensionsSignalCount - 1].get())))
                 return TRUE;
 
             g_main_loop_quit(test->m_mainLoop);
@@ -77,7 +76,7 @@ public:
 
         GRefPtr<GDBusProxy> proxy = adoptGRef(g_dbus_proxy_new_sync(s_dbusConnectionPageMap.get(webkit_web_view_get_page_id(m_webViews[index].get())),
             static_cast<GDBusProxyFlags>(G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES | G_DBUS_PROXY_FLAGS_DO_NOT_CONNECT_SIGNALS),
-            nullptr, nullptr, "/org/webkit/gtk/WebExtensionTest", "org.webkit.gtk.WebExtensionTest", nullptr, nullptr));
+            nullptr, nullptr, "/org/webkit/gtk/WebProcessExtensionTest", "org.webkit.gtk.WebProcessExtensionTest", nullptr, nullptr));
         GRefPtr<GVariant> result = adoptGRef(g_dbus_proxy_call_sync(
             proxy.get(),
             "GetProcessIdentifier",
@@ -109,7 +108,7 @@ public:
 #endif
 
     GMainLoop* m_mainLoop;
-    unsigned m_initializeWebExtensionsSignalCount;
+    unsigned m_initializeWebProcessExtensionsSignalCount;
     Vector<GUniquePtr<char>, numViews> m_webViewBusNames;
     Vector<GRefPtr<WebKitWebView>, numViews> m_webViews;
 };
@@ -118,7 +117,7 @@ static void testProcessPerWebView(MultiprocessTest* test, gconstpointer)
 {
     // Create two web views. As we are in multiprocess mode, there must be
     // two web processes, running an instance of the web extension each.
-    // The initialize-web-extensions must have been called twice, and the
+    // The initialize-web-process-extensions must have been called twice, and the
     // identifiers generated for them must be different (and their reported
     // process identifiers).
 
@@ -128,7 +127,7 @@ static void testProcessPerWebView(MultiprocessTest* test, gconstpointer)
         g_assert_nonnull(Test::s_dbusConnectionPageMap.get(webkit_web_view_get_page_id(test->m_webViews[i].get())));
     }
 
-    g_assert_cmpuint(test->m_initializeWebExtensionsSignalCount, ==, numViews);
+    g_assert_cmpuint(test->m_initializeWebProcessExtensionsSignalCount, ==, numViews);
     g_assert_false(Test::s_dbusConnectionPageMap.get(webkit_web_view_get_page_id(test->m_webViews[0].get())) == Test::s_dbusConnectionPageMap.get(webkit_web_view_get_page_id(test->m_webViews[1].get())));
     g_assert_cmpuint(test->webProcessPid(0), !=, test->webProcessPid(1));
 
@@ -169,9 +168,8 @@ public:
 
     UIClientMultiprocessTest()
         : m_mainLoop(g_main_loop_new(nullptr, TRUE))
-        , m_initializeWebExtensionsSignalCount(0)
+        , m_initializeWebProcessExtensionsSignalCount(0)
     {
-        webkit_web_context_set_process_model(m_webContext.get(), WEBKIT_PROCESS_MODEL_MULTIPLE_SECONDARY_PROCESSES);
         m_webView = WEBKIT_WEB_VIEW(Test::createWebView(m_webContext.get()));
 #if PLATFORM(GTK)
         g_object_ref_sink(m_webView);
@@ -187,10 +185,10 @@ public:
         g_object_unref(m_webView);
     }
 
-    void initializeWebExtensions() override
+    void initializeWebProcessExtensions() override
     {
-        Test::initializeWebExtensions();
-        m_initializeWebExtensionsSignalCount++;
+        Test::initializeWebProcessExtensions();
+        m_initializeWebProcessExtensionsSignalCount++;
     }
 
     WebKitWebView* viewCreate(WebKitWebView* webView)
@@ -232,7 +230,7 @@ public:
 
     WebKitWebView* m_webView;
     GMainLoop* m_mainLoop;
-    unsigned m_initializeWebExtensionsSignalCount;
+    unsigned m_initializeWebProcessExtensionsSignalCount;
     Vector<WebViewEvents> m_webViewEvents;
 };
 
@@ -247,13 +245,12 @@ static void testMultiprocessWebViewCreateReadyClose(UIClientMultiprocessTest* te
     g_assert_cmpint(events[1], ==, UIClientMultiprocessTest::ReadyToShow);
     g_assert_cmpint(events[2], ==, UIClientMultiprocessTest::Close);
 
-    g_assert_cmpuint(test->m_initializeWebExtensionsSignalCount, ==, 1);
+    g_assert_cmpuint(test->m_initializeWebProcessExtensionsSignalCount, ==, 1);
 }
 
 void beforeAll()
 {
-    // Check that default setting is the one stated in the documentation
-    g_assert_cmpuint(webkit_web_context_get_process_model(webkit_web_context_get_default()), ==, WEBKIT_PROCESS_MODEL_MULTIPLE_SECONDARY_PROCESSES);
+    Test::shouldInitializeWebProcessExtensions = true;
 
     MultiprocessTest::add("WebKitWebContext", "process-per-web-view", testProcessPerWebView);
     UIClientMultiprocessTest::add("WebKitWebView", "multiprocess-create-ready-close", testMultiprocessWebViewCreateReadyClose);

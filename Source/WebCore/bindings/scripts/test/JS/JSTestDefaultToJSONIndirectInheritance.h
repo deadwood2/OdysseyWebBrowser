@@ -32,8 +32,9 @@ public:
     using DOMWrapped = TestDefaultToJSONIndirectInheritance;
     static JSTestDefaultToJSONIndirectInheritance* create(JSC::Structure* structure, JSDOMGlobalObject* globalObject, Ref<TestDefaultToJSONIndirectInheritance>&& impl)
     {
-        JSTestDefaultToJSONIndirectInheritance* ptr = new (NotNull, JSC::allocateCell<JSTestDefaultToJSONIndirectInheritance>(globalObject->vm().heap)) JSTestDefaultToJSONIndirectInheritance(structure, *globalObject, WTFMove(impl));
-        ptr->finishCreation(globalObject->vm());
+        auto& vm = globalObject->vm();
+        JSTestDefaultToJSONIndirectInheritance* ptr = new (NotNull, JSC::allocateCell<JSTestDefaultToJSONIndirectInheritance>(vm)) JSTestDefaultToJSONIndirectInheritance(structure, *globalObject, WTFMove(impl));
+        ptr->finishCreation(vm);
         return ptr;
     }
 
@@ -48,22 +49,25 @@ public:
     }
 
     static JSC::JSValue getConstructor(JSC::VM&, const JSC::JSGlobalObject*);
-    template<typename, JSC::SubspaceAccess mode> static JSC::IsoSubspace* subspaceFor(JSC::VM& vm)
+    template<typename, JSC::SubspaceAccess mode> static JSC::GCClient::IsoSubspace* subspaceFor(JSC::VM& vm)
     {
         if constexpr (mode == JSC::SubspaceAccess::Concurrently)
             return nullptr;
         return subspaceForImpl(vm);
     }
-    static JSC::IsoSubspace* subspaceForImpl(JSC::VM& vm);
+    static JSC::GCClient::IsoSubspace* subspaceForImpl(JSC::VM& vm);
     static void analyzeHeap(JSCell*, JSC::HeapAnalyzer&);
     TestDefaultToJSONIndirectInheritance& wrapped() const
     {
         return static_cast<TestDefaultToJSONIndirectInheritance&>(Base::wrapped());
     }
+
+    Ref<TestDefaultToJSONIndirectInheritance> protectedWrapped() const;
+
 protected:
     JSTestDefaultToJSONIndirectInheritance(JSC::Structure*, JSDOMGlobalObject&, Ref<TestDefaultToJSONIndirectInheritance>&&);
 
-    void finishCreation(JSC::VM&);
+    DECLARE_DEFAULT_FINISH_CREATION;
 };
 
 

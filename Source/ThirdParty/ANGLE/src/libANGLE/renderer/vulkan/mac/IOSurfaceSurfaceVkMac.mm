@@ -15,6 +15,8 @@
 #include "libANGLE/renderer/vulkan/DisplayVk.h"
 #include "libANGLE/renderer/vulkan/FramebufferVk.h"
 #include "libANGLE/renderer/vulkan/TextureVk.h"
+#include "libANGLE/renderer/vulkan/vk_format_utils.h"
+#include "libANGLE/renderer/vulkan/vk_helpers.h"
 
 #include <IOSurface/IOSurface.h>
 
@@ -36,15 +38,14 @@ struct IOSurfaceFormatInfo
 
 // clang-format off
 constexpr std::array<IOSurfaceFormatInfo, 9> kIOSurfaceFormats = {{
-    {GL_RED,      GL_UNSIGNED_BYTE,                1, GL_R8       },
-    {GL_RED,      GL_UNSIGNED_SHORT,               2, GL_R16_EXT  },
-    {GL_R16UI,    GL_UNSIGNED_SHORT,               2, GL_R16UI    },
-    {GL_RG,       GL_UNSIGNED_BYTE,                2, GL_RG8      },
-    {GL_RG,       GL_UNSIGNED_SHORT,               4, GL_RG16_EXT },
-    {GL_RGB,      GL_UNSIGNED_BYTE,                4, GL_BGRA8_EXT},
+    {GL_RED,      GL_UNSIGNED_BYTE,                1, GL_R8},
+    {GL_RED,      GL_UNSIGNED_SHORT,               2, GL_R16_EXT},
+    {GL_RG,       GL_UNSIGNED_BYTE,                2, GL_RG8},
+    {GL_RG,       GL_UNSIGNED_SHORT,               4, GL_RG16_EXT},
+    {GL_RGB,      GL_UNSIGNED_BYTE,                4, GL_RGBX8_ANGLE},
     {GL_BGRA_EXT, GL_UNSIGNED_BYTE,                4, GL_BGRA8_EXT},
-    {GL_RGB10_A2, GL_UNSIGNED_INT_2_10_10_10_REV,  4, GL_BGR10_A2_ANGLEX },
-    {GL_RGBA,     GL_HALF_FLOAT,                   8, GL_RGBA16F  },
+    {GL_RGB10_A2, GL_UNSIGNED_INT_2_10_10_10_REV,  4, GL_BGR10_A2_ANGLEX},
+    {GL_RGBA,     GL_HALF_FLOAT,                   8, GL_RGBA16F},
 }};
 // clang-format on
 
@@ -66,7 +67,7 @@ int FindIOSurfaceFormatIndex(GLenum internalFormat, GLenum type)
 IOSurfaceSurfaceVkMac::IOSurfaceSurfaceVkMac(const egl::SurfaceState &state,
                                              EGLClientBuffer buffer,
                                              const egl::AttributeMap &attribs,
-                                             RendererVk *renderer)
+                                             vk::Renderer *renderer)
     : OffscreenSurfaceVk(state, renderer), mIOSurface(nullptr), mPlane(0), mFormatIndex(-1)
 {
     // Keep reference to the IOSurface so it doesn't get deleted while the pbuffer exists.
@@ -98,28 +99,32 @@ egl::Error IOSurfaceSurfaceVkMac::initialize(const egl::Display *display)
 {
     DisplayVk *displayVk = vk::GetImpl(display);
     angle::Result result = initializeImpl(displayVk);
-    return angle::ToEGL(result, displayVk, EGL_BAD_SURFACE);
+    return angle::ToEGL(result, EGL_BAD_SURFACE);
 }
 
 angle::Result IOSurfaceSurfaceVkMac::initializeImpl(DisplayVk *displayVk)
 {
-    RendererVk *renderer      = displayVk->getRenderer();
+    vk::Renderer *renderer    = displayVk->getRenderer();
     const egl::Config *config = mState.config;
 
+    // Should never be > 1
     GLint samples = 1;
     if (config->sampleBuffers && config->samples > 1)
     {
         samples = config->samples;
     }
-    ANGLE_VK_CHECK(displayVk, samples > 0, VK_ERROR_INITIALIZATION_FAILED);
+    ANGLE_VK_CHECK(displayVk, samples == 1, VK_ERROR_INITIALIZATION_FAILED);
+
+    const vk::Format &format =
+        renderer->getFormat(kIOSurfaceFormats[mFormatIndex].nativeSizedInternalFormat);
 
     // Swiftshader will use the raw pointer to the buffer referenced by the IOSurfaceRef
-    ANGLE_TRY(mColorAttachment.initializeWithExternalMemory(
-        displayVk, mWidth, mHeight,
-        renderer->getFormat(kIOSurfaceFormats[mFormatIndex].nativeSizedInternalFormat), samples,
-        IOSurfaceGetBaseAddressOfPlane(mIOSurface, mPlane), mState.isRobustResourceInitEnabled()));
+    ANGLE_TRY(mColorAttachment.initialize(displayVk, mWidth, mHeight, format, samples,
+                                          mState.isRobustResourceInitEnabled(),
+                                          mState.hasProtectedContent()));
+
     mColorRenderTarget.init(&mColorAttachment.image, &mColorAttachment.imageViews, nullptr, nullptr,
-                            gl::LevelIndex(0), 0, RenderTargetTransience::Default);
+                            {}, gl::LevelIndex(0), 0, 1, RenderTargetTransience::Default);
 
     return angle::Result::Continue;
 }
@@ -128,9 +133,25 @@ egl::Error IOSurfaceSurfaceVkMac::unMakeCurrent(const gl::Context *context)
 {
     ASSERT(context != nullptr);
     ContextVk *contextVk = vk::GetImpl(context);
-    DisplayVk *displayVk = vk::GetImpl(context->getDisplay());
-    angle::Result result = contextVk->flushImpl(nullptr);
-    return angle::ToEGL(result, displayVk, EGL_BAD_SURFACE);
+    angle::Result result =
+        contextVk->flushImpl(nullptr, nullptr, RenderPassClosureReason::ContextChange);
+    return angle::ToEGL(result, EGL_BAD_SURFACE);
+}
+
+int IOSurfaceSurfaceVkMac::computeAlignment() const
+{
+    size_t rowBytes         = IOSurfaceGetBytesPerRowOfPlane(mIOSurface, mPlane);
+    size_t desiredAlignment = IOSurfaceAlignProperty(kIOSurfaceBytesPerRow, 1);
+    size_t alignment        = 1;
+    while (alignment < desiredAlignment)
+    {
+        if (rowBytes & alignment)
+        {
+            break;
+        }
+        alignment <<= 1;
+    }
+    return static_cast<int>(alignment);
 }
 
 egl::Error IOSurfaceSurfaceVkMac::bindTexImage(const gl::Context *context,
@@ -139,19 +160,70 @@ egl::Error IOSurfaceSurfaceVkMac::bindTexImage(const gl::Context *context,
 {
     IOSurfaceLock(mIOSurface, 0, nullptr);
 
-    return egl::NoError();
+    ContextVk *contextVk   = vk::GetImpl(context);
+    vk::Renderer *renderer = contextVk->getRenderer();
+
+    size_t width             = IOSurfaceGetWidthOfPlane(mIOSurface, mPlane);
+    size_t height            = IOSurfaceGetHeightOfPlane(mIOSurface, mPlane);
+    size_t rowLengthInPixels = IOSurfaceGetBytesPerRowOfPlane(mIOSurface, mPlane) /
+                               IOSurfaceGetBytesPerElementOfPlane(mIOSurface, mPlane);
+
+    gl::PixelUnpackState pixelUnpack;
+    pixelUnpack.alignment   = computeAlignment();
+    pixelUnpack.rowLength   = static_cast<GLint>(rowLengthInPixels);
+    pixelUnpack.imageHeight = static_cast<GLint>(height);
+
+    void *source = IOSurfaceGetBaseAddressOfPlane(mIOSurface, mPlane);
+
+    const gl::InternalFormat &internalFormatInfo =
+        gl::GetSizedInternalFormatInfo(kIOSurfaceFormats[mFormatIndex].nativeSizedInternalFormat);
+    const vk::Format &format =
+        renderer->getFormat(kIOSurfaceFormats[mFormatIndex].nativeSizedInternalFormat);
+
+    bool updateAppliedImmediately = false;
+    angle::Result result          = mColorAttachment.image.stageSubresourceUpdate(
+        contextVk, gl::ImageIndex::Make2D(0),
+        gl::Extents(static_cast<int>(width), pixelUnpack.imageHeight, 1), gl::Offset(),
+        internalFormatInfo, pixelUnpack, kIOSurfaceFormats[mFormatIndex].type,
+        reinterpret_cast<uint8_t *>(source), format, vk::ImageAccess::Renderable,
+        vk::ApplyImageUpdate::Defer, &updateAppliedImmediately);
+
+    IOSurfaceUnlock(mIOSurface, 0, nullptr);
+
+    return angle::ToEGL(result, EGL_BAD_SURFACE);
 }
 
 egl::Error IOSurfaceSurfaceVkMac::releaseTexImage(const gl::Context *context, EGLint buffer)
 {
     ASSERT(context != nullptr);
     ContextVk *contextVk = vk::GetImpl(context);
-    DisplayVk *displayVk = vk::GetImpl(context->getDisplay());
-    angle::Result result = contextVk->finishImpl();
+
+    angle::Result result = mColorAttachment.image.flushAllStagedUpdates(contextVk);
+
+    if (result != angle::Result::Continue)
+    {
+        return angle::ToEGL(result, EGL_BAD_SURFACE);
+    }
+
+    gl::Rectangle bounds(0, 0, mWidth, mHeight);
+
+    const angle::Format &dstFormat = angle::Format::Get(angle::Format::InternalFormatToID(
+        kIOSurfaceFormats[mFormatIndex].nativeSizedInternalFormat));
+
+    IOSurfaceLock(mIOSurface, 0, nullptr);
+
+    size_t outputRowPitchInBytes = IOSurfaceGetBytesPerRowOfPlane(mIOSurface, mPlane);
+
+    PackPixelsParams params(bounds, dstFormat, static_cast<GLuint>(outputRowPitchInBytes),
+                            contextVk->isViewportFlipEnabledForDrawFBO(), nullptr, 0);
+
+    result = mColorAttachment.image.readPixels(contextVk, bounds, params, VK_IMAGE_ASPECT_COLOR_BIT,
+                                               gl::LevelIndex(0), 0,
+                                               IOSurfaceGetBaseAddressOfPlane(mIOSurface, mPlane));
 
     IOSurfaceUnlock(mIOSurface, 0, nullptr);
 
-    return angle::ToEGL(result, displayVk, EGL_BAD_SURFACE);
+    return angle::ToEGL(result, EGL_BAD_SURFACE);
 }
 
 // static
@@ -160,8 +232,6 @@ bool IOSurfaceSurfaceVkMac::ValidateAttributes(const DisplayVk *displayVk,
                                                const egl::AttributeMap &attribs)
 {
     ASSERT(displayVk != nullptr);
-    RendererVk *renderer = displayVk->getRenderer();
-
     IOSurfaceRef ioSurface = reinterpret_cast<IOSurfaceRef>(buffer);
 
     // The plane must exist for this IOSurface. IOSurfaceGetPlaneCount can return 0 for non-planar
@@ -197,26 +267,6 @@ bool IOSurfaceSurfaceVkMac::ValidateAttributes(const DisplayVk *displayVk,
     // Check that the format matches this IOSurface plane
     if (IOSurfaceGetBytesPerElementOfPlane(ioSurface, plane) !=
         kIOSurfaceFormats[formatIndex].componentBytes)
-    {
-        return false;
-    }
-
-    void *pointer = IOSurfaceGetBaseAddressOfPlane(ioSurface, plane);
-    VkMemoryHostPointerPropertiesEXT memoryHostPointerProperties = {};
-    memoryHostPointerProperties.sType = VK_STRUCTURE_TYPE_MEMORY_HOST_POINTER_PROPERTIES_EXT;
-    vkGetMemoryHostPointerPropertiesEXT(
-        renderer->getDevice(), VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_MAPPED_FOREIGN_MEMORY_BIT_EXT,
-        pointer, &memoryHostPointerProperties);
-
-    bool hostVisible =
-        memoryHostPointerProperties.memoryTypeBits & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
-    if (!hostVisible)
-    {
-        return false;
-    }
-
-    VkDeviceSize alignment = renderer->getMinImportedHostPointerAlignment();
-    if (reinterpret_cast<size_t>(pointer) % alignment != 0)
     {
         return false;
     }

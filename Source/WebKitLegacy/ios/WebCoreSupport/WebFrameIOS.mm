@@ -43,11 +43,11 @@
 #import <WebCore/Element.h>
 #import <WebCore/EventHandler.h>
 #import <WebCore/FloatRect.h>
-#import <WebCore/Frame.h>
 #import <WebCore/FrameSelection.h>
 #import <WebCore/FrameSnapshotting.h>
-#import <WebCore/FrameView.h>
 #import <WebCore/HitTestResult.h>
+#import <WebCore/LocalFrame.h>
+#import <WebCore/LocalFrameView.h>
 #import <WebCore/Position.h>
 #import <WebCore/Range.h>
 #import <WebCore/RenderText.h>
@@ -73,7 +73,7 @@ using namespace WebCore;
 
 //-------------------
 
-- (WebCore::Frame *)coreFrame
+- (WebCore::LocalFrame *)coreFrame
 {
     return _private->coreFrame;
 }
@@ -96,7 +96,7 @@ using namespace WebCore;
 
 - (void)clearSelection
 {
-    Frame *frame = [self coreFrame];
+    auto* frame = [self coreFrame];
     if (frame)
         frame->selection().clearCurrentSelection();
     
@@ -106,7 +106,7 @@ using namespace WebCore;
 {
     WebTextSelectionState state = WebTextSelectionStateNone;
 
-    Frame *frame = [self coreFrame];
+    auto* frame = [self coreFrame];
     FrameSelection& frameSelection = frame->selection();
 
     if (frameSelection.isCaret())
@@ -130,7 +130,7 @@ using namespace WebCore;
 
 - (CGRect)closestCaretRectInMarkedTextRangeForPoint:(CGPoint)point
 {
-    auto frame = [self coreFrame];
+    auto* frame = [self coreFrame];
     if (!frame)
         return { };
 
@@ -182,7 +182,7 @@ using namespace WebCore;
 - (void)collapseSelection
 {
     if ([self selectionState] == WebTextSelectionStateRange) {
-        Frame *frame = [self coreFrame];
+        auto* frame = [self coreFrame];
         FrameSelection& frameSelection = frame->selection();
         VisiblePosition end(frameSelection.selection().end());
         frameSelection.moveTo(end);
@@ -192,7 +192,7 @@ using namespace WebCore;
 - (void)extendSelection:(BOOL)start
 {
     if ([self selectionState] == WebTextSelectionStateRange) {
-        Frame *frame = [self coreFrame];
+        auto* frame = [self coreFrame];
         const VisibleSelection& originalSelection = frame->selection().selection();
         if (start) {
             VisiblePosition start = startOfWord(originalSelection.start());
@@ -206,7 +206,7 @@ using namespace WebCore;
 
 - (NSArray *)selectionRectsForCoreRange:(const SimpleRange&)range
 {
-    return createNSArray(RenderObject::collectSelectionGeometries(range), [] (auto& geometry) {
+    return createNSArray(RenderObject::collectSelectionGeometries(range), [] (auto&& geometry) {
         auto webRect = [WebSelectionRect selectionRect];
         webRect.rect = geometry.rect();
         webRect.writingDirection = geometry.direction() == TextDirection::LTR ? WKWritingDirectionLeftToRight : WKWritingDirectionRightToLeft;
@@ -246,43 +246,43 @@ using namespace WebCore;
 
 - (void)setRangedSelectionBaseToCurrentSelection
 {
-    Frame *frame = [self coreFrame];
+    auto* frame = [self coreFrame];
     frame->setRangedSelectionBaseToCurrentSelection();
 }
 
 - (void)setRangedSelectionBaseToCurrentSelectionStart
 {
-    Frame *frame = [self coreFrame];
+    auto* frame = [self coreFrame];
     frame->setRangedSelectionBaseToCurrentSelectionStart();
 }
 
 - (void)setRangedSelectionBaseToCurrentSelectionEnd
 {
-    Frame *frame = [self coreFrame];
+    auto* frame = [self coreFrame];
     frame->setRangedSelectionBaseToCurrentSelectionEnd();
 }
 
 - (void)clearRangedSelectionInitialExtent
 {
-    Frame *frame = [self coreFrame];
+    auto* frame = [self coreFrame];
     frame->clearRangedSelectionInitialExtent();
 }
 
 - (void)setRangedSelectionInitialExtentToCurrentSelectionStart
 {
-    Frame *frame = [self coreFrame];
+    auto* frame = [self coreFrame];
     frame->setRangedSelectionInitialExtentToCurrentSelectionStart();
 }
 
 - (void)setRangedSelectionInitialExtentToCurrentSelectionEnd
 {
-    Frame *frame = [self coreFrame];
+    auto* frame = [self coreFrame];
     frame->setRangedSelectionInitialExtentToCurrentSelectionEnd();
 }
 
 - (void)setRangedSelectionWithExtentPoint:(CGPoint)point
 {    
-    Frame *frame = [self coreFrame];
+    auto* frame = [self coreFrame];
     FrameSelection& frameSelection = frame->selection();
     VisiblePosition pos = [self visiblePositionForPoint:point];
     VisibleSelection base = frame->rangedSelectionBase();
@@ -306,7 +306,7 @@ using namespace WebCore;
 
 - (BOOL)setRangedSelectionExtentPoint:(CGPoint)extentPoint baseIsStart:(BOOL)baseIsStart allowFlipping:(BOOL)allowFlipping
 {
-    Frame *frame = [self coreFrame];
+    auto* frame = [self coreFrame];
     VisibleSelection rangedSelectionBase(frame->rangedSelectionBase());
     VisiblePosition baseStart(rangedSelectionBase.start(), rangedSelectionBase.affinity());
     VisiblePosition baseEnd;
@@ -333,7 +333,7 @@ using namespace WebCore;
     static const CGFloat FlipMargin = 30;
     bool didFlipStartEnd = false;
     bool canFlipStartEnd = allowFlipping && 
-        (fabs(basePoint.x - extentPoint.x) > FlipMargin || fabs(basePoint.y - extentPoint.y) > FlipMargin);
+        (std::abs(basePoint.x - extentPoint.x) > FlipMargin || std::abs(basePoint.y - extentPoint.y) > FlipMargin);
 
     VisiblePosition base;
     if (baseIsStart) {                
@@ -402,7 +402,7 @@ using namespace WebCore;
     // expected to take the flip into account in subsequent calls to this function (for at
     // least as long as a single, logical selection session continues).
 
-    Frame *frame = [self coreFrame];
+    auto* frame = [self coreFrame];
     FrameSelection& frameSelection = frame->selection();
     VisiblePosition base([self visiblePositionForPoint:basePoint]);
     VisiblePosition extent([self visiblePositionForPoint:extentPoint]);
@@ -446,7 +446,7 @@ using namespace WebCore;
     // don't care about base/extent.
     VisiblePosition first([self visiblePositionForPoint:firstPoint]);
     VisiblePosition second([self visiblePositionForPoint:secondPoint]);
-    Frame *frame = [self coreFrame];
+    auto* frame = [self coreFrame];
     FrameSelection& frameSelection = frame->selection();
     frameSelection.moveTo(first, second);
 }
@@ -456,7 +456,7 @@ using namespace WebCore;
     // This method ensures that selection ends doesn't contract such that it no
     // longer contains these points. This is the desirable behavior when the
     // user does the tap-and-a-half + drag operation.
-    Frame *frame = [self coreFrame];
+    auto* frame = [self coreFrame];
     const VisibleSelection& originalSelection = frame->selection().selection();
     Position ensureStart([self visiblePositionForPoint:initialStartPoint].deepEquivalent());
     Position ensureEnd([self visiblePositionForPoint:initialEndPoint].deepEquivalent());
@@ -468,7 +468,7 @@ using namespace WebCore;
 
 - (void)aggressivelyExpandSelectionToWordContainingCaretSelection
 {
-    Frame *frame = [self coreFrame];
+    auto* frame = [self coreFrame];
     FrameSelection& frameSelection = frame->selection();
     VisiblePosition end = frameSelection.selection().visibleEnd();
     if (end == endOfDocument(end) && end != startOfDocument(end) && end == startOfLine(end))
@@ -503,7 +503,7 @@ using namespace WebCore;
 
 - (void)expandSelectionToSentence
 {
-    Frame *frame = [self coreFrame];
+    auto* frame = [self coreFrame];
     FrameSelection& frameSelection = frame->selection();
     VisiblePosition pos = frameSelection.selection().start();
     VisiblePosition start = startOfSentence(pos);
@@ -513,7 +513,7 @@ using namespace WebCore;
 
 - (WKWritingDirection)selectionBaseWritingDirection
 {
-    Frame *frame = [self coreFrame];
+    auto* frame = [self coreFrame];
     switch (frame->editor().baseWritingDirectionForSelectionStart()) {
     case WritingDirection::LeftToRight:
         return WKWritingDirectionLeftToRight;
@@ -551,7 +551,7 @@ using namespace WebCore;
 {
     WKWritingDirection originalDirection = [self selectionBaseWritingDirection];
 
-    Frame *frame = [self coreFrame];
+    auto* frame = [self coreFrame];
     if (!frame->selection().selection().isContentEditable())
         return;
     
@@ -590,7 +590,7 @@ using namespace WebCore;
 
 - (void)moveSelectionToPoint:(CGPoint)point
 {
-    Frame *frame = [self coreFrame];
+    auto* frame = [self coreFrame];
     FrameSelection& frameSelection = frame->selection();
     VisiblePosition pos = [self _visiblePositionForPoint:point];
     frameSelection.moveTo(pos);
@@ -624,7 +624,7 @@ using namespace WebCore;
     frameSelection.setSelection(frameSelection.selection(), { }, { }, { }, wcGranularity);
 }
 
-static inline bool isAlphaNumericCharacter(UChar32 c)
+static inline bool isAlphaNumericCharacter(char32_t c)
 {
     static CFCharacterSetRef set = CFCharacterSetGetPredefined(kCFCharacterSetAlphaNumeric);
     return CFCharacterSetIsCharacterMember(set, c);
@@ -642,8 +642,8 @@ static VisiblePosition SimpleSmartExtendStart(const VisiblePosition& start, cons
         return pos;
     }
 
-    UChar32 charBefore = pos.characterBefore();
-    UChar32 charAfter = pos.characterAfter();
+    char32_t charBefore = pos.characterBefore();
+    char32_t charAfter = pos.characterAfter();
     if (isAlphaNumericCharacter(charAfter) && !isAlphaNumericCharacter(charBefore)) {
         // This is a word start. Leave selection where it is.
         return pos;
@@ -671,7 +671,7 @@ static VisiblePosition SimpleSmartExtendStart(const VisiblePosition& start, cons
     VisiblePosition wordEnd(endOfWord(pos));
     pos = wordEnd;
     while (pos.isNotNull() && !isStartOfLine(pos) && !isEndOfLine(pos) && pos != end) {
-        UChar32 c = pos.characterAfter();
+        char32_t c = pos.characterAfter();
         if (isAlphaNumericCharacter(c))
             break;
         pos = pos.next();
@@ -697,8 +697,8 @@ static VisiblePosition SimpleSmartExtendEnd(const VisiblePosition& start, const 
         return pos;
     }
     
-    UChar32 charBefore = pos.characterBefore();
-    UChar32 charAfter = pos.characterAfter();
+    char32_t charBefore = pos.characterBefore();
+    char32_t charAfter = pos.characterAfter();
     if (isAlphaNumericCharacter(charBefore) && !isAlphaNumericCharacter(charAfter)) {
         // This is a word end. Leave selection where it is.
         return pos;
@@ -724,7 +724,7 @@ static VisiblePosition SimpleSmartExtendEnd(const VisiblePosition& start, const 
     VisiblePosition wordStart(startOfWord(pos));
     pos = wordStart;
     while (pos.isNotNull() && !isStartOfLine(pos) && !isEndOfLine(pos) && pos != start) {
-        UChar32 c = pos.characterBefore();
+        char32_t c = pos.characterBefore();
         if (isAlphaNumericCharacter(c))
             break;
         pos = pos.previous();
@@ -743,7 +743,7 @@ static VisiblePosition SimpleSmartExtendEnd(const VisiblePosition& start, const 
     if ([self selectionState] != WebTextSelectionStateRange)
         return;
     
-    Frame *frame = [self coreFrame];
+    auto* frame = [self coreFrame];
     FrameSelection& frameSelection = frame->selection();
     auto start = frameSelection.selection().visibleStart();
     auto end = frameSelection.selection().visibleEnd();
@@ -794,13 +794,13 @@ static VisiblePosition SimpleSmartExtendEnd(const VisiblePosition& start, const 
 
 - (BOOL)renderedCharactersExceed:(NSUInteger)threshold
 {
-    Frame *frame = [self coreFrame];
+    auto* frame = [self coreFrame];
     return frame->view()->renderedCharactersExceed(threshold);
 }
 
 - (CGRect)elementRectAtPoint:(CGPoint)point
 {
-    Frame *frame = [self coreFrame];
+    auto* frame = [self coreFrame];
     IntPoint adjustedPoint = frame->view()->windowToContents(roundedIntPoint(point));
     constexpr OptionSet<HitTestRequest::Type> hitType { HitTestRequest::Type::ReadOnly, HitTestRequest::Type::Active, HitTestRequest::Type::AllowChildFrameContent };
     HitTestResult result = frame->eventHandler().hitTestResultAtPoint(adjustedPoint, hitType);

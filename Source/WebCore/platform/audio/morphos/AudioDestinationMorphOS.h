@@ -31,10 +31,13 @@
 
 namespace WebCore {
 
-class AudioDestinationMorphOS : public AudioDestination, public AudioDestinationRenderer {
+class AudioDestinationMorphOS : public AudioDestination, public AudioDestinationRenderer, public RefCounted<AudioDestinationMorphOS> {
 public:
     AudioDestinationMorphOS(AudioIOCallback&, float sampleRate);
     ~AudioDestinationMorphOS();
+
+    void ref() const final { return RefCounted<AudioDestinationMorphOS>::ref(); }
+    void deref() const final { return RefCounted<AudioDestinationMorphOS>::deref(); }
 
     void start(Function<void(Function<void()>&&)>&& dispatchToRenderThread, CompletionHandler<void(bool)>&& = [](bool) { }) override;
     void stop(CompletionHandler<void(bool)>&& = [](bool) { }) override;

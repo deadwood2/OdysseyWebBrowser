@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -35,10 +35,10 @@
 OBJC_CLASS WebMediaSessionHelper;
 
 #if defined(__OBJC__) && __OBJC__
-extern NSString* WebUIApplicationWillResignActiveNotification;
-extern NSString* WebUIApplicationWillEnterForegroundNotification;
-extern NSString* WebUIApplicationDidBecomeActiveNotification;
-extern NSString* WebUIApplicationDidEnterBackgroundNotification;
+extern NSString *WebUIApplicationWillResignActiveNotification;
+extern NSString *WebUIApplicationWillEnterForegroundNotification;
+extern NSString *WebUIApplicationDidBecomeActiveNotification;
+extern NSString *WebUIApplicationDidEnterBackgroundNotification;
 #endif
 
 namespace WebCore {
@@ -46,14 +46,17 @@ namespace WebCore {
 class MediaSessionManageriOS
     : public MediaSessionManagerCocoa
     , public MediaSessionHelperClient
-    , public AudioSession::InterruptionObserver {
+    , public AudioSessionInterruptionObserver {
 public:
     virtual ~MediaSessionManageriOS();
 
     bool hasWirelessTargetsAvailable() override;
+    bool isMonitoringWirelessTargets() const override;
     static WEBCORE_EXPORT void providePresentingApplicationPID();
 
     using MediaSessionHelperClient::weakPtrFactory;
+    using MediaSessionHelperClient::WeakValueType;
+    using MediaSessionHelperClient::WeakPtrImplType;
 
 private:
     friend class PlatformMediaSessionManager;
@@ -64,27 +67,27 @@ private:
     void resetRestrictions() final;
 #endif
 
-    void configureWireLessTargetMonitoring() final;
+    void configureWirelessTargetMonitoring() final;
     void providePresentingApplicationPIDIfNecessary() final;
     bool sessionWillBeginPlayback(PlatformMediaSession&) final;
     void sessionWillEndPlayback(PlatformMediaSession&, DelayCallingUpdateNowPlaying) final;
 
-    // AudioSession::InterruptionObserver
-    void beginAudioSessionInterruption() final { beginInterruption(PlatformMediaSession::SystemInterruption); }
-    void endAudioSessionInterruption(AudioSession::MayResume mayResume) final { endInterruption(mayResume == AudioSession::MayResume::Yes ? PlatformMediaSession::MayResumePlaying : PlatformMediaSession::NoFlags); }
+    // AudioSessionInterruptionObserver
+    void beginAudioSessionInterruption() final { beginInterruption(PlatformMediaSession::InterruptionType::SystemInterruption); }
+    void endAudioSessionInterruption(AudioSession::MayResume mayResume) final { endInterruption(mayResume == AudioSession::MayResume::Yes ? PlatformMediaSession::EndInterruptionFlags::MayResumePlaying : PlatformMediaSession::EndInterruptionFlags::NoFlags); }
 
     // MediaSessionHelperClient
     void applicationWillEnterForeground(SuspendedUnderLock) final;
     void applicationDidEnterBackground(SuspendedUnderLock) final;
     void applicationWillBecomeInactive() final;
     void applicationDidBecomeActive() final;
-    void mediaServerConnectionDied() final;
     void externalOutputDeviceAvailableDidChange(HasAvailableTargets) final;
     void activeAudioRouteDidChange(ShouldPause) final;
     void activeVideoRouteDidChange(SupportsAirPlayVideo, Ref<MediaPlaybackTarget>&&) final;
     void isPlayingToAutomotiveHeadUnitDidChange(PlayingToAutomotiveHeadUnit) final;
+    void activeAudioRouteSupportsSpatialPlaybackDidChange(SupportsSpatialAudioPlayback) final;
 #if !RELEASE_LOG_DISABLED
-    const char* logClassName() const final { return "MediaSessionManageriOS"; }
+    ASCIILiteral logClassName() const final { return "MediaSessionManageriOS"_s; }
 #endif
 
 #if !PLATFORM(WATCHOS)

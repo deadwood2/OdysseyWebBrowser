@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2019-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -35,6 +35,7 @@ OBJC_CLASS WKWebView;
 
 namespace API {
 class NavigationAction;
+class PageConfiguration;
 }
 
 namespace WebKit {
@@ -45,13 +46,13 @@ public:
     using NewPageCallback = CompletionHandler<void(RefPtr<WebPageProxy>&&)>;
     using UIClientCallback = Function<void(Ref<API::NavigationAction>&&, NewPageCallback&&)>;
 
-    static Ref<SOAuthorizationSession> create(SOAuthorization *soAuthorization, WebPageProxy& page, Ref<API::NavigationAction>&& navigationAction, NewPageCallback&& newPageCallback, UIClientCallback&& uiClientCallback);
+    static Ref<SOAuthorizationSession> create(Ref<API::PageConfiguration>&&, RetainPtr<WKSOAuthorizationDelegate>, WebPageProxy&, Ref<API::NavigationAction>&&, NewPageCallback&&, UIClientCallback&&);
     ~PopUpSOAuthorizationSession();
 
     void close(WKWebView *);
 
 private:
-    PopUpSOAuthorizationSession(SOAuthorization *, WebPageProxy&, Ref<API::NavigationAction>&&, NewPageCallback&&, UIClientCallback&&);
+    PopUpSOAuthorizationSession(Ref<API::PageConfiguration>&&, RetainPtr<WKSOAuthorizationDelegate>, WebPageProxy&, Ref<API::NavigationAction>&&, NewPageCallback&&, UIClientCallback&&);
 
     void shouldStartInternal() final;
     void fallBackToWebPathInternal() final;
@@ -60,6 +61,7 @@ private:
 
     void initSecretWebView();
 
+    Ref<API::PageConfiguration> m_configuration;
     NewPageCallback m_newPageCallback;
     UIClientCallback m_uiClientCallback;
 

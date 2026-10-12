@@ -25,71 +25,65 @@
 #include "config.h"
 #include "LibWebRTCCertificateGenerator.h"
 
-#if USE(LIBWEBRTC)
+#if ENABLE(WEB_RTC) && USE(LIBWEBRTC)
 
-#include "JSDOMPromiseDeferred.h"
-#include "JSRTCCertificate.h"
 #include "LibWebRTCMacros.h"
+#include "LibWebRTCProvider.h"
+#include "LibWebRTCUtils.h"
 #include "RTCCertificate.h"
 
 ALLOW_UNUSED_PARAMETERS_BEGIN
+ALLOW_COMMA_BEGIN
 
+#include <webrtc/rtc_base/ref_counted_object.h>
 #include <webrtc/rtc_base/rtc_certificate_generator.h>
+#include <webrtc/rtc_base/ssl_certificate.h>
 
+ALLOW_COMMA_END
 ALLOW_UNUSED_PARAMETERS_END
 
 namespace WebCore {
 
 namespace LibWebRTCCertificateGenerator {
 
-static inline String fromStdString(const std::string& value)
-{
-    return String::fromUTF8(value.data(), value.length());
-}
-
-class RTCCertificateGeneratorCallback : public ThreadSafeRefCounted<RTCCertificateGeneratorCallback, WTF::DestructionThread::Main>, public rtc::RTCCertificateGeneratorCallback {
+class RTCCertificateGeneratorCallbackWrapper : public ThreadSafeRefCounted<RTCCertificateGeneratorCallbackWrapper, WTF::DestructionThread::Main> {
 public:
-    RTCCertificateGeneratorCallback(Ref<SecurityOrigin>&& origin, DOMPromiseDeferred<IDLInterface<RTCCertificate>>&& promise)
-        : m_origin(WTFMove(origin))
-        , m_promise(WTFMove(promise))
+    static Ref<RTCCertificateGeneratorCallbackWrapper> create(Ref<SecurityOrigin>&& origin, Function<void(ExceptionOr<Ref<RTCCertificate>>&&)>&& resultCallback)
     {
+        return adoptRef(*new RTCCertificateGeneratorCallbackWrapper(WTFMove(origin), WTFMove(resultCallback)));
     }
 
-    void AddRef() const { ref(); }
-    rtc::RefCountReleaseStatus Release() const
+    void process(rtc::scoped_refptr<rtc::RTCCertificate> certificate)
     {
-        auto result = refCount() - 1;
-        deref();
-        return result ? rtc::RefCountReleaseStatus::kOtherRefsRemained : rtc::RefCountReleaseStatus::kDroppedLastRef;
-    }
+        callOnMainThread([origin = m_origin.releaseNonNull(), callback = WTFMove(m_resultCallback), certificate = WTFMove(certificate)]() mutable {
+            if (!certificate) {
+                callback(Exception { ExceptionCode::TypeError, "Unable to create a certificate"_s });
+                return;
+            }
 
-private:
-    void OnSuccess(const rtc::scoped_refptr<rtc::RTCCertificate>& certificate) final
-    {
-        callOnMainThread([origin = m_origin.releaseNonNull(), promise = WTFMove(m_promise.value()), certificate]() mutable {
             Vector<RTCCertificate::DtlsFingerprint> fingerprints;
-            auto stats = certificate->ssl_certificate().GetStats();
+            auto stats = certificate->GetSSLCertificate().GetStats();
             auto* info = stats.get();
             while (info) {
-                StringView fingerprint { reinterpret_cast<const unsigned char*>(info->fingerprint.data()), static_cast<unsigned>(info->fingerprint.length()) };
+                StringView fingerprint { std::span { info->fingerprint } };
                 fingerprints.append({ fromStdString(info->fingerprint_algorithm), fingerprint.convertToASCIILowercase() });
                 info = info->issuer.get();
             };
 
             auto pem = certificate->ToPEM();
-            promise.resolve(RTCCertificate::create(WTFMove(origin), certificate->Expires(), WTFMove(fingerprints), fromStdString(pem.certificate()), fromStdString(pem.private_key())));
+            callback(RTCCertificate::create(WTFMove(origin), certificate->Expires(), WTFMove(fingerprints), fromStdString(pem.certificate()), fromStdString(pem.private_key())));
         });
     }
 
-    void OnFailure() final
+private:
+    RTCCertificateGeneratorCallbackWrapper(Ref<SecurityOrigin>&& origin, Function<void(ExceptionOr<Ref<RTCCertificate>>&&)>&& resultCallback)
+        : m_origin(WTFMove(origin))
+        , m_resultCallback(WTFMove(resultCallback))
     {
-        callOnMainThread([promise = WTFMove(m_promise.value())]() mutable {
-            promise.reject(Exception { TypeError, "Unable to create a certificate"_s});
-        });
     }
 
     RefPtr<SecurityOrigin> m_origin;
-    std::optional<DOMPromiseDeferred<IDLInterface<RTCCertificate>>> m_promise;
+    Function<void(ExceptionOr<Ref<RTCCertificate>>&&)> m_resultCallback;
 };
 
 static inline rtc::KeyParams keyParamsFromCertificateType(const PeerConnectionBackend::CertificateInformation& info)
@@ -106,16 +100,18 @@ static inline rtc::KeyParams keyParamsFromCertificateType(const PeerConnectionBa
     RELEASE_ASSERT_NOT_REACHED();
 }
 
-void generateCertificate(Ref<SecurityOrigin>&& origin, LibWebRTCProvider& provider, const PeerConnectionBackend::CertificateInformation& info, DOMPromiseDeferred<IDLInterface<RTCCertificate>>&& promise)
+void generateCertificate(Ref<SecurityOrigin>&& origin, LibWebRTCProvider& provider, const PeerConnectionBackend::CertificateInformation& info, Function<void(ExceptionOr<Ref<RTCCertificate>>&&)>&& resultCallback)
 {
-    rtc::scoped_refptr<RTCCertificateGeneratorCallback> callback(new rtc::RefCountedObject<RTCCertificateGeneratorCallback>(WTFMove(origin), WTFMove(promise)));
+    auto callbackWrapper = RTCCertificateGeneratorCallbackWrapper::create(WTFMove(origin), WTFMove(resultCallback));
 
     absl::optional<uint64_t> expiresMs;
     if (info.expires)
         expiresMs = static_cast<uint64_t>(*info.expires);
 
-    provider.prepareCertificateGenerator([info, expiresMs, callback = WTFMove(callback)](auto& generator) mutable {
-        generator.GenerateCertificateAsync(keyParamsFromCertificateType(info), expiresMs, WTFMove(callback));
+    provider.prepareCertificateGenerator([info, expiresMs, callbackWrapper = WTFMove(callbackWrapper)](auto& generator) mutable {
+        generator.GenerateCertificateAsync(keyParamsFromCertificateType(info), expiresMs, [callbackWrapper = WTFMove(callbackWrapper)](rtc::scoped_refptr<rtc::RTCCertificate> certificate) mutable {
+            callbackWrapper->process(WTFMove(certificate));
+        });
     });
 }
 
@@ -123,4 +119,4 @@ void generateCertificate(Ref<SecurityOrigin>&& origin, LibWebRTCProvider& provid
 
 } // namespace WebCore
 
-#endif // USE(LIBWEBRTC)
+#endif // ENABLE(WEB_RTC) && USE(LIBWEBRTC)

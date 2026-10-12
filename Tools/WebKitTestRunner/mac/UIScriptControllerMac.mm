@@ -44,6 +44,9 @@
 #import <JavaScriptCore/OpaqueJSString.h>
 #import <WebKit/WKWebViewPrivate.h>
 #import <WebKit/WKWebViewPrivateForTesting.h>
+#import <mach/mach_time.h>
+#import <pal/spi/mac/NSApplicationSPI.h>
+#import <pal/spi/mac/NSSpellCheckerSPI.h>
 #import <wtf/BlockPtr.h>
 #import <wtf/WorkQueue.h>
 
@@ -71,7 +74,7 @@ void UIScriptControllerMac::zoomToScale(double scale, JSValueRef callback)
     auto* webView = this->webView();
     [webView _setPageScale:scale withOrigin:CGPointZero];
 
-    [webView _doAfterNextPresentationUpdate:makeBlockPtr([this, strongThis = makeRef(*this), callbackID] {
+    [webView _doAfterNextPresentationUpdate:makeBlockPtr([this, protectedThis = Ref { *this }, callbackID] {
         if (!m_context)
             return;
         m_context->asyncTaskComplete(callbackID);
@@ -83,6 +86,11 @@ double UIScriptControllerMac::zoomScale() const
     return webView().magnification;
 }
 
+double UIScriptControllerMac::minimumZoomScale() const
+{
+    return webView().minimumMagnification;
+}
+
 void UIScriptControllerMac::simulateAccessibilitySettingsChangeNotification(JSValueRef callback)
 {
     unsigned callbackID = m_context->prepareForAsyncTask(callback, CallbackTypeNonPersistent);
@@ -91,7 +99,7 @@ void UIScriptControllerMac::simulateAccessibilitySettingsChangeNotification(JSVa
     NSNotificationCenter *center = [[NSWorkspace sharedWorkspace] notificationCenter];
     [center postNotificationName:NSWorkspaceAccessibilityDisplayOptionsDidChangeNotification object:webView];
 
-    [webView _doAfterNextPresentationUpdate:makeBlockPtr([this, strongThis = makeRef(*this), callbackID] {
+    [webView _doAfterNextPresentationUpdate:makeBlockPtr([this, protectedThis = Ref { *this }, callbackID] {
         if (!m_context)
             return;
         m_context->asyncTaskComplete(callbackID);
@@ -152,7 +160,7 @@ void UIScriptControllerMac::activateDataListSuggestion(unsigned index, JSValueRe
     [table selectRowIndexes:[NSIndexSet indexSetWithIndex:index] byExtendingSelection:NO];
 
     // Send the action after a short delay to simulate normal user interaction.
-    WorkQueue::main().dispatchAfter(50_ms, [this, protectedThis = makeRefPtr(*this), callbackID, table] {
+    WorkQueue::main().dispatchAfter(50_ms, [this, protectedThis = Ref { *this }, callbackID, table] {
         if ([table window])
             [table sendAction:[table action] to:[table target]];
 
@@ -211,7 +219,7 @@ void UIScriptControllerMac::chooseMenuAction(JSStringRef jsAction, JSValueRef ca
         [activeMenu cancelTracking];
     }
 
-    WorkQueue::main().dispatch([this, strongThis = makeRef(*this), callbackID] {
+    WorkQueue::main().dispatch([this, protectedThis = Ref { *this }, callbackID] {
         if (!m_context)
             return;
         m_context->asyncTaskComplete(callbackID);
@@ -251,21 +259,38 @@ bool UIScriptControllerMac::isWindowContentViewFirstResponder() const
     return [window firstResponder] == [window contentView];
 }
 
+void UIScriptControllerMac::becomeFirstResponder()
+{
+    auto *webView = this->webView();
+    [webView.window makeFirstResponder:webView];
+}
+
+void UIScriptControllerMac::resignFirstResponder()
+{
+    auto *webView = this->webView();
+    if (webView.window.firstResponder == webView)
+        [webView.window makeFirstResponder:nil];
+}
+
 void UIScriptControllerMac::toggleCapsLock(JSValueRef callback)
 {
     m_capsLockOn = !m_capsLockOn;
     NSWindow *window = [webView() window];
-    NSEvent *fakeEvent = [NSEvent keyEventWithType:NSEventTypeFlagsChanged
-        location:NSZeroPoint
-        modifierFlags:m_capsLockOn ? NSEventModifierFlagCapsLock : 0
-        timestamp:0
-        windowNumber:window.windowNumber
-        context:nullptr
-        characters:@""
-        charactersIgnoringModifiers:@""
-        isARepeat:NO
-        keyCode:57];
-    [window sendEvent:fakeEvent];
+    const auto makeFakeCapsLockKeyEventWithType = [capsLockOn = m_capsLockOn, window] (NSEventType eventType) {
+        return [NSEvent keyEventWithType:eventType
+            location:NSZeroPoint
+            modifierFlags:capsLockOn ? NSEventModifierFlagCapsLock : 0
+            timestamp:0
+            windowNumber:window.windowNumber
+            context:nullptr
+            characters:@""
+            charactersIgnoringModifiers:@""
+            isARepeat:NO
+            keyCode:57];
+    };
+    NSArray<NSEvent *> *fakeEventsToBeSent = @[ makeFakeCapsLockKeyEventWithType(NSEventTypeKeyDown), makeFakeCapsLockKeyEventWithType(NSEventTypeKeyUp), makeFakeCapsLockKeyEventWithType(NSEventTypeFlagsChanged) ];
+    for (NSEvent *fakeEvent in fakeEventsToBeSent)
+        [window sendEvent:fakeEvent];
     doAsyncTask(callback);
 }
 
@@ -288,11 +313,16 @@ void UIScriptControllerMac::activateAtPoint(long x, long y, JSValueRef callback)
     eventSender->mouseDown(0, 0);
     eventSender->mouseUp(0, 0);
 
-    WorkQueue::main().dispatch([this, strongThis = makeRef(*this), callbackID] {
+    WorkQueue::main().dispatch([this, protectedThis = Ref { *this }, callbackID] {
         if (!m_context)
             return;
         m_context->asyncTaskComplete(callbackID);
     });
+}
+
+int64_t UIScriptControllerMac::pasteboardChangeCount() const
+{
+    return NSPasteboard.generalPasteboard.changeCount;
 }
 
 void UIScriptControllerMac::copyText(JSStringRef text)
@@ -302,9 +332,151 @@ void UIScriptControllerMac::copyText(JSStringRef text)
     [pasteboard setString:text->string() forType:NSPasteboardTypeString];
 }
 
-void UIScriptControllerMac::setSpellCheckerResults(JSValueRef results)
+static NSString *const TopLevelEventInfoKey = @"events";
+static NSString *const EventTypeKey = @"type";
+static NSString *const ViewRelativeXPositionKey = @"viewX";
+static NSString *const ViewRelativeYPositionKey = @"viewY";
+static NSString *const DeltaXKey = @"deltaX";
+static NSString *const DeltaYKey = @"deltaY";
+static NSString *const PhaseKey = @"phase";
+static NSString *const MomentumPhaseKey = @"momentumPhase";
+
+static EventSenderProxy::WheelEventPhase eventPhaseFromString(NSString *phaseStr)
 {
-    [[LayoutTestSpellChecker checker] setResultsFromJSValue:results inContext:m_context->jsContext()];
+    if ([phaseStr isEqualToString:@"began"])
+        return EventSenderProxy::WheelEventPhase::Began;
+    if ([phaseStr isEqualToString:@"changed"] || [phaseStr isEqualToString:@"continue"]) // Allow "continue" for ease of conversion from mouseScrollByWithWheelAndMomentumPhases values.
+        return EventSenderProxy::WheelEventPhase::Changed;
+    if ([phaseStr isEqualToString:@"ended"])
+        return EventSenderProxy::WheelEventPhase::Ended;
+    if ([phaseStr isEqualToString:@"cancelled"])
+        return EventSenderProxy::WheelEventPhase::Cancelled;
+    if ([phaseStr isEqualToString:@"maybegin"])
+        return EventSenderProxy::WheelEventPhase::MayBegin;
+
+    ASSERT_NOT_REACHED();
+    return EventSenderProxy::WheelEventPhase::None;
+}
+
+void UIScriptControllerMac::sendEventStream(JSStringRef eventsJSON, JSValueRef callback)
+{
+    auto* eventSender = TestController::singleton().eventSenderProxy();
+    if (!eventSender) {
+        ASSERT_NOT_REACHED();
+        return;
+    }
+
+    unsigned callbackID = m_context->prepareForAsyncTask(callback, CallbackTypeNonPersistent);
+
+    auto jsonString = eventsJSON->string();
+    auto eventInfo = dynamic_objc_cast<NSDictionary>([NSJSONSerialization JSONObjectWithData:[(NSString *)jsonString dataUsingEncoding:NSUTF8StringEncoding] options:NSJSONReadingMutableContainers | NSJSONReadingMutableLeaves error:nil]);
+    if (!eventInfo || ![eventInfo isKindOfClass:[NSDictionary class]]) {
+        WTFLogAlways("JSON is not convertible to a dictionary");
+        return;
+    }
+
+    auto *webView = this->webView();
+
+    double currentViewRelativeX = 0;
+    double currentViewRelativeY = 0;
+
+    constexpr uint64_t nanosecondsPerSecond = 1e9;
+    constexpr uint64_t nanosecondsEventInterval = nanosecondsPerSecond / 60;
+
+    auto currentTime = mach_absolute_time();
+
+    for (NSMutableDictionary *event in eventInfo[TopLevelEventInfoKey]) {
+
+        id eventType = event[EventTypeKey];
+        if (!event[EventTypeKey]) {
+            WTFLogAlways("Missing event type");
+            break;
+        }
+        
+        if ([eventType isEqualToString:@"wheel"]) {
+            auto phase = EventSenderProxy::WheelEventPhase::None;
+            auto momentumPhase = EventSenderProxy::WheelEventPhase::None;
+
+            if (!event[PhaseKey] && !event[MomentumPhaseKey]) {
+                WTFLogAlways("Event must specify phase or momentumPhase");
+                break;
+            }
+
+            if (id phaseString = event[PhaseKey])
+                phase = eventPhaseFromString(phaseString);
+
+            if (id phaseString = event[MomentumPhaseKey]) {
+                momentumPhase = eventPhaseFromString(phaseString);
+                if (momentumPhase == EventSenderProxy::WheelEventPhase::Cancelled || momentumPhase == EventSenderProxy::WheelEventPhase::MayBegin) {
+                    WTFLogAlways("Invalid value %@ for momentumPhase", phaseString);
+                    break;
+                }
+            }
+
+            ASSERT_IMPLIES(phase == EventSenderProxy::WheelEventPhase::None, momentumPhase != EventSenderProxy::WheelEventPhase::None);
+            ASSERT_IMPLIES(momentumPhase == EventSenderProxy::WheelEventPhase::None, phase != EventSenderProxy::WheelEventPhase::None);
+
+            if (event[ViewRelativeXPositionKey])
+                currentViewRelativeX = [event[ViewRelativeXPositionKey] floatValue];
+
+            if (event[ViewRelativeYPositionKey])
+                currentViewRelativeY = [event[ViewRelativeYPositionKey] floatValue];
+
+            double deltaX = 0;
+            double deltaY = 0;
+
+            if (event[DeltaXKey])
+                deltaX = [event[DeltaXKey] floatValue];
+
+            if (event[DeltaYKey])
+                deltaY = [event[DeltaYKey] floatValue];
+
+            auto windowPoint = [webView convertPoint:CGPointMake(currentViewRelativeX, currentViewRelativeY) toView:nil];
+            eventSender->sendWheelEvent(currentTime, windowPoint.x, windowPoint.y, deltaX, deltaY, phase, momentumPhase);
+        }
+
+        currentTime += nanosecondsEventInterval;
+    }
+
+    WorkQueue::main().dispatch([this, protectedThis = Ref { *this }, callbackID] {
+        if (!m_context)
+            return;
+        m_context->asyncTaskComplete(callbackID);
+    });
+}
+
+JSRetainPtr<JSStringRef> UIScriptControllerMac::scrollbarStateForScrollingNodeID(unsigned long long scrollingNodeID, unsigned long long processID, bool isVertical) const
+{
+    return adopt(JSStringCreateWithCFString((CFStringRef) [webView() _scrollbarStateForScrollingNodeID:scrollingNodeID processID:processID isVertical:isVertical]));
+}
+
+void UIScriptControllerMac::setAppAccentColor(unsigned short red, unsigned short green, unsigned short blue)
+{
+    NSApp._accentColor = [NSColor colorWithRed:red / 255. green:green / 255. blue:blue / 255. alpha:1];
+}
+
+void UIScriptControllerMac::setWebViewAllowsMagnification(bool allowsMagnification)
+{
+    webView().allowsMagnification = allowsMagnification;
+}
+
+void UIScriptControllerMac::setInlinePrediction(JSStringRef jsText, unsigned startIndex)
+{
+#if HAVE(INLINE_PREDICTIONS)
+    if (!webView()._allowsInlinePredictions)
+        return;
+
+    auto fullText = jsText->string();
+    RetainPtr markedText = adoptNS([[NSMutableAttributedString alloc] initWithString:fullText.left(startIndex)]);
+    [markedText appendAttributedString:adoptNS([[NSAttributedString alloc] initWithString:fullText.substring(startIndex) attributes:@{
+        NSForegroundColorAttributeName : NSColor.grayColor,
+        NSTextCompletionAttributeName : @YES
+    }]).get()];
+    [static_cast<id<NSTextInputClient>>(webView()) setMarkedText:markedText.get() selectedRange:NSMakeRange(startIndex, 0) replacementRange:NSMakeRange(NSNotFound, 0)];
+#else
+    UNUSED_PARAM(jsText);
+    UNUSED_PARAM(startIndex);
+#endif
 }
 
 } // namespace WTR

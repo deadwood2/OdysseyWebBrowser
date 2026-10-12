@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2017-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,6 +27,7 @@
 
 #if ENABLE(OFFSCREEN_CANVAS)
 
+#include "ActiveDOMObject.h"
 #include "AffineTransform.h"
 #include "CanvasBase.h"
 #include "ContextDestructionObserver.h"
@@ -34,41 +35,46 @@
 #include "ExceptionOr.h"
 #include "IDLTypes.h"
 #include "ImageBuffer.h"
-#include "ImageBufferPipe.h"
 #include "IntSize.h"
 #include "ScriptWrappable.h"
+#include <wtf/FixedVector.h>
 #include <wtf/Forward.h>
 #include <wtf/RefCounted.h>
 #include <wtf/ThreadSafeRefCounted.h>
 #include <wtf/WeakPtr.h>
 #include <wtf/text/WTFString.h>
+
 #if ENABLE(WEBGL)
 #include "WebGLContextAttributes.h"
 #endif
 
-
 namespace WebCore {
 
 class CanvasRenderingContext;
-class CSSValuePool;
 class DeferredPromise;
+class GPU;
+class GPUCanvasContext;
 class HTMLCanvasElement;
 class ImageBitmap;
+class ImageBitmapRenderingContext;
 class ImageData;
 class OffscreenCanvasRenderingContext2D;
 class WebGL2RenderingContext;
 class WebGLRenderingContext;
 class WebGLRenderingContextBase;
 
-using OffscreenRenderingContext = Variant<
+using OffscreenRenderingContext = std::variant<
 #if ENABLE(WEBGL)
     RefPtr<WebGLRenderingContext>,
-#endif
-#if ENABLE(WEBGL2)
     RefPtr<WebGL2RenderingContext>,
 #endif
+    RefPtr<GPUCanvasContext>,
+    RefPtr<ImageBitmapRenderingContext>,
     RefPtr<OffscreenCanvasRenderingContext2D>
 >;
+
+class PlaceholderRenderingContext;
+class PlaceholderRenderingContextSource;
 
 class DetachedOffscreenCanvas {
     WTF_MAKE_NONCOPYABLE(DetachedOffscreenCanvas);
@@ -76,66 +82,59 @@ class DetachedOffscreenCanvas {
     friend class OffscreenCanvas;
 
 public:
-    DetachedOffscreenCanvas(RefPtr<ImageBuffer>&&, const IntSize&, bool originClean);
-
-    RefPtr<ImageBuffer> takeImageBuffer();
+    DetachedOffscreenCanvas(const IntSize&, bool originClean, RefPtr<PlaceholderRenderingContextSource>&&);
+    WEBCORE_EXPORT ~DetachedOffscreenCanvas();
     const IntSize& size() const { return m_size; }
     bool originClean() const { return m_originClean; }
-    size_t memoryCost() const
-    {
-        auto* buffer = m_buffer.get();
-        if (buffer)
-            return buffer->memoryCost();
-        return 0;
-    }
-    WeakPtr<HTMLCanvasElement> takePlaceholderCanvas();
+    RefPtr<PlaceholderRenderingContextSource> takePlaceholderSource();
 
 private:
-    RefPtr<ImageBuffer> m_buffer;
+    RefPtr<PlaceholderRenderingContextSource> m_placeholderSource;
     IntSize m_size;
     bool m_originClean;
-    WeakPtr<HTMLCanvasElement> m_placeholderCanvas;
 };
 
-class OffscreenCanvas final : public RefCounted<OffscreenCanvas>, public CanvasBase, public EventTargetWithInlineData, private ContextDestructionObserver {
-    WTF_MAKE_ISO_ALLOCATED(OffscreenCanvas);
+class OffscreenCanvas final : public ActiveDOMObject, public RefCounted<OffscreenCanvas>, public CanvasBase, public EventTarget {
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED_EXPORT(OffscreenCanvas, WEBCORE_EXPORT);
 public:
 
     struct ImageEncodeOptions {
-        String type = "image/png";
+        String type = "image/png"_s;
         double quality = 1.0;
     };
 
     enum class RenderingContextType {
         _2d,
         Webgl,
-        Webgl2
+        Webgl2,
+        Bitmaprenderer,
+        Webgpu
     };
 
     static bool enabledForContext(ScriptExecutionContext&);
 
     static Ref<OffscreenCanvas> create(ScriptExecutionContext&, unsigned width, unsigned height);
     static Ref<OffscreenCanvas> create(ScriptExecutionContext&, std::unique_ptr<DetachedOffscreenCanvas>&&);
-    static Ref<OffscreenCanvas> create(ScriptExecutionContext&, HTMLCanvasElement&);
-    virtual ~OffscreenCanvas();
+    static Ref<OffscreenCanvas> create(ScriptExecutionContext&, PlaceholderRenderingContext&);
+    WEBCORE_EXPORT virtual ~OffscreenCanvas();
 
-    unsigned width() const final;
-    unsigned height() const final;
     void setWidth(unsigned);
     void setHeight(unsigned);
 
+    void setImageBufferAndMarkDirty(RefPtr<ImageBuffer>&&) final;
+
     CanvasRenderingContext* renderingContext() const final { return m_context.get(); }
 
-    ExceptionOr<std::optional<OffscreenRenderingContext>> getContext(JSC::JSGlobalObject&, RenderingContextType, Vector<JSC::Strong<JSC::Unknown>>&& arguments);
+    const CSSParserContext& cssParserContext() const final;
+
+    ExceptionOr<std::optional<OffscreenRenderingContext>> getContext(JSC::JSGlobalObject&, RenderingContextType, FixedVector<JSC::Strong<JSC::Unknown>>&& arguments);
     ExceptionOr<RefPtr<ImageBitmap>> transferToImageBitmap();
     void convertToBlob(ImageEncodeOptions&&, Ref<DeferredPromise>&&);
 
-    void didDraw(const std::optional<FloatRect>&) final;
+    void didDraw(const std::optional<FloatRect>&, ShouldApplyPostProcessingToDirtyRect) final;
 
     Image* copiedImage() const final;
     void clearCopiedImage() const final;
-
-    bool hasCreatedImageBuffer() const final { return m_hasCreatedImageBuffer; }
 
     SecurityOrigin* securityOrigin() const final;
 
@@ -144,67 +143,43 @@ public:
 
     void commitToPlaceholderCanvas();
 
-    CSSValuePool& cssValuePool();
+    void queueTaskKeepingObjectAlive(TaskSource, Function<void()>&&) final;
+    void dispatchEvent(Event&) final;
+    bool isDetached() const { return m_detached; };
 
-    using RefCounted::ref;
-    using RefCounted::deref;
+    // ActiveDOMObject.
+    void ref() const final { RefCounted::ref(); }
+    void deref() const final { RefCounted::deref(); }
 
 private:
-
-    OffscreenCanvas(ScriptExecutionContext&, unsigned width, unsigned height);
+    OffscreenCanvas(ScriptExecutionContext&, IntSize, RefPtr<PlaceholderRenderingContextSource>&&);
 
     bool isOffscreenCanvas() const final { return true; }
 
     ScriptExecutionContext* scriptExecutionContext() const final { return ContextDestructionObserver::scriptExecutionContext(); }
     ScriptExecutionContext* canvasBaseScriptExecutionContext() const final { return ContextDestructionObserver::scriptExecutionContext(); }
 
-    EventTargetInterface eventTargetInterface() const final { return OffscreenCanvasEventTargetInterfaceType; }
-    void refEventTarget() final { ref(); }
-    void derefEventTarget() final { deref(); }
+    enum EventTargetInterfaceType eventTargetInterface() const final { return EventTargetInterfaceType::OffscreenCanvas; }
+    void refEventTarget() final { RefCounted::ref(); }
+    void derefEventTarget() final { RefCounted::deref(); }
 
-    void refCanvasBase() final { ref(); }
-    void derefCanvasBase() final { deref(); }
+    void refCanvasBase() const final { RefCounted::ref(); }
+    void derefCanvasBase() const final { RefCounted::deref(); }
 
     void setSize(const IntSize&) final;
 
-#if ENABLE(WEBGL)
-    void createContextWebGL(RenderingContextType, WebGLContextAttributes&& = { });
-#endif
-
     void createImageBuffer() const final;
-    RefPtr<ImageBuffer> takeImageBuffer() const;
 
     void reset();
-
-    void setPlaceholderCanvas(HTMLCanvasElement&);
-    void pushBufferToPlaceholder();
     void scheduleCommitToPlaceholderCanvas();
 
     std::unique_ptr<CanvasRenderingContext> m_context;
-
-    // m_hasCreatedImageBuffer means we tried to malloc the buffer. We didn't necessarily get it.
-    mutable bool m_hasCreatedImageBuffer { false };
-
-    bool m_detached { false };
-
+    RefPtr<PlaceholderRenderingContextSource> m_placeholderSource;
     mutable RefPtr<Image> m_copiedImage;
-
+    bool m_detached { false };
     bool m_hasScheduledCommit { false };
 
-    class PlaceholderData : public ThreadSafeRefCounted<PlaceholderData> {
-    public:
-        static Ref<PlaceholderData> create()
-        {
-            return adoptRef(*new PlaceholderData);
-        }
-
-        WeakPtr<HTMLCanvasElement> canvas;
-        RefPtr<ImageBufferPipe::Source> bufferPipeSource;
-        RefPtr<ImageBuffer> pendingCommitBuffer;
-        mutable Lock bufferLock;
-    };
-
-    RefPtr<PlaceholderData> m_placeholderData;
+    mutable std::unique_ptr<CSSParserContext> m_cssParserContext;
 };
 
 }

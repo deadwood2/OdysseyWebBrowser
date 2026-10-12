@@ -19,23 +19,25 @@
 #include "config.h"
 #include "ApplicationGLib.h"
 
+#include <wtf/NeverDestroyed.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
 static String gApplicationName;
 static String gApplicationID;
+static NeverDestroyed<WTF::String> gDefaultApplicationName(MAKE_STATIC_STRING_IMPL("WebKit"));
 
 void setApplicationName(const String& applicationName)
 {
     gApplicationName = applicationName;
 }
 
-const char* getApplicationName()
+const String& getApplicationName()
 {
     if (!gApplicationName.isEmpty())
-        return gApplicationName.ascii().data();
-    return "WebKit";
+        return gApplicationName;
+    return gDefaultApplicationName;
 }
 
 void setApplicationID(const String& applicationID)

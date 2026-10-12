@@ -51,6 +51,28 @@
            }, 0);
         }
 
+        function setMediaSessionMetadata() {
+            navigator.mediaSession.metadata = new MediaMetadata({
+                title: "bar",
+                artwork: [
+                    {
+                        src: "400x400-green.png",
+                        sizes: "400x400",
+                        type: "image/png",
+                    },
+                ],
+            });
+        }
+
+        function loadSubframe() {
+            const frame = document.createElement("iframe");
+            frame.addEventListener("load", () => {
+                window.webkit.messageHandlers.testHandler.postMessage("subframeLoaded");
+            });
+            frame.src = "simple.html";
+            document.body.appendChild(frame);
+        }
+
     </script>
 </head>
 <body>

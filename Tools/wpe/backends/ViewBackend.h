@@ -26,21 +26,10 @@
 #pragma once
 
 #include <memory>
-#include <wpe/fdo.h>
+#include <wpe/wpe.h>
 
-typedef void* EGLConfig;
-typedef void* EGLContext;
-typedef void* EGLDisplay;
+#if defined(USE_ATK) && USE_ATK
 typedef struct _AtkObject AtkObject;
-struct wpe_fdo_egl_exported_image;
-
-#if WPE_FDO_CHECK_VERSION(1, 5, 0)
-struct wpe_fdo_shm_exported_buffer;
-#endif
-
-// Manually provide the EGL_CAST C++ definition in case eglplatform.h doesn't provide it.
-#ifndef EGL_CAST
-#define EGL_CAST(type, value) (static_cast<type>(value))
 #endif
 
 namespace WPEToolingBackends {
@@ -61,7 +50,7 @@ public:
         virtual bool dispatchTouchEvent(struct wpe_input_touch_event*) { return false; }
     };
     void setInputClient(std::unique_ptr<InputClient>&&);
-#if defined(HAVE_ACCESSIBILITY) && HAVE_ACCESSIBILITY
+#if defined(USE_ATK) && USE_ATK
     void setAccessibleChild(AtkObject*);
 #endif
 
@@ -73,6 +62,7 @@ protected:
 
     void initializeAccessibility();
     void updateAccessibilityState(uint32_t);
+    static void notifyAccessibilityKeyEventListeners(struct wpe_input_keyboard_event* event);
 
     void dispatchInputPointerEvent(struct wpe_input_pointer_event*);
     void dispatchInputAxisEvent(struct wpe_input_axis_event*);

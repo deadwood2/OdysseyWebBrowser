@@ -31,17 +31,19 @@
 #include "ProcessIdentifier.h"
 #include <wtf/HashSet.h>
 #include <wtf/RefCounted.h>
+#include <wtf/WeakPtr.h>
+#include <wtf/text/MakeString.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
 class MessagePortChannelRegistry;
 
-class MessagePortChannel : public RefCounted<MessagePortChannel> {
+class MessagePortChannel : public RefCounted<MessagePortChannel>, public CanMakeWeakPtr<MessagePortChannel> {
 public:
     static Ref<MessagePortChannel> create(MessagePortChannelRegistry&, const MessagePortIdentifier& port1, const MessagePortIdentifier& port2);
 
-    ~MessagePortChannel();
+    WEBCORE_EXPORT ~MessagePortChannel();
 
     const MessagePortIdentifier& port1() const { return m_ports[0]; }
     const MessagePortIdentifier& port2() const { return m_ports[1]; }
@@ -53,19 +55,20 @@ public:
     void closePort(const MessagePortIdentifier&);
     bool postMessageToRemote(MessageWithMessagePorts&&, const MessagePortIdentifier& remoteTarget);
 
-    void takeAllMessagesForPort(const MessagePortIdentifier&, CompletionHandler<void(Vector<MessageWithMessagePorts>&&, Function<void()>&&)>&&);
-    void checkRemotePortForActivity(const MessagePortIdentifier&, CompletionHandler<void(MessagePortChannelProvider::HasActivity)>&& callback);
+    void takeAllMessagesForPort(const MessagePortIdentifier&, CompletionHandler<void(Vector<MessageWithMessagePorts>&&, CompletionHandler<void()>&&)>&&);
 
     WEBCORE_EXPORT bool hasAnyMessagesPendingOrInFlight() const;
 
     uint64_t beingTransferredCount();
 
 #if !LOG_DISABLED
-    String logString() const { return makeString(m_ports[0].logString(), ":", m_ports[1].logString()); }
+    String logString() const { return makeString(m_ports[0].logString(), ':', m_ports[1].logString()); }
 #endif
 
 private:
     MessagePortChannel(MessagePortChannelRegistry&, const MessagePortIdentifier& port1, const MessagePortIdentifier& port2);
+
+    CheckedRef<MessagePortChannelRegistry> checkedRegistry() const;
 
     MessagePortIdentifier m_ports[2];
     bool m_isClosed[2] { false, false };
@@ -76,7 +79,7 @@ private:
     RefPtr<MessagePortChannel> m_pendingMessageProtectors[2];
     uint64_t m_messageBatchesInFlight { 0 };
 
-    MessagePortChannelRegistry& m_registry;
+    CheckedRef<MessagePortChannelRegistry> m_registry;
 };
 
 } // namespace WebCore

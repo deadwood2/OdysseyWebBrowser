@@ -27,18 +27,20 @@
 
 #if PLATFORM(MAC)
 
+#import "DeprecatedGlobalValues.h"
 #import "PlatformUtilities.h"
 #import "PlatformWebView.h"
+#import "Test.h"
 #import "TestProtocol.h"
 #import <WebKit/WKNavigationActionPrivate.h>
 #import <WebKit/WKProcessPoolPrivate.h>
+#import <WebKit/_WKHitTestResult.h>
 #import <WebKit/_WKProcessPoolConfiguration.h>
 #import <wtf/BlockPtr.h>
 #import <wtf/RetainPtr.h>
 
 static bool shouldCancelNavigation;
 static bool shouldDelayDecision;
-static bool createdWebView;
 static bool decidedPolicy;
 static bool finishedNavigation;
 static RetainPtr<WKNavigationAction> action;
@@ -89,7 +91,7 @@ static NSString *secondURL = @"data:text/html,Second";
     action = navigationAction;
     newWebView = adoptNS([[WKWebView alloc] initWithFrame:CGRectMake(0, 0, 800, 600) configuration:configuration]);
 
-    createdWebView = true;
+    didCreateWebView = true;
     return newWebView.get();
 }
 
@@ -240,9 +242,9 @@ TEST(WebKit, DecidePolicyForNavigationActionOpenNewWindowAndDeallocSourceWebView
         [webView setNavigationDelegate:controller.get()];
         [webView setUIDelegate:controller.get()];
 
-        createdWebView = false;
+        didCreateWebView = false;
         [webView loadHTMLString:@"<script>window.open('http://webkit.org/destination.html')</script>" baseURL:[NSURL URLWithString:@"http://webkit.org"]];
-        TestWebKitAPI::Util::run(&createdWebView);
+        TestWebKitAPI::Util::run(&didCreateWebView);
     }
 
     decidedPolicy = false;
@@ -296,9 +298,9 @@ TEST(WebKit, DecidePolicyForNavigationActionForTargetedHyperlink)
     [webView loadHTMLString:@"<a style=\"display: block; height: 100%\" href=\"https://webkit.org/destination2.html\" target=\"B\">" baseURL:[NSURL URLWithString:@"http://webkit.org"]];
     TestWebKitAPI::Util::run(&finishedNavigation);
 
-    createdWebView = false;
+    didCreateWebView = false;
     [webView evaluateJavaScript:@"window.open(\"https://webkit.org/destination1.html\", \"B\")" completionHandler:nil];
-    TestWebKitAPI::Util::run(&createdWebView);
+    TestWebKitAPI::Util::run(&didCreateWebView);
 
     EXPECT_EQ(WKNavigationTypeOther, [action navigationType]);
     EXPECT_TRUE([action sourceFrame] != [action targetFrame]);
@@ -306,6 +308,7 @@ TEST(WebKit, DecidePolicyForNavigationActionForTargetedHyperlink)
     EXPECT_EQ(webView.get(), [[action sourceFrame] webView]);
     EXPECT_WK_STREQ("http", [[[action sourceFrame] securityOrigin] protocol]);
     EXPECT_WK_STREQ("webkit.org", [[[action sourceFrame] securityOrigin] host]);
+    EXPECT_NULL([action _hitTestResult]);
 
     // Wait for newWebView to ask to load its initial document.
     decidedPolicy = false;
@@ -325,6 +328,12 @@ TEST(WebKit, DecidePolicyForNavigationActionForTargetedHyperlink)
     EXPECT_EQ(newWebView.get(), [[action targetFrame] webView]);
     EXPECT_WK_STREQ("http", [[[action sourceFrame] securityOrigin] protocol]);
     EXPECT_WK_STREQ("webkit.org", [[[action sourceFrame] securityOrigin] host]);
+
+    _WKHitTestResult *hitTestResult = [action _hitTestResult];
+    EXPECT_NOT_NULL(hitTestResult);
+
+    CGRect elementBoundingBox = hitTestResult.elementBoundingBox;
+    EXPECT_FALSE(CGSizeEqualToSize(elementBoundingBox.size, CGSizeZero));
 
     newWebView = nullptr;
     action = nullptr;
@@ -363,7 +372,7 @@ TEST(WebKit, DecidePolicyForNavigationActionForLoadHTMLStringDeny)
     finishedNavigation = false;
     decidedPolicy = false;
     [webView loadHTMLString:@"TEST" baseURL:[NSURL URLWithString:@"about:blank"]];
-    TestWebKitAPI::Util::sleep(0.5);
+    TestWebKitAPI::Util::runFor(0.5_s);
     EXPECT_FALSE(finishedNavigation);
     shouldCancelNavigation = false;
 }
@@ -383,9 +392,9 @@ TEST(WebKit, DecidePolicyForNavigationActionForTargetedWindowOpen)
     [webView loadHTMLString:@"<a style=\"display: block; height: 100%\" href=\"javascript:window.open('https://webkit.org/destination2.html', 'B')\">" baseURL:[NSURL URLWithString:@"http://webkit.org"]];
     TestWebKitAPI::Util::run(&finishedNavigation);
 
-    createdWebView = false;
+    didCreateWebView = false;
     [webView evaluateJavaScript:@"window.open(\"https://webkit.org/destination1.html\", \"B\")" completionHandler:nil];
-    TestWebKitAPI::Util::run(&createdWebView);
+    TestWebKitAPI::Util::run(&didCreateWebView);
 
     EXPECT_EQ(WKNavigationTypeOther, [action navigationType]);
     EXPECT_TRUE([action sourceFrame] != [action targetFrame]);
@@ -393,6 +402,7 @@ TEST(WebKit, DecidePolicyForNavigationActionForTargetedWindowOpen)
     EXPECT_EQ(webView.get(), [[action sourceFrame] webView]);
     EXPECT_WK_STREQ("http", [[[action sourceFrame] securityOrigin] protocol]);
     EXPECT_WK_STREQ("webkit.org", [[[action sourceFrame] securityOrigin] host]);
+    EXPECT_NULL([action _hitTestResult]);
 
     // Wait for newWebView to ask to load its initial document.
     decidedPolicy = false;
@@ -412,6 +422,7 @@ TEST(WebKit, DecidePolicyForNavigationActionForTargetedWindowOpen)
     EXPECT_EQ(newWebView.get(), [[action targetFrame] webView]);
     EXPECT_WK_STREQ("http", [[[action sourceFrame] securityOrigin] protocol]);
     EXPECT_WK_STREQ("webkit.org", [[[action sourceFrame] securityOrigin] host]);
+    EXPECT_NULL([action _hitTestResult]);
 
     newWebView = nullptr;
     action = nullptr;
@@ -432,9 +443,9 @@ TEST(WebKit, DecidePolicyForNavigationActionForTargetedFormSubmission)
     [webView loadHTMLString:@"<form action=\"https://webkit.org/destination1.html\" target=\"B\"><input type=\"submit\" name=\"submit\" value=\"Submit\" style=\"-webkit-appearance: none; height: 100%; width: 100%\"></form>" baseURL:[NSURL URLWithString:@"http://webkit.org"]];
     TestWebKitAPI::Util::run(&finishedNavigation);
 
-    createdWebView = false;
+    didCreateWebView = false;
     [webView evaluateJavaScript:@"window.open(\"https://webkit.org/destination2.html\", \"B\")" completionHandler:nil];
-    TestWebKitAPI::Util::run(&createdWebView);
+    TestWebKitAPI::Util::run(&didCreateWebView);
 
     EXPECT_EQ(WKNavigationTypeOther, [action navigationType]);
     EXPECT_TRUE([action sourceFrame] != [action targetFrame]);
@@ -442,6 +453,7 @@ TEST(WebKit, DecidePolicyForNavigationActionForTargetedFormSubmission)
     EXPECT_EQ(webView.get(), [[action sourceFrame] webView]);
     EXPECT_WK_STREQ("http", [[[action sourceFrame] securityOrigin] protocol]);
     EXPECT_WK_STREQ("webkit.org", [[[action sourceFrame] securityOrigin] host]);
+    EXPECT_NULL([action _hitTestResult]);
 
     // Wait for newWebView to ask to load its initial document.
     decidedPolicy = false;
@@ -461,11 +473,17 @@ TEST(WebKit, DecidePolicyForNavigationActionForTargetedFormSubmission)
     EXPECT_WK_STREQ("http", [[[action sourceFrame] securityOrigin] protocol]);
     EXPECT_WK_STREQ("webkit.org", [[[action sourceFrame] securityOrigin] host]);
 
+    _WKHitTestResult *hitTestResult = [action _hitTestResult];
+    EXPECT_NOT_NULL(hitTestResult);
+
+    CGRect elementBoundingBox = hitTestResult.elementBoundingBox;
+    EXPECT_FALSE(CGSizeEqualToSize(elementBoundingBox.size, CGSizeZero));
+
     newWebView = nullptr;
     action = nullptr;
 }
 
-enum class ShouldEnableProcessSwap { No, Yes };
+enum class ShouldEnableProcessSwap : bool { No, Yes };
 static void runDecidePolicyForNavigationActionForHyperlinkThatRedirects(ShouldEnableProcessSwap shouldEnableProcessSwap)
 {
     auto processPoolConfiguration = adoptNS([[_WKProcessPoolConfiguration alloc] init]);
@@ -504,6 +522,12 @@ static void runDecidePolicyForNavigationActionForHyperlinkThatRedirects(ShouldEn
     EXPECT_WK_STREQ("http", [[[action sourceFrame] securityOrigin] protocol]);
     EXPECT_WK_STREQ("webkit.org", [[[action sourceFrame] securityOrigin] host]);
     EXPECT_FALSE([action _isRedirect]);
+
+    _WKHitTestResult *hitTestResult = [action _hitTestResult];
+    EXPECT_NOT_NULL(hitTestResult);
+
+    CGRect elementBoundingBox = hitTestResult.elementBoundingBox;
+    EXPECT_FALSE(CGSizeEqualToSize(elementBoundingBox.size, CGSizeZero));
 
     // Wait to decide policy for redirect.
     decidedPolicy = false;
@@ -639,7 +663,7 @@ TEST(WebKit, DelayDecidePolicyForNavigationAction)
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
     TestWebKitAPI::Util::run(&decidedPolicy);
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
-    TestWebKitAPI::Util::sleep(0.5); // Wait until the pending api request gets clear.
+    TestWebKitAPI::Util::runFor(0.5_s); // Wait until the pending api request gets clear.
     EXPECT_TRUE([[webView URL] isEqual:testURL.get()]);
 
     shouldDelayDecision = false;
@@ -647,7 +671,6 @@ TEST(WebKit, DelayDecidePolicyForNavigationAction)
 }
 
 static size_t calls;
-static bool done;
 
 @interface DecidePolicyForNavigationActionFragmentDelegate : NSObject <WKNavigationDelegate>
 @end

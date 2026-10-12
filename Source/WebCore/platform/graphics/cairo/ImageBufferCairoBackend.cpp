@@ -36,57 +36,11 @@
 #include "ColorTransferFunctions.h"
 #include "GraphicsContext.h"
 #include "GraphicsContextCairo.h"
-#include "ImageBufferUtilitiesCairo.h"
-#include "MIMETypeRegistry.h"
 #include <cairo.h>
-#include <wtf/text/Base64.h>
 
 #if USE(CAIRO)
 
 namespace WebCore {
-
-RefPtr<Image> ImageBufferCairoBackend::copyImage(BackingStoreCopy copyBehavior, PreserveResolution) const
-{
-    // BitmapImage will release the passed in surface on destruction
-    return BitmapImage::create(copyNativeImage(copyBehavior));
-}
-
-void ImageBufferCairoBackend::draw(GraphicsContext& destContext, const FloatRect& destRect, const FloatRect& srcRect, const ImagePaintingOptions& options)
-{
-    if (!destContext.hasPlatformContext()) {
-        // If there's no platformContext, we're using threaded rendering, and all the operations must be done
-        // through the GraphicsContext.
-        auto image = copyImage(&destContext == &context() ? CopyBackingStore : DontCopyBackingStore);
-        destContext.drawImage(*image, destRect, srcRect, options);
-        return;
-    }
-
-    InterpolationQualityMaintainer interpolationQualityForThisScope(destContext, options.interpolationQuality());
-    const auto& destinationContextState = destContext.state();
-
-    if (auto image = copyNativeImage(&destContext == &context() ? CopyBackingStore : DontCopyBackingStore))
-        drawPlatformImage(*destContext.platformContext(), image->platformImage().get(), destRect, srcRect, { options, destinationContextState.imageInterpolationQuality }, destinationContextState.alpha, WebCore::Cairo::ShadowState(destinationContextState));
-}
-
-void ImageBufferCairoBackend::drawPattern(GraphicsContext& destContext, const FloatRect& destRect, const FloatRect& srcRect, const AffineTransform& patternTransform, const FloatPoint& phase, const FloatSize& spacing, const ImagePaintingOptions& options)
-{
-    if (!destContext.hasPlatformContext()) {
-        // If there's no platformContext, we're using threaded rendering, and all the operations must be done
-        // through the GraphicsContext.
-        auto image = copyImage(DontCopyBackingStore);
-        image->drawPattern(destContext, destRect, srcRect, patternTransform, phase, spacing, options);
-        return;
-    }
-
-    if (auto image = copyNativeImage(&destContext == &context() ? CopyBackingStore : DontCopyBackingStore))
-        Cairo::drawPattern(*destContext.platformContext(), image->platformImage().get(), logicalSize(), destRect, srcRect, patternTransform, phase, options);
-}
-
-void ImageBufferCairoBackend::clipToMask(GraphicsContext& destContext, const FloatRect& destRect)
-{
-    if (auto image = copyNativeImage(DontCopyBackingStore))
-        Cairo::clipToImageBuffer(*destContext.platformContext(), image->platformImage().get(), destRect);
-}
 
 void ImageBufferCairoBackend::transformToColorSpace(const DestinationColorSpace& newColorSpace)
 {
@@ -123,22 +77,6 @@ void ImageBufferCairoBackend::transformToColorSpace(const DestinationColorSpace&
         }();
         platformTransformColorSpace(deviceRgbLUT);
     }
-}
-
-String ImageBufferCairoBackend::toDataURL(const String& mimeType, std::optional<double> quality, PreserveResolution) const
-{
-    Vector<uint8_t> encodedImage = toData(mimeType, quality);
-    if (encodedImage.isEmpty())
-        return "data:,";
-
-    return makeString("data:", mimeType, ";base64,", base64Encoded(encodedImage.data(), encodedImage.size()));
-}
-
-Vector<uint8_t> ImageBufferCairoBackend::toData(const String& mimeType, std::optional<double> quality) const
-{
-    ASSERT(MIMETypeRegistry::isSupportedImageMIMETypeForEncoding(mimeType));
-    cairo_surface_t* image = cairo_get_target(context().platformContext()->cr());
-    return data(image, mimeType, quality);
 }
 
 } // namespace WebCore

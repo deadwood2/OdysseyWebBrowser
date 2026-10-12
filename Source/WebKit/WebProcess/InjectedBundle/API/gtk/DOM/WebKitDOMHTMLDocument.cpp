@@ -297,20 +297,12 @@ void webkit_dom_html_document_release_events(WebKitDOMHTMLDocument* self)
 
 glong webkit_dom_html_document_get_width(WebKitDOMHTMLDocument* self)
 {
-    WebCore::JSMainThreadNullState state;
-    g_return_val_if_fail(WEBKIT_DOM_IS_HTML_DOCUMENT(self), 0);
-    WebCore::HTMLDocument* item = WebKit::core(self);
-    glong result = item->width();
-    return result;
+    return 0;
 }
 
 glong webkit_dom_html_document_get_height(WebKitDOMHTMLDocument* self)
 {
-    WebCore::JSMainThreadNullState state;
-    g_return_val_if_fail(WEBKIT_DOM_IS_HTML_DOCUMENT(self), 0);
-    WebCore::HTMLDocument* item = WebKit::core(self);
-    glong result = item->height();
-    return result;
+    return 0;
 }
 
 gchar* webkit_dom_html_document_get_dir(WebKitDOMHTMLDocument* self)
@@ -328,8 +320,7 @@ void webkit_dom_html_document_set_dir(WebKitDOMHTMLDocument* self, const gchar* 
     g_return_if_fail(WEBKIT_DOM_IS_HTML_DOCUMENT(self));
     g_return_if_fail(value);
     WebCore::HTMLDocument* item = WebKit::core(self);
-    WTF::String convertedValue = WTF::String::fromUTF8(value);
-    item->setDir(convertedValue);
+    item->setDir(WTF::AtomString::fromUTF8(value));
 }
 
 gchar* webkit_dom_html_document_get_bg_color(WebKitDOMHTMLDocument* self)
@@ -347,8 +338,7 @@ void webkit_dom_html_document_set_bg_color(WebKitDOMHTMLDocument* self, const gc
     g_return_if_fail(WEBKIT_DOM_IS_HTML_DOCUMENT(self));
     g_return_if_fail(value);
     WebCore::HTMLDocument* item = WebKit::core(self);
-    WTF::String convertedValue = WTF::String::fromUTF8(value);
-    item->setBgColor(convertedValue);
+    item->setBgColor(WTF::AtomString::fromUTF8(value));
 }
 
 gchar* webkit_dom_html_document_get_fg_color(WebKitDOMHTMLDocument* self)
@@ -366,8 +356,7 @@ void webkit_dom_html_document_set_fg_color(WebKitDOMHTMLDocument* self, const gc
     g_return_if_fail(WEBKIT_DOM_IS_HTML_DOCUMENT(self));
     g_return_if_fail(value);
     WebCore::HTMLDocument* item = WebKit::core(self);
-    WTF::String convertedValue = WTF::String::fromUTF8(value);
-    item->setFgColor(convertedValue);
+    item->setFgColor(WTF::AtomString::fromUTF8(value));
 }
 
 gchar* webkit_dom_html_document_get_alink_color(WebKitDOMHTMLDocument* self)
@@ -385,8 +374,7 @@ void webkit_dom_html_document_set_alink_color(WebKitDOMHTMLDocument* self, const
     g_return_if_fail(WEBKIT_DOM_IS_HTML_DOCUMENT(self));
     g_return_if_fail(value);
     WebCore::HTMLDocument* item = WebKit::core(self);
-    WTF::String convertedValue = WTF::String::fromUTF8(value);
-    item->setAlinkColor(convertedValue);
+    item->setAlinkColor(WTF::AtomString::fromUTF8(value));
 }
 
 gchar* webkit_dom_html_document_get_link_color(WebKitDOMHTMLDocument* self)
@@ -404,8 +392,7 @@ void webkit_dom_html_document_set_link_color(WebKitDOMHTMLDocument* self, const 
     g_return_if_fail(WEBKIT_DOM_IS_HTML_DOCUMENT(self));
     g_return_if_fail(value);
     WebCore::HTMLDocument* item = WebKit::core(self);
-    WTF::String convertedValue = WTF::String::fromUTF8(value);
-    item->setLinkColorForBindings(convertedValue);
+    item->setLinkColorForBindings(WTF::AtomString::fromUTF8(value));
 }
 
 gchar* webkit_dom_html_document_get_vlink_color(WebKitDOMHTMLDocument* self)
@@ -423,8 +410,7 @@ void webkit_dom_html_document_set_vlink_color(WebKitDOMHTMLDocument* self, const
     g_return_if_fail(WEBKIT_DOM_IS_HTML_DOCUMENT(self));
     g_return_if_fail(value);
     WebCore::HTMLDocument* item = WebKit::core(self);
-    WTF::String convertedValue = WTF::String::fromUTF8(value);
-    item->setVlinkColor(convertedValue);
+    item->setVlinkColor(WTF::AtomString::fromUTF8(value));
 }
 
 G_GNUC_END_IGNORE_DEPRECATIONS;

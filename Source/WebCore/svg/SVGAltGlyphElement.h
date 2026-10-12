@@ -29,7 +29,8 @@ namespace WebCore {
 class SVGGlyphElement;
 
 class SVGAltGlyphElement final : public SVGTextPositioningElement, public SVGURIReference {
-    WTF_MAKE_ISO_ALLOCATED(SVGAltGlyphElement);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(SVGAltGlyphElement);
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(SVGAltGlyphElement);
 public:
     static Ref<SVGAltGlyphElement> create(const QualifiedName&, Document&);
 
@@ -44,12 +45,9 @@ private:
     SVGAltGlyphElement(const QualifiedName&, Document&);
 
     using PropertyRegistry = SVGPropertyOwnerRegistry<SVGAltGlyphElement, SVGTextPositioningElement, SVGURIReference>;
-    const SVGPropertyRegistry& propertyRegistry() const final { return m_propertyRegistry; }
 
     RenderPtr<RenderElement> createElementRenderer(RenderStyle&&, const RenderTreePosition&) override;
     bool childShouldCreateRenderer(const Node&) const override;
-
-    PropertyRegistry m_propertyRegistry { *this };
 };
 
 } // namespace WebCore

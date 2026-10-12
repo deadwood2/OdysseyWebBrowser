@@ -9,6 +9,7 @@
 #include <WebCore/LengthBox.h>
 #include <WebCore/SelectionData.h>
 #include <WebCore/DragImage.h>
+#include <WebCore/InspectorOverlay.h>
 #include "WebViewDelegate.h"
 #include "WebFrame.h"
 #include <intuition/classusr.h>
@@ -17,6 +18,7 @@ namespace WebCore {
 	class Page;
 	class Frame;
 	class FrameView;
+    class LocalFrame;
 	class IntRect;
 	class KeyboardEvent;
 	class ResourceError;
@@ -29,6 +31,8 @@ namespace WebCore {
 	class FullscreenManager;
 	class DragItem;
 	class DataTransfer;
+    class GraphicsLayer;
+    class Storage;
 };
 
 struct RastPort;
@@ -49,10 +53,10 @@ class BackForwardClientMorphOS;
 WebCore::Page* core(WebPage *webView);
 WebPage *kit(WebCore::Page* page);
 
-WebCore::Frame& mainframe(WebCore::Page& page);
-const WebCore::Frame& mainframe(const WebCore::Page& page);
+WebCore::LocalFrame& mainframe(WebCore::Page& page);
+const WebCore::LocalFrame& mainframe(const WebCore::Page& page);
 
-class WebPage : public WebViewDelegate, public WTF::RefCounted<WebPage>
+class WebPage : public WebViewDelegate, public WTF::RefCounted<WebPage>, public WTF::CanMakeWeakPtr<WebPage>
 {
 friend class WebChromeClient;
 public:
@@ -102,6 +106,9 @@ public:
 
 	bool touchEventsEnabled() const;
 	void setTouchEventsEnabled(bool enabled);
+ 
+    bool externalNetworkRequestsEnabled() const { return m_externalNetworkRequestsEnabled; }
+    void setExternalNetworkRequestsEnabled(bool enabled) { m_externalNetworkRequestsEnabled = enabled; }
 
 	void setVisibleSize(const int width, const int height);
 	void setScroll(const int x, const int y);
@@ -127,8 +134,8 @@ public:
 
 	void onContextMenuItemSelected(ULONG action, const char *title);
 
-    void addResourceRequest(unsigned long, const WebCore::ResourceRequest&);
-    void removeResourceRequest(unsigned long);
+    void addResourceRequest(WebCore::ResourceLoaderIdentifier, const WebCore::ResourceRequest&);
+    void removeResourceRequest(WebCore::ResourceLoaderIdentifier);
 
     void didStartPageTransition();
     void didCompletePageTransition();
@@ -178,7 +185,7 @@ public:
 
     WebFrame& topLevelFrame() const { return m_mainFrame; }
 
-    WebCore::Frame* mainFrame() const; // May return nullptr.
+    WebCore::LocalFrame* mainFrame() const; // May return nullptr.
     WebCore::FrameView* mainFrameView() const; // May return nullptr.
 
 	WTF::RefPtr<WebKit::BackForwardClientMorphOS> backForwardClient();
@@ -194,8 +201,8 @@ public:
 	bool localStorageEnabled();
 	void setLocalStorageEnabled(bool enabled);
 	
-	bool offlineCacheEnabled();
-	void setOfflineCacheEnabled(bool enabled);
+	bool developerToolsEnabled();
+	void setDeveloperToolsEnabled(bool enabled);
 
 	void startLiveResize();
 	void endLiveResize();
@@ -245,7 +252,7 @@ public:
 	ContextMenuHandling contextMenuHandling() const { return m_cmHandling; }
 
 	// WkHitTest support...
-	WebCore::Frame *fromHitTest(WebCore::HitTestResult &hitTest) const;
+	WebCore::LocalFrame *fromHitTest(WebCore::HitTestResult &hitTest) const;
 	bool hitTestImageToClipboard(WebCore::HitTestResult &hitTest) const;
 	bool hitTestSaveImageToFile(WebCore::HitTestResult &hitTest, const WTF::String &path) const;
 	void hitTestReplaceSelectedTextWidth(WebCore::HitTestResult &hitTest, const WTF::String &text) const;
@@ -266,6 +273,7 @@ public:
 
 	void startDownload(const WTF::URL &url);
 	void flushCompositing();
+    void scheduleRenderingUpdate();
 
 	WTF::String misspelledWord(WebCore::HitTestResult &hitTest);
 	WTF::Vector<WTF::String> misspelledWordSuggestions(WebCore::HitTestResult &hitTest);
@@ -278,9 +286,21 @@ public:
 	void undo();
 	void redo();
 
-	void startDrag(WebCore::DragItem&&, WebCore::DataTransfer&, WebCore::Frame&);
+	void startDrag(WebCore::DragItem&&, WebCore::DataTransfer&, WebCore::LocalFrame&);
 	bool isDragging(void) const { return m_dragging; };
 	void drawDragImage(struct RastPort *rp, const int x, const int y, const int width, const int height);
+
+    void inspectorHighlightUpdated();
+
+    void setRootGraphicsLayer(WebCore::GraphicsLayer*);
+    
+    bool screenshotToFile(const char *fileName);
+    
+    void localStorageCreated(WebCore::Storage* storage);
+    
+    void setScreenSize(int width, int height) { m_screenWidth = width; m_screenHeight = height; };
+    int screenWidth() const { return m_screenWidth; }
+    int screenHeight() const { return m_screenHeight; }
 
 protected:
 	WebPage(WebCore::PageIdentifier, WebPageCreationParameters&&);
@@ -312,7 +332,7 @@ protected:
 
 private:
 	Ref<WebFrame> m_mainFrame;
-	WebCore::Page *m_page { nullptr };
+	RefPtr<WebCore::Page> m_page;
 	RefPtr<WebPageGroup> m_webPageGroup;
 	WebViewDrawContext  *m_drawContext { nullptr };
     WebViewPrintingContext *m_printingContext { nullptr };
@@ -320,7 +340,8 @@ private:
     WebCore::AutofillElements *m_autofillElements { nullptr };
     WebCore::InterpolationQuality m_interpolation = WebCore::InterpolationQuality::Default;
     WebCore::InterpolationQuality m_imageInterpolation = WebCore::InterpolationQuality::Default;
-    WTF::HashSet<unsigned long> m_trackedNetworkResourceRequestIdentifiers;
+    WTF::HashSet<WebCore::ResourceLoaderIdentifier> m_trackedNetworkResourceRequestIdentifiers;
+    WebCore::GraphicsLayer *m_graphicsLayer { nullptr };
     uint64_t m_pendingNavigationID { 0 };
 	uint32_t m_lastQualifier { 0 };
 	int  m_clickCount { 0 };
@@ -328,6 +349,8 @@ private:
 	int  m_cursorLock { 0 };
 	int  m_middleClick[2];
 	int  m_mouseLastX, m_mouseLastY;
+    int  m_screenWidth { 0 };
+    int  m_screenHeight { 0 };
 	bool m_transparent { false };
 	bool m_usesLayeredWindow { false };
     bool m_mainFrameProgressCompleted { false };
@@ -349,6 +372,7 @@ private:
     bool m_darkMode { false };
     bool m_dragging { false };
     bool m_dragInside { false };
+    bool m_externalNetworkRequestsEnabled { true };
     RefPtr<WebCore::Element> m_focusedElement;
     RefPtr<WebCore::Element> m_fullscreenElement;
     ContextMenuHandling m_cmHandling { ContextMenuHandling::Default };
@@ -356,6 +380,7 @@ private:
     WTF::URL m_hoveredURL;
     WebCore::SelectionData m_dragData;
     WebCore::DragImage m_dragImage;
+    WebCore::IntSize m_dragSize;
 };
 
 }

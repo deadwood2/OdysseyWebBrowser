@@ -55,9 +55,9 @@
 #import <WebCore/BackForwardController.h>
 #import <WebCore/DragController.h>
 #import <WebCore/EventHandler.h>
-#import <WebCore/Frame.h>
-#import <WebCore/FrameView.h>
 #import <WebCore/HistoryItem.h>
+#import <WebCore/LocalFrame.h>
+#import <WebCore/LocalFrameView.h>
 #import <WebCore/Page.h>
 #import <WebCore/RenderView.h>
 #import <WebCore/RenderWidget.h>
@@ -128,7 +128,7 @@ enum {
     return [[self _scrollView] verticalLineScroll];
 }
 
-- (NakedPtr<WebCore::Frame>)_web_frame
+- (NakedPtr<WebCore::LocalFrame>)_web_frame
 {
     return core(_private->webFrame);
 }
@@ -240,7 +240,7 @@ enum {
 
 + (NSMutableDictionary *)_viewTypesAllowImageTypeOmission:(BOOL)allowImageTypeOmission
 {
-    static auto viewTypes = makeNeverDestroyed([] {
+    static NeverDestroyed viewTypes = [] {
         auto types = adoptNS([[NSMutableDictionary alloc] init]);
         addTypesFromClass(types.get(), [WebHTMLView class], [WebHTMLView supportedNonImageMIMETypes]);
         addTypesFromClass(types.get(), [WebHTMLView class], [WebHTMLView supportedMediaMIMETypes]);
@@ -257,7 +257,7 @@ enum {
 #endif
         }
         return types;
-    }());
+    }();
     static BOOL addedImageTypes = NO;
     if (!addedImageTypes && !allowImageTypeOmission) {
         addTypesFromClass(viewTypes.get().get(), [WebHTMLView class], [WebHTMLView supportedImageMIMETypes]);
@@ -280,11 +280,11 @@ enum {
 
 - (Class)_viewClassForMIMEType:(NSString *)MIMEType
 {
-    Class retVal = [[self class] _viewClassForMIMEType:MIMEType allowingPlugins:[[[self _webView] preferences] arePlugInsEnabled]];
+    Class retVal = [[self class] _viewClassForMIMEType:MIMEType allowingPlugins:NO];
 
 #if PLATFORM(IOS_FAMILY)   
     if ([retVal respondsToSelector:@selector(_representationClassForWebFrame:)])
-        retVal = [retVal performSelector:@selector(_representationClassForWebFrame:) withObject:[self webFrame]];
+        retVal = [retVal _representationClassForWebFrame:[self webFrame]];
 #endif
         
     return retVal;
@@ -341,11 +341,6 @@ enum {
     static bool didFirstTimeInitialization;
     if (!didFirstTimeInitialization) {
         didFirstTimeInitialization = true;
-        
-        // Need to tell WebCore what function to call for the "History Item has Changed" notification.
-        // Note: We also do this in WebHistoryItem's init method.
-        // FIXME: This means that if we mix legacy WebKit and modern WebKit in the same process, we won't get both notifications.
-        WebCore::notifyHistoryItemChanged = WKNotifyHistoryItemChanged;
 
 #if !PLATFORM(IOS_FAMILY)
         if (!WebKitLinkedOnOrAfter(WEBKIT_FIRST_VERSION_WITH_MAIN_THREAD_EXCEPTIONS))
@@ -412,15 +407,15 @@ enum {
 
 - (void)setAllowsScrolling:(BOOL)flag
 {
-    WebCore::Frame *frame = core([self webFrame]);
-    if (WebCore::FrameView *view = frame? frame->view() : 0)
+    WebCore::LocalFrame *frame = core([self webFrame]);
+    if (auto* view = frame? frame->view() : 0)
         view->setCanHaveScrollbars(flag);
 }
 
 - (BOOL)allowsScrolling
 {
-    WebCore::Frame *frame = core([self webFrame]);
-    if (WebCore::FrameView *view = frame? frame->view() : 0)
+    auto* frame = core([self webFrame]);
+    if (auto* view = frame? frame->view() : 0)
         return view->canHaveScrollbars();
     return YES;
 }
@@ -495,7 +490,7 @@ enum {
             NSRectFill(rect);
 #else
             CGContextRef cgContext = WKGetCurrentGraphicsContext();
-            CGContextSetFillColorWithColor(cgContext, WebCore::cachedCGColor(WebCore::Color::white));
+            CGContextSetFillColorWithColor(cgContext, WebCore::cachedCGColor(WebCore::Color::white).get());
             WKRectFill(cgContext, rect);
 #endif
         }
@@ -507,7 +502,7 @@ enum {
             NSRectFill(rect);
 #else
             CGContextRef cgContext = WKGetCurrentGraphicsContext();
-            CGContextSetFillColorWithColor(cgContext, WebCore::cachedCGColor(WebCore::Color::cyan));
+            CGContextSetFillColorWithColor(cgContext, WebCore::cachedCGColor(WebCore::Color::cyan).get());
             WKRectFill(cgContext, rect);
 #endif
         }
@@ -633,7 +628,7 @@ enum {
 
 - (BOOL)_scrollToBeginningOfDocument
 {
-    if ([self _scrollOverflowInDirection:WebCore::ScrollUp granularity:WebCore::ScrollByDocument])
+    if ([self _scrollOverflowInDirection:WebCore::ScrollDirection::ScrollUp granularity:WebCore::ScrollGranularity::Document])
         return YES;
     if (![self _isScrollable])
         return NO;
@@ -645,7 +640,7 @@ enum {
 
 - (BOOL)_scrollToEndOfDocument
 {
-    if ([self _scrollOverflowInDirection:WebCore::ScrollDown granularity:WebCore::ScrollByDocument])
+    if ([self _scrollOverflowInDirection:WebCore::ScrollDirection::ScrollDown granularity:WebCore::ScrollGranularity::Document])
         return YES;
     if (![self _isScrollable])
         return NO;
@@ -742,7 +737,7 @@ enum {
 
 - (BOOL)_pageVertically:(BOOL)up
 {
-    if ([self _scrollOverflowInDirection:up ? WebCore::ScrollUp : WebCore::ScrollDown granularity:WebCore::ScrollByPage])
+    if ([self _scrollOverflowInDirection:up ? WebCore::ScrollDirection::ScrollUp : WebCore::ScrollDirection::ScrollDown granularity:WebCore::ScrollGranularity::Page])
         return YES;
     
     if (![self _isScrollable])
@@ -754,7 +749,7 @@ enum {
 
 - (BOOL)_pageHorizontally:(BOOL)left
 {
-    if ([self _scrollOverflowInDirection:left ? WebCore::ScrollLeft : WebCore::ScrollRight granularity:WebCore::ScrollByPage])
+    if ([self _scrollOverflowInDirection:left ? WebCore::ScrollDirection::ScrollLeft : WebCore::ScrollDirection::ScrollRight granularity:WebCore::ScrollGranularity::Page])
         return YES;
 
     if (![self _isScrollable])
@@ -776,7 +771,7 @@ enum {
 
 - (BOOL)_scrollLineVertically:(BOOL)up
 {
-    if ([self _scrollOverflowInDirection:up ? WebCore::ScrollUp : WebCore::ScrollDown granularity:WebCore::ScrollByLine])
+    if ([self _scrollOverflowInDirection:up ? WebCore::ScrollDirection::ScrollUp : WebCore::ScrollDirection::ScrollDown granularity:WebCore::ScrollGranularity::Line])
         return YES;
 
     if (![self _isScrollable])
@@ -788,7 +783,7 @@ enum {
 
 - (BOOL)_scrollLineHorizontally:(BOOL)left
 {
-    if ([self _scrollOverflowInDirection:left ? WebCore::ScrollLeft : WebCore::ScrollRight granularity:WebCore::ScrollByLine])
+    if ([self _scrollOverflowInDirection:left ? WebCore::ScrollDirection::ScrollLeft : WebCore::ScrollDirection::ScrollRight granularity:WebCore::ScrollGranularity::Line])
         return YES;
 
     if (![self _isScrollable])

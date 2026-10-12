@@ -46,7 +46,7 @@ namespace WebCore {
 class DOMEditor::RemoveChildAction final : public InspectorHistory::Action {
     WTF_MAKE_NONCOPYABLE(RemoveChildAction);
 public:
-    RemoveChildAction(Node& parentNode, Node& node)
+    RemoveChildAction(ContainerNode& parentNode, Node& node)
         : InspectorHistory::Action()
         , m_parentNode(parentNode)
         , m_node(node)
@@ -61,7 +61,7 @@ public:
 
     ExceptionOr<void> undo() final
     {
-        return m_parentNode->insertBefore(m_node, m_anchorNode.get());
+        return m_parentNode->insertBefore(m_node, m_anchorNode.copyRef());
     }
 
     ExceptionOr<void> redo() final
@@ -70,14 +70,14 @@ public:
     }
 
 private:
-    Ref<Node> m_parentNode;
+    Ref<ContainerNode> m_parentNode;
     Ref<Node> m_node;
     RefPtr<Node> m_anchorNode;
 };
 
 class DOMEditor::InsertBeforeAction final : public InspectorHistory::Action {
 public:
-    InsertBeforeAction(Node& parentNode, Ref<Node>&& node, Node* anchorNode)
+    InsertBeforeAction(ContainerNode& parentNode, Ref<Node>&& node, Node* anchorNode)
         : InspectorHistory::Action()
         , m_parentNode(parentNode)
         , m_node(WTFMove(node))
@@ -94,7 +94,7 @@ private:
             if (result.hasException())
                 return result.releaseException();
         }
-        return m_parentNode->insertBefore(m_node, m_anchorNode.get());
+        return m_parentNode->insertBefore(m_node, m_anchorNode.copyRef());
     }
 
     ExceptionOr<void> undo() final
@@ -114,10 +114,10 @@ private:
             if (result.hasException())
                 return result.releaseException();
         }
-        return m_parentNode->insertBefore(m_node, m_anchorNode.get());
+        return m_parentNode->insertBefore(m_node, m_anchorNode.copyRef());
     }
 
-    Ref<Node> m_parentNode;
+    Ref<ContainerNode> m_parentNode;
     Ref<Node> m_node;
     RefPtr<Node> m_anchorNode;
     std::unique_ptr<RemoveChildAction> m_removeChildAction;
@@ -126,7 +126,7 @@ private:
 class DOMEditor::RemoveAttributeAction final : public InspectorHistory::Action {
     WTF_MAKE_NONCOPYABLE(RemoveAttributeAction);
 public:
-    RemoveAttributeAction(Element& element, const String& name)
+    RemoveAttributeAction(Element& element, const AtomString& name)
         : InspectorHistory::Action()
         , m_element(element)
         , m_name(name)
@@ -152,8 +152,8 @@ private:
     }
 
     Ref<Element> m_element;
-    String m_name;
-    String m_value;
+    AtomString m_name;
+    AtomString m_value;
 };
 
 class DOMEditor::SetAttributeAction final : public InspectorHistory::Action {
@@ -315,7 +315,7 @@ private:
 class DOMEditor::ReplaceChildNodeAction final: public InspectorHistory::Action {
     WTF_MAKE_NONCOPYABLE(ReplaceChildNodeAction);
 public:
-    ReplaceChildNodeAction(Node& parentNode, Ref<Node>&& newNode, Node& oldNode)
+    ReplaceChildNodeAction(ContainerNode& parentNode, Ref<Node>&& newNode, Node& oldNode)
         : InspectorHistory::Action()
         , m_parentNode(parentNode)
         , m_newNode(WTFMove(newNode))
@@ -339,7 +339,7 @@ private:
         return m_parentNode->replaceChild(m_newNode, m_oldNode);
     }
 
-    Ref<Node> m_parentNode;
+    Ref<ContainerNode> m_parentNode;
     Ref<Node> m_newNode;
     Ref<Node> m_oldNode;
 };
@@ -363,12 +363,14 @@ private:
 
     ExceptionOr<void> undo() final
     {
-        return m_node->setNodeValue(m_oldValue);
+        m_node->setNodeValue(m_oldValue);
+        return { };
     }
 
     ExceptionOr<void> redo() final
     {
-        return m_node->setNodeValue(m_value);
+        m_node->setNodeValue(m_value);
+        return { };
     }
 
     Ref<Node> m_node;
@@ -383,22 +385,22 @@ DOMEditor::DOMEditor(InspectorHistory& history)
 
 DOMEditor::~DOMEditor() = default;
 
-ExceptionOr<void> DOMEditor::insertBefore(Node& parentNode, Ref<Node>&& node, Node* anchorNode)
+ExceptionOr<void> DOMEditor::insertBefore(ContainerNode& parentNode, Ref<Node>&& node, Node* anchorNode)
 {
     return m_history.perform(makeUnique<InsertBeforeAction>(parentNode, WTFMove(node), anchorNode));
 }
 
-ExceptionOr<void> DOMEditor::removeChild(Node& parentNode, Node& node)
+ExceptionOr<void> DOMEditor::removeChild(ContainerNode& parentNode, Node& node)
 {
     return m_history.perform(makeUnique<RemoveChildAction>(parentNode, node));
 }
 
-ExceptionOr<void> DOMEditor::setAttribute(Element& element, const String& name, const String& value)
+ExceptionOr<void> DOMEditor::setAttribute(Element& element, const AtomString& name, const AtomString& value)
 {
     return m_history.perform(makeUnique<SetAttributeAction>(element, name, value));
 }
 
-ExceptionOr<void> DOMEditor::removeAttribute(Element& element, const String& name)
+ExceptionOr<void> DOMEditor::removeAttribute(Element& element, const AtomString& name)
 {
     return m_history.perform(makeUnique<RemoveAttributeAction>(element, name));
 }
@@ -423,7 +425,7 @@ ExceptionOr<void> DOMEditor::replaceWholeText(Text& textNode, const String& text
     return m_history.perform(makeUnique<ReplaceWholeTextAction>(textNode, text));
 }
 
-ExceptionOr<void> DOMEditor::replaceChild(Node& parentNode, Ref<Node>&& newNode, Node& oldNode)
+ExceptionOr<void> DOMEditor::replaceChild(ContainerNode& parentNode, Ref<Node>&& newNode, Node& oldNode)
 {
     return m_history.perform(makeUnique<ReplaceChildNodeAction>(parentNode, WTFMove(newNode), oldNode));
 }
@@ -441,22 +443,22 @@ static bool populateErrorString(ExceptionOr<void>&& result, ErrorString& errorSt
     return false;
 }
 
-bool DOMEditor::insertBefore(Node& parentNode, Ref<Node>&& node, Node* anchorNode, ErrorString& errorString)
+bool DOMEditor::insertBefore(ContainerNode& parentNode, Ref<Node>&& node, Node* anchorNode, ErrorString& errorString)
 {
     return populateErrorString(insertBefore(parentNode, WTFMove(node), anchorNode), errorString);
 }
 
-bool DOMEditor::removeChild(Node& parentNode, Node& node, ErrorString& errorString)
+bool DOMEditor::removeChild(ContainerNode& parentNode, Node& node, ErrorString& errorString)
 {
     return populateErrorString(removeChild(parentNode, node), errorString);
 }
 
-bool DOMEditor::setAttribute(Element& element, const String& name, const String& value, ErrorString& errorString)
+bool DOMEditor::setAttribute(Element& element, const AtomString& name, const AtomString& value, ErrorString& errorString)
 {
     return populateErrorString(setAttribute(element, name, value), errorString);
 }
 
-bool DOMEditor::removeAttribute(Element& element, const String& name, ErrorString& errorString)
+bool DOMEditor::removeAttribute(Element& element, const AtomString& name, ErrorString& errorString)
 {
     return populateErrorString(removeAttribute(element, name), errorString);
 }

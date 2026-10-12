@@ -1,40 +1,44 @@
 {
-  "scripts/egl.xml":
-    "4e5911cfe91274cc5112ff2f70092376",
   "scripts/egl_angle_ext.xml":
-    "087d6a3996a91fbb0b664cac57c50c4c",
+    "c3e2fe417403866be2281a7e88d13bc9",
   "scripts/generate_loader.py":
-    "af65e1f4863c5f9c0cad0196c645701b",
-  "scripts/gl.xml":
-    "e74a595068cbdd6064300be1e71b7cc9",
+    "93c78a8d11323fa311fed5118fbcf083",
   "scripts/gl_angle_ext.xml":
-    "0b4f3476d76a5ccc40af342d6c08739d",
+    "197e07a917d5bba6dfa2840fb1b58e7e",
   "scripts/registry_xml.py":
-    "b14d62484c30cabc731df342b3046421",
-  "scripts/wgl.xml":
-    "c36001431919e1c435f1215a85f7e1db",
+    "186e1b24fe2de5e49696232b78b69367",
   "src/libEGL/egl_loader_autogen.cpp":
-    "5948ab696aadacda679840af8f16dbe3",
+    "9ed54b9c0801cbe9b81746e79baa09bd",
   "src/libEGL/egl_loader_autogen.h":
-    "fcf59fce6301d6396eec2100706e50a0",
-  "src/tests/restricted_traces/trace_egl_loader_autogen.cpp":
-    "84c56bd2796e416d8186dd0111ac46d1",
-  "src/tests/restricted_traces/trace_egl_loader_autogen.h":
-    "6011fd4bc1c6977ae10c262cfe534691",
-  "src/tests/restricted_traces/trace_gles_loader_autogen.cpp":
-    "8342a4a19cd45bfe6c69acbcd2df6220",
-  "src/tests/restricted_traces/trace_gles_loader_autogen.h":
-    "ea46592212ddda7eafb3c59ebb4487d6",
+    "75923a6e28b2305e454e12a52db8c071",
+  "third_party/EGL-Registry/src/api/egl.xml":
+    "2056d54ea07156f1988ca1366bdee21a",
+  "third_party/OpenCL-Docs/src/xml/cl.xml":
+    "6d0bf09e20a8f8c3ae440d79eda08bf9",
+  "third_party/OpenGL-Registry/src/xml/gl.xml":
+    "49f0afe5cac23951c74420e457b0cb23",
+  "third_party/OpenGL-Registry/src/xml/glx.xml":
+    "94f3eee4b076801d117804eb466714b7",
+  "third_party/OpenGL-Registry/src/xml/wgl.xml":
+    "eae784bf4d1b983a42af5671b140b7c4",
+  "util/capture/trace_egl_loader_autogen.cpp":
+    "6376899e5fd7881a1538042d8c279dad",
+  "util/capture/trace_egl_loader_autogen.h":
+    "73215d434682b07aefbeba782ff32fe4",
+  "util/capture/trace_gles_loader_autogen.cpp":
+    "9863bc015545fde9cca5d308a4843ff4",
+  "util/capture/trace_gles_loader_autogen.h":
+    "7de6f3f9b79e5904c630e12be2106e7f",
   "util/egl_loader_autogen.cpp":
-    "5898c23071036a307cfa74a82aeaefb3",
+    "f79641342b64356e121cff5659c41c55",
   "util/egl_loader_autogen.h":
-    "f9087796b885ba3874a449ee5155f958",
+    "6a9a0a41347d85c566418d772cbb9d66",
   "util/gles_loader_autogen.cpp":
-    "15d5142796120c8e80da2b12aa4a8e90",
+    "683d3c537e082b9780e158242acfe8d1",
   "util/gles_loader_autogen.h":
-    "fdb3725bfbfa7358270e8a1430eabd6e",
+    "053abf470d8d066a35a8fdcf64d3a62d",
   "util/windows/wgl_loader_autogen.cpp":
-    "60a40fba3ffddd40063fe6131bc67ba5",
+    "373b062587eab8a163121255f54597dc",
   "util/windows/wgl_loader_autogen.h":
-    "572549de92e7f893ee1c2161704e1cfb"
+    "788190d21890b3ded845acb5ccbfb7ad"
 }

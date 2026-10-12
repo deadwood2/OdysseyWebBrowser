@@ -33,20 +33,27 @@
 
 #include "WebProcess.h"
 #include "WebSocketChannelManager.h"
-#include "WebSocketStream.h"
+#include "WebTransportSession.h"
+#include <WebCore/Document.h>
+#include <WebCore/WorkerGlobalScope.h>
 
 namespace WebKit {
 using namespace WebCore;
 
-Ref<SocketStreamHandle> WebSocketProvider::createSocketStreamHandle(const URL& url, SocketStreamHandleClient& client, WebSocketIdentifier identifier, PAL::SessionID sessionID, const String& credentialPartition, const StorageSessionProvider*)
-{
-    ASSERT_UNUSED(sessionID, sessionID == WebProcess::singleton().sessionID());
-    return WebSocketStream::create(url, client, identifier, credentialPartition);
-}
-
 RefPtr<ThreadableWebSocketChannel> WebSocketProvider::createWebSocketChannel(Document& document, WebSocketChannelClient& client)
 {
-    return WebSocketChannel::create(m_webPageProxyID, document, client);
+    return WebKit::WebSocketChannel::create(m_webPageProxyID, document, client);
+}
+
+void WebSocketProvider::initializeWebTransportSession(WebCore::ScriptExecutionContext& context, const URL& url, CompletionHandler<void(RefPtr<WebCore::WebTransportSession>&&)>&& completionHandler)
+{
+    if (is<WorkerGlobalScope>(context)) {
+        // FIXME: Add an implementation that uses WorkQueueMessageReceiver to safely send to/from the network process
+        // off the main thread without unnecessarily copying the data.
+        return completionHandler(nullptr);
+    }
+    ASSERT(is<Document>(context));
+    WebKit::WebTransportSession::initialize(url, WTFMove(completionHandler));
 }
 
 } // namespace WebKit

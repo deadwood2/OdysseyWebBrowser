@@ -27,6 +27,7 @@
 
 #import "DOMNodeInternal.h"
 #import "ExceptionHandlers.h"
+#import <WebCore/ElementInlines.h>
 #import <WebCore/HTMLNames.h>
 #import <WebCore/HTMLScriptElement.h>
 #import <WebCore/JSExecState.h>
@@ -48,7 +49,7 @@
 - (void)setText:(NSString *)newText
 {
     WebCore::JSMainThreadNullState state;
-    IMPL->setText(newText);
+    IMPL->setText(String(newText));
 }
 
 - (NSString *)htmlFor

@@ -44,7 +44,7 @@ WKTypeID WKContextMenuItemGetTypeID()
 WKContextMenuItemRef WKContextMenuItemCreateAsAction(WKContextMenuItemTag tag, WKStringRef title, bool enabled)
 {
 #if ENABLE(CONTEXT_MENUS)
-    return WebKit::toAPI(&WebKit::WebContextMenuItem::create(WebKit::WebContextMenuItemData(WebCore::ActionType, WebKit::toImpl(tag), WebKit::toImpl(title)->string(), enabled, false)).leakRef());
+    return WebKit::toAPI(&WebKit::WebContextMenuItem::create(WebKit::WebContextMenuItemData(WebCore::ContextMenuItemType::Action, WebKit::toImpl(tag), WebKit::toImpl(title)->string(), enabled, false)).leakRef());
 #else
     UNUSED_PARAM(tag);
     UNUSED_PARAM(title);
@@ -56,7 +56,7 @@ WKContextMenuItemRef WKContextMenuItemCreateAsAction(WKContextMenuItemTag tag, W
 WKContextMenuItemRef WKContextMenuItemCreateAsCheckableAction(WKContextMenuItemTag tag, WKStringRef title, bool enabled, bool checked)
 {
 #if ENABLE(CONTEXT_MENUS)
-    return WebKit::toAPI(&WebKit::WebContextMenuItem::create(WebKit::WebContextMenuItemData(WebCore::CheckableActionType, WebKit::toImpl(tag), WebKit::toImpl(title)->string(), enabled, checked)).leakRef());
+    return WebKit::toAPI(&WebKit::WebContextMenuItem::create(WebKit::WebContextMenuItemData(WebCore::ContextMenuItemType::CheckableAction, WebKit::toImpl(tag), WebKit::toImpl(title)->string(), enabled, checked)).leakRef());
 #else
     UNUSED_PARAM(tag);
     UNUSED_PARAM(title);
@@ -103,7 +103,7 @@ WKContextMenuItemType WKContextMenuItemGetType(WKContextMenuItemRef itemRef)
     return WebKit::toAPI(WebKit::toImpl(itemRef)->data().type());
 #else
     UNUSED_PARAM(itemRef);
-    return WebKit::toAPI(WebCore::ActionType);
+    return WebKit::toAPI(WebCore::ContextMenuItemType::Action);
 #endif
 }
 
@@ -170,8 +170,8 @@ void WKContextMenuItemSetUserData(WKContextMenuItemRef itemRef, WKTypeRef userDa
 #if PLATFORM(COCOA)
 
 #define STATIC_ASSERT_EQUALS(a, b, c) \
-    static_assert(a == b, ""); \
-    static_assert(a == WebCore::c, "");
+    static_assert(a == b); \
+    static_assert(a == WebCore::c);
 
 // These values must remain equal to retain binary compatibility.
 STATIC_ASSERT_EQUALS(0, kWKContextMenuItemTagNoAction, ContextMenuItemTagNoAction);
@@ -194,7 +194,7 @@ STATIC_ASSERT_EQUALS(16, kWKContextMenuItemTagNoGuessesFound, ContextMenuItemTag
 STATIC_ASSERT_EQUALS(17, kWKContextMenuItemTagIgnoreSpelling, ContextMenuItemTagIgnoreSpelling);
 STATIC_ASSERT_EQUALS(18, kWKContextMenuItemTagLearnSpelling, ContextMenuItemTagLearnSpelling);
 STATIC_ASSERT_EQUALS(19, kWKContextMenuItemTagOther, ContextMenuItemTagOther);
-STATIC_ASSERT_EQUALS(20, kWKContextMenuItemTagSearchInSpotlight, ContextMenuItemTagSearchInSpotlight);
+static_assert(20 == kWKContextMenuItemTagSearchInSpotlight);
 STATIC_ASSERT_EQUALS(21, kWKContextMenuItemTagSearchWeb, ContextMenuItemTagSearchWeb);
 STATIC_ASSERT_EQUALS(22, kWKContextMenuItemTagLookUpInDictionary, ContextMenuItemTagLookUpInDictionary);
 STATIC_ASSERT_EQUALS(23, kWKContextMenuItemTagOpenWithDefaultApplication, ContextMenuItemTagOpenWithDefaultApplication);
@@ -258,5 +258,9 @@ STATIC_ASSERT_EQUALS(80, kWKContextMenuItemTagEnterVideoFullscreen, ContextMenuI
 STATIC_ASSERT_EQUALS(81, kWKContextMenuItemTagMediaPlayPause, ContextMenuItemTagMediaPlayPause);
 STATIC_ASSERT_EQUALS(82, kWKContextMenuItemTagMediaMute, ContextMenuItemTagMediaMute);
 STATIC_ASSERT_EQUALS(83, kWKContextMenuItemTagDictationAlternative, ContextMenuItemTagDictationAlternative);
+STATIC_ASSERT_EQUALS(84, kWKContextMenuItemTagPlayAllAnimations, ContextMenuItemTagPlayAllAnimations);
+STATIC_ASSERT_EQUALS(85, kWKContextMenuItemTagPauseAllAnimations, ContextMenuItemTagPauseAllAnimations);
+STATIC_ASSERT_EQUALS(86, kWKContextMenuItemTagPlayAnimation, ContextMenuItemTagPlayAnimation);
+STATIC_ASSERT_EQUALS(87, kWKContextMenuItemTagPauseAnimation, ContextMenuItemTagPauseAnimation);
 
 #endif // PLATFORM(COCOA)

@@ -77,7 +77,16 @@ public:
             if (block->last()->type() != Void) // Demoting doesn't handle terminals with values.
                 continue;
 
-            candidates.add(block);
+            bool canCopyBlock = true;
+            for (Value* value : *block) {
+                if (value->kind().isCloningForbidden()) {
+                    canCopyBlock = false;
+                    break;
+                }
+            }
+
+            if (canCopyBlock)
+                candidates.add(block);
         }
 
         // Collect the set of values that must be de-SSA'd.
@@ -150,7 +159,7 @@ private:
 
 void duplicateTails(Procedure& proc)
 {
-    PhaseScope phaseScope(proc, "duplicateTails");
+    PhaseScope phaseScope(proc, "duplicateTails"_s);
     DuplicateTails duplicateTails(proc);
     duplicateTails.run();
 }

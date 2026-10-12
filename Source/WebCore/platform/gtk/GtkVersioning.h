@@ -276,6 +276,12 @@ gtk_scrolled_window_new()
     return gtk_scrolled_window_new(nullptr, nullptr);
 }
 
+static inline GdkEvent*
+gtk_event_controller_get_current_event(GtkEventController*)
+{
+    return gtk_get_current_event();
+}
+
 static inline GdkModifierType
 gtk_event_controller_get_current_event_state(GtkEventController*)
 {
@@ -288,6 +294,17 @@ static inline uint32_t
 gtk_event_controller_get_current_event_time(GtkEventController*)
 {
     return gtk_get_current_event_time();
+}
+
+static inline GtkIconTheme* gtk_icon_theme_get_for_display(GdkDisplay* display)
+{
+    return gtk_icon_theme_get_for_screen(gdk_display_get_default_screen(display));
+}
+
+static inline GdkDisplay*
+gdk_event_get_display(GdkEvent* event)
+{
+    return event->any.window ? gdk_window_get_display(event->any.window) : gdk_display_get_default();
 }
 
 #endif // USE(GTK4)

@@ -25,8 +25,6 @@
 
 #pragma once
 
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
-
 #include "ResourceLoadStatisticsStore.h"
 #include "WebResourceLoadStatisticsStore.h"
 #include <wtf/CompletionHandler.h>
@@ -51,7 +49,7 @@ public:
     void clear(CompletionHandler<void()>&&) override;
     bool isEmpty() const override;
 
-    Vector<WebResourceLoadStatisticsStore::ThirdPartyData> aggregatedThirdPartyData() const override;
+    Vector<ITPThirdPartyData> aggregatedThirdPartyData() const override;
     const HashMap<RegistrableDomain, UniqueRef<WebCore::ResourceLoadStatistics>>& data() const { return m_resourceStatisticsMap; }
 
     std::unique_ptr<WebCore::KeyedEncoder> createEncoderFromData() const;
@@ -73,7 +71,7 @@ public:
     bool isRegisteredAsRedirectingTo(const RedirectedFromDomain&, const RedirectedToDomain&) const override;
 
     void clearPrevalentResource(const RegistrableDomain&) override;
-    void dumpResourceLoadStatistics(CompletionHandler<void(const String&)>&&) final;
+    void dumpResourceLoadStatistics(CompletionHandler<void(String&&)>&&) final;
     bool isPrevalentResource(const RegistrableDomain&) const override;
     bool isVeryPrevalentResource(const RegistrableDomain&) const override;
     void setPrevalentResource(const RegistrableDomain&) override;
@@ -91,7 +89,7 @@ public:
 
     bool areAllThirdPartyCookiesBlockedUnder(const TopFrameDomain&) override;
     CookieAccess cookieAccess(const ResourceLoadStatistics&, const TopFrameDomain&);
-    void hasStorageAccess(const SubFrameDomain&, const TopFrameDomain&, std::optional<WebCore::FrameIdentifier>, WebCore::PageIdentifier, CompletionHandler<void(bool)>&&) override;
+    void hasStorageAccess(SubFrameDomain&&, TopFrameDomain&&, std::optional<WebCore::FrameIdentifier>, WebCore::PageIdentifier, CompletionHandler<void(bool)>&&) override;
     void requestStorageAccess(SubFrameDomain&&, TopFrameDomain&&, WebCore::FrameIdentifier, WebCore::PageIdentifier, WebCore::StorageAccessScope, CompletionHandler<void(StorageAccessStatus)>&&) override;
     void grantStorageAccess(SubFrameDomain&&, TopFrameDomain&&, WebCore::FrameIdentifier, WebCore::PageIdentifier, WebCore::StorageAccessPromptWasShown, WebCore::StorageAccessScope, CompletionHandler<void(WebCore::StorageAccessWasGranted)>&&) override;
 
@@ -146,5 +144,3 @@ private:
 SPECIALIZE_TYPE_TRAITS_BEGIN(WebKit::ResourceLoadStatisticsMemoryStore)
     static bool isType(const WebKit::ResourceLoadStatisticsStore& store) { return store.isMemoryStore(); }
 SPECIALIZE_TYPE_TRAITS_END()
-
-#endif

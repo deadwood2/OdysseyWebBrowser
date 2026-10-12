@@ -27,18 +27,15 @@ class LayoutTestFailures(object):
     _JSON_PREFIX = "ADD_RESULTS("
     _JSON_SUFFIX = ");"
 
-    def __init__(self, failing_tests, did_exceed_test_failure_limit):
+    def __init__(self, failing_tests, flaky_tests, did_exceed_test_failure_limit):
         self.failing_tests = failing_tests
+        self.flaky_tests = flaky_tests
         self.did_exceed_test_failure_limit = did_exceed_test_failure_limit
 
     @classmethod
-    def has_json_wrapper(cls, string):
-        return string.startswith(cls._JSON_PREFIX) and string.endswith(cls._JSON_SUFFIX)
-
-    @classmethod
-    def strip_json_wrapper(cls, json_content):
-        if cls.has_json_wrapper(json_content):
-            return json_content[len(cls._JSON_PREFIX):len(json_content) - len(cls._JSON_SUFFIX)]
+    def _strip_json_wrapper(cls, json_content):
+        if json_content.startswith(cls._JSON_PREFIX) and json_content.endswith(cls._JSON_SUFFIX):
+            return json_content[len(cls._JSON_PREFIX):-len(cls._JSON_SUFFIX)]
         return json_content
 
     @classmethod
@@ -46,23 +43,25 @@ class LayoutTestFailures(object):
         if not string:
             return None
 
-        string = string.strip()
-        if not cls.has_json_wrapper(string):
-            return None
-
-        content_string = cls.strip_json_wrapper(string)
+        content_string = cls._strip_json_wrapper(string.strip())
         # Workaround for https://github.com/buildbot/buildbot/issues/4906
         content_string = ''.join(content_string.splitlines())
-        json_dict = json.loads(content_string)
+        try:
+            json_dict = json.loads(content_string)
+        except json.JSONDecodeError:
+            return None
 
         failing_tests = []
+        flaky_tests = []
 
         def get_failing_tests(test, result):
             if result.get('report') in ['REGRESSION', 'MISSING']:
                 failing_tests.append(test)
+            elif result.get('report') in ['FLAKY']:
+                flaky_tests.append(test)
 
         cls.parse_full_results_json(json_dict['tests'], get_failing_tests)
-        return cls(failing_tests, json_dict.get('interrupted', False))
+        return cls(failing_tests, flaky_tests, json_dict.get('interrupted', False))
 
     @classmethod
     def parse_full_results_json(cls, tree, handler, prefix=''):

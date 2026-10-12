@@ -33,12 +33,14 @@
 #include "MediaSampleByteRange.h"
 #include "MediaSampleCursor.h"
 #include <WebCore/AudioTrackPrivate.h>
+#include <WebCore/CMUtilities.h>
 #include <WebCore/InbandTextTrackPrivate.h>
 #include <WebCore/MediaDescription.h>
 #include <WebCore/SampleMap.h>
 #include <WebCore/VideoTrackPrivate.h>
 #include <pal/avfoundation/MediaTimeAVFoundation.h>
 #include <wtf/LoggerHelper.h>
+#include <wtf/NeverDestroyed.h>
 #include <wtf/WorkQueue.h>
 
 #include <pal/cocoa/MediaToolboxSoftLink.h>
@@ -66,8 +68,8 @@ RefPtr<MediaTrackReader> MediaTrackReader::create(Allocator&& allocator, const M
 
 WorkQueue& MediaTrackReader::storageQueue()
 {
-    static auto& queue = WorkQueue::create("WebKit::MediaTrackReader Storage Queue", WorkQueue::Type::Serial).leakRef();
-    return queue;
+    static NeverDestroyed<Ref<WorkQueue>> queue = WorkQueue::create("WebKit::MediaFormatReader Queue"_s);
+    return queue.get();
 }
 
 MediaTrackReader::MediaTrackReader(Allocator&& allocator, const MediaFormatReader& formatReader, CMMediaType mediaType, uint64_t trackID, std::optional<bool> enabled)
@@ -92,19 +94,21 @@ MediaTime MediaTrackReader::greatestPresentationTime() const
     if (sampleMap.empty())
         return MediaTime::invalidTime();
 
-    auto& lastSample = *sampleMap.decodeOrder().rbegin()->second;
+    const MediaSample& lastSample = sampleMap.decodeOrder().rbegin()->second;
     return lastSample.presentationTime() + lastSample.duration();
 }
 
-void MediaTrackReader::addSample(Ref<MediaSample>&& sample, MTPluginByteSourceRef byteSource)
+void MediaTrackReader::addSample(MediaSamplesBlock&& sample, MTPluginByteSourceRef byteSource)
 {
     ASSERT(!isMainRunLoop());
     Locker locker { m_sampleStorageLock };
     if (!m_sampleStorage)
         m_sampleStorage = makeUnique<SampleStorage>();
 
-    ASSERT(!sample->isDivisable() && sample->byteRange());
-    auto sampleToAdd = MediaSampleByteRange::create(sample.get(), byteSource, m_trackID);
+    ASSERT(!sample.isEmpty());
+    ASSERT(std::holds_alternative<MediaSample::ByteRange>(sample.last().data));
+
+    auto sampleToAdd = MediaSampleByteRange::create(WTFMove(sample), byteSource);
 
     // FIXME: Even though WebM muxer guidelines say this must not happen, some video tracks have two
     // consecutive frames with the same presentation time. SampleMap will not store the second frame
@@ -143,18 +147,18 @@ void MediaTrackReader::finishParsing()
     m_sampleStorageCondition.notifyAll();
 }
 
-const char* MediaTrackReader::mediaTypeString() const
+ASCIILiteral MediaTrackReader::mediaTypeString() const
 {
     switch (m_mediaType) {
     case kCMMediaType_Video:
-        return "video";
+        return "video"_s;
     case kCMMediaType_Audio:
-        return "audio";
+        return "audio"_s;
     case kCMMediaType_Text:
-        return "text";
+        return "text"_s;
     }
     ASSERT_NOT_REACHED();
-    return "unknown";
+    return "unknown"_s;
 }
 
 OSStatus MediaTrackReader::copyProperty(CFStringRef key, CFAllocatorRef allocator, void* copiedValue)
@@ -180,11 +184,19 @@ OSStatus MediaTrackReader::copyProperty(CFStringRef key, CFAllocatorRef allocato
         return kCMBaseObjectError_ValueNotAvailable;
     }
 
-    auto& lastSample = *sampleMap.decodeOrder().rbegin()->second;
+    const MediaSample& lastSample = sampleMap.decodeOrder().rbegin()->second;
 
     if (CFEqual(key, PAL::get_MediaToolbox_kMTPluginTrackReaderProperty_FormatDescriptionArray())) {
         RELEASE_ASSERT_WITH_SECURITY_IMPLICATION(lastSample.platformSample().type == PlatformSample::ByteRangeSampleType);
-        const void* descriptions[1] = { lastSample.platformSample().sample.byteRangeSample.second };
+        const TrackInfo& trackInfo = lastSample.platformSample().sample.byteRangeSample.second;
+        if (!m_trackInfo) {
+            m_trackInfo = &lastSample.platformSample().sample.byteRangeSample.second.get();
+            m_formatDescription = WebCore::createFormatDescriptionFromTrackInfo(*m_trackInfo);
+        } else if (*m_trackInfo != trackInfo) {
+            m_trackInfo = &trackInfo;
+            m_formatDescription = WebCore::createFormatDescriptionFromTrackInfo(*m_trackInfo);
+        }
+        const void* descriptions[1] = { m_formatDescription.get() };
         *reinterpret_cast<CFArrayRef*>(copiedValue) = adoptCF(CFArrayCreate(allocator, descriptions, 1, &kCFTypeArrayCallBacks)).leakRef();
         return noErr;
     }
@@ -236,10 +248,10 @@ WTFLogChannel& MediaTrackReader::logChannel() const
     return JOIN_LOG_CHANNEL_WITH_PREFIX(LOG_CHANNEL_PREFIX, Media);
 }
 
-const void* MediaTrackReader::nextSampleCursorLogIdentifier(uint64_t cursorID) const
+const void* MediaTrackReader::nextSampleCursorLogIdentifier(MediaSampleCursorIdentifier cursorID) const
 {
     uint64_t trackID = reinterpret_cast<uint64_t>(m_logIdentifier) & 0xffffull;
-    uint64_t trackAndCursorID = trackID << 8 | (cursorID & 0xffull);
+    uint64_t trackAndCursorID = trackID << 8 | (cursorID.toUInt64() & 0xffull);
     return LoggerHelper::childLogIdentifier(m_logIdentifier, trackAndCursorID);
 }
 

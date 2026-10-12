@@ -28,10 +28,15 @@
 #if ENABLE(FULLSCREEN_API)
 
 #include "WebCoreArgumentCoders.h"
+#include <WebCore/EventListener.h>
+#include <WebCore/HTMLMediaElement.h>
+#include <WebCore/HTMLMediaElementEnums.h>
 #include <WebCore/IntRect.h>
 #include <WebCore/LengthBox.h>
 #include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
+#include <wtf/RunLoop.h>
+#include <wtf/WeakPtr.h>
 
 namespace IPC {
 class Connection;
@@ -41,6 +46,7 @@ class Decoder;
 namespace WebCore {
 class IntRect;
 class Element;
+class WeakPtrImplWithEventTargetData;
 class GraphicsLayer;
 class HTMLVideoElement;
 }
@@ -49,39 +55,43 @@ namespace WebKit {
 
 class WebPage;
 
-class WebFullScreenManager : public RefCounted<WebFullScreenManager> {
+class WebFullScreenManager final : public WebCore::EventListener {
 public:
-    static Ref<WebFullScreenManager> create(WebPage*);
+    static Ref<WebFullScreenManager> create(WebPage&);
     virtual ~WebFullScreenManager();
+
+    void invalidate();
 
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&);
 
     bool supportsFullScreen(bool withKeyboard);
-    void enterFullScreenForElement(WebCore::Element*);
+    void enterFullScreenForElement(WebCore::Element*, WebCore::HTMLMediaElementEnums::VideoFullscreenMode);
     void exitFullScreenForElement(WebCore::Element*);
 
-    void willEnterFullScreen();
+    void willEnterFullScreen(WebCore::HTMLMediaElementEnums::VideoFullscreenMode = WebCore::HTMLMediaElementEnums::VideoFullscreenModeStandard);
     void didEnterFullScreen();
     void willExitFullScreen();
     void didExitFullScreen();
+
+    void saveScrollPosition();
+    void restoreScrollPosition();
 
     WebCore::Element* element();
 
     void videoControlsManagerDidChange();
 
+    bool operator==(const WebCore::EventListener& listener) const final { return this == &listener; }
+
 protected:
-    WebFullScreenManager(WebPage*);
+    WebFullScreenManager(WebPage&);
 
     void setPIPStandbyElement(WebCore::HTMLVideoElement*);
 
     void setAnimatingFullScreen(bool);
-    void requestEnterFullScreen();
+    void requestRestoreFullScreen(CompletionHandler<void(bool)>&&);
     void requestExitFullScreen();
-    void saveScrollPosition();
-    void restoreScrollPosition();
     void setFullscreenInsets(const WebCore::FloatBoxExtent&);
     void setFullscreenAutoHideDuration(Seconds);
-    void setFullscreenControlsHidden(bool);
 
     void didReceiveWebFullScreenManagerMessage(IPC::Connection&, IPC::Decoder&);
 
@@ -89,15 +99,54 @@ protected:
     WebCore::IntRect m_finalFrame;
     WebCore::IntPoint m_scrollPosition;
     float m_topContentInset { 0 };
-    RefPtr<WebPage> m_page;
+    Ref<WebPage> m_page;
     RefPtr<WebCore::Element> m_element;
+    WeakPtr<WebCore::Element, WebCore::WeakPtrImplWithEventTargetData> m_elementToRestore;
 #if ENABLE(VIDEO)
     RefPtr<WebCore::HTMLVideoElement> m_pipStandbyElement;
 #endif
 
 private:
     void close();
+
+    void handleEvent(WebCore::ScriptExecutionContext&, WebCore::Event&) final;
+
+    void setElement(WebCore::Element&);
+    void clearElement();
+
+#if !RELEASE_LOG_DISABLED
+    const Logger& logger() const { return m_logger; }
+    const void* logIdentifier() const { return m_logIdentifier; }
+    ASCIILiteral logClassName() const { return "WebFullScreenManager"_s; }
+    WTFLogChannel& logChannel() const;
+#endif
+
+#if ENABLE(VIDEO)
+#if ENABLE(IMAGE_ANALYSIS)
+    void scheduleTextRecognitionForMainVideo();
+    void endTextRecognitionForMainVideoIfNeeded();
+    void mainVideoElementTextRecognitionTimerFired();
+#endif
+    void updateMainVideoElement();
+    void setMainVideoElement(RefPtr<WebCore::HTMLVideoElement>&&);
+
+    WeakPtr<WebCore::HTMLVideoElement> m_mainVideoElement;
+#if ENABLE(IMAGE_ANALYSIS)
+    RunLoop::Timer m_mainVideoElementTextRecognitionTimer;
+    bool m_isPerformingTextRecognitionInMainVideo { false };
+#endif
+#endif // ENABLE(VIDEO)
+
+#if ENABLE(QUICKLOOK_FULLSCREEN)
+    bool m_willUseQuickLookForFullscreen { false };
+#endif
+
     bool m_closing { false };
+    bool m_inWindowFullScreenMode { false };
+#if !RELEASE_LOG_DISABLED
+    Ref<const Logger> m_logger;
+    const void* m_logIdentifier;
+#endif
 };
 
 } // namespace WebKit

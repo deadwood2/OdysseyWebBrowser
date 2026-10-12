@@ -26,12 +26,13 @@ namespace WebCore {
 
 class HTMLImageLoader;
 
-enum class CreatePlugins { No, Yes };
+enum class CreatePlugins : bool { No, Yes };
 
 // Base class for HTMLEmbedElement and HTMLObjectElement.
 // FIXME: This is the only class that derives from HTMLPlugInElement, so we could merge the two classes.
 class HTMLPlugInImageElement : public HTMLPlugInElement {
-    WTF_MAKE_ISO_ALLOCATED(HTMLPlugInImageElement);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(HTMLPlugInImageElement);
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(HTMLPlugInImageElement);
 public:
     virtual ~HTMLPlugInImageElement();
 
@@ -50,7 +51,7 @@ protected:
 
     void didMoveToNewDocument(Document& oldDocument, Document& newDocument) override;
 
-    bool requestObject(const String& url, const String& mimeType, const Vector<String>& paramNames, const Vector<String>& paramValues) final;
+    bool requestObject(const String& url, const String& mimeType, const Vector<AtomString>& paramNames, const Vector<AtomString>& paramValues) final;
 
     bool isImageType();
     HTMLImageLoader* imageLoader() { return m_imageLoader.get(); }
@@ -94,5 +95,9 @@ private:
 
 SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::HTMLPlugInImageElement)
     static bool isType(const WebCore::HTMLPlugInElement& element) { return element.isPlugInImageElement(); }
-    static bool isType(const WebCore::Node& node) { return is<WebCore::HTMLPlugInElement>(node) && isType(downcast<WebCore::HTMLPlugInElement>(node)); }
+    static bool isType(const WebCore::Node& node)
+    {
+        auto* pluginElement = dynamicDowncast<WebCore::HTMLPlugInElement>(node);
+        return pluginElement && isType(*pluginElement);
+    }
 SPECIALIZE_TYPE_TRAITS_END()

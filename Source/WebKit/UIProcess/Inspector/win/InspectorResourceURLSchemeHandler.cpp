@@ -35,36 +35,34 @@
 
 #if USE(CURL)
 #include <curl/curl.h>
+#else
+#error Unknown network backend
 #endif
 
 namespace WebKit {
 
 void InspectorResourceURLSchemeHandler::platformStartTask(WebPageProxy&, WebURLSchemeTask& task)
 {
-#if USE(CF) && USE(CURL)
     auto requestURL = task.request().url();
-    auto requestPath = requestURL.fileSystemPath();
-    if (requestPath.startsWith("\\"))
-        requestPath.remove(0);
-    auto path = URL(adoptCF(CFBundleCopyBundleURL(WebCore::webKitBundle())).get()).fileSystemPath();
-    path = FileSystem::pathByAppendingComponent(path, "WebInspectorUI"_s);
-    path = FileSystem::pathByAppendingComponent(path, requestPath);
+    auto requestPath = makeStringByReplacingAll(requestURL.path(), '/', '\\');
+    if (requestPath.startsWith("\\"_s))
+        requestPath = requestPath.substring(1);
+    auto path = WebCore::webKitBundlePath({ "WebInspectorUI"_s, requestPath });
     bool success;
     FileSystem::MappedFileData file(path, FileSystem::MappedFileMode::Private, success);
     if (!success) {
-        task.didComplete(WebCore::ResourceError::httpError(CURLE_READ_ERROR, requestURL));
+        task.didComplete(WebCore::ResourceError(CURLE_READ_ERROR, requestURL));
         return;
     }
     auto contentType = WebCore::File::contentTypeForFile(path);
     if (contentType.isEmpty())
         contentType = "application/octet-stream"_s;
     WebCore::ResourceResponse response(requestURL, contentType, file.size(), "UTF-8"_s);
-    auto data = WebCore::SharedBuffer::create(static_cast<const char*>(file.data()), file.size());
+    auto data = WebCore::SharedBuffer::create(file.span());
 
     task.didReceiveResponse(response);
     task.didReceiveData(WTFMove(data));
     task.didComplete({ });
-#endif
 }
 
 } // namespace WebKit

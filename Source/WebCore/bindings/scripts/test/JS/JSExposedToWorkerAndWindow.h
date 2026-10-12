@@ -32,8 +32,9 @@ public:
     using Base = JSDOMWrapper<ExposedToWorkerAndWindow>;
     static JSExposedToWorkerAndWindow* create(JSC::Structure* structure, JSDOMGlobalObject* globalObject, Ref<ExposedToWorkerAndWindow>&& impl)
     {
-        JSExposedToWorkerAndWindow* ptr = new (NotNull, JSC::allocateCell<JSExposedToWorkerAndWindow>(globalObject->vm().heap)) JSExposedToWorkerAndWindow(structure, *globalObject, WTFMove(impl));
-        ptr->finishCreation(globalObject->vm());
+        auto& vm = globalObject->vm();
+        JSExposedToWorkerAndWindow* ptr = new (NotNull, JSC::allocateCell<JSExposedToWorkerAndWindow>(vm)) JSExposedToWorkerAndWindow(structure, *globalObject, WTFMove(impl));
+        ptr->finishCreation(vm);
         return ptr;
     }
 
@@ -50,23 +51,23 @@ public:
     }
 
     static JSC::JSValue getConstructor(JSC::VM&, const JSC::JSGlobalObject*);
-    template<typename, JSC::SubspaceAccess mode> static JSC::IsoSubspace* subspaceFor(JSC::VM& vm)
+    template<typename, JSC::SubspaceAccess mode> static JSC::GCClient::IsoSubspace* subspaceFor(JSC::VM& vm)
     {
         if constexpr (mode == JSC::SubspaceAccess::Concurrently)
             return nullptr;
         return subspaceForImpl(vm);
     }
-    static JSC::IsoSubspace* subspaceForImpl(JSC::VM& vm);
+    static JSC::GCClient::IsoSubspace* subspaceForImpl(JSC::VM& vm);
     static void analyzeHeap(JSCell*, JSC::HeapAnalyzer&);
 protected:
     JSExposedToWorkerAndWindow(JSC::Structure*, JSDOMGlobalObject&, Ref<ExposedToWorkerAndWindow>&&);
 
-    void finishCreation(JSC::VM&);
+    DECLARE_DEFAULT_FINISH_CREATION;
 };
 
 class JSExposedToWorkerAndWindowOwner final : public JSC::WeakHandleOwner {
 public:
-    bool isReachableFromOpaqueRoots(JSC::Handle<JSC::Unknown>, void* context, JSC::AbstractSlotVisitor&, const char**) final;
+    bool isReachableFromOpaqueRoots(JSC::Handle<JSC::Unknown>, void* context, JSC::AbstractSlotVisitor&, ASCIILiteral*) final;
     void finalize(JSC::Handle<JSC::Unknown>, void* context) final;
 };
 
@@ -90,7 +91,7 @@ template<> struct JSDOMWrapperConverterTraits<ExposedToWorkerAndWindow> {
     using WrapperClass = JSExposedToWorkerAndWindow;
     using ToWrappedReturnType = ExposedToWorkerAndWindow*;
 };
-template<> ExposedToWorkerAndWindow::Dict convertDictionary<ExposedToWorkerAndWindow::Dict>(JSC::JSGlobalObject&, JSC::JSValue);
+template<> ConversionResult<IDLDictionary<ExposedToWorkerAndWindow::Dict>> convertDictionary<ExposedToWorkerAndWindow::Dict>(JSC::JSGlobalObject&, JSC::JSValue);
 
 JSC::JSObject* convertDictionaryToJS(JSC::JSGlobalObject&, JSDOMGlobalObject&, const ExposedToWorkerAndWindow::Dict&);
 

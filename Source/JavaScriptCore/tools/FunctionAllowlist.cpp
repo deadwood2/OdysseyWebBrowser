@@ -31,6 +31,8 @@
 #include "CodeBlock.h"
 #include <stdio.h>
 #include <string.h>
+#include <wtf/SafeStrerror.h>
+#include <wtf/text/MakeString.h>
 
 namespace JSC {
 
@@ -43,9 +45,9 @@ FunctionAllowlist::FunctionAllowlist(const char* filename)
     if (!f) {
         if (errno == ENOENT) {
             m_hasActiveAllowlist = true;
-            m_entries.add(filename);
+            m_entries.add(String::fromLatin1(filename));
         } else
-            dataLogF("Failed to open file %s. Did you add the file-read-data entitlement to WebProcess.sb? Error code: %s\n", filename, strerror(errno));
+            dataLogF("Failed to open file %s. Did you add the file-read-data entitlement to WebProcess.sb? Error code: %s\n", filename, safeStrerror(errno).data());
         return;
     }
 
@@ -68,12 +70,12 @@ FunctionAllowlist::FunctionAllowlist(const char* filename)
         if (!length)
             continue;
         
-        m_entries.add(String(line, length));
+        m_entries.add(String({ line, length }));
     }
 
     int result = fclose(f);
     if (result)
-        dataLogF("Failed to close file %s: %s\n", filename, strerror(errno));
+        dataLogF("Failed to close file %s: %s\n", filename, safeStrerror(errno).data());
 }
 
 bool FunctionAllowlist::contains(CodeBlock* codeBlock) const
@@ -84,15 +86,32 @@ bool FunctionAllowlist::contains(CodeBlock* codeBlock) const
     if (m_entries.isEmpty())
         return false;
 
-    String name = String::fromUTF8(codeBlock->inferredName());
+    String name = String::fromUTF8(codeBlock->inferredName().span());
     if (m_entries.contains(name))
         return true;
 
-    String hash = String::fromUTF8(codeBlock->hashAsStringIfPossible());
+    String hash = String::fromUTF8(codeBlock->hashAsStringIfPossible().span());
     if (m_entries.contains(hash))
         return true;
 
-    return m_entries.contains(name + '#' + hash);
+    return m_entries.contains(makeString(name, '#', hash));
+}
+
+bool FunctionAllowlist::shouldDumpWasmFunction(uint32_t index) const
+{
+    if (!m_hasActiveAllowlist)
+        return false;
+    return containsWasmFunction(index);
+}
+
+bool FunctionAllowlist::containsWasmFunction(uint32_t index) const
+{
+    if (!m_hasActiveAllowlist)
+        return true;
+
+    if (m_entries.isEmpty())
+        return false;
+    return m_entries.contains(String::number(index));
 }
 
 } // namespace JSC

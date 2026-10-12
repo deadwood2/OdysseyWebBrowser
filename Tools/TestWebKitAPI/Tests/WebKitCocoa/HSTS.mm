@@ -27,7 +27,6 @@
 
 #import "HTTPServer.h"
 #import "PlatformUtilities.h"
-#import "TCPServer.h"
 #import "TestNavigationDelegate.h"
 #import "TestUIDelegate.h"
 #import "Utilities.h"
@@ -37,15 +36,9 @@
 
 namespace TestWebKitAPI {
 
-#if HAVE(SSL)
+#if HAVE(CFNETWORK_NSURLSESSION_HSTS_WITH_UNTRUSTED_ROOT)
 
-static bool hasRadar80550123()
-{
-    // FIXME: Replace this with a HAS macro once rdar://80550123 is in a build.
-    return [[NSURLSessionConfiguration ephemeralSessionConfiguration] respondsToSelector:@selector(_allowsHSTSWithUntrustedRootCertificate)];
-}
-
-std::pair<RetainPtr<WKWebView>, RetainPtr<TestNavigationDelegate>> hstsWebViewAndDelegate(const TCPServer& httpsServer, const HTTPServer& httpServer)
+std::pair<RetainPtr<WKWebView>, RetainPtr<TestNavigationDelegate>> hstsWebViewAndDelegate(const HTTPServer& httpsServer, const HTTPServer& httpServer)
 {
     auto storeConfiguration = adoptNS([[_WKWebsiteDataStoreConfiguration alloc] initNonPersistentConfiguration]);
     [storeConfiguration setHTTPSProxy:[NSURL URLWithString:[NSString stringWithFormat:@"https://127.0.0.1:%d/", httpsServer.port()]]];
@@ -54,6 +47,7 @@ std::pair<RetainPtr<WKWebView>, RetainPtr<TestNavigationDelegate>> hstsWebViewAn
     [storeConfiguration setAllowsHSTSWithUntrustedRootCertificate:YES];
     auto viewConfiguration = adoptNS([WKWebViewConfiguration new]);
     [viewConfiguration setWebsiteDataStore:adoptNS([[WKWebsiteDataStore alloc] _initWithConfiguration:storeConfiguration.get()]).get()];
+    [[viewConfiguration websiteDataStore] _setResourceLoadStatisticsEnabled:YES];
     auto webView = adoptNS([[WKWebView alloc] initWithFrame:CGRectMake(0, 0, 100, 100) configuration:viewConfiguration.get()]);
     auto delegate = adoptNS([TestNavigationDelegate new]);
     [webView setNavigationDelegate:delegate.get()];
@@ -65,30 +59,16 @@ std::pair<RetainPtr<WKWebView>, RetainPtr<TestNavigationDelegate>> hstsWebViewAn
     return { WTFMove(webView), WTFMove(delegate) };
 }
 
-static TCPServer hstsServer(size_t replies)
+static HTTPServer hstsServer()
 {
-    // FIXME: Use nw_framer_t to support HTTPS proxies in HTTPServer and remove TCPServer.
-    return TCPServer(TCPServer::Protocol::HTTPSProxy, [=] (SSL* ssl) {
-        for (size_t i = 0; i < replies; i++) {
-            TCPServer::read(ssl);
-            const char* response =
-                "HTTP/1.1 200 OK\r\n"
-                "Content-Length: 0\r\n"
-                "Strict-Transport-Security: max-age=31536000\r\n"
-                "\r\n";
-            TCPServer::write(ssl, response, strlen(response));
-        }
-    });
+    return HTTPServer({{ "/"_s, {{{"Strict-Transport-Security"_s , "max-age=31536000"_s}}, emptyString() }}}, HTTPServer::Protocol::HttpsProxy);
 }
 
 TEST(HSTS, Basic)
 {
-    if (!hasRadar80550123())
-        return;
+    auto httpsServer = hstsServer();
 
-    auto httpsServer = hstsServer(2);
-
-    HTTPServer httpServer({{ "http://example.com/", { {{ "Strict-Transport-Security", "max-age=31536000"}}, "hi" }}});
+    HTTPServer httpServer({{ "http://example.com/"_s, { {{ "Strict-Transport-Security"_s, "max-age=31536000"_s}}, "hi"_s }}});
 
     auto [webView, delegate] = hstsWebViewAndDelegate(httpsServer, httpServer);
 
@@ -112,23 +92,48 @@ TEST(HSTS, Basic)
     EXPECT_WK_STREQ(webView.get().URL.absoluteString, "https://example.com/");
 }
 
+TEST(HSTS, ThirdPartyFetch)
+{
+    auto httpsServer = hstsServer();
+
+    constexpr auto html = "<script>"
+        "async function doTest() {"
+        "  const response = await fetch('http://example.com/');"
+        "  alert(await response.text() + (response.redirected ? ', redirected' : ', not redirected'));"
+        "}"
+        "doTest();"
+        "</script>"_s;
+
+    HTTPServer httpServer({
+        { "http://example.com/"_s, { {{ "Access-Control-Allow-Origin"_s, "http://example.org"_s }}, "hi"_s }},
+        { "http://example.org/"_s, { html }},
+    });
+
+    auto [webView, delegate] = hstsWebViewAndDelegate(httpsServer, httpServer);
+
+    [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"https://example.com/"]]];
+    [delegate waitForDidFinishNavigation];
+    EXPECT_WK_STREQ(webView.get().URL.absoluteString, "https://example.com/");
+
+    [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"http://example.org/"]]];
+    EXPECT_WK_STREQ([webView _test_waitForAlert], "hi, not redirected");
+    EXPECT_EQ(httpServer.totalRequests(), 2u);
+}
+
 TEST(HSTS, ThirdParty)
 {
-    if (!hasRadar80550123())
-        return;
+    auto httpsServer = hstsServer();
 
-    auto httpsServer = hstsServer(1);
-
-    const char* html = "<script>"
+    constexpr auto html = "<script>"
         "var xhr = new XMLHttpRequest();"
         "xhr.open('GET', 'http://example.com/');"
         "xhr.onreadystatechange = function () { if(xhr.readyState == 4) { alert(xhr.responseURL + ' ' + xhr.responseText) } };"
         "xhr.send();"
-        "</script>";
+        "</script>"_s;
     
     HTTPServer httpServer({
-        { "http://example.com/", { {{ "Access-Control-Allow-Origin", "http://example.org" }}, "hi" }},
-        { "http://example.org/", { html }},
+        { "http://example.com/"_s, { {{ "Access-Control-Allow-Origin"_s, "http://example.org"_s }}, "hi"_s }},
+        { "http://example.org/"_s, { html }},
     });
     
     auto [webView, delegate] = hstsWebViewAndDelegate(httpsServer, httpServer);
@@ -144,14 +149,11 @@ TEST(HSTS, ThirdParty)
 
 TEST(HSTS, CrossOriginRedirect)
 {
-    if (!hasRadar80550123())
-        return;
-
-    auto httpsServer = hstsServer(2);
+    auto httpsServer = hstsServer();
 
     HTTPServer httpServer({
-        { "http://example.com/", { "hi" }},
-        { "http://example.org/", { 301, {{ "Location", "http://example.com/" }} } },
+        { "http://example.com/"_s, { "hi"_s }},
+        { "http://example.org/"_s, { 301, {{ "Location"_s, "http://example.com/"_s }} } },
     });
 
     auto [webView, delegate] = hstsWebViewAndDelegate(httpsServer, httpServer);
@@ -166,6 +168,59 @@ TEST(HSTS, CrossOriginRedirect)
     EXPECT_EQ(httpServer.totalRequests(), 1u);
 }
 
-#endif // HAVE(SSL)
+// FIXME when rdar://108167361 is resolved
+#if PLATFORM(MAC) && defined(NDEBUG)
+TEST(HSTS, DISABLED_Preconnect)
+#else
+TEST(HSTS, Preconnect)
+#endif
+{
+    bool responseSent { false };
+    bool preconnectSuccessful { false };
+    HTTPServer server([&preconnectSuccessful, &responseSent] (Connection connection) mutable {
+        if (!responseSent) {
+            connection.receiveHTTPRequest([connection, &responseSent] (Vector<char>) {
+                auto response =
+                "HTTP/1.1 200 OK\r\n"
+                "Content-Length: 3\r\n"
+                "Strict-Transport-Security: max-age=31536000\r\n"
+                "\r\n"
+                "hi!"_s;
+                connection.send(response, [connection, &responseSent] () mutable {
+                    responseSent = true;
+                });
+            });
+            return;
+        }
+        preconnectSuccessful = true;
+    }, HTTPServer::Protocol::HttpsProxy);
+
+    auto storeConfiguration = adoptNS([[_WKWebsiteDataStoreConfiguration alloc] initNonPersistentConfiguration]);
+    [storeConfiguration setHTTPSProxy:[NSURL URLWithString:[NSString stringWithFormat:@"https://127.0.0.1:%d/", server.port()]]];
+    [storeConfiguration setAllowsHSTSWithUntrustedRootCertificate:YES];
+    auto viewConfiguration = adoptNS([WKWebViewConfiguration new]);
+    [viewConfiguration setWebsiteDataStore:adoptNS([[WKWebsiteDataStore alloc] _initWithConfiguration:storeConfiguration.get()]).get()];
+    auto webView = adoptNS([[WKWebView alloc] initWithFrame:CGRectZero configuration:viewConfiguration.get()]);
+    auto delegate = adoptNS([TestNavigationDelegate new]);
+    [webView setNavigationDelegate:delegate.get()];
+    delegate.get().didReceiveAuthenticationChallenge = ^(WKWebView *, NSURLAuthenticationChallenge *challenge, void (^completionHandler)(NSURLSessionAuthChallengeDisposition, NSURLCredential *)) {
+        EXPECT_WK_STREQ(challenge.protectionSpace.authenticationMethod, NSURLAuthenticationMethodServerTrust);
+        completionHandler(NSURLSessionAuthChallengeUseCredential, [NSURLCredential credentialForTrust:challenge.protectionSpace.serverTrust]);
+    };
+
+    [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"https://example.com/"]]];
+    TestWebKitAPI::Util::run(&responseSent);
+
+    bool cancelledAllConnections { false };
+    server.terminateAllConnections([&] {
+        cancelledAllConnections = true;
+    });
+    TestWebKitAPI::Util::run(&cancelledAllConnections);
+
+    [webView _preconnectToServer:[NSURL URLWithString:@"http://example.com/"]];
+    TestWebKitAPI::Util::run(&preconnectSuccessful);
+}
+
+#endif // HAVE(CFNETWORK_NSURLSESSION_HSTS_WITH_UNTRUSTED_ROOT)
 
 } // namespace TestWebKitAPI

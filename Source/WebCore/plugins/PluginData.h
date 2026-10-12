@@ -1,6 +1,6 @@
 /*
     Copyright (C) 2008 Nokia Corporation and/or its subsidiary(-ies)
-    Copyright (C) 2015-2020 Apple Inc. All rights reserved.
+    Copyright (C) 2015-2022 Apple Inc. All rights reserved.
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Library General Public
@@ -20,7 +20,6 @@
 
 #pragma once
 
-#include <wtf/EnumTraits.h>
 #include <wtf/RefCounted.h>
 #include <wtf/URL.h>
 #include <wtf/Vector.h>
@@ -50,15 +49,12 @@ enum class PluginLoadClientPolicy : uint8_t {
 };
 
 struct MimeClassInfo {
-    String type;
+    AtomString type;
     String desc;
     Vector<String> extensions;
-};
 
-inline bool operator==(const MimeClassInfo& a, const MimeClassInfo& b)
-{
-    return a.type == b.type && a.desc == b.desc && a.extensions == b.extensions;
-}
+    friend bool operator==(const MimeClassInfo&, const MimeClassInfo&) = default;
+};
 
 struct PluginInfo {
     String name;
@@ -73,23 +69,13 @@ struct PluginInfo {
 #if PLATFORM(MAC)
     String versionString;
 #endif
-};
 
-inline bool operator==(PluginInfo& a, PluginInfo& b)
-{
-    bool result = a.name == b.name && a.file == b.file && a.desc == b.desc && a.mimes == b.mimes && a.isApplicationPlugin == b.isApplicationPlugin && a.clientLoadPolicy == b.clientLoadPolicy && a.bundleIdentifier == b.bundleIdentifier;
-#if PLATFORM(MAC)
-    result = result && a.versionString == b.versionString;
-#endif
-    return result;
-}
+    friend bool operator==(const PluginInfo&, const PluginInfo&) = default;
+};
 
 struct SupportedPluginIdentifier {
     String matchingDomain;
     String pluginIdentifier;
-
-    template<class Encoder> void encode(Encoder&) const;
-    template<class Decoder> static std::optional<SupportedPluginIdentifier> decode(Decoder&);
 };
 
 // FIXME: merge with PluginDatabase in the future
@@ -99,8 +85,6 @@ public:
 
     const Vector<PluginInfo>& plugins() const { return m_plugins; }
     WEBCORE_EXPORT const Vector<PluginInfo>& webVisiblePlugins() const;
-    std::pair<Vector<PluginInfo>, Vector<PluginInfo>> publiclyVisiblePluginsAndAdditionalWebVisiblePlugins() const;
-
     WEBCORE_EXPORT Vector<MimeClassInfo> webVisibleMimeTypes() const;
 
     enum AllowedPluginTypes {
@@ -112,6 +96,10 @@ public:
     WEBCORE_EXPORT bool supportsWebVisibleMimeTypeForURL(const String& mimeType, const AllowedPluginTypes, const URL&) const;
 
     String pluginFileForWebVisibleMimeType(const String& mimeType) const;
+
+    const std::optional<PluginInfo>& builtInPDFPlugin() const { return m_builtInPDFPluginInfo; }
+
+    static PluginInfo dummyPDFPluginInfo();
 
 private:
     explicit PluginData(Page&);
@@ -127,49 +115,14 @@ protected:
         std::optional<Vector<PluginInfo>> pluginList;
     };
     mutable CachedVisiblePlugins m_cachedVisiblePlugins;
+    std::optional<PluginInfo> m_builtInPDFPluginInfo;
 };
 
 inline bool isSupportedPlugin(const Vector<SupportedPluginIdentifier>& pluginIdentifiers, const URL& pageURL, const String& pluginIdentifier)
 {
-    return pluginIdentifiers.findMatching([&] (auto&& plugin) {
+    return pluginIdentifiers.findIf([&] (auto&& plugin) {
         return pageURL.isMatchingDomain(plugin.matchingDomain) && plugin.pluginIdentifier == pluginIdentifier;
     }) != notFound;
 }
 
-template<class Decoder> inline std::optional<SupportedPluginIdentifier> SupportedPluginIdentifier::decode(Decoder& decoder)
-{
-    std::optional<String> matchingDomain;
-    decoder >> matchingDomain;
-    if (!matchingDomain)
-        return std::nullopt;
-
-    std::optional<String> pluginIdentifier;
-    decoder >> pluginIdentifier;
-    if (!pluginIdentifier)
-        return std::nullopt;
-
-    return SupportedPluginIdentifier { WTFMove(matchingDomain.value()), WTFMove(pluginIdentifier.value()) };
-}
-
-template<class Encoder> inline void SupportedPluginIdentifier::encode(Encoder& encoder) const
-{
-    encoder << matchingDomain;
-    encoder << pluginIdentifier;
-}
-
 } // namespace WebCore
-
-namespace WTF {
-
-template<> struct EnumTraits<WebCore::PluginLoadClientPolicy> {
-    using values = EnumValues<
-        WebCore::PluginLoadClientPolicy,
-        WebCore::PluginLoadClientPolicy::Undefined,
-        WebCore::PluginLoadClientPolicy::Block,
-        WebCore::PluginLoadClientPolicy::Ask,
-        WebCore::PluginLoadClientPolicy::Allow,
-        WebCore::PluginLoadClientPolicy::AllowAlways
-    >;
-};
-
-} // namespace WTF

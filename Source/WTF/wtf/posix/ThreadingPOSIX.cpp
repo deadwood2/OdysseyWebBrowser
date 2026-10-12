@@ -35,20 +35,36 @@
 #if USE(PTHREADS)
 
 #include <errno.h>
+#include <wtf/MonotonicTime.h>
 #include <wtf/NeverDestroyed.h>
+#include <wtf/SafeStrerror.h>
 #include <wtf/StdLibExtras.h>
 #include <wtf/ThreadingPrimitives.h>
 #include <wtf/WTFConfig.h>
 #include <wtf/WordLock.h>
 
-#if OS(LINUX)
-#include <sys/prctl.h>
+#if OS(MORPHOS)
+#include <semaphore.h>
+#include <sys/mman.h>
+#include <unistd.h>
+#include <pthread.h>
+extern "C" {
+int pthread_setname_np(pthread_t thread, const char *name);
+#include <exec/tasks.h>
+#include <exec/libraries.h>
+#include <exec/system.h>
+#include <proto/exec.h>
+}
 #endif
 
-#if !COMPILER(MSVC)
-#include <limits.h>
+#if OS(LINUX)
 #include <sched.h>
-#include <sys/time.h>
+#include <sys/prctl.h>
+#include <sys/syscall.h>
+#include <wtf/linux/RealTimeThreads.h>
+#ifndef SCHED_RESET_ON_FORK
+#define SCHED_RESET_ON_FORK 0x40000000
+#endif
 #endif
 
 #if !OS(DARWIN) && OS(UNIX)
@@ -69,31 +85,13 @@
 #include <mach/thread_switch.h>
 #endif
 
-#if OS(LINUX)
-#include <sys/syscall.h>
-#endif
-
-#if OS(MORPHOS)
-#include <semaphore.h>
-#include <sys/mman.h>
-#include <unistd.h>
-#include <pthread.h>
-extern "C" {
-int pthread_setname_np(pthread_t thread, const char *name);
-#include <exec/tasks.h>
-#include <exec/libraries.h>
-#include <exec/system.h>
-#include <proto/exec.h>
-}
+#if OS(QNX)
+#define SA_RESTART 0
 #endif
 
 namespace WTF {
 
-static Lock globalSuspendLock;
-
-Thread::~Thread()
-{
-}
+Thread::~Thread() = default;
 
 #if !OS(DARWIN)
 class Semaphore final {
@@ -277,15 +275,55 @@ dispatch_qos_class_t Thread::dispatchQOSClass(QOS qos)
 }
 #endif
 
-bool Thread::establishHandle(NewThreadContext* context, std::optional<size_t> stackSize, QOS qos)
+#if HAVE(SCHEDULING_POLICIES) || OS(LINUX)
+static int schedPolicy(Thread::SchedulingPolicy schedulingPolicy)
+{
+    switch (schedulingPolicy) {
+    case Thread::SchedulingPolicy::FIFO:
+        return SCHED_FIFO;
+    case Thread::SchedulingPolicy::Realtime:
+        return SCHED_RR;
+    case Thread::SchedulingPolicy::Other:
+        return SCHED_OTHER;
+    }
+    ASSERT_NOT_REACHED();
+    return SCHED_OTHER;
+}
+#endif
+
+#if OS(LINUX)
+static int schedPolicy(Thread::QOS qos, Thread::SchedulingPolicy schedulingPolicy)
+{
+    // A specific scheduling policy can override the implied policy from QOS
+    auto policy = schedPolicy(schedulingPolicy);
+    if (policy != SCHED_OTHER)
+        return policy;
+
+    switch (qos) {
+    case Thread::QOS::UserInteractive:
+        return SCHED_RR;
+    case Thread::QOS::UserInitiated:
+    case Thread::QOS::Default:
+        return SCHED_OTHER;
+    case Thread::QOS::Utility:
+        return SCHED_BATCH;
+    case Thread::QOS::Background:
+        return SCHED_IDLE;
+    }
+    RELEASE_ASSERT_NOT_REACHED();
+}
+#endif
+
+bool Thread::establishHandle(NewThreadContext* context, std::optional<size_t> stackSize, QOS qos, SchedulingPolicy schedulingPolicy)
 {
     pthread_t threadHandle;
     pthread_attr_t attr;
     pthread_attr_init(&attr);
 #if HAVE(QOS_CLASSES)
     pthread_attr_set_qos_class_np(&attr, dispatchQOSClass(qos), 0);
-#else
-    UNUSED_PARAM(qos);
+#endif
+#if HAVE(SCHEDULING_POLICIES)
+    pthread_attr_setschedpolicy(&attr, schedPolicy(schedulingPolicy));
 #endif
     if (stackSize)
         pthread_attr_setstacksize(&attr, stackSize.value());
@@ -295,6 +333,26 @@ bool Thread::establishHandle(NewThreadContext* context, std::optional<size_t> st
         LOG_ERROR("Failed to create pthread at entry point %p with context %p", wtfThreadEntryPoint, context);
         return false;
     }
+
+#if OS(LINUX)
+    int policy = schedPolicy(qos, schedulingPolicy);
+    if (policy == SCHED_RR)
+        RealTimeThreads::singleton().registerThread(*this);
+    else {
+        struct sched_param param = { };
+        error = pthread_setschedparam(threadHandle, policy | SCHED_RESET_ON_FORK, &param);
+        if (error)
+            LOG_ERROR("Failed to set sched policy %d for thread %ld: %s", policy, threadHandle, safeStrerror(error).data());
+    }
+#else
+#if !HAVE(QOS_CLASSES)
+    UNUSED_PARAM(qos);
+#endif
+#if !HAVE(SCHEDULING_POLICIES)
+    UNUSED_PARAM(schedulingPolicy);
+#endif
+#endif
+
     establishPlatformSpecificHandle(threadHandle);
     return true;
 }
@@ -343,6 +401,23 @@ void Thread::changePriority(int delta)
     pthread_setschedparam(m_handle, policy, &param);
 #endif
 }
+
+#if HAVE(THREAD_TIME_CONSTRAINTS)
+void Thread::setThreadTimeConstraints(MonotonicTime period, MonotonicTime nominalComputation, MonotonicTime constraint, bool isPremptable)
+{
+#if OS(DARWIN)
+    thread_time_constraint_policy policy { };
+    policy.period = period.toMachAbsoluteTime();
+    policy.computation = nominalComputation.toMachAbsoluteTime();
+    policy.constraint = constraint.toMachAbsoluteTime();
+    policy.preemptible = isPremptable;
+    if (auto error = thread_policy_set(machThread(), THREAD_TIME_CONSTRAINT_POLICY, (thread_policy_t)&policy, THREAD_TIME_CONSTRAINT_POLICY_COUNT))
+        LOG_ERROR("Thread %p failed to set time constraints with error %d", this, error);
+#else
+    ASSERT_NOT_REACHED();
+#endif
+}
+#endif
 
 int Thread::waitForCompletion()
 {
@@ -413,21 +488,9 @@ bool Thread::signal(int signalNumber)
     return !errNo; // A 0 errNo means success.
 }
 
-auto Thread::suspend() -> Expected<void, PlatformSuspendError>
+auto Thread::suspend(const ThreadSuspendLocker&) -> Expected<void, PlatformSuspendError>
 {
     RELEASE_ASSERT_WITH_MESSAGE(this != &Thread::current(), "We do not support suspending the current thread itself.");
-    // During suspend, suspend or resume should not be executed from the other threads.
-    // We use global lock instead of per thread lock.
-    // Consider the following case, there are threads A and B.
-    // And A attempt to suspend B and B attempt to suspend A.
-    // A and B send signals. And later, signals are delivered to A and B.
-    // In that case, both will be suspended.
-    //
-    // And it is important to use a global lock to suspend and resume. Let's consider using per-thread lock.
-    // Your issuing thread (A) attempts to suspend the target thread (B). Then, you will suspend the thread (C) additionally.
-    // This case frequently happens if you stop threads to perform stack scanning. But thread (B) may hold the lock of thread (C).
-    // In that case, dead lock happens. Using global lock here avoids this dead lock.
-    Locker locker { globalSuspendLock };
 #if OS(DARWIN)
     kern_return_t result = thread_suspend(m_platformThread);
     if (result != KERN_SUCCESS)
@@ -451,14 +514,13 @@ auto Thread::suspend() -> Expected<void, PlatformSuspendError>
         }
     }
     ++m_suspendCount;
-#endif
     return { };
+#endif
+	return { };
 }
 
-void Thread::resume()
+void Thread::resume(const ThreadSuspendLocker&)
 {
-    // During resume, suspend or resume should not be executed from the other threads.
-    Locker locker { globalSuspendLock };
 #if OS(DARWIN)
     thread_resume(m_platformThread);
 #elif !OS(MORPHOS)
@@ -514,9 +576,8 @@ static ThreadStateMetadata threadStateMetadata()
 }
 #endif // OS(DARWIN)
 
-size_t Thread::getRegisters(PlatformRegisters& registers)
+size_t Thread::getRegisters(const ThreadSuspendLocker&, PlatformRegisters& registers)
 {
-    Locker locker { globalSuspendLock };
 #if OS(DARWIN)
     auto metadata = threadStateMetadata();
     kern_return_t result = thread_get_state(m_platformThread, metadata.flavor, (thread_state_t)&registers, &metadata.userCount);
@@ -596,6 +657,10 @@ void Thread::destructTLS(void* data)
     _pthread_setspecific_direct(WTF_THREAD_DATA_KEY, thread);
     pthread_key_init_np(WTF_THREAD_DATA_KEY, &destructTLS);
 #endif
+    // Destructor of ClientData can rely on Thread::current() (e.g. AtomStringTable).
+    // We destroy it after re-setting Thread::current() so that we can ensure destruction
+    // can still access to it.
+    thread->m_clientData = nullptr;
 }
 
 Mutex::~Mutex()
@@ -634,25 +699,44 @@ ThreadCondition::~ThreadCondition()
     pthread_cond_destroy(&m_condition);
 }
     
+#if OS(MORPHOS)
+bool ThreadCondition::wait(Mutex& mutex)
+{
+    return pthread_cond_wait(&m_condition, &mutex.impl()) == 0;
+}
+#else
 void ThreadCondition::wait(Mutex& mutex)
 {
     int result = pthread_cond_wait(&m_condition, &mutex.impl());
     ASSERT_UNUSED(result, !result);
 }
+#endif
 
 bool ThreadCondition::timedWait(Mutex& mutex, WallTime absoluteTime)
 {
+    if (absoluteTime.isInfinity()) {
+        if (absoluteTime == -WallTime::infinity())
+            return false;
+#if OS(MORPHOS)
+        return wait(mutex);
+#else
+        wait(mutex);
+        return true;
+#endif
+    }
+
     if (absoluteTime < WallTime::now())
         return false;
 
-    if (absoluteTime > WallTime::fromRawSeconds(INT_MAX)) {
-        return pthread_cond_wait(&m_condition, &mutex.impl()) == 0;
+    if (absoluteTime > WallTime::fromRawSeconds(static_cast<double>(std::numeric_limits<time_t>::max()))) {
+        wait(mutex);
+        return true;
     }
 
     double rawSeconds = absoluteTime.secondsSinceEpoch().value();
 
-    int timeSeconds = static_cast<int>(rawSeconds);
-    int timeNanoseconds = static_cast<int>((rawSeconds - timeSeconds) * 1E9);
+    time_t timeSeconds = static_cast<time_t>(rawSeconds);
+    long timeNanoseconds = static_cast<long>((rawSeconds - timeSeconds) * 1E9);
 
     timespec targetTime;
     targetTime.tv_sec = timeSeconds;

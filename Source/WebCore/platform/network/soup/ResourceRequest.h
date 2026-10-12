@@ -35,6 +35,13 @@ namespace WebCore {
 
 class BlobRegistryImpl;
 
+struct ResourceRequestPlatformData {
+    ResourceRequestBase::RequestData requestData;
+    bool acceptEncoding;
+    uint16_t redirectCount;
+};
+using ResourceRequestData = std::variant<ResourceRequestBase::RequestData, ResourceRequestPlatformData>;
+
 class ResourceRequest : public ResourceRequestBase {
 public:
     explicit ResourceRequest(const String& url)
@@ -58,9 +65,22 @@ public:
     {
     }
 
-    GRefPtr<SoupMessage> createSoupMessage(BlobRegistryImpl&) const;
+    ResourceRequest(ResourceRequestBase&& base)
+        : ResourceRequestBase(WTFMove(base))
+    {
+    }
 
-    void updateFromDelegatePreservingOldProperties(const ResourceRequest& delegateProvidedRequest) { *this = delegateProvidedRequest; }
+    explicit ResourceRequest(ResourceRequestPlatformData&& platformData)
+        : ResourceRequestBase(WTFMove(platformData.requestData))
+        , m_acceptEncoding(platformData.acceptEncoding)
+        , m_redirectCount(platformData.redirectCount)
+    {
+    }
+
+    GRefPtr<SoupMessage> createSoupMessage(BlobRegistryImpl&) const;
+    GRefPtr<GInputStream> createBodyStream() const;
+
+    void updateFromDelegatePreservingOldProperties(const ResourceRequest& delegateProvidedRequest);
 
     bool acceptEncoding() const { return m_acceptEncoding; }
     void setAcceptEncoding(bool acceptEncoding) { m_acceptEncoding = acceptEncoding; }
@@ -72,8 +92,11 @@ public:
     void updateSoupMessageHeaders(SoupMessageHeaders*) const;
     void updateFromSoupMessageHeaders(SoupMessageHeaders*);
 
-    template<class Encoder> void encodeWithPlatformData(Encoder&) const;
-    template<class Decoder> WARN_UNUSED_RETURN bool decodeWithPlatformData(Decoder&);
+    // We only need to encode platform data if acceptEncoding or redirectCount are not the default.
+    bool encodingRequiresPlatformData() const { return !m_acceptEncoding || m_redirectCount; }
+
+    WEBCORE_EXPORT static ResourceRequest fromResourceRequestData(ResourceRequestData);
+    WEBCORE_EXPORT ResourceRequestData getRequestDataToSerialize() const;
 
 private:
     friend class ResourceRequestBase;
@@ -94,51 +117,6 @@ private:
     bool m_acceptEncoding { true };
     uint16_t m_redirectCount { 0 };
 };
-
-template<class Encoder>
-void ResourceRequest::encodeWithPlatformData(Encoder& encoder) const
-{
-    encodeBase(encoder);
-
-    // FIXME: Do not encode HTTP message body.
-    // 1. It can be large and thus costly to send across.
-    // 2. It is misleading to provide a body with some requests, while others use body streams, which cannot be serialized at all.
-    encoder << static_cast<bool>(m_httpBody);
-    if (m_httpBody)
-        encoder << m_httpBody->flattenToString();
-
-    encoder << static_cast<bool>(m_acceptEncoding);
-    encoder << m_redirectCount;
-}
-
-template<class Decoder>
-bool ResourceRequest::decodeWithPlatformData(Decoder& decoder)
-{
-    if (!decodeBase(decoder))
-        return false;
-
-    bool hasHTTPBody;
-    if (!decoder.decode(hasHTTPBody))
-        return false;
-    if (hasHTTPBody) {
-        String httpBody;
-        if (!decoder.decode(httpBody))
-            return false;
-        setHTTPBody(FormData::create(httpBody.utf8()));
-    }
-
-    bool acceptEncoding;
-    if (!decoder.decode(acceptEncoding))
-        return false;
-    m_acceptEncoding = acceptEncoding;
-
-    uint16_t redirectCount;
-    if (!decoder.decode(redirectCount))
-        return false;
-    m_redirectCount = redirectCount;
-
-    return true;
-}
 
 } // namespace WebCore
 

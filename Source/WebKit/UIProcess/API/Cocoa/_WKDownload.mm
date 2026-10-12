@@ -32,7 +32,10 @@
 #import "WKFrameInfoInternal.h"
 #import "WKNSData.h"
 #import "WKWebViewInternal.h"
+#import "WebPageProxy.h"
 #import <wtf/WeakObjCPtr.h>
+#import <wtf/cocoa/VectorCocoa.h>
+
 
 ALLOW_DEPRECATED_DECLARATIONS_BEGIN
 static NSMapTable<WKDownload *, _WKDownload *> *downloadWrapperMap()
@@ -43,6 +46,8 @@ static NSMapTable<WKDownload *, _WKDownload *> *downloadWrapperMap()
     return table.get().get();
 }
 ALLOW_DEPRECATED_DECLARATIONS_END
+
+// FIXME: Remove when rdar://133558571, rdar://133558520, rdar://133498655, rdar://133498564, rdar://133498491, rdar://133495572, and rdar://125569813 are complete.
 
 IGNORE_WARNINGS_BEGIN("deprecated-implementations")
 @implementation _WKDownload
@@ -67,7 +72,7 @@ IGNORE_WARNINGS_END
 
 - (void)cancel
 {
-    _download->_download->cancel([download = makeRef(*_download->_download)] (auto*) {
+    _download->_download->cancel([download = Ref { *_download->_download }] (auto*) {
         download->client().legacyDidCancel(download.get());
     });
 }

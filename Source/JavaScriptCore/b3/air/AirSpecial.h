@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -32,6 +32,7 @@
 #include <wtf/FastMalloc.h>
 #include <wtf/Noncopyable.h>
 #include <wtf/ScopedLambda.h>
+#include <wtf/TZoneMalloc.h>
 #include <wtf/text/CString.h>
 
 namespace JSC { namespace B3 { namespace Air {
@@ -41,7 +42,7 @@ struct GenerationContext;
 
 class Special {
     WTF_MAKE_NONCOPYABLE(Special);
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED_EXPORT(Special, JS_EXPORT_PRIVATE);
 public:
     static const char* const dumpPrefix;
     
@@ -67,7 +68,7 @@ public:
     //    Air didn't duplicate code or that such duplication didn't cause any interesting changes to
     //    register assignment.
     //
-    // 2) Have the Special maintain a HashMap<Inst*, RegisterSet>. This works because the analysis
+    // 2) Have the Special maintain a HashMap<Inst*, RegisterSetBuilder>. This works because the analysis
     //    that feeds into this call is performed just before code generation and there is no way
     //    for the Vector<>'s that contain the Insts to be reallocated. This allows generate() to
     //    consult the HashMap.
@@ -76,17 +77,17 @@ public:
     //
     // Note that it's not possible to rely on reportUsedRegisters() being called in the same order
     // as generate(). If we could rely on that, then we could just have each Special instance
-    // maintain a Vector of RegisterSet's and then process that vector in the right order in
+    // maintain a Vector of RegisterSetBuilder's and then process that vector in the right order in
     // generate(). But, the ordering difference is unlikely to change since it would harm the
     // performance of the liveness analysis.
     //
     // Currently, we do (1) for B3 stackmaps.
-    virtual void reportUsedRegisters(Inst&, const RegisterSet&) = 0;
+    virtual void reportUsedRegisters(Inst&, const RegisterSetBuilder&) = 0;
     
     virtual MacroAssembler::Jump generate(Inst&, CCallHelpers&, GenerationContext&) = 0;
 
-    virtual RegisterSet extraEarlyClobberedRegs(Inst&) = 0;
-    virtual RegisterSet extraClobberedRegs(Inst&) = 0;
+    virtual RegisterSetBuilder extraEarlyClobberedRegs(Inst&) = 0;
+    virtual RegisterSetBuilder extraClobberedRegs(Inst&) = 0;
     
     // By default, this returns false.
     virtual bool isTerminal(Inst&);

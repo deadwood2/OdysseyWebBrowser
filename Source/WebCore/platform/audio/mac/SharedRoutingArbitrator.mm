@@ -28,15 +28,27 @@
 
 #if ENABLE(ROUTING_ARBITRATION) && HAVE(AVAUDIO_ROUTING_ARBITER)
 
+#import "Logging.h"
+#import <wtf/LoggerHelper.h>
 #import <wtf/NeverDestroyed.h>
 
 #import <pal/cocoa/AVFoundationSoftLink.h>
 
 namespace WebCore {
 
-UniqueRef<SharedRoutingArbitrator::Token> SharedRoutingArbitrator::Token::create()
+#define TOKEN_LOGIDENTIFIER(token) WTF::Logger::LogSiteIdentifier(logClassName(), __func__, token.logIdentifier())
+
+UniqueRef<SharedRoutingArbitratorToken> SharedRoutingArbitratorToken::create()
 {
-    return makeUniqueRef<Token>();
+    return makeUniqueRef<SharedRoutingArbitratorToken>();
+}
+
+const void* SharedRoutingArbitratorToken::logIdentifier() const
+{
+    if (!m_logIdentifier)
+        m_logIdentifier = LoggerHelper::uniqueLogIdentifier();
+
+    return m_logIdentifier;
 }
 
 SharedRoutingArbitrator& SharedRoutingArbitrator::sharedInstance()
@@ -45,20 +57,25 @@ SharedRoutingArbitrator& SharedRoutingArbitrator::sharedInstance()
     return instance;
 }
 
-bool SharedRoutingArbitrator::isInRoutingArbitrationForToken(const Token& token)
+bool SharedRoutingArbitrator::isInRoutingArbitrationForToken(const SharedRoutingArbitratorToken& token)
 {
     return m_tokens.contains(token);
 }
 
-void SharedRoutingArbitrator::beginRoutingArbitrationForToken(const Token& token, AudioSession::CategoryType requestedCategory, ArbitrationCallback&& callback)
+void SharedRoutingArbitrator::beginRoutingArbitrationForToken(const SharedRoutingArbitratorToken& token, AudioSession::CategoryType requestedCategory, ArbitrationCallback&& callback)
 {
     ASSERT(!isInRoutingArbitrationForToken(token));
 
+    auto identifier = TOKEN_LOGIDENTIFIER(token);
+    ALWAYS_LOG_IF(m_logger, identifier, requestedCategory);
+
     if (m_setupArbitrationOngoing) {
-        m_enqueuedCallbacks.append([this, weakToken = makeWeakPtr(token), callback = WTFMove(callback)] (RoutingArbitrationError error, DefaultRouteChanged routeChanged) mutable {
+        ALWAYS_LOG_IF(m_logger, identifier, "enqueing callback, arbitration ongoing");
+        m_enqueuedCallbacks.append([this, weakToken = WeakPtr { token }, callback = WTFMove(callback), identifier = WTFMove(identifier)] (RoutingArbitrationError error, DefaultRouteChanged routeChanged) mutable {
             if (error == RoutingArbitrationError::None && weakToken)
                 m_tokens.add(*weakToken);
 
+            ALWAYS_LOG_IF(m_logger, identifier, "pending arbitration finished, error = ", error, ", routeChanged = ", routeChanged);
             callback(error, routeChanged);
         });
 
@@ -68,10 +85,12 @@ void SharedRoutingArbitrator::beginRoutingArbitrationForToken(const Token& token
     if (m_currentCategory) {
         if (*m_currentCategory >= requestedCategory) {
             m_tokens.add(token);
+            ALWAYS_LOG_IF(m_logger, identifier, "ignoring, nothing to change");
             callback(RoutingArbitrationError::None, DefaultRouteChanged::No);
             return;
         }
 
+        ALWAYS_LOG_IF(m_logger, identifier, "leaving current arbitration");
         [[PAL::getAVAudioRoutingArbiterClass() sharedRoutingArbiter] leaveArbitration];
     }
 
@@ -93,21 +112,21 @@ void SharedRoutingArbitrator::beginRoutingArbitrationForToken(const Token& token
     }
 
     m_setupArbitrationOngoing = true;
-    m_enqueuedCallbacks.append([this, weakToken = makeWeakPtr(token), callback = WTFMove(callback)] (RoutingArbitrationError error, DefaultRouteChanged routeChanged) mutable {
+    m_enqueuedCallbacks.append([this, weakToken = WeakPtr { token }, callback = WTFMove(callback)] (RoutingArbitrationError error, DefaultRouteChanged routeChanged) mutable {
         if (error == RoutingArbitrationError::None && weakToken)
             m_tokens.add(*weakToken);
 
         callback(error, routeChanged);
     });
 
-    [[PAL::getAVAudioRoutingArbiterClass() sharedRoutingArbiter] beginArbitrationWithCategory:arbitrationCategory completionHandler:[this](BOOL defaultDeviceChanged, NSError * _Nullable error) {
-        callOnMainRunLoop([this, defaultDeviceChanged, error = retainPtr(error)] {
+    [[PAL::getAVAudioRoutingArbiterClass() sharedRoutingArbiter] beginArbitrationWithCategory:arbitrationCategory completionHandler:[this, identifier = WTFMove(identifier)](BOOL defaultDeviceChanged, NSError * _Nullable error) mutable {
+        callOnMainRunLoop([this, defaultDeviceChanged, error = retainPtr(error), identifier = WTFMove(identifier)] {
             if (error)
-                RELEASE_LOG_ERROR(Media, "SharedRoutingArbitrator::beginRoutingArbitrationForToken: %s failed with error %s:%s", convertEnumerationToString(*m_currentCategory).ascii().data(), [[error domain] UTF8String], [[error localizedDescription] UTF8String]);
+                ERROR_LOG(identifier, error.get(), ", routeChanged = ", !!defaultDeviceChanged);
 
-            // FIXME: Do we need to reset sample rate and buffer size for the new default device?
-            if (defaultDeviceChanged)
-                LOG(Media, "AudioSession::setCategory() - defaultDeviceChanged!");
+            // FIXME: Do we need to reset sample rate and buffer size if the default device changes?
+
+            ALWAYS_LOG_IF(m_logger, identifier, "arbitration completed, category = ", m_currentCategory ? *m_currentCategory : AudioSession::CategoryType::None, ", default device changed = ", !!defaultDeviceChanged);
 
             Vector<ArbitrationCallback> callbacks = WTFMove(m_enqueuedCallbacks);
             for (auto& callback : callbacks)
@@ -118,11 +137,13 @@ void SharedRoutingArbitrator::beginRoutingArbitrationForToken(const Token& token
     }];
 }
 
-void SharedRoutingArbitrator::endRoutingArbitrationForToken(const Token& token)
+void SharedRoutingArbitrator::endRoutingArbitrationForToken(const SharedRoutingArbitratorToken& token)
 {
+    ALWAYS_LOG_IF(m_logger, TOKEN_LOGIDENTIFIER(token));
+
     m_tokens.remove(token);
 
-    if (!m_tokens.computesEmpty())
+    if (!m_tokens.isEmptyIgnoringNullReferences())
         return;
 
     for (auto& callback : m_enqueuedCallbacks)
@@ -131,6 +152,23 @@ void SharedRoutingArbitrator::endRoutingArbitrationForToken(const Token& token)
     m_enqueuedCallbacks.clear();
     m_currentCategory.reset();
     [[PAL::getAVAudioRoutingArbiterClass() sharedRoutingArbiter] leaveArbitration];
+}
+
+void SharedRoutingArbitrator::setLogger(const Logger& logger)
+{
+    if (!m_logger)
+        m_logger = &logger;
+}
+
+const Logger& SharedRoutingArbitrator::logger()
+{
+    ASSERT(m_logger);
+    return *m_logger.get();
+}
+
+WTFLogChannel& SharedRoutingArbitrator::logChannel() const
+{
+    return LogMedia;
 }
 
 }

@@ -63,6 +63,7 @@
     SettingsController *settingsController = [[NSApplication sharedApplication] browserAppDelegate].settingsController;
     if (settingsController.customUserAgent)
         _webView.customUserAgent = settingsController.customUserAgent;
+    [[WebPreferences standardPreferences] setAttachmentElementEnabled: settingsController.attachmentElementEnabled != AttachmentElementEnabledStateDisabled ? YES : NO];
 
     [self didChangeSettings];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(userAgentDidChange:) name:kUserAgentChangedNotificationName object:nil];
@@ -76,9 +77,6 @@
     [_webView setFrameLoadDelegate:nil];
     [_webView setUIDelegate:nil];
     [_webView setResourceLoadDelegate:nil];
-    [_webView release];
-
-    [super dealloc];
 }
 
 - (void)userAgentDidChange:(NSNotification *)notification
@@ -152,6 +150,8 @@ static BOOL areEssentiallyEqual(double a, double b)
 
     if (action == @selector(saveAsPDF:))
         return NO;
+    if (action == @selector(saveAsImage:))
+        return NO;
     if (action == @selector(saveAsWebArchive:))
         return NO;
 
@@ -178,6 +178,8 @@ static BOOL areEssentiallyEqual(double a, double b)
         menuItem.state = _webView.alwaysShowHorizontalScroller ? NSControlStateValueOn : NSControlStateValueOff;
     else if (action == @selector(toggleAlwaysShowsVerticalScroller:))
         menuItem.state = _webView.alwaysShowVerticalScroller ? NSControlStateValueOn : NSControlStateValueOff;
+    else if (action == @selector(toggleMainThreadStalls:))
+        menuItem.state = self.mainThreadStallsEnabled ? NSControlStateValueOn : NSControlStateValueOff;
 
     if (action == @selector(setPageScale:))
         [menuItem setState:areEssentiallyEqual([_webView _viewScaleFactor], [self pageScaleForMenuItemTag:[menuItem tag]])];
@@ -214,7 +216,6 @@ static BOOL areEssentiallyEqual(double a, double b)
 - (void)windowWillClose:(NSNotification *)notification
 {
     [[[NSApplication sharedApplication] browserAppDelegate] browserWindowWillClose:self.window];
-    [self autorelease];
 }
 
 - (double)currentZoomFactor
@@ -324,17 +325,21 @@ static BOOL areEssentiallyEqual(double a, double b)
 {
     SettingsController *settings = [[NSApplication sharedApplication] browserAppDelegate].settingsController;
 
-    [[WebPreferences standardPreferences] setShowDebugBorders:settings.layerBordersVisible];
-    [[WebPreferences standardPreferences] setLegacyLineLayoutVisualCoverageEnabled:settings.legacyLineLayoutVisualCoverageEnabled];
-    [[WebPreferences standardPreferences] setShowRepaintCounter:settings.layerBordersVisible];
-    [[WebPreferences standardPreferences] setSuppressesIncrementalRendering:settings.incrementalRenderingSuppressed];
-    [[WebPreferences standardPreferences] setAcceleratedDrawingEnabled:settings.acceleratedDrawingEnabled];
-    [[WebPreferences standardPreferences] setSubpixelAntialiasedLayerTextEnabled:settings.subpixelAntialiasedLayerTextEnabled];
-    [[WebPreferences standardPreferences] setResourceLoadStatisticsEnabled:settings.resourceLoadStatisticsEnabled];
-    [[WebPreferences standardPreferences] setLargeImageAsyncDecodingEnabled:settings.largeImageAsyncDecodingEnabled];
-    [[WebPreferences standardPreferences] setAnimatedImageAsyncDecodingEnabled:settings.animatedImageAsyncDecodingEnabled];
-    [[WebPreferences standardPreferences] setColorFilterEnabled:settings.appleColorFilterEnabled];
-    [[WebPreferences standardPreferences] setPunchOutWhiteBackgroundsInDarkMode:settings.punchOutWhiteBackgroundsInDarkMode];
+    WebPreferences *preferences = [WebPreferences standardPreferences];
+    preferences.showDebugBorders = settings.layerBordersVisible;
+    preferences.legacyLineLayoutVisualCoverageEnabled = settings.legacyLineLayoutVisualCoverageEnabled;
+    preferences.showRepaintCounter = settings.layerBordersVisible;
+    preferences.suppressesIncrementalRendering = settings.incrementalRenderingSuppressed;
+    preferences.acceleratedDrawingEnabled = settings.acceleratedDrawingEnabled;
+    preferences.resourceLoadStatisticsEnabled = settings.resourceLoadStatisticsEnabled;
+    preferences.largeImageAsyncDecodingEnabled = settings.largeImageAsyncDecodingEnabled;
+    preferences.animatedImageAsyncDecodingEnabled = settings.animatedImageAsyncDecodingEnabled;
+    preferences.colorFilterEnabled = settings.appleColorFilterEnabled;
+    preferences.punchOutWhiteBackgroundsInDarkMode = settings.punchOutWhiteBackgroundsInDarkMode;
+    preferences.mockCaptureDevicesEnabled = settings.useMockCaptureDevices;
+
+    preferences.serviceControlsEnabled = settings.dataDetectorsEnabled;
+    // There is no WebKitLegacy API on macOS for telephone number detection.
 
     _webView._useSystemAppearance = settings.useSystemAppearance;
 
@@ -449,7 +454,6 @@ static BOOL areEssentiallyEqual(double a, double b)
     alert.informativeText = message;
 
     [alert runModal];
-    [alert release];
 }
 
 - (BOOL)webView:(WebView *)sender runBeforeUnloadConfirmPanelWithMessage:(NSString *)message initiatedByFrame:(WebFrame *)frame
@@ -463,15 +467,17 @@ static BOOL areEssentiallyEqual(double a, double b)
     [alert addButtonWithTitle:@"Stay On Page"];
 
     NSModalResponse response = [alert runModal];
-    
-    [alert release];
-
     return response == NSAlertFirstButtonReturn;
 }
 
 - (NSUInteger)webView:(WebView *)webView dragDestinationActionMaskForDraggingInfo:(id <NSDraggingInfo>)draggingInfo
 {
     return WebDragDestinationActionAny;
+}
+
+- (NSImage *)windowSnapshotInRect:(CGRect)rect
+{
+    return [_webView _windowSnapshotInRect:rect];
 }
 
 @end

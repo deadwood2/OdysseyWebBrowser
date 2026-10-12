@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,7 +28,7 @@
 #import <CoreVideo/CoreVideo.h>
 #import <QuartzCore/QuartzCore.h>
 #import <pal/spi/cg/CoreGraphicsSPI.h>
-#import <pal/spi/cocoa/IOSurfaceSPI.h>
+#import <wtf/spi/cocoa/IOSurfaceSPI.h>
 
 #if USE(APPLE_INTERNAL_SDK)
 
@@ -38,6 +38,7 @@
 
 #ifdef __OBJC__
 
+#import <QuartzCore/CAAnimationPrivate.h>
 #import <QuartzCore/CAContext.h>
 #import <QuartzCore/CALayerHost.h>
 #import <QuartzCore/CALayerPrivate.h>
@@ -48,12 +49,41 @@
 #import <QuartzCore/CARenderCG.h>
 #endif
 
+#if PLATFORM(IOS_FAMILY)
+#import <QuartzCore/CADisplay.h>
+#import <QuartzCore/CADisplayLinkPrivate.h>
+#endif
+
+#if ENABLE(ARKIT_INLINE_PREVIEW)
+#import <QuartzCore/CAFenceHandle.h>
+#endif
+
 #endif // __OBJC__
 
 #else
 
 #ifdef __OBJC__
 typedef struct _CARenderContext CARenderContext;
+
+#if PLATFORM(IOS_FAMILY)
+@interface CADisplay : NSObject
+@end
+
+@interface CADisplayLink ()
+@property (readonly, nonatomic) CFTimeInterval maximumRefreshRate;
+@property (readonly, nonatomic) CADisplay *display;
+@end
+#endif
+
+#if ENABLE(ARKIT_INLINE_PREVIEW)
+@interface CAFenceHandle : NSObject
+@end
+
+@interface CAFenceHandle ()
+- (mach_port_t)copyPort;
+- (void)invalidate;
+@end
+#endif
 
 @interface CAContext : NSObject
 @end
@@ -79,7 +109,9 @@ typedef struct _CARenderContext CARenderContext;
 + (void)setAllowsCGSConnections:(BOOL)flag;
 #endif
 
+@property uint32_t displayMask;
 #if PLATFORM(MAC)
+@property uint64_t GPURegistryID;
 @property uint32_t commitPriority;
 @property BOOL colorMatchUntaggedContent;
 #endif
@@ -87,6 +119,22 @@ typedef struct _CARenderContext CARenderContext;
 @property (strong) CALayer *layer;
 @property CGColorSpaceRef colorSpace;
 @property (readonly) CARenderContext* renderContext;
+
+#if ENABLE(ARKIT_INLINE_PREVIEW_IOS)
+-(BOOL)addFence:(CAFenceHandle *)handle;
+#endif
+
+@end
+
+@interface CAPresentationModifierGroup : NSObject
++ (instancetype)groupWithCapacity:(NSUInteger)capacity;
+- (void)flush;
+- (void)flushWithTransaction;
+@end
+
+@interface CAPresentationModifier : NSObject
+- (instancetype)initWithKeyPath:(NSString *)keyPath initialValue:(id)value additive:(BOOL)additive group:(CAPresentationModifierGroup *)group;
+@property (strong) id value;
 @end
 
 @interface CALayer ()
@@ -95,25 +143,35 @@ typedef struct _CARenderContext CARenderContext;
 - (CGSize)size;
 - (void *)regionBeingDrawn;
 - (void)reloadValueForKeyPath:(NSString *)keyPath;
-- (void)setCornerRadius:(CGFloat)cornerRadius;
+- (void)addPresentationModifier:(CAPresentationModifier *)modifier;
+- (void)removePresentationModifier:(CAPresentationModifier *)modifier;
 @property BOOL allowsGroupBlending;
 @property BOOL allowsHitTesting;
+@property BOOL hitTestsContentsAlphaChannel;
 @property BOOL canDrawConcurrently;
 @property BOOL contentsOpaque;
 @property BOOL hitTestsAsOpaque;
+@property BOOL inheritsTiming;
 @property BOOL needsLayoutOnGeometryChange;
 @property BOOL shadowPathIsBounds;
 @property BOOL continuousCorners;
 #if HAVE(CORE_ANIMATION_SEPARATED_LAYERS)
 @property (getter=isSeparated) BOOL separated;
 #endif
+@property BOOL toneMapToStandardDynamicRange;
+#if HAVE(SPATIAL_TRACKING_LABEL)
+typedef NS_ENUM(unsigned, CASeparatedState) {
+    kCALayerSeparatedStateNone = 0,
+    kCALayerSeparatedStateTracked,
+    kCALayerSeparatedStateSeparated,
+};
+@property CASeparatedState separatedState;
+#endif
 @end
 
-#if ENABLE(FILTERS_LEVEL_2)
 @interface CABackdropLayer : CALayer
 @property BOOL windowServerAware;
 @end
-#endif
 
 struct CAColorMatrix {
     float m11, m12, m13, m14, m15;
@@ -153,6 +211,7 @@ typedef enum {
 @interface CALayerHost : CALayer
 @property uint32_t contextId;
 @property BOOL inheritsSecurity;
+@property BOOL preservesFlip;
 @end
 
 @interface CASpringAnimation (Private)
@@ -169,9 +228,49 @@ typedef enum {
 @property BOOL matchesTransform;
 @end
 
+@interface CARemoteEffect: NSObject <NSCopying, NSSecureCoding>
+@end
+
+@interface CARemoteEffectGroup : CARemoteEffect
++ (instancetype)groupWithEffects:(NSArray<CARemoteEffect *> *)effects;
+@property (copy) NSString *groupName;
+@property (getter=isMatched) BOOL matched;
+@property (getter=isSource) BOOL source;
+@property (copy, nonatomic) NSDictionary *userInfo;
+@end
+
+@interface CALayer (RemoteEffects)
+@property (copy) NSArray<CARemoteEffect *> *remoteEffects;
+@end
+
+#if HAVE(CORE_ANIMATION_FRAME_RATE_RANGE)
+typedef uint32_t CAHighFrameRateReason;
+
+#define CAHighFrameRateReasonMake(component, code) \
+    (((uint32_t)((component) & 0xffff) << 16) | ((code) & 0xffff))
+
+@interface CAAnimation ()
+@property CAHighFrameRateReason highFrameRateReason;
+@end
+
+@interface CADisplayLink ()
+@property CAHighFrameRateReason highFrameRateReason;
+@end
+#endif // HAVE(CORE_ANIMATION_FRAME_RATE_RANGE)
+
 #endif // __OBJC__
 
 #endif
+
+@interface CALayer ()
+@property BOOL usesWebKitBehavior;
+@property BOOL sortsSublayers;
+@property CGRect contentsDirtyRect;
+@end
+
+@interface CATransaction ()
++ (void)setDisableImplicitTransactionMainThreadAssert:(BOOL)flag;
+@end
 
 WTF_EXTERN_C_BEGIN
 
@@ -187,6 +286,8 @@ CAMachPortRef CAMachPortCreate(mach_port_t);
 mach_port_t CAMachPortGetPort(CAMachPortRef);
 CFTypeID CAMachPortGetTypeID(void);
 
+typedef struct _CAIOSurface *CAIOSurfaceRef;
+
 void CABackingStoreCollectBlocking(void);
 
 typedef struct _CARenderCGContext CARenderCGContext;
@@ -196,6 +297,7 @@ CARenderCGContext *CARenderCGNew(uint32_t feature_flags);
 CARenderUpdate* CARenderUpdateBegin(void* buffer, size_t, CFTimeInterval, const CVTimeStamp*, uint32_t finished_seed, const CGRect* bounds);
 bool CARenderServerStart();
 mach_port_t CARenderServerGetPort();
+mach_port_t CARenderServerGetServerPort(const char *name);
 void CARenderCGDestroy(CARenderCGContext*);
 void CARenderCGRender(CARenderCGContext*, CARenderUpdate*, CGContextRef);
 void CARenderUpdateAddContext(CARenderUpdate*, CARenderContext*);
@@ -235,8 +337,4 @@ extern NSString * const kCAContextPortNumber;
 #if PLATFORM(IOS_FAMILY)
 extern NSString * const kCAContextSecure;
 extern NSString * const kCAContentsFormatRGBA10XR;
-#endif
-
-#if PLATFORM(MAC)
-extern NSString * const kCAContentsFormatRGBA8ColorRGBA8LinearGlyphMask;
 #endif

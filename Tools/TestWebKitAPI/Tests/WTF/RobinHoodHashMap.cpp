@@ -35,7 +35,7 @@
 #include <wtf/Ref.h>
 #include <wtf/RobinHoodHashMap.h>
 #include <wtf/UniqueRef.h>
-#include <wtf/text/StringConcatenateNumbers.h>
+#include <wtf/text/MakeString.h>
 #include <wtf/text/StringHash.h>
 
 namespace TestWebKitAPI {
@@ -768,7 +768,7 @@ struct DerefObserver {
 
 TEST(WTF_RobinHoodHashMap, RefPtrNotZeroedBeforeDeref)
 {
-    auto observer = makeUnique<DerefObserver>();
+    auto observer = makeUniqueWithoutRefCountedCheck<DerefObserver>();
 
     MemoryCompactLookupOnlyRobinHoodHashMap<RefPtr<DerefObserver>, int, RobinHoodHash<RefPtr<DerefObserver>>> map;
     map.add(adoptRef(observer.get()), 5);
@@ -997,7 +997,7 @@ TEST(WTF_RobinHoodHashMap, Ref_Value)
 
         MemoryCompactLookupOnlyRobinHoodHashMap<int, Ref<RefLogger>, RobinHoodHash<int>> map;
 
-        map.ensure(1, [&]() mutable {
+        map.ensure(1, [&] {
             Ref<RefLogger> ref(a);
             return ref;
         });
@@ -1050,7 +1050,7 @@ TEST(WTF_RobinHoodHashMap, RefMappedToNonZeroEmptyValue)
         static Ref<Key> create() { return adoptRef(*new Key); }
     };
 
-    static_assert(!WTF::HashTraits<Value>::emptyValueIsZero, "");
+    static_assert(!WTF::HashTraits<Value>::emptyValueIsZero);
 
     MemoryCompactLookupOnlyRobinHoodHashMap<Ref<Key>, Value, RobinHoodHash<Ref<Key>>> map;
     Vector<std::pair<Ref<Key>, int32_t>> vectorMap;
@@ -1120,25 +1120,25 @@ TEST(WTF_RobinHoodHashMap, ReserveInitialCapacity)
     EXPECT_EQ(16384u, map.capacity());
 
     for (int i = 0; i < 9999; ++i)
-        map.add(makeString("foo", i), makeString("bar", i));
+        map.add(makeString("foo"_s, i), makeString("bar"_s, i));
     EXPECT_EQ(9999u, map.size());
     EXPECT_EQ(16384u, map.capacity());
     EXPECT_TRUE(map.contains("foo3"_str));
     EXPECT_STREQ("bar3", map.get("foo3"_str).utf8().data());
 
     for (int i = 0; i < 9999; ++i)
-        map.add(makeString("excess", i), makeString("baz", i));
+        map.add(makeString("excess"_s, i), makeString("baz"_s, i));
     EXPECT_EQ(9999u + 9999u, map.size());
     EXPECT_EQ(32768u, map.capacity());
 
     for (int i = 0; i < 9999; ++i)
-        EXPECT_TRUE(map.remove(makeString("foo", i)));
+        EXPECT_TRUE(map.remove(makeString("foo"_s, i)));
     EXPECT_EQ(9999u, map.size());
     EXPECT_EQ(32768u, map.capacity());
     EXPECT_STREQ("baz3", map.get("excess3"_str).utf8().data());
 
     for (int i = 0; i < 9999; ++i)
-        EXPECT_TRUE(map.remove(makeString("excess", i)));
+        EXPECT_TRUE(map.remove(makeString("excess"_s, i)));
     EXPECT_EQ(0u, map.size());
     EXPECT_EQ(8u, map.capacity());
 
@@ -1147,12 +1147,12 @@ TEST(WTF_RobinHoodHashMap, ReserveInitialCapacity)
     EXPECT_FALSE(map2.remove("foo1"_s));
 
     for (int i = 0; i < 2000; ++i)
-        map2.add(makeString("foo", i), makeString("bar", i));
+        map2.add(makeString("foo"_s, i), makeString("bar"_s, i));
     EXPECT_EQ(2000u, map2.size());
     EXPECT_EQ(16384u, map2.capacity());
 
     for (int i = 0; i < 2000; ++i)
-        EXPECT_TRUE(map2.remove(makeString("foo", i)));
+        EXPECT_TRUE(map2.remove(makeString("foo"_s, i)));
     EXPECT_EQ(0u, map2.size());
     EXPECT_EQ(8u, map2.capacity());
 }

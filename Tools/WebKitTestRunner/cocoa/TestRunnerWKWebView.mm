@@ -30,13 +30,14 @@
 #import "WebKitTestRunnerDraggingInfo.h"
 #import <WebKit/WKUIDelegatePrivate.h>
 #import <WebKit/WKWebViewPrivateForTesting.h>
-#import <WebKit/_WKInputDelegate.h>
+#import <WebKit/_WKFormInputSession.h>
 #import <wtf/Assertions.h>
 #import <wtf/BlockPtr.h>
 #import <wtf/RetainPtr.h>
+#import <wtf/SoftLinking.h>
 
 #if PLATFORM(IOS_FAMILY)
-#import "UIKitSPI.h"
+#import "UIKitSPIForTesting.h"
 #import <WebKit/WKWebViewPrivate.h>
 
 @interface WKWebView ()
@@ -44,15 +45,16 @@
 // FIXME: move these to WKWebView_Private.h
 - (void)scrollViewWillBeginZooming:(UIScrollView *)scrollView withView:(UIView *)view;
 - (void)scrollViewDidEndZooming:(UIScrollView *)scrollView withView:(UIView *)view atScale:(CGFloat)scale;
-- (void)_didFinishScrolling;
+- (void)_didFinishScrolling:(UIScrollView *)scrollView;
 - (void)_scheduleVisibleContentRectUpdate;
 
 @end
-#endif
 
-#if HAVE(PEPPER_UI_CORE)
-#import "PepperUICoreSPI.h"
+#if HAVE(UI_EDIT_MENU_INTERACTION)
+SOFT_LINK_FRAMEWORK(UIKit)
+SOFT_LINK_CLASS(UIKit, UIEditMenuInteraction)
 #endif
+#endif // PLATFORM(IOS_FAMILY)
 
 struct CustomMenuActionInfo {
     RetainPtr<NSString> name;
@@ -65,14 +67,14 @@ struct CustomMenuActionInfo {
     , UIGestureRecognizerDelegate
 #endif
 > {
-    RetainPtr<NSNumber> m_stableStateOverride;
+    RetainPtr<NSNumber> _stableStateOverride;
     BOOL _isInteractingWithFormControl;
     BOOL _scrollingUpdatesDisabled;
-    std::optional<CustomMenuActionInfo> _customMenuActionInfo;
     RetainPtr<NSArray<NSString *>> _allowedMenuActions;
 #if PLATFORM(IOS_FAMILY)
     RetainPtr<UITapGestureRecognizer> _windowTapGestureRecognizer;
     BlockPtr<void()> _windowTapRecognizedCallback;
+    UIInterfaceOrientationMask _supportedInterfaceOrientations;
 #endif
 }
 
@@ -82,6 +84,7 @@ struct CustomMenuActionInfo {
 @property (nonatomic, getter=isShowingMenu, setter=setIsShowingMenu:) BOOL showingMenu;
 @property (nonatomic, getter=isDismissingMenu, setter=setIsDismissingMenu:) BOOL dismissingMenu;
 @property (nonatomic, getter=isShowingPopover, setter=setIsShowingPopover:) BOOL showingPopover;
+@property (nonatomic, getter=isShowingFormValidationBubble, setter=setIsShowingFormValidationBubble:) BOOL showingFormValidationBubble;
 @property (nonatomic, getter=isShowingContextMenu, setter=setIsShowingContextMenu:) BOOL showingContextMenu;
 @property (nonatomic, getter=isShowingContactPicker, setter=setIsShowingContactPicker:) BOOL showingContactPicker;
 
@@ -111,13 +114,19 @@ IGNORE_WARNINGS_END
 #else
         [center addObserver:self selector:@selector(_invokeShowKeyboardCallbackIfNecessary) name:UIKeyboardDidShowNotification object:nil];
         [center addObserver:self selector:@selector(_invokeHideKeyboardCallbackIfNecessary) name:UIKeyboardDidHideNotification object:nil];
+        [center addObserver:self selector:@selector(_keyboardWillHide) name:UIKeyboardWillHideNotification object:nil];
+        ALLOW_DEPRECATED_DECLARATIONS_BEGIN
         [center addObserver:self selector:@selector(_didShowMenu) name:UIMenuControllerDidShowMenuNotification object:nil];
         [center addObserver:self selector:@selector(_willHideMenu) name:UIMenuControllerWillHideMenuNotification object:nil];
         [center addObserver:self selector:@selector(_didHideMenu) name:UIMenuControllerDidHideMenuNotification object:nil];
-        [center addObserver:self selector:@selector(_willPresentPopover) name:@"UIPopoverControllerWillPresentPopoverNotification" object:nil];
+        ALLOW_DEPRECATED_DECLARATIONS_END
+        [center addObserver:self selector:@selector(_willPresentPopover:) name:@"UIPopoverControllerWillPresentPopoverNotification" object:nil];
         [center addObserver:self selector:@selector(_didDismissPopover) name:@"UIPopoverControllerDidDismissPopoverNotification" object:nil];
+        self.inspectable = YES;
         self.UIDelegate = self;
         self._inputDelegate = self;
+        self.focusStartsInputSessionPolicy = _WKFocusStartsInputSessionPolicyAuto;
+        self.supportedInterfaceOrientations = UIInterfaceOrientationMaskAll;
 #endif
     }
     return self;
@@ -221,6 +230,11 @@ IGNORE_WARNINGS_END
 
 #if PLATFORM(IOS_FAMILY)
 
+- (UITextEffectsWindow *)textEffectsWindow
+{
+    return [UITextEffectsWindow sharedTextEffectsWindowForWindowScene:self.window.windowScene];
+}
+
 - (void)_willHideMenu
 {
     self.dismissingMenu = YES;
@@ -259,96 +273,29 @@ IGNORE_WARNINGS_END
 
 - (void)_dismissAllContextMenuInteractions
 {
-#if PLATFORM(IOS)
-    for (id <UIInteraction> interaction in self.contentView.interactions) {
-        if ([interaction isKindOfClass:UIContextMenuInteraction.class])
-            [(UIContextMenuInteraction *)interaction dismissMenu];
+#if USE(UICONTEXTMENU)
+    auto dismissContextMenuInteractionsForView = ^(UIView *view) {
+        for (id<UIInteraction> interaction in view.interactions) {
+            if (auto contextMenuInteraction = dynamic_objc_cast<UIContextMenuInteraction>(interaction)) {
+                [UIView performWithoutAnimation:^{
+                    [contextMenuInteraction dismissMenu];
+                }];
+            }
+        }
+    };
+
+    for (UIView *subview in self.contentView.subviews) {
+        if ([subview isKindOfClass:UIButton.class])
+            dismissContextMenuInteractionsForView(subview);
     }
-#endif
-}
-
-- (BOOL)becomeFirstResponder
-{
-    BOOL wasFirstResponder = self.isFirstResponder;
-    BOOL becameFirstResponder = [super becomeFirstResponder];
-    if (!wasFirstResponder && becameFirstResponder)
-        [self _addCustomItemToMenuControllerIfNecessary];
-    return becameFirstResponder;
-}
-
-- (void)_addCustomItemToMenuControllerIfNecessary
-{
-    if (!_customMenuActionInfo)
-        return;
-
-    auto item = adoptNS([[UIMenuItem alloc] initWithTitle:_customMenuActionInfo->name.get() action:@selector(performCustomAction:)]);
-    [item setDontDismiss:!_customMenuActionInfo->dismissesAutomatically];
-    UIMenuController *controller = UIMenuController.sharedMenuController;
-    controller.menuItems = @[ item.get() ];
-    [controller update];
-}
-
-- (void)installCustomMenuAction:(NSString *)name dismissesAutomatically:(BOOL)dismissesAutomatically callback:(dispatch_block_t)callback
-{
-    _customMenuActionInfo = {{ name, dismissesAutomatically, callback }};
-    [self _addCustomItemToMenuControllerIfNecessary];
+    dismissContextMenuInteractionsForView(self.contentView);
+#endif // USE(UICONTEXTMENU)
 }
 
 - (void)setAllowedMenuActions:(NSArray<NSString *> *)actions
 {
     _allowedMenuActions = actions;
 }
-
-- (void)resetCustomMenuAction
-{
-    _customMenuActionInfo.reset();
-    UIMenuController.sharedMenuController.menuItems = @[ ];
-}
-
-- (void)performCustomAction:(id)sender
-{
-    if (!_customMenuActionInfo)
-        return;
-
-    if (!_customMenuActionInfo->callback) {
-        ASSERT_NOT_REACHED();
-        return;
-    }
-
-    _customMenuActionInfo->callback();
-}
-
-- (BOOL)canPerformAction:(SEL)action withSender:(id)sender
-{
-    BOOL isCustomAction = action == @selector(performCustomAction:);
-    BOOL canPerformActionByDefault = [super canPerformAction:action withSender:sender];
-    if (isCustomAction)
-        canPerformActionByDefault = _customMenuActionInfo.has_value();
-
-    if (canPerformActionByDefault && _allowedMenuActions && sender == UIMenuController.sharedMenuController) {
-        BOOL isAllowed = NO;
-        if (isCustomAction) {
-            for (NSString *allowedAction in _allowedMenuActions.get()) {
-                if ([[_customMenuActionInfo->name lowercaseString] isEqualToString:allowedAction.lowercaseString]) {
-                    isAllowed = YES;
-                    break;
-                }
-            }
-        } else {
-            for (NSString *allowedAction in _allowedMenuActions.get()) {
-                NSString *lowercaseSelectorName = [[allowedAction lowercaseString] stringByAppendingString:@":"];
-                if ([NSStringFromSelector(action).lowercaseString isEqualToString:lowercaseSelectorName]) {
-                    isAllowed = YES;
-                    break;
-                }
-            }
-        }
-        if (!isAllowed)
-            return NO;
-    }
-    return canPerformActionByDefault;
-}
-
 
 - (void)zoomToScale:(double)scale animated:(BOOL)animated completionHandler:(void (^)(void))completionHandler
 {
@@ -363,6 +310,11 @@ IGNORE_WARNINGS_END
 
     self.zoomToScaleCompletionHandler = completionHandler;
     [self.scrollView setZoomScale:scale animated:animated];
+}
+
+- (void)_keyboardWillHide
+{
+    _keyboardWillHideCount++;
 }
 
 - (void)_invokeShowKeyboardCallbackIfNecessary
@@ -385,11 +337,16 @@ IGNORE_WARNINGS_END
         self.didHideKeyboardCallback();
 }
 
-- (void)_willPresentPopover
+- (void)_willPresentPopover:(NSNotification *)notification
 {
     if (self.showingPopover)
         return;
 
+    auto controller = dynamic_objc_cast<UIPopoverPresentationController>(notification.object);
+    static Class validationBubbleDelegateClass = [&] {
+        return NSClassFromString(@"WebValidationBubbleDelegate");
+    }();
+    self.showingFormValidationBubble = controller.delegate.class == validationBubbleDelegateClass;
     self.showingPopover = YES;
     if (self.willPresentPopoverCallback)
         self.willPresentPopoverCallback();
@@ -400,6 +357,7 @@ IGNORE_WARNINGS_END
     if (!self.showingPopover)
         return;
 
+    self.showingFormValidationBubble = NO;
     self.showingPopover = NO;
     if (self.didDismissPopoverCallback)
         self.didDismissPopoverCallback();
@@ -426,9 +384,34 @@ IGNORE_WARNINGS_END
     }
 }
 
-- (void)_didFinishScrolling
+- (BOOL)isZoomingOrScrolling
 {
-    [super _didFinishScrolling];
+    auto scroller = self.scrollView;
+    if (scroller.isZooming || scroller.isAnimatingZoom || scroller.isAnimatingScroll
+        || scroller.isVerticalBouncing || scroller.isHorizontalBouncing || scroller.isZoomBouncing)
+        return YES;
+
+    if (self._keyboardScrollingAnimationRunning)
+        return YES;
+
+    static NeverDestroyed<RetainPtr<NSSet>> animationKeyNames = [NSSet setWithArray:@[
+        @"bounds.size",
+        @"bounds.origin",
+        @"bounds",
+        @"transform"
+    ]];
+
+    for (NSString *key in scroller.layer.animationKeys) {
+        if ([animationKeyNames.get() containsObject:key])
+            return YES;
+    }
+
+    return NO;
+}
+
+- (void)_didFinishScrolling:(UIScrollView *)scrollView
+{
+    [super _didFinishScrolling:scrollView];
 
     if (self.didEndScrollingCallback)
         self.didEndScrollingCallback();
@@ -436,12 +419,12 @@ IGNORE_WARNINGS_END
 
 - (NSNumber *)_stableStateOverride
 {
-    return m_stableStateOverride.get();
+    return _stableStateOverride.get();
 }
 
 - (void)_setStableStateOverride:(NSNumber *)overrideBoolean
 {
-    m_stableStateOverride = overrideBoolean;
+    _stableStateOverride = overrideBoolean;
     [self _scheduleVisibleContentRectUpdate];
 }
 
@@ -522,8 +505,8 @@ IGNORE_WARNINGS_END
 {
     _overrideSafeAreaInsets = insets;
 
-// FIXME: Likely we can remove this special case for watchOS and tvOS.
-#if !PLATFORM(WATCHOS) && !PLATFORM(APPLETV)
+// FIXME: Likely we can remove this special case for watchOS.
+#if !PLATFORM(WATCHOS)
     [self _updateSafeAreaInsets];
 #endif
 }
@@ -531,6 +514,16 @@ IGNORE_WARNINGS_END
 - (UIEdgeInsets)_safeAreaInsetsForFrame:(CGRect)frame inSuperview:(UIView *)view
 {
     return _overrideSafeAreaInsets;
+}
+
+- (void)setSupportedInterfaceOrientations:(UIInterfaceOrientationMask)orientations
+{
+    _supportedInterfaceOrientations = orientations;
+}
+
+- (UIInterfaceOrientationMask)supportedInterfaceOrientations
+{
+    return _supportedInterfaceOrientations;
 }
 
 - (UIView *)contentView
@@ -541,10 +534,10 @@ IGNORE_WARNINGS_END
 static bool isQuickboardViewController(UIViewController *viewController)
 {
 #if HAVE(PEPPER_UI_CORE)
-    if ([viewController isKindOfClass:PUICQuickboardViewController.class])
+    if ([viewController isKindOfClass:NSClassFromString(@"PUICQuickboardViewController")])
         return true;
 #if HAVE(QUICKBOARD_CONTROLLER)
-    if ([viewController isKindOfClass:PUICQuickboardRemoteViewController.class])
+    if ([viewController isKindOfClass:NSClassFromString(@"PUICQuickboardRemoteViewController")])
         return true;
 #endif // HAVE(QUICKBOARD_CONTROLLER)
 #endif // HAVE(PEPPER_UI_CORE)
@@ -571,12 +564,36 @@ static bool isQuickboardViewController(UIViewController *viewController)
     [self _invokeHideKeyboardCallbackIfNecessary];
 }
 
+#if HAVE(UI_EDIT_MENU_INTERACTION)
+
+- (void)webView:(WKWebView *)webView willPresentEditMenuWithAnimator:(id<UIEditMenuInteractionAnimating>)animator
+{
+    [animator addCompletion:[strongSelf = RetainPtr { self }] {
+        [strongSelf _didShowMenu];
+    }];
+}
+
+- (void)webView:(WKWebView *)webView willDismissEditMenuWithAnimator:(id<UIEditMenuInteractionAnimating>)animator
+{
+    [animator addCompletion:[strongSelf = RetainPtr { self }] {
+        [strongSelf _didHideMenu];
+    }];
+}
+
+#endif // HAVE(UI_EDIT_MENU_INTERACTION)
+
 #pragma mark - _WKInputDelegate
 
 - (void)_webView:(WKWebView *)webView willStartInputSession:(id <_WKFormInputSession>)inputSession
 {
     if (self.willStartInputSessionCallback)
         self.willStartInputSessionCallback();
+    inputSession.accessoryViewShouldNotShow = self.suppressInputAccessoryView;
+}
+
+- (_WKFocusStartsInputSessionPolicy)_webView:(WKWebView *)webView decidePolicyForFocusedElement:(id<_WKFocusedElementInfo>)info
+{
+    return self.focusStartsInputSessionPolicy;
 }
 
 #pragma mark - UIGestureRecognizerDelegate
@@ -617,5 +634,24 @@ static bool isQuickboardViewController(UIViewController *viewController)
 {
     [super _didLoadNonAppInitiatedRequest:completionHandler];
 }
+
+#if HAVE(UI_EDIT_MENU_INTERACTION)
+
+- (void)immediatelyDismissEditMenuInteractionIfNeeded
+{
+    if (!self.isShowingMenu)
+        return;
+
+    self.showingMenu = NO;
+
+    [UIView performWithoutAnimation:^{
+        for (id<UIInteraction> interaction in self.contentView.interactions) {
+            if ([interaction isKindOfClass:getUIEditMenuInteractionClass()])
+                [(UIEditMenuInteraction *)interaction dismissMenu];
+        }
+    }];
+}
+
+#endif // HAVE(UI_EDIT_MENU_INTERACTION)
 
 @end

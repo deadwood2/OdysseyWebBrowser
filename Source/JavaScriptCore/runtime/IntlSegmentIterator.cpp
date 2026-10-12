@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2020 Apple Inc. All rights reserved.
- * Copyright (C) 2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2020-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -36,12 +35,12 @@
 
 namespace JSC {
 
-const ClassInfo IntlSegmentIterator::s_info = { "Object", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(IntlSegmentIterator) };
+const ClassInfo IntlSegmentIterator::s_info = { "Object"_s, &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(IntlSegmentIterator) };
 
 IntlSegmentIterator* IntlSegmentIterator::create(VM& vm, Structure* structure, std::unique_ptr<UBreakIterator, UBreakIteratorDeleter>&& segmenter, Box<Vector<UChar>> buffer, JSString* string, IntlSegmenter::Granularity granularity)
 {
-    auto* object = new (NotNull, allocateCell<IntlSegmentIterator>(vm.heap)) IntlSegmentIterator(vm, structure, WTFMove(segmenter), WTFMove(buffer), granularity);
-    object->finishCreation(vm, string);
+    auto* object = new (NotNull, allocateCell<IntlSegmentIterator>(vm)) IntlSegmentIterator(vm, structure, WTFMove(segmenter), WTFMove(buffer), granularity, string);
+    object->finishCreation(vm);
     return object;
 }
 
@@ -50,19 +49,13 @@ Structure* IntlSegmentIterator::createStructure(VM& vm, JSGlobalObject* globalOb
     return Structure::create(vm, globalObject, prototype, TypeInfo(ObjectType, StructureFlags), info());
 }
 
-IntlSegmentIterator::IntlSegmentIterator(VM& vm, Structure* structure, std::unique_ptr<UBreakIterator, UBreakIteratorDeleter>&& segmenter, Box<Vector<UChar>>&& buffer, IntlSegmenter::Granularity granularity)
+IntlSegmentIterator::IntlSegmentIterator(VM& vm, Structure* structure, std::unique_ptr<UBreakIterator, UBreakIteratorDeleter>&& segmenter, Box<Vector<UChar>>&& buffer, IntlSegmenter::Granularity granularity, JSString* string)
     : Base(vm, structure)
     , m_segmenter(WTFMove(segmenter))
     , m_buffer(WTFMove(buffer))
+    , m_string(string, WriteBarrierEarlyInit)
     , m_granularity(granularity)
 {
-}
-
-void IntlSegmentIterator::finishCreation(VM& vm, JSString* string)
-{
-    Base::finishCreation(vm);
-    ASSERT(inherits(vm, info()));
-    m_string.set(vm, this, string);
 }
 
 template<typename Visitor>

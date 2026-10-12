@@ -27,21 +27,21 @@
 
 #if ENABLE(GPU_PROCESS) && ENABLE(MEDIA_SOURCE)
 
-#include "DataReference.h"
 #include "GPUConnectionToWebProcess.h"
 #include "MessageReceiver.h"
 #include "RemoteSourceBufferIdentifier.h"
-#include "RemoteSourceBufferProxyMessagesReplies.h"
-#include "TrackPrivateRemoteIdentifier.h"
 #include <WebCore/MediaDescription.h>
+#include <WebCore/SharedMemory.h>
 #include <WebCore/SourceBufferPrivate.h>
 #include <WebCore/SourceBufferPrivateClient.h>
 #include <wtf/Ref.h>
-#include <wtf/text/AtomString.h>
+#include <wtf/TZoneMalloc.h>
+#include <wtf/ThreadSafeWeakPtr.h>
 
 namespace IPC {
 class Connection;
 class Decoder;
+class SharedBufferReference;
 }
 
 namespace WebCore {
@@ -56,29 +56,28 @@ struct MediaDescriptionInfo;
 class RemoteMediaPlayerProxy;
 
 class RemoteSourceBufferProxy final
-    : public RefCounted<RemoteSourceBufferProxy>
-    , public WebCore::SourceBufferPrivateClient
+    : public WebCore::SourceBufferPrivateClient
     , private IPC::MessageReceiver {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED(RemoteSourceBufferProxy);
 public:
     static Ref<RemoteSourceBufferProxy> create(GPUConnectionToWebProcess&, RemoteSourceBufferIdentifier, Ref<WebCore::SourceBufferPrivate>&&, RemoteMediaPlayerProxy&);
     virtual ~RemoteSourceBufferProxy();
 
+    void shutdown();
+
 private:
     RemoteSourceBufferProxy(GPUConnectionToWebProcess&, RemoteSourceBufferIdentifier, Ref<WebCore::SourceBufferPrivate>&&, RemoteMediaPlayerProxy&);
 
+    RefPtr<IPC::Connection> connection() const;
+
     // SourceBufferPrivateClient
-    void sourceBufferPrivateDidReceiveInitializationSegment(InitializationSegment&&, CompletionHandler<void()>&&) final;
-    void sourceBufferPrivateStreamEndedWithDecodeError() final;
-    void sourceBufferPrivateAppendError(bool decodeError) final;
-    void sourceBufferPrivateAppendComplete(WebCore::SourceBufferPrivateClient::AppendResult) final;
+    Ref<WebCore::MediaPromise> sourceBufferPrivateDidReceiveInitializationSegment(InitializationSegment&&) final;
+    Ref<WebCore::MediaPromise> sourceBufferPrivateBufferedChanged(const Vector<WebCore::PlatformTimeRanges>&) final;
     void sourceBufferPrivateHighestPresentationTimestampChanged(const MediaTime&) final;
-    void sourceBufferPrivateDurationChanged(const MediaTime&) final;
-    void sourceBufferPrivateDidParseSample(double sampleDuration) final;
+    Ref<WebCore::MediaPromise> sourceBufferPrivateDurationChanged(const MediaTime&) final;
     void sourceBufferPrivateDidDropSample() final;
-    void sourceBufferPrivateBufferedDirtyChanged(bool) final;
     void sourceBufferPrivateDidReceiveRenderingError(int64_t errorCode) final;
-    void sourceBufferPrivateReportExtraMemoryCost(uint64_t extraMemory) final;
+    void sourceBufferPrivateEvictionDataChanged(const WebCore::SourceBufferEvictionData&) final;
 
     // IPC::MessageReceiver
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) final;
@@ -87,19 +86,16 @@ private:
     void setActive(bool);
     void canSwitchToType(const WebCore::ContentType&, CompletionHandler<void(bool)>&&);
     void setMode(WebCore::SourceBufferAppendMode);
-    void append(const IPC::DataReference&);
+    void append(IPC::SharedBufferReference&&, CompletionHandler<void(WebCore::MediaPromise::Result, const MediaTime&)>&&);
     void abort();
     void resetParserState();
     void removedFromMediaSource();
     void setMediaSourceEnded(bool);
-    void setReadyState(WebCore::MediaPlayer::ReadyState);
     void startChangingType();
-    void updateBufferedFromTrackBuffers(bool sourceIsEnded, CompletionHandler<void(WebCore::PlatformTimeRanges&&)>&&);
-    using RemoveCodedFramesAsyncReply = Messages::RemoteSourceBufferProxy::RemoveCodedFramesAsyncReply;
-    using EvictCodedFramesDelayedReply= Messages::RemoteSourceBufferProxy::EvictCodedFramesDelayedReply;
-    void removeCodedFrames(const MediaTime& start, const MediaTime& end, const MediaTime& currentTime, bool isEnded, RemoveCodedFramesAsyncReply&&);
-    void evictCodedFrames(uint64_t newDataSize, uint64_t maximumBufferSize, const MediaTime& currentTime, const MediaTime& duration, bool isEnded, EvictCodedFramesDelayedReply&&);
-    void addTrackBuffer(TrackPrivateRemoteIdentifier);
+    void removeCodedFrames(const MediaTime& start, const MediaTime& end, const MediaTime& currentTime, CompletionHandler<void()>&&);
+    void evictCodedFrames(uint64_t newDataSize, const MediaTime& currentTime, CompletionHandler<void(Vector<WebCore::PlatformTimeRanges>&&, WebCore::SourceBufferEvictionData&&)>&&);
+    void asyncEvictCodedFrames(uint64_t newDataSize, const MediaTime& currentTime);
+    void addTrackBuffer(TrackID);
     void resetTrackBuffers();
     void clearTrackBuffers();
     void setAllTrackBuffersNeedRandomAccess();
@@ -111,18 +107,23 @@ private:
     void setTimestampOffset(const MediaTime&);
     void setAppendWindowStart(const MediaTime&);
     void setAppendWindowEnd(const MediaTime&);
+    void setMaximumBufferSize(size_t, CompletionHandler<void()>&&);
+    void computeSeekTime(const WebCore::SeekTarget&, CompletionHandler<void(WebCore::SourceBufferPrivate::ComputeSeekPromise::Result&&)>&&);
     void seekToTime(const MediaTime&);
-    void updateTrackIds(Vector<std::pair<TrackPrivateRemoteIdentifier, TrackPrivateRemoteIdentifier>>&&);
-    void bufferedSamplesForTrackId(TrackPrivateRemoteIdentifier, CompletionHandler<void(Vector<String>&&)>&&);
-    void enqueuedSamplesForTrackID(TrackPrivateRemoteIdentifier, CompletionHandler<void(Vector<String>&&)>&&);
+    void updateTrackIds(Vector<std::pair<TrackID, TrackID>>&&);
+    void bufferedSamplesForTrackId(TrackID, CompletionHandler<void(WebCore::SourceBufferPrivate::SamplesPromise::Result&&)>&&);
+    void enqueuedSamplesForTrackID(TrackID, CompletionHandler<void(WebCore::SourceBufferPrivate::SamplesPromise::Result&&)>&&);
+    void memoryPressure(const MediaTime& currentTime);
+    void minimumUpcomingPresentationTimeForTrackID(TrackID, CompletionHandler<void(MediaTime)>&&);
+    void setMaximumQueueDepthForTrackID(TrackID, uint64_t);
+    void disconnect();
 
-    WeakPtr<GPUConnectionToWebProcess> m_connectionToWebProcess;
+    ThreadSafeWeakPtr<GPUConnectionToWebProcess> m_connectionToWebProcess;
     RemoteSourceBufferIdentifier m_identifier;
     Ref<WebCore::SourceBufferPrivate> m_sourceBufferPrivate;
     WeakPtr<RemoteMediaPlayerProxy> m_remoteMediaPlayerProxy;
 
-    HashMap<TrackPrivateRemoteIdentifier, AtomString> m_trackIds;
-    HashMap<TrackPrivateRemoteIdentifier, Ref<WebCore::MediaDescription>> m_mediaDescriptions;
+    StdUnorderedMap<TrackID, Ref<WebCore::MediaDescription>> m_mediaDescriptions;
 };
 
 } // namespace WebKit

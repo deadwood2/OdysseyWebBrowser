@@ -26,18 +26,21 @@
 #include "config.h"
 #include "HTMLSlotElement.h"
 
+#include "ElementInlines.h"
 #include "Event.h"
 #include "EventNames.h"
 #include "HTMLNames.h"
 #include "MutationObserver.h"
 #include "ShadowRoot.h"
+#include "SlotAssignment.h"
 #include "Text.h"
-#include <wtf/IsoMallocInlines.h>
 #include <wtf/SetForScope.h>
+#include <wtf/StdLibExtras.h>
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(HTMLSlotElement);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(HTMLSlotElement);
 
 using namespace HTMLNames;
 
@@ -93,14 +96,14 @@ void HTMLSlotElement::attributeChanged(const QualifiedName& name, const AtomStri
     HTMLElement::attributeChanged(name, oldValue, newValue, reason);
 
     if (isInShadowTree() && name == nameAttr) {
-        if (auto shadowRoot = makeRefPtr(containingShadowRoot()))
+        if (RefPtr shadowRoot = containingShadowRoot())
             shadowRoot->renameSlotElement(*this, oldValue, newValue);
     }
 }
 
-const Vector<WeakPtr<Node>>* HTMLSlotElement::assignedNodes() const
+const Vector<WeakPtr<Node, WeakPtrImplWithEventTargetData>>* HTMLSlotElement::assignedNodes() const
 {
-    auto shadowRoot = makeRefPtr(containingShadowRoot());
+    RefPtr shadowRoot = containingShadowRoot();
     if (!shadowRoot)
         return nullptr;
 
@@ -115,23 +118,22 @@ static void flattenAssignedNodes(Vector<Ref<Node>>& nodes, const HTMLSlotElement
     auto* assignedNodes = slot.assignedNodes();
     if (!assignedNodes) {
         for (RefPtr<Node> child = slot.firstChild(); child; child = child->nextSibling()) {
-            if (is<HTMLSlotElement>(*child))
-                flattenAssignedNodes(nodes, downcast<HTMLSlotElement>(*child));
+            if (auto* slot = dynamicDowncast<HTMLSlotElement>(*child))
+                flattenAssignedNodes(nodes, *slot);
             else if (is<Text>(*child) || is<Element>(*child))
                 nodes.append(*child);
         }
         return;
     }
-    for (auto& nodeWeakPtr : *assignedNodes) {
-        auto* node = nodeWeakPtr.get();
-        if (UNLIKELY(!node)) {
+    for (auto& weakNode : *assignedNodes) {
+        if (UNLIKELY(!weakNode)) {
             ASSERT_NOT_REACHED();
             continue;
         }
-        if (is<HTMLSlotElement>(*node) && downcast<HTMLSlotElement>(*node).containingShadowRoot())
-            flattenAssignedNodes(nodes, downcast<HTMLSlotElement>(*node));
+        if (RefPtr slot = dynamicDowncast<HTMLSlotElement>(*weakNode); slot && slot->containingShadowRoot())
+            flattenAssignedNodes(nodes, *slot);
         else
-            nodes.append(*node);
+            nodes.append(Ref { *weakNode });
     }
 }
 
@@ -145,8 +147,8 @@ Vector<Ref<Node>> HTMLSlotElement::assignedNodes(const AssignedNodesOptions& opt
         return nodes;
     }
 
-    if (auto* nodes = assignedNodes(); nodes) {
-        return WTF::compactMap(*nodes, [](auto& nodeWeakPtr) -> RefPtr<Node> {
+    if (auto* nodes = assignedNodes()) {
+        return compactMap(*nodes, [](auto& nodeWeakPtr) -> RefPtr<Node> {
             return nodeWeakPtr.get();
         });
     }
@@ -156,11 +158,53 @@ Vector<Ref<Node>> HTMLSlotElement::assignedNodes(const AssignedNodesOptions& opt
 
 Vector<Ref<Element>> HTMLSlotElement::assignedElements(const AssignedNodesOptions& options) const
 {
-    return WTF::compactMap(assignedNodes(options), [](auto&& node) -> RefPtr<Element> {
-        if (!is<Element>(node))
-            return nullptr;
-        return static_reference_cast<Element>(WTFMove(node));
+    return compactMap(assignedNodes(options), [](Ref<Node>&& node) -> RefPtr<Element> {
+        return dynamicDowncast<Element>(WTFMove(node));
     });
+}
+
+void HTMLSlotElement::assign(FixedVector<ElementOrText>&& nodes)
+{
+    RefPtr shadowRoot = containingShadowRoot();
+    RefPtr host = shadowRoot ? shadowRoot->host() : nullptr;
+    for (auto& node : m_manuallyAssignedNodes) {
+        if (RefPtr protectedNode = node.get())
+            protectedNode->setManuallyAssignedSlot(nullptr);
+    }
+
+    auto previous = std::exchange(m_manuallyAssignedNodes, { });
+    HashSet<RefPtr<Node>> seenNodes;
+    m_manuallyAssignedNodes = WTF::compactMap(nodes, [&seenNodes](ElementOrText& node) -> std::optional<WeakPtr<Node, WeakPtrImplWithEventTargetData>> {
+        auto mapper = [&seenNodes]<typename T>(RefPtr<T>& node) -> std::optional<WeakPtr<Node, WeakPtrImplWithEventTargetData>> {
+            if (seenNodes.contains(node))
+                return std::nullopt;
+            seenNodes.add(node);
+            return WeakPtr { node };
+        };
+
+        return WTF::switchOn(node,
+            [&mapper](RefPtr<Element>& node) { return mapper(node); },
+            [&mapper](RefPtr<Text>& node) { return mapper(node); }
+        );
+    });
+
+    if (RefPtr shadowRoot = containingShadowRoot(); shadowRoot && shadowRoot->slotAssignmentMode() == SlotAssignmentMode::Manual)
+        shadowRoot->slotManualAssignmentDidChange(*this, previous, m_manuallyAssignedNodes);
+    else {
+        for (auto& node : m_manuallyAssignedNodes) {
+            if (auto previousSlot = node->manuallyAssignedSlot()) {
+                previousSlot->removeManuallyAssignedNode(*node);
+                if (RefPtr shadowRootOfPreviousSlot = previousSlot->containingShadowRoot(); shadowRootOfPreviousSlot && node->parentNode() == shadowRootOfPreviousSlot->host())
+                    shadowRootOfPreviousSlot->didRemoveManuallyAssignedNode(*previousSlot, *node);
+            }
+            node->setManuallyAssignedSlot(this);
+        }
+    }
+}
+
+void HTMLSlotElement::removeManuallyAssignedNode(Node& node)
+{
+    m_manuallyAssignedNodes.removeFirst(&node);
 }
 
 void HTMLSlotElement::enqueueSlotChangeEvent()
@@ -177,7 +221,7 @@ void HTMLSlotElement::dispatchSlotChangeEvent()
     m_inSignalSlotList = false;
 
     Ref<Event> event = Event::create(eventNames().slotchangeEvent, Event::CanBubble::Yes, Event::IsCancelable::No);
-    event->setTarget(this);
+    event->setTarget(Ref { *this });
     dispatchEvent(event);
 }
 

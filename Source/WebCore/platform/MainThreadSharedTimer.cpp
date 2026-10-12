@@ -51,7 +51,7 @@ MainThreadSharedTimer::MainThreadSharedTimer()
 {
 #if USE(GLIB)
     m_timer.setPriority(RunLoopSourcePriority::MainThreadSharedTimer);
-    m_timer.setName("[WebKit] MainThreadSharedTimer");
+    m_timer.setName("[WebKit] MainThreadSharedTimer"_s);
 #endif
 }
 
@@ -71,7 +71,7 @@ void MainThreadSharedTimer::invalidate()
 }
 #endif
 
-void MainThreadSharedTimer::setFiredFunction(WTF::Function<void()>&& firedFunction)
+void MainThreadSharedTimer::setFiredFunction(Function<void()>&& firedFunction)
 {
     RELEASE_ASSERT(!m_firedFunction || !firedFunction);
     m_firedFunction = WTFMove(firedFunction);

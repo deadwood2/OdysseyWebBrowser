@@ -25,10 +25,11 @@
 
 #pragma once
 
-#include "AbstractDOMWindow.h"
+#include "DOMWindow.h"
 #include "RemoteFrame.h"
+#include "WindowPostMessageOptions.h"
 #include <JavaScriptCore/Strong.h>
-#include <wtf/IsoMalloc.h>
+#include <wtf/TZoneMalloc.h>
 #include <wtf/TypeCasts.h>
 
 namespace JSC {
@@ -40,16 +41,16 @@ class JSValue;
 
 namespace WebCore {
 
-class DOMWindow;
+class LocalDOMWindow;
 class Document;
 class Location;
 
-class RemoteDOMWindow final : public AbstractDOMWindow {
-    WTF_MAKE_ISO_ALLOCATED_EXPORT(RemoteDOMWindow, WEBCORE_EXPORT);
+class RemoteDOMWindow final : public DOMWindow {
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED_EXPORT(RemoteDOMWindow, WEBCORE_EXPORT);
 public:
-    static Ref<RemoteDOMWindow> create(Ref<RemoteFrame>&& frame, GlobalWindowIdentifier&& identifier)
+    static Ref<RemoteDOMWindow> create(RemoteFrame& frame, GlobalWindowIdentifier&& identifier)
     {
-        return adoptRef(*new RemoteDOMWindow(WTFMove(frame), WTFMove(identifier)));
+        return adoptRef(*new RemoteDOMWindow(frame, WTFMove(identifier)));
     }
 
     ~RemoteDOMWindow() final;
@@ -59,28 +60,24 @@ public:
 
     // DOM API exposed cross-origin.
     WindowProxy* self() const;
-    Location* location() const;
-    void close(Document&);
-    bool closed() const;
-    void focus(DOMWindow& incumbentWindow);
+    void focus(LocalDOMWindow& incumbentWindow);
     void blur();
     unsigned length() const;
-    WindowProxy* top() const;
-    WindowProxy* opener() const;
-    WindowProxy* parent() const;
-    void postMessage(JSC::JSGlobalObject&, DOMWindow& incumbentWindow, JSC::JSValue message, const String& targetOrigin, Vector<JSC::Strong<JSC::JSObject>>&&);
+    void setOpener(WindowProxy*);
+    void frameDetached();
+    ExceptionOr<void> postMessage(JSC::JSGlobalObject&, LocalDOMWindow& incumbentWindow, JSC::JSValue message, WindowPostMessageOptions&&);
 
 private:
-    WEBCORE_EXPORT RemoteDOMWindow(Ref<RemoteFrame>&&, GlobalWindowIdentifier&&);
+    WEBCORE_EXPORT RemoteDOMWindow(RemoteFrame&, GlobalWindowIdentifier&&);
 
-    bool isRemoteDOMWindow() const final { return true; }
-    bool isLocalDOMWindow() const final { return false; }
+    void closePage() final;
+    void setLocation(LocalDOMWindow& activeWindow, const URL& completedURL, NavigationHistoryBehavior, SetLocationLocking) final;
 
-    RefPtr<RemoteFrame> m_frame;
+    WeakPtr<RemoteFrame> m_frame;
 };
 
 } // namespace WebCore
 
 SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::RemoteDOMWindow)
-    static bool isType(const WebCore::AbstractDOMWindow& window) { return window.isRemoteDOMWindow(); }
+    static bool isType(const WebCore::DOMWindow& window) { return window.isRemoteDOMWindow(); }
 SPECIALIZE_TYPE_TRAITS_END()

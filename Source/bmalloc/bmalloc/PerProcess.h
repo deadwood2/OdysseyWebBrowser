@@ -29,6 +29,8 @@
 #include "Mutex.h"
 #include "Sizes.h"
 
+#if !BUSE(LIBPAS)
+
 namespace bmalloc {
 
 // Usage:
@@ -99,7 +101,7 @@ private:
         if (s_data)
             return;
         
-        const char* disambiguator = __PRETTY_FUNCTION__;
+        const char* disambiguator = BFUNCTION_SIGNATURE;
         s_data = getPerProcessData(stringHash(disambiguator), disambiguator, sizeof(T), std::alignment_of<T>::value);
     }
     
@@ -129,3 +131,5 @@ template<typename T>
 PerProcessData* PerProcess<T>::s_data { nullptr };
 
 } // namespace bmalloc
+
+#endif

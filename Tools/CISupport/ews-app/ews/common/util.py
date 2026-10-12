@@ -1,4 +1,4 @@
-# Copyright (C) 2018-2020 Apple Inc. All rights reserved.
+# Copyright (C) 2018-2024 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -20,8 +20,11 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import json
 import logging
+import os
 import requests
+import socket
 
 _log = logging.getLogger(__name__)
 
@@ -54,3 +57,25 @@ def is_valid_id(id, expected_data_type=int):
         _log.warn('Invalid id: {}, id should be positive integer.'.format(id))
         return False
     return True
+
+
+def load_password(name, default=None):
+    if os.getenv(name):
+        return os.getenv(name)
+    try:
+        passwords = json.load(open('passwords.json'))
+        return passwords.get(name, default)
+    except FileNotFoundError as e:
+        _log.error('ERROR: passwords.json missing: {}, using default value for {}\n'.format(e, name))
+    except Exception as e:
+        _log.error('Error in finding {} in passwords.json'.format(name))
+    return default
+
+
+def get_custom_suffix():
+    hostname = socket.gethostname().strip()
+    if 'dev' in hostname:
+        return '-dev'
+    if 'uat' in hostname:
+        return '-uat'
+    return ''

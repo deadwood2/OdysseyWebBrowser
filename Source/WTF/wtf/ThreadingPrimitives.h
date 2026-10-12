@@ -106,8 +106,12 @@ class ThreadCondition final {
 public:
     constexpr ThreadCondition() = default;
     WTF_EXPORT_PRIVATE ~ThreadCondition();
-    
+
+#if OS(MORPHOS)
+    WTF_EXPORT_PRIVATE bool wait(Mutex& mutex);
+#else
     WTF_EXPORT_PRIVATE void wait(Mutex& mutex);
+#endif
     // Returns true if the condition was signaled before absoluteTime, false if the absoluteTime was reached or is in the past.
     WTF_EXPORT_PRIVATE bool timedWait(Mutex&, WallTime absoluteTime);
     WTF_EXPORT_PRIVATE void signal();

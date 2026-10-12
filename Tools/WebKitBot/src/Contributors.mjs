@@ -25,7 +25,7 @@
 
 import axios from "axios";
 
-const contributorsURL = "https://svn.webkit.org/repository/webkit/trunk/Tools/Scripts/webkitpy/common/config/contributors.json";
+const contributorsURL = "https://svn.webkit.org/repository/webkit/trunk/metadata/contributors.json";
 
 export default class Contributors {
     static async create()
@@ -38,8 +38,7 @@ export default class Contributors {
     {
         this.emails = new Map;
         this.entries = [];
-        for (let [fullName, entry] of Object.entries(data)) {
-            entry.fullName = fullName;
+        for (let entry of data) {
             this.entries.push(entry);
             for (let email of entry.emails)
                 this.emails.set(email, entry);
@@ -49,5 +48,14 @@ export default class Contributors {
     queryWithEmail(email)
     {
         return this.emails.get(email);
+    }
+
+    queryWithSlackId(slackId)
+    {
+        for (let entry of this.emails.values()) {
+            if (entry.slackId === slackId)
+                return entry;
+        }
+        return null;
     }
 }

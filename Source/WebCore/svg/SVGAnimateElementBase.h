@@ -31,7 +31,8 @@ namespace WebCore {
 class SVGAttributeAnimator;
 
 class SVGAnimateElementBase : public SVGAnimationElement {
-    WTF_MAKE_ISO_ALLOCATED(SVGAnimateElementBase);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(SVGAnimateElementBase);
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(SVGAnimateElementBase);
 public:
     bool isDiscreteAnimator() const;
 
@@ -49,9 +50,9 @@ private:
     void setAttributeName(const QualifiedName&) override;
     void resetAnimation() override;
 
-    bool calculateFromAndToValues(const String& fromString, const String& toString) override;
-    bool calculateFromAndByValues(const String& fromString, const String& byString) override;
-    bool calculateToAtEndOfDurationValue(const String& toAtEndOfDurationString) override;
+    bool setFromAndToValues(const String& fromString, const String& toString) override;
+    bool setFromAndByValues(const String& fromString, const String& byString) override;
+    bool setToAtEndOfDurationValue(const String& toAtEndOfDurationString) override;
 
     void startAnimation() override;
     void calculateAnimatedValue(float progress, unsigned repeatCount) override;
@@ -70,8 +71,12 @@ private:
 SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::SVGAnimateElementBase)
     static bool isType(const WebCore::SVGElement& element)
     {
-        return element.hasTagName(WebCore::SVGNames::animateTag) || element.hasTagName(WebCore::SVGNames::animateColorTag)
-            || element.hasTagName(WebCore::SVGNames::animateTransformTag) || element.hasTagName(WebCore::SVGNames::setTag);
+        return element.hasTagName(WebCore::SVGNames::animateTag) || element.hasTagName(WebCore::SVGNames::animateTransformTag)
+            || element.hasTagName(WebCore::SVGNames::setTag);
     }
-    static bool isType(const WebCore::Node& node) { return is<WebCore::SVGElement>(node) && isType(downcast<WebCore::SVGElement>(node)); }
+    static bool isType(const WebCore::Node& node)
+    {
+        auto* svgElement = dynamicDowncast<WebCore::SVGElement>(node);
+        return svgElement && isType(*svgElement);
+    }
 SPECIALIZE_TYPE_TRAITS_END()

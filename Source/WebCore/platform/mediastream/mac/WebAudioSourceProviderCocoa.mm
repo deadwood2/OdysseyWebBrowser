@@ -55,12 +55,12 @@ WebAudioSourceProviderCocoa::~WebAudioSourceProviderCocoa()
 {
 }
 
-void WebAudioSourceProviderCocoa::setClient(AudioSourceProviderClient* client)
+void WebAudioSourceProviderCocoa::setClient(WeakPtr<AudioSourceProviderClient>&& client)
 {
     if (m_client == client)
         return;
-    m_client = client;
-    hasNewClient(client);
+    m_client = WTFMove(client);
+    hasNewClient(m_client.get());
 }
 
 void WebAudioSourceProviderCocoa::provideInput(AudioBus* bus, size_t framesToProcess)
@@ -130,7 +130,7 @@ void WebAudioSourceProviderCocoa::prepare(const AudioStreamBasicDescription& for
     m_dataSource->setInputFormat(m_inputDescription.value());
     m_dataSource->setOutputFormat(m_outputDescription.value());
 
-    callOnMainThread([protectedThis = makeRef(*this), numberOfChannels, sampleRate] {
+    callOnMainThread([protectedThis = Ref { *this }, numberOfChannels, sampleRate] {
         if (protectedThis->m_client)
             protectedThis->m_client->setFormat(numberOfChannels, sampleRate);
     });
@@ -140,7 +140,7 @@ void WebAudioSourceProviderCocoa::prepare(const AudioStreamBasicDescription& for
 void WebAudioSourceProviderCocoa::receivedNewAudioSamples(const PlatformAudioData& data, const AudioStreamDescription& description, size_t frameCount)
 {
     ASSERT(description.platformDescription().type == PlatformDescription::CAAudioStreamBasicType);
-    auto& basicDescription = *WTF::get<const AudioStreamBasicDescription*>(description.platformDescription().description);
+    auto& basicDescription = *std::get<const AudioStreamBasicDescription*>(description.platformDescription().description);
     if (!m_inputDescription || m_inputDescription->streamDescription() != basicDescription)
         prepare(basicDescription);
 

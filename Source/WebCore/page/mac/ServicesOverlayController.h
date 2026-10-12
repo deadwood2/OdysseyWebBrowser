@@ -28,6 +28,7 @@
 #if (ENABLE(SERVICE_CONTROLS) || ENABLE(TELEPHONE_NUMBER_DETECTION)) && PLATFORM(MAC)
 
 #include "DataDetectorHighlight.h"
+#include "GraphicsLayer.h"
 #include "GraphicsLayerClient.h"
 #include "PageOverlay.h"
 #include "Timer.h"
@@ -40,9 +41,11 @@ namespace WebCore {
 class LayoutRect;
 class Page;
 
+enum class RenderingUpdateStep : uint32_t;
+
 struct GapRects;
 
-class ServicesOverlayController : private DataDetectorHighlightClient, private PageOverlay::Client {
+class ServicesOverlayController : private DataDetectorHighlightClient, private PageOverlayClient {
     WTF_MAKE_FAST_ALLOCATED;
 public:
     explicit ServicesOverlayController(Page&);
@@ -52,12 +55,12 @@ public:
     void selectionRectsDidChange(const Vector<LayoutRect>&, const Vector<GapRects>&, bool isTextOnly);
 
 private:
-    // PageOverlay::Client
+    // PageOverlayClient
     void willMoveToPage(PageOverlay&, Page*) override;
     void didMoveToPage(PageOverlay&, Page*) override;
     void drawRect(PageOverlay&, GraphicsContext&, const IntRect& dirtyRect) override;
     bool mouseEvent(PageOverlay&, const PlatformMouseEvent&) override;
-    void didScrollFrame(PageOverlay&, Frame&) override;
+    void didScrollFrame(PageOverlay&, LocalFrame&) override;
 
     void createOverlayIfNeeded();
     void handleClick(const IntPoint&, DataDetectorHighlight&);
@@ -74,7 +77,14 @@ private:
 
     void determineActiveHighlight(bool& mouseIsOverButton);
     void clearActiveHighlight();
+
+#if ENABLE(DATA_DETECTION)
+    // DataDetectorHighlightClient
     DataDetectorHighlight* activeHighlight() const final { return m_activeHighlight.get(); }
+    void scheduleRenderingUpdate(OptionSet<RenderingUpdateStep>) final;
+    float deviceScaleFactor() const final;
+    RefPtr<GraphicsLayer> createGraphicsLayer(GraphicsLayerClient&) final;
+#endif
 
     DataDetectorHighlight* findTelephoneNumberHighlightContainingSelectionHighlight(DataDetectorHighlight&);
 
@@ -86,11 +96,11 @@ private:
 
     Vector<SimpleRange> telephoneNumberRangesForFocusedFrame();
 
-    Frame& mainFrame() const;
     Page& page() const { return m_page; }
+    Ref<Page> protectedPage() const { return m_page.get(); }
 
-    Page& m_page;
-    PageOverlay* m_servicesOverlay { nullptr };
+    WeakRef<Page> m_page;
+    WeakPtr<PageOverlay> m_servicesOverlay;
 
     RefPtr<DataDetectorHighlight> m_activeHighlight;
     RefPtr<DataDetectorHighlight> m_nextActiveHighlight;

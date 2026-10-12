@@ -1,5 +1,6 @@
 /**
- * Copyright (C) 2005 Apple Inc.
+ * Copyright (C) 2005-2022 Apple Inc.
+ * Copyright (C) 2015 Google Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -25,11 +26,16 @@
 #include "GraphicsContext.h"
 #include "HTMLInputElement.h"
 #include "HTMLNames.h"
-#include "RenderTextFragment.h"
+#include "LayoutIntegrationLineLayout.h"
+#include "RenderBoxInlines.h"
+#include "RenderBoxModelObjectInlines.h"
+#include "RenderChildIterator.h"
+#include "RenderElementInlines.h"
+#include "RenderStyleSetters.h"
 #include "RenderTheme.h"
 #include "RenderTreeBuilder.h"
 #include "StyleInheritedData.h"
-#include <wtf/IsoMallocInlines.h>
+#include <wtf/TZoneMallocInlines.h>
 
 #if PLATFORM(IOS_FAMILY)
 #include "RenderThemeIOS.h"
@@ -39,11 +45,12 @@ namespace WebCore {
 
 using namespace HTMLNames;
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(RenderButton);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(RenderButton);
 
 RenderButton::RenderButton(HTMLFormControlElement& element, RenderStyle&& style)
-    : RenderFlexibleBox(element, WTFMove(style))
+    : RenderFlexibleBox(Type::Button, element, WTFMove(style))
 {
+    ASSERT(isRenderButton());
 }
 
 RenderButton::~RenderButton() = default;
@@ -66,19 +73,36 @@ bool RenderButton::hasLineIfEmpty() const
 void RenderButton::setInnerRenderer(RenderBlock& innerRenderer)
 {
     ASSERT(!m_inner.get());
-    m_inner = makeWeakPtr(innerRenderer);
+    m_inner = innerRenderer;
     updateAnonymousChildStyle(m_inner->mutableStyle());
+
+    if (m_inner && m_inner->layoutBox()) {
+        if (auto* inlineFormattingContextRoot = dynamicDowncast<RenderBlockFlow>(*m_inner); inlineFormattingContextRoot && inlineFormattingContextRoot->modernLineLayout())
+            inlineFormattingContextRoot->modernLineLayout()->rootStyleWillChange(*inlineFormattingContextRoot, inlineFormattingContextRoot->style());
+        if (auto* lineLayout = LayoutIntegration::LineLayout::containing(*m_inner))
+            lineLayout->styleWillChange(*m_inner, m_inner->style());
+        LayoutIntegration::LineLayout::updateStyle(*m_inner);
+        for (auto& child : childrenOfType<RenderText>(*m_inner))
+            LayoutIntegration::LineLayout::updateStyle(child);
+    }
 }
-    
+
 void RenderButton::updateAnonymousChildStyle(RenderStyle& childStyle) const
 {
     childStyle.setFlexGrow(1.0f);
-    // min-width: 0; is needed for correct shrinking.
-    childStyle.setMinWidth(Length(0, LengthType::Fixed));
-    // Use margin:auto instead of align-items:center to get safe centering, i.e.
+
+    // min-inline-size: 0; is needed for correct shrinking.
+    // Use margin-block:auto instead of align-items:center to get safe centering, i.e.
     // when the content overflows, treat it the same as align-items: flex-start.
-    childStyle.setMarginTop(Length());
-    childStyle.setMarginBottom(Length());
+    if (isHorizontalWritingMode()) {
+        childStyle.setMinWidth(Length(0, LengthType::Fixed));
+        childStyle.setMarginTop(Length());
+        childStyle.setMarginBottom(Length());
+    } else {
+        childStyle.setMinHeight(Length(0, LengthType::Fixed));
+        childStyle.setMarginLeft(Length());
+        childStyle.setMarginRight(Length());
+    }
     childStyle.setFlexDirection(style().flexDirection());
     childStyle.setJustifyContent(style().justifyContent());
     childStyle.setFlexWrap(style().flexWrap());
@@ -89,9 +113,8 @@ void RenderButton::updateAnonymousChildStyle(RenderStyle& childStyle) const
 void RenderButton::updateFromElement()
 {
     // If we're an input element, we may need to change our button text.
-    if (is<HTMLInputElement>(formControlElement())) {
-        HTMLInputElement& input = downcast<HTMLInputElement>(formControlElement());
-        String value = input.valueWithDefault();
+    if (RefPtr input = dynamicDowncast<HTMLInputElement>(formControlElement())) {
+        String value = input->valueWithDefault();
         setText(value);
     }
 }
@@ -103,7 +126,7 @@ void RenderButton::setText(const String& str)
 
     if (!m_buttonText) {
         auto newButtonText = createRenderer<RenderTextFragment>(document(), str);
-        m_buttonText = makeWeakPtr(*newButtonText);
+        m_buttonText = *newButtonText;
         // FIXME: This mutation should go through the normal RenderTreeBuilder path.
         if (RenderTreeBuilder::current())
             RenderTreeBuilder::current()->attach(*this, WTFMove(newButtonText));
@@ -150,7 +173,7 @@ static LayoutUnit synthesizedBaselineFromContentBox(const RenderBox& box, LineDi
 
 LayoutUnit RenderButton::baselinePosition(FontBaseline fontBaseline, bool firstLine, LineDirectionMode direction, LinePositionMode mode) const
 {
-    if (shouldApplyLayoutContainment(*this))
+    if (shouldApplyLayoutContainment())
         return RenderFlexibleBox::baselinePosition(fontBaseline, firstLine, direction, mode);
     // We cannot rely on RenderFlexibleBox::baselinePosition() because of flexboxes have some special behavior
     // regarding baselines that shouldn't apply to buttons.
@@ -168,5 +191,11 @@ void RenderButton::layout()
     RenderThemeIOS::adjustRoundBorderRadius(mutableStyle(), *this);
 }
 #endif
+
+// Only clip overflow on input elements, to match other browsers.
+bool RenderButton::hasControlClip() const
+{
+    return is<HTMLInputElement>(formControlElement());
+}
 
 } // namespace WebCore

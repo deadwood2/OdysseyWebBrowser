@@ -25,15 +25,15 @@
 
 #pragma once
 
-#if ENABLE(GPU_PROCESS)
+#if ENABLE(GPU_PROCESS) && ENABLE(VIDEO)
 
 #include <wtf/ObjectIdentifier.h>
 
 namespace WebKit {
 
-enum RemoteMediaResourceIdentifierType { };
-using RemoteMediaResourceIdentifier = ObjectIdentifier<RemoteMediaResourceIdentifierType>;
+enum class RemoteMediaResourceIdentifierType { };
+using RemoteMediaResourceIdentifier = LegacyNullableObjectIdentifier<RemoteMediaResourceIdentifierType>;
 
 } // namespace WebKit
 
-#endif
+#endif // ENABLE(GPU_PROCESS) && ENABLE(VIDEO)

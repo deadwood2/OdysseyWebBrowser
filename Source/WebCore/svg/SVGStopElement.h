@@ -26,7 +26,8 @@
 namespace WebCore {
 
 class SVGStopElement final : public SVGElement {
-    WTF_MAKE_ISO_ALLOCATED(SVGStopElement);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(SVGStopElement);
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(SVGStopElement);
 public:
     static Ref<SVGStopElement> create(const QualifiedName&, Document&);
 
@@ -39,9 +40,8 @@ private:
     SVGStopElement(const QualifiedName&, Document&);
 
     using PropertyRegistry = SVGPropertyOwnerRegistry<SVGStopElement, SVGElement>;
-    const SVGPropertyRegistry& propertyRegistry() const final { return m_propertyRegistry; }
 
-    void parseAttribute(const QualifiedName&, const AtomString&) final;
+    void attributeChanged(const QualifiedName&, const AtomString& oldValue, const AtomString& newValue, AttributeModificationReason) final;
     void svgAttributeChanged(const QualifiedName&) final;
 
     bool isGradientStop() const final { return true; }
@@ -49,7 +49,6 @@ private:
     RenderPtr<RenderElement> createElementRenderer(RenderStyle&&, const RenderTreePosition&) final;
     bool rendererIsNeeded(const RenderStyle&) final;
 
-    PropertyRegistry m_propertyRegistry { *this };
     Ref<SVGAnimatedNumber> m_offset { SVGAnimatedNumber::create(this, 0) };
 };
 

@@ -29,8 +29,9 @@
 #include "PixelDumpSupport.h"
 #include "PlatformWebView.h"
 #include "TestController.h"
-#include <ImageIO/CGImageDestination.h>
+#include <ImageIO/ImageIO.h>
 #include <WebKit/WKImageCG.h>
+#include <wtf/ASCIICType.h>
 #include <wtf/RetainPtr.h>
 #include <wtf/SHA1.h>
 
@@ -53,7 +54,7 @@ static RetainPtr<CGContextRef> createCGContextFromCGImage(CGImageRef image)
 
     // Creating this bitmap in the device color space should prevent any color conversion when the image of the web view is drawn into it.
     auto colorSpace = adoptCF(CGColorSpaceCreateDeviceRGB());
-    auto context = adoptCF(CGBitmapContextCreate(0, pixelsWide, pixelsHigh, 8, rowBytes, colorSpace.get(), kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Host));
+    auto context = adoptCF(CGBitmapContextCreate(0, pixelsWide, pixelsHigh, 8, rowBytes, colorSpace.get(), static_cast<uint32_t>(kCGImageAlphaPremultipliedFirst) | static_cast<uint32_t>(kCGBitmapByteOrder32Host)));
     if (!context)
         return nullptr;
 
@@ -67,11 +68,11 @@ static RetainPtr<CGContextRef> createCGContextFromImage(WKImageRef wkImage)
     return createCGContextFromCGImage(image.get());
 }
 
-void computeSHA1HashStringForContext(CGContextRef bitmapContext, char hashString[33])
+static std::optional<std::string> computeSHA1HashStringForContext(CGContextRef bitmapContext)
 {
     if (!bitmapContext) {
         WTFLogAlways("computeSHA1HashStringForContext: context is null\n");
-        return;
+        return { };
     }
     ASSERT(CGBitmapContextGetBitsPerPixel(bitmapContext) == 32); // ImageDiff assumes 32 bit RGBA, we must as well.
     size_t pixelsHigh = CGBitmapContextGetHeight(bitmapContext);
@@ -94,31 +95,73 @@ void computeSHA1HashStringForContext(CGContextRef bitmapContext, char hashString
 #endif
     {
         for (unsigned row = 0; row < pixelsHigh; row++) {
-            sha1.addBytes(bitmapData, 4 * pixelsWide);
+            sha1.addBytes(std::span { bitmapData, 4 * pixelsWide });
             bitmapData += bytesPerRow;
         }
     }
 
-    SHA1::Digest hash;
-    sha1.computeHash(hash);
-
-    hashString[0] = '\0';
-    for (size_t i = 0; i < 16; i++)
-        snprintf(hashString, 33, "%s%02x", hashString, hash[i]);
+    auto hexString = sha1.computeHexDigest();
+    
+    auto result = hexString.toStdString();
+    std::transform(result.begin(), result.end(), result.begin(), [](unsigned char c) { return toASCIILower(c); });
+    return result;
 }
 
-static void dumpBitmap(CGContextRef bitmapContext, const char* checksum)
+#if PLATFORM(MAC)
+static bool operator==(const WKSize& a, const WKSize& b)
+{
+    return a.width == b.width && a.height == b.height;
+}
+
+static std::optional<std::string> hashForBlackImageOfSize(WKSize size)
+{
+    // Hardcode some well-known sizes for performance.
+    if (size == WKSize { 800, 600 })
+        return "6c0b5c4dc61390fd6a45eebdebf7301828ef0e56";
+    if (size == WKSize { 1600, 1200 })
+        return "11d642624de9935a659bcd042d6ff83f5a917504";
+    if (size == WKSize { 480, 360 })
+        return "feed54e9caa58b83b0c644fc037f0137828b2c76";
+
+    size_t pixelsWide = size.width;
+    size_t pixelsHigh = size.height;
+    size_t rowBytes = (4 * pixelsWide + 63) & ~63;
+
+    auto colorSpace = adoptCF(CGColorSpaceCreateDeviceRGB());
+    auto context = adoptCF(CGBitmapContextCreate(nullptr, pixelsWide, pixelsHigh, 8, rowBytes, colorSpace.get(), static_cast<uint32_t>(kCGImageAlphaPremultipliedFirst) | static_cast<uint32_t>(kCGBitmapByteOrder32Host)));
+    if (!context)
+        return { };
+
+    CGContextSetRGBFillColor(context.get(), 0, 0, 0, 1);
+
+    CGRect bounds = CGRectMake(0, 0, pixelsWide, pixelsHigh);
+    CGContextFillRect(context.get(), bounds);
+
+    return computeSHA1HashStringForContext(context.get());
+}
+#endif // PLATFORM(MAC)
+
+static void dumpBitmap(CGContextRef bitmapContext, const std::string& checksum, WKSize imageSize, WKSize windowSize)
 {
     auto image = adoptCF(CGBitmapContextCreateImage(bitmapContext));
     auto imageData = adoptCF(CFDataCreateMutable(0, 0));
     auto imageDest = adoptCF(CGImageDestinationCreateWithData(imageData.get(), kUTTypePNG, 1, 0));
-    CGImageDestinationAddImage(imageDest.get(), image.get(), 0);
+
+    auto propertiesDictionary = adoptCF(CFDictionaryCreateMutable(kCFAllocatorDefault, 1, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks));
+    double resolutionWidth = 72.0 * imageSize.width / windowSize.width;
+    double resolutionHeight = 72.0 * imageSize.height / windowSize.height;
+    auto resolutionWidthNumber = adoptCF(CFNumberCreate(kCFAllocatorDefault, kCFNumberDoubleType, &resolutionWidth));
+    auto resolutionHeightNumber = adoptCF(CFNumberCreate(kCFAllocatorDefault, kCFNumberDoubleType, &resolutionHeight));
+    CFDictionarySetValue(propertiesDictionary.get(), kCGImagePropertyDPIWidth, resolutionWidthNumber.get());
+    CFDictionarySetValue(propertiesDictionary.get(), kCGImagePropertyDPIHeight, resolutionHeightNumber.get());
+
+    CGImageDestinationAddImage(imageDest.get(), image.get(), propertiesDictionary.get());
     CGImageDestinationFinalize(imageDest.get());
 
     const unsigned char* data = CFDataGetBytePtr(imageData.get());
     const size_t dataLength = CFDataGetLength(imageData.get());
 
-    printPNG(data, dataLength, checksum);
+    printPNG(data, dataLength, checksum.c_str());
 }
 
 static void paintRepaintRectOverlay(CGContextRef context, WKSize imageSize, WKArrayRef repaintRects)
@@ -151,40 +194,73 @@ void TestInvocation::dumpPixelsAndCompareWithExpected(SnapshotResultType snapsho
 {
     RetainPtr<CGContextRef> context;
     WKSize imageSize;
+    std::string snapshotHash;
 
-    switch (snapshotType) {
-    case SnapshotResultType::WebContents:
-        if (!wkImage) {
-            WTFLogAlways("dumpPixelsAndCompareWithExpected: image is null\n");
+    auto windowSize = TestController::singleton().mainWebView()->windowFrame().size;
+
+    auto generateSnapshot = [&]() -> bool {
+
+        switch (snapshotType) {
+        case SnapshotResultType::WebContents:
+            if (!wkImage) {
+                WTFLogAlways("dumpPixelsAndCompareWithExpected: image is null\n");
+                return false;
+            }
+            context = createCGContextFromImage(wkImage);
+            imageSize = WKImageGetSize(wkImage);
+            break;
+        case SnapshotResultType::WebView:
+            auto image = TestController::singleton().mainWebView()->windowSnapshotImage();
+            if (!image) {
+                WTFLogAlways("dumpPixelsAndCompareWithExpected: image is null\n");
+                return false;
+            }
+            context = createCGContextFromCGImage(image.get());
+            imageSize = WKSizeMake(CGImageGetWidth(image.get()), CGImageGetHeight(image.get()));
+            break;
+        }
+
+        if (!context) {
+            WTFLogAlways("dumpPixelsAndCompareWithExpected: context is null\n");
+            return false;
+        }
+
+        // A non-null repaintRects array means we're doing a repaint test.
+        if (repaintRects)
+            paintRepaintRectOverlay(context.get(), imageSize, repaintRects);
+
+        auto computedHash = computeSHA1HashStringForContext(context.get());
+        if (!computedHash)
+            return false;
+
+        snapshotHash = *computedHash;
+        return true;
+    };
+
+    bool gotBlackSnapshot = false;
+    constexpr unsigned maxNumTries = 3;
+    unsigned numTries = 1;
+    do {
+        bool snapshotSucceeded = generateSnapshot();
+        if (!snapshotSucceeded)
+            return;
+
+#if PLATFORM(MAC)
+        // Detect rdar://89840327 and retry.
+        auto blackSnapshotHash = hashForBlackImageOfSize(imageSize);
+        if (!blackSnapshotHash) {
+            WTFLogAlways("Failed to compute hash for black snapshot of size %.0f x %.0f", imageSize.width, imageSize.height);
             return;
         }
-        context = createCGContextFromImage(wkImage);
-        imageSize = WKImageGetSize(wkImage);
-        break;
-    case SnapshotResultType::WebView:
-        auto image = TestController::singleton().mainWebView()->windowSnapshotImage();
-        if (!image) {
-            WTFLogAlways("dumpPixelsAndCompareWithExpected: image is null\n");
-            return;
-        }
-        context = createCGContextFromCGImage(image.get());
-        imageSize = WKSizeMake(CGImageGetWidth(image.get()), CGImageGetHeight(image.get()));
-        break;
-    }
 
-    if (!context) {
-        WTFLogAlways("dumpPixelsAndCompareWithExpected: context is null\n");
-        return;
-    }
+        gotBlackSnapshot = snapshotHash == *blackSnapshotHash;
+        if (gotBlackSnapshot)
+            WTFLogAlways("dumpPixelsAndCompareWithExpected: got all black snapshot (try %u of %u)", numTries, maxNumTries);
+#endif
+    } while (gotBlackSnapshot && numTries++ < maxNumTries);
 
-    // A non-null repaintRects array means we're doing a repaint test.
-    if (repaintRects)
-        paintRepaintRectOverlay(context.get(), imageSize, repaintRects);
-
-    char actualHash[33];
-    computeSHA1HashStringForContext(context.get(), actualHash);
-    if (!compareActualHashToExpectedAndDumpResults(actualHash))
-        dumpBitmap(context.get(), actualHash);
+    if (!compareActualHashToExpectedAndDumpResults(snapshotHash))
+        dumpBitmap(context.get(), snapshotHash, imageSize, windowSize);
 }
 
 } // namespace WTR

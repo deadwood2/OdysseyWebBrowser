@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -42,8 +42,11 @@
 #include <wtf/ListDump.h>
 #include <wtf/Lock.h>
 #include <wtf/StdLibExtras.h>
+#include <wtf/TZoneMallocInlines.h>
 
 namespace JSC {
+
+WTF_MAKE_TZONE_ALLOCATED_IMPL(SlotVisitor);
 
 #if ENABLE(GC_VALIDATION)
 static void validate(JSCell* cell)
@@ -57,26 +60,25 @@ static void validate(JSCell* cell)
 
     // Both the cell's structure, and the cell's structure's structure should be the Structure Structure.
     // I hate this sentence.
-    VM& vm = cell->vm();
-    if (cell->structure()->structure()->JSCell::classInfo(vm) != cell->structure()->JSCell::classInfo(vm)) {
+    if (cell->structure()->structure()->JSCell::classInfo() != cell->structure()->JSCell::classInfo()) {
         const char* parentClassName = 0;
         const char* ourClassName = 0;
-        if (cell->structure()->structure() && cell->structure()->structure()->JSCell::classInfo(vm))
-            parentClassName = cell->structure()->structure()->JSCell::classInfo(vm)->className;
-        if (cell->structure()->JSCell::classInfo(vm))
-            ourClassName = cell->structure()->JSCell::classInfo(vm)->className;
+        if (cell->structure()->structure() && cell->structure()->structure()->JSCell::classInfo())
+            parentClassName = cell->structure()->structure()->JSCell::classInfo()->className;
+        if (cell->structure()->JSCell::classInfo())
+            ourClassName = cell->structure()->JSCell::classInfo()->className;
         dataLogF("parent structure (%p <%s>) of cell at %p doesn't match cell's structure (%p <%s>)\n",
             cell->structure()->structure(), parentClassName, cell, cell->structure(), ourClassName);
         CRASH();
     }
 
     // Make sure we can walk the ClassInfo chain
-    const ClassInfo* info = cell->classInfo(vm);
+    const ClassInfo* info = cell->classInfo();
     do { } while ((info = info->parentClass));
 }
 #endif
 
-SlotVisitor::SlotVisitor(Heap& heap, CString codeName)
+SlotVisitor::SlotVisitor(JSC::Heap& heap, CString codeName)
     : Base(heap, codeName, heap.m_opaqueRoots)
     , m_markingVersion(MarkedSpace::initialVersion)
 #if ASSERT_ENABLED
@@ -152,10 +154,9 @@ void SlotVisitor::appendJSCellOrAuxiliary(HeapCell* heapCell)
                     out.print("GC type: ", heap()->collectionScope(), "\n");
                     out.print("Object at: ", RawPointer(jsCell), "\n");
 #if USE(JSVALUE64)
-                    out.print("Structure ID: ", structureID, " (0x", format("%x", structureID), ")\n");
-                    out.print("Structure ID table size: ", heap()->structureIDTable().size(), "\n");
+                    out.print("Structure ID: ", structureID.bits(), " (", RawPointer(structureID.decode()), ")\n");
 #else
-                    out.print("Structure: ", RawPointer(structureID), "\n");
+                    out.print("Structure: ", RawPointer(structureID.decode()), "\n");
 #endif
                     out.print("Object contents:");
                     for (unsigned i = 0; i < 2; ++i)
@@ -186,13 +187,13 @@ void SlotVisitor::appendJSCellOrAuxiliary(HeapCell* heapCell)
             die("GC scan found corrupt object: structureID is zero!\n");
         
         // It's not OK for the structure to be nuked at any GC scan point.
-        if (isNuked(structureID))
+        if (structureID.isNuked())
             die("GC scan found object in bad state: structureID is nuked!\n");
-        
+
         // This detects the worst of the badness.
-        Integrity::auditStructureID(heap()->structureIDTable(), structureID);
+        Integrity::auditStructureID(structureID);
     };
-    
+
     // In debug mode, we validate before marking since this makes it clearer what the problem
     // was. It's also slower, so we don't do it normally.
     if (ASSERT_ENABLED && isJSCellKind(heapCell->cellKind()))
@@ -389,16 +390,16 @@ ALWAYS_INLINE void SlotVisitor::visitChildren(const JSCell* cell)
         // https://bugs.webkit.org/show_bug.cgi?id=162462
 #if CPU(X86_64)
         if (UNLIKELY(Options::dumpZappedCellCrashData())) {
-            Structure* structure = cell->structure(vm());
+            Structure* structure = cell->structure();
             if (LIKELY(structure)) {
-                const MethodTable* methodTable = &structure->classInfo()->methodTable;
+                const MethodTable* methodTable = &structure->classInfoForCells()->methodTable;
                 methodTable->visitChildren(const_cast<JSCell*>(cell), *this);
                 break;
             }
             reportZappedCellAndCrash(m_heap, const_cast<JSCell*>(cell));
         }
 #endif
-        cell->methodTable(vm())->visitChildren(const_cast<JSCell*>(cell), *this);
+        cell->methodTable()->visitChildren(const_cast<JSCell*>(cell), *this);
         break;
     }
 #if !OS(MORPHOS)
@@ -496,8 +497,12 @@ NEVER_INLINE void SlotVisitor::drain(MonotonicTime timeout)
     }
     
     Locker locker { m_rightToRun };
-    
+
+#if OS(MORPHOS) // this always evaluates to true since timeout will always be 'infinity'
+    while (1) {
+#else
     while (!hasElapsed(timeout)) {
+#endif
         updateMutatorIsStopped(locker);
         IterationStatus status = forEachMarkStack(
             [&] (MarkStackArray& stack) -> IterationStatus {

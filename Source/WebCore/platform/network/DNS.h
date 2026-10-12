@@ -26,8 +26,9 @@
 #pragma once
 
 #include <optional>
+#include <variant>
 #include <wtf/Forward.h>
-#include <wtf/Variant.h>
+#include <wtf/HashTraits.h>
 
 #if OS(WINDOWS)
 #include <winsock2.h>
@@ -57,7 +58,6 @@ namespace WebCore {
 
 class IPAddress {
 public:
-    static std::optional<IPAddress> fromSockAddrIn6(const struct sockaddr_in6&);
     explicit IPAddress(const struct in_addr& address)
         : m_address(address)
     {
@@ -68,14 +68,55 @@ public:
     {
     }
 
-    bool isIPv4() const { return WTF::holds_alternative<struct in_addr>(m_address); }
-    bool isIPv6() const { return WTF::holds_alternative<struct in6_addr>(m_address); }
+    explicit IPAddress(WTF::HashTableEmptyValueType)
+        : m_address(WTF::HashTableEmptyValue)
+    {
+    }
 
-    const struct in_addr& ipv4Address() const { return WTF::get<struct in_addr>(m_address); }
-    const struct in6_addr& ipv6Address() const { return WTF::get<struct in6_addr>(m_address); }
+    WEBCORE_EXPORT IPAddress isolatedCopy() const;
+    WEBCORE_EXPORT unsigned matchingNetMaskLength(const IPAddress& other) const;
+    WEBCORE_EXPORT static std::optional<IPAddress> fromString(const String&);
+
+    bool isIPv4() const { return std::holds_alternative<struct in_addr>(m_address); }
+    bool isIPv6() const { return std::holds_alternative<struct in6_addr>(m_address); }
+    bool containsOnlyZeros() const;
+    WEBCORE_EXPORT bool isLoopback() const;
+
+    const struct in_addr& ipv4Address() const { return std::get<struct in_addr>(m_address); }
+    const struct in6_addr& ipv6Address() const { return std::get<struct in6_addr>(m_address); }
+
+    enum class ComparisonResult : uint8_t {
+        CannotCompare,
+        Less,
+        Equal,
+        Greater
+    };
+
+    ComparisonResult compare(const IPAddress& other) const
+    {
+        auto comparisonResult = [](int result) {
+            if (!result)
+                return ComparisonResult::Equal;
+            if (result < 0)
+                return ComparisonResult::Less;
+            return ComparisonResult::Greater;
+        };
+
+        if (isIPv4() && other.isIPv4())
+            return comparisonResult(memcmp(&ipv4Address(), &other.ipv4Address(), sizeof(struct in_addr)));
+
+        if (isIPv6() && other.isIPv6())
+            return comparisonResult(memcmp(&ipv6Address(), &other.ipv6Address(), sizeof(struct in6_addr)));
+
+        return ComparisonResult::CannotCompare;
+    }
+
+    bool operator<(const IPAddress& other) const { return compare(other) == ComparisonResult::Less; }
+    bool operator>(const IPAddress& other) const { return compare(other) == ComparisonResult::Greater; }
+    bool operator==(const IPAddress& other) const { return compare(other) == ComparisonResult::Equal; }
 
 private:
-    Variant<struct in_addr, struct in6_addr> m_address;
+    std::variant<WTF::HashTableEmptyValueType, struct in_addr, struct in6_addr> m_address;
 };
 
 enum class DNSError { Unknown, CannotResolve, Cancelled };
@@ -86,14 +127,14 @@ using DNSCompletionHandler = CompletionHandler<void(DNSAddressesOrError&&)>;
 WEBCORE_EXPORT void prefetchDNS(const String& hostname);
 WEBCORE_EXPORT void resolveDNS(const String& hostname, uint64_t identifier, DNSCompletionHandler&&);
 WEBCORE_EXPORT void stopResolveDNS(uint64_t identifier);
+WEBCORE_EXPORT bool isIPAddressDisallowed(const URL&);
 
-inline std::optional<IPAddress> IPAddress::fromSockAddrIn6(const struct sockaddr_in6& address)
-{
-    if (address.sin6_family == AF_INET6)
-        return IPAddress { address.sin6_addr };
-    if (address.sin6_family == AF_INET)
-        return IPAddress {reinterpret_cast<const struct sockaddr_in&>(address).sin_addr };
-    return { };
-}
+} // namespace WebCore
 
-}
+namespace WTF {
+
+template<> struct HashTraits<WebCore::IPAddress> : GenericHashTraits<WebCore::IPAddress> {
+    static WebCore::IPAddress emptyValue() { return WebCore::IPAddress { WTF::HashTableEmptyValue }; }
+};
+
+} // namespace WTF

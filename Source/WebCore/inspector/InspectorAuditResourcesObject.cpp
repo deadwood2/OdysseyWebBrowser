@@ -33,8 +33,10 @@
 #include "CachedResource.h"
 #include "CachedSVGDocument.h"
 #include "Document.h"
+#include "FrameDestructionObserverInlines.h"
 #include "InspectorPageAgent.h"
 #include <wtf/Vector.h>
+#include <wtf/text/MakeString.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
@@ -43,7 +45,7 @@ using namespace Inspector;
 
 #define ERROR_IF_NO_ACTIVE_AUDIT() \
     if (!m_auditAgent.hasActiveAudit()) \
-        return Exception { NotAllowedError, "Cannot be called outside of a Web Inspector Audit"_s };
+        return Exception { ExceptionCode::NotAllowedError, "Cannot be called outside of a Web Inspector Audit"_s };
 
 InspectorAuditResourcesObject::InspectorAuditResourcesObject(InspectorAuditAgent& auditAgent)
     : m_auditAgent(auditAgent)
@@ -64,7 +66,7 @@ ExceptionOr<Vector<InspectorAuditResourcesObject::Resource>> InspectorAuditResou
 
     auto* frame = document.frame();
     if (!frame)
-        return Exception { NotAllowedError, "Cannot be called with a detached document"_s };
+        return Exception { ExceptionCode::NotAllowedError, "Cannot be called with a detached document"_s };
 
     for (auto* cachedResource : InspectorPageAgent::cachedResourcesForFrame(frame)) {
         Resource resource;
@@ -98,17 +100,17 @@ ExceptionOr<InspectorAuditResourcesObject::ResourceContent> InspectorAuditResour
 
     auto* frame = document.frame();
     if (!frame)
-        return Exception { NotAllowedError, "Cannot be called with a detached document"_s };
+        return Exception { ExceptionCode::NotAllowedError, "Cannot be called with a detached document"_s };
 
     auto* cachedResource = m_resources.get(id);
     if (!cachedResource)
-        return Exception { NotFoundError, makeString("Unknown identifier "_s, id) };
+        return Exception { ExceptionCode::NotFoundError, makeString("Unknown identifier "_s, id) };
 
-    Protocol::ErrorString errorString;
+    Inspector::Protocol::ErrorString errorString;
     ResourceContent resourceContent;
     InspectorPageAgent::resourceContent(errorString, frame, cachedResource->url(), &resourceContent.data, &resourceContent.base64Encoded);
     if (!errorString.isEmpty())
-        return Exception { NotFoundError, errorString };
+        return Exception { ExceptionCode::NotFoundError, errorString };
 
     return resourceContent;
 }

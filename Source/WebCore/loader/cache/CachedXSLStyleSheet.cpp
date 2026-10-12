@@ -38,47 +38,57 @@ namespace WebCore {
 
 CachedXSLStyleSheet::CachedXSLStyleSheet(CachedResourceRequest&& request, PAL::SessionID sessionID, const CookieJar* cookieJar)
     : CachedResource(WTFMove(request), Type::XSLStyleSheet, sessionID, cookieJar)
-    , m_decoder(TextResourceDecoder::create("text/xsl"))
+    , m_decoder(TextResourceDecoder::create("text/xsl"_s))
 {
 }
 
 CachedXSLStyleSheet::~CachedXSLStyleSheet() = default;
 
+RefPtr<TextResourceDecoder> CachedXSLStyleSheet::protectedDecoder() const
+{
+    return m_decoder;
+}
+
 void CachedXSLStyleSheet::didAddClient(CachedResourceClient& client)
 {
     ASSERT(client.resourceClientType() == CachedStyleSheetClient::expectedType());
     if (!isLoading())
-        static_cast<CachedStyleSheetClient&>(client).setXSLStyleSheet(m_resourceRequest.url().string(), m_response.url(), m_sheet);
+        downcast<CachedStyleSheetClient>(client).setXSLStyleSheet(m_resourceRequest.url().string(), response().url(), m_sheet);
 }
 
 void CachedXSLStyleSheet::setEncoding(const String& chs)
 {
-    m_decoder->setEncoding(chs, TextResourceDecoder::EncodingFromHTTPHeader);
+    protectedDecoder()->setEncoding(chs, TextResourceDecoder::EncodingFromHTTPHeader);
 }
 
 String CachedXSLStyleSheet::encoding() const
 {
-    return m_decoder->encoding().name();
+    return String::fromLatin1(protectedDecoder()->encoding().name());
 }
 
-void CachedXSLStyleSheet::finishLoading(SharedBuffer* data, const NetworkLoadMetrics& metrics)
+void CachedXSLStyleSheet::finishLoading(const FragmentedSharedBuffer* data, const NetworkLoadMetrics& metrics)
 {
-    m_data = data;
-    setEncodedSize(data ? data->size() : 0);
-    if (data)
-        m_sheet = m_decoder->decodeAndFlush(data->data(), encodedSize());
+    if (data) {
+        Ref contiguousData = data->makeContiguous();
+        setEncodedSize(data->size());
+        m_sheet = protectedDecoder()->decodeAndFlush(contiguousData->span());
+        m_data = WTFMove(contiguousData);
+    } else {
+        m_data = nullptr;
+        setEncodedSize(0);
+    }
     setLoading(false);
     checkNotify(metrics);
 }
 
-void CachedXSLStyleSheet::checkNotify(const NetworkLoadMetrics&)
+void CachedXSLStyleSheet::checkNotify(const NetworkLoadMetrics&, LoadWillContinueInAnotherProcess)
 {
     if (isLoading())
         return;
     
-    CachedResourceClientWalker<CachedStyleSheetClient> w(m_clients);
-    while (CachedStyleSheetClient* c = w.next())
-        c->setXSLStyleSheet(m_resourceRequest.url().string(), m_response.url(), m_sheet);
+    CachedResourceClientWalker<CachedStyleSheetClient> walker(*this);
+    while (CachedStyleSheetClient* c = walker.next())
+        c->setXSLStyleSheet(m_resourceRequest.url().string(), response().url(), m_sheet);
 }
 
 #endif

@@ -32,6 +32,8 @@
 #include "Mutex.h"
 #include <mutex>
 
+#if !BUSE(LIBPAS)
+
 namespace bmalloc {
 
 template<typename Config>
@@ -47,7 +49,7 @@ IsoDeallocator<Config>::~IsoDeallocator()
 
 template<typename Config>
 template<typename Type>
-void IsoDeallocator<Config>::deallocate(api::IsoHeap<Type>& handle, void* ptr)
+void IsoDeallocator<Config>::deallocate(api::IsoHeapBase<Type>& handle, void* ptr)
 {
     static constexpr bool verbose = false;
     if (verbose)
@@ -82,3 +84,4 @@ BNO_INLINE void IsoDeallocator<Config>::scavenge()
 
 } // namespace bmalloc
 
+#endif

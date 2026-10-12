@@ -32,6 +32,16 @@
 
 @implementation WKContextMenuElementInfo
 
+WK_OBJECT_DISABLE_DISABLE_KVC_IVAR_ACCESS;
+
+- (void)dealloc
+{
+    if (WebCoreObjCScheduleDeallocateOnMainRunLoop(WKContextMenuElementInfo.class, self))
+        return;
+    _elementInfo->API::ContextMenuElementInfo::~ContextMenuElementInfo();
+    [super dealloc];
+}
+
 - (NSURL *)linkURL
 {
     return _elementInfo->url();

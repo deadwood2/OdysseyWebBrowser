@@ -25,20 +25,21 @@
 
 #pragma once
 
+#import <Foundation/Foundation.h>
+
 #if TARGET_OS_IPHONE
 
-#import "WAKAppKitStubs.h"
-#import "WAKView.h"
-#import "WKContentObservation.h"
 #import <CoreGraphics/CoreGraphics.h>
-#import <Foundation/Foundation.h>
+#import <WebCore/WAKAppKitStubs.h>
+#import <WebCore/WAKView.h>
+#import <WebCore/WKContentObservation.h>
 
 @class CALayer;
 @class WebEvent;
 
 #ifdef __cplusplus
 namespace WebCore {
-    class LegacyTileCache;
+class LegacyTileCache;
 }
 typedef WebCore::LegacyTileCache LegacyTileCache;
 #else
@@ -113,7 +114,7 @@ WEBCORE_EXPORT @interface WAKWindow : WAKResponder
 - (BOOL)isVisible;
 - (void)setVisible:(BOOL)visible;
 - (NSSelectionDirection)keyViewSelectionDirection;
-- (BOOL)makeFirstResponder:(NSResponder *)responder;
+- (BOOL)makeFirstResponder:(WAKResponder *)responder;
 - (WAKView *)_newFirstResponderAfterResigning NS_RETURNS_NOT_RETAINED;
 - (void)setFrame:(NSRect)frameRect display:(BOOL)flag;
 - (CGRect)frame;

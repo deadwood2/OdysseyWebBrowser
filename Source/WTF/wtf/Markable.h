@@ -36,6 +36,7 @@
 
 #include <optional>
 #include <type_traits>
+#include <wtf/Hasher.h>
 #include <wtf/StdLibExtras.h>
 
 namespace WTF {
@@ -47,7 +48,7 @@ template<
     typename EnumType,
     typename std::underlying_type<EnumType>::type constant = std::numeric_limits<typename std::underlying_type<EnumType>::type>::max()>
 struct EnumMarkableTraits {
-    static_assert(std::is_enum<EnumType>::value, "");
+    static_assert(std::is_enum<EnumType>::value);
     using UnderlyingType = typename std::underlying_type<EnumType>::type;
 
     constexpr static bool isEmptyValue(EnumType value)
@@ -63,7 +64,7 @@ struct EnumMarkableTraits {
 
 template<typename IntegralType, IntegralType constant = 0>
 struct IntegralMarkableTraits {
-    static_assert(std::is_integral<IntegralType>::value, "");
+    static_assert(std::is_integral<IntegralType>::value);
     constexpr static bool isEmptyValue(IntegralType value)
     {
         return value == constant;
@@ -72,6 +73,18 @@ struct IntegralMarkableTraits {
     constexpr static IntegralType emptyValue()
     {
         return constant;
+    }
+};
+
+struct FloatMarkableTraits {
+    constexpr static bool isEmptyValue(float value)
+    {
+        return value != value;
+    }
+
+    constexpr static float emptyValue()
+    {
+        return std::numeric_limits<float>::quiet_NaN();
     }
 };
 
@@ -118,15 +131,26 @@ public:
 
     void reset() { m_value = Traits::emptyValue(); }
 
-    constexpr const T& value() const& { return m_value; }
-    constexpr T& value() & { return m_value; }
-    constexpr T&& value() && { return WTFMove(m_value); }
+    constexpr const T& value() const& { RELEASE_ASSERT(bool(*this)); return m_value; }
+    constexpr T& value() & { RELEASE_ASSERT(bool(*this)); return m_value; }
+    constexpr T&& value() && { RELEASE_ASSERT(bool(*this)); return WTFMove(m_value); }
 
-    constexpr const T* operator->() const { return std::addressof(m_value); }
-    constexpr T* operator->() { return std::addressof(m_value); }
+    constexpr const T& unsafeValue() const& { return m_value; }
+    constexpr T& unsafeValue() & { return m_value; }
+    constexpr T&& unsafeValue() && { return WTFMove(m_value); }
 
-    constexpr const T& operator*() const& { return m_value; }
-    constexpr T& operator*() & { return m_value; }
+    constexpr const T* operator->() const { RELEASE_ASSERT(bool(*this)); return std::addressof(m_value); }
+    constexpr T* operator->() { RELEASE_ASSERT(bool(*this)); return std::addressof(m_value); }
+
+    constexpr const T& operator*() const& { RELEASE_ASSERT(bool(*this)); return m_value; }
+    constexpr T& operator*() & { RELEASE_ASSERT(bool(*this)); return m_value; }
+
+    template <class U> constexpr T value_or(U&& fallback) const
+    {
+        if (bool(*this))
+            return m_value;
+        return static_cast<T>(std::forward<U>(fallback));
+    }
 
     operator std::optional<T>() &&
     {
@@ -151,6 +175,11 @@ private:
     T m_value;
 };
 
+template <typename T, typename Traits> inline void add(Hasher& hasher, const Markable<T, Traits>& value)
+{
+    add(hasher, value.asOptional());
+}
+
 template <typename T, typename Traits> constexpr bool operator==(const Markable<T, Traits>& x, const Markable<T, Traits>& y)
 {
     if (bool(x) != bool(y))
@@ -162,9 +191,6 @@ template <typename T, typename Traits> constexpr bool operator==(const Markable<
 template <typename T, typename Traits> constexpr bool operator==(const Markable<T, Traits>& x, const T& v) { return bool(x) && x.value() == v; }
 template <typename T, typename Traits> constexpr bool operator==(const T& v, const Markable<T, Traits>& x) { return bool(x) && v == x.value(); }
 
-template <typename T, typename Traits> constexpr bool operator!=(const Markable<T, Traits>& x, const Markable<T, Traits>& y) { return !(x == y); }
-template <typename T, typename Traits> constexpr bool operator!=(const Markable<T, Traits>& x, const T& v) { return !(x == v); }
-template <typename T, typename Traits> constexpr bool operator!=(const T& v, const Markable<T, Traits>& x) { return !(v == x); }
 
 } // namespace WTF
 

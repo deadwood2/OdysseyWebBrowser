@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2018-2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2018-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -34,18 +34,19 @@
 
 namespace JSC {
 
+class ClonedArguments;
+class DirectArguments;
+class ScopedArguments;
+
 class JSImmutableButterfly : public JSCell {
     using Base = JSCell;
 
 public:
     static constexpr unsigned StructureFlags = Base::StructureFlags | StructureIsImmortal;
 
-    DECLARE_INFO;
+    DECLARE_EXPORT_INFO;
 
-    static Structure* createStructure(VM& vm, JSGlobalObject* globalObject, JSValue prototype, IndexingType indexingType)
-    {
-        return Structure::create(vm, globalObject, prototype, TypeInfo(JSImmutableButterflyType, StructureFlags), info(), indexingType);
-    }
+    inline static Structure* createStructure(VM&, JSGlobalObject*, JSValue, IndexingType);
 
     ALWAYS_INLINE static JSImmutableButterfly* tryCreate(VM& vm, Structure* structure, unsigned length)
     {
@@ -53,7 +54,7 @@ public:
             return nullptr;
 
         // Because of the above maximumLength requirement, allocationSize can never overflow.
-        void* buffer = tryAllocateCell<JSImmutableButterfly>(vm.heap, allocationSize(length));
+        void* buffer = tryAllocateCell<JSImmutableButterfly>(vm, allocationSize(length));
         if (UNLIKELY(!buffer))
             return nullptr;
         JSImmutableButterfly* result = new (NotNull, buffer) JSImmutableButterfly(vm, structure, length);
@@ -100,6 +101,7 @@ public:
         }
 
         if (indexingType == DoubleShape) {
+            ASSERT(Options::allowDoubleShape());
             for (unsigned i = 0; i < length; i++) {
                 double d = array->butterfly()->contiguousDouble().at(array, i);
                 JSValue value = std::isnan(d) ? jsUndefined() : JSValue(JSValue::EncodeAsDouble, d);
@@ -128,6 +130,12 @@ public:
         return result;
     }
 
+    static JSImmutableButterfly* createFromClonedArguments(JSGlobalObject*, ClonedArguments*);
+    static JSImmutableButterfly* createFromDirectArguments(JSGlobalObject*, DirectArguments*);
+    static JSImmutableButterfly* createFromScopedArguments(JSGlobalObject*, ScopedArguments*);
+    static JSImmutableButterfly* createFromString(JSGlobalObject*, JSString*);
+    static JSImmutableButterfly* tryCreateFromArgList(VM&, ArgList);
+
     unsigned publicLength() const { return m_header.publicLength(); }
     unsigned vectorLength() const { return m_header.vectorLength(); }
     unsigned length() const { return m_header.publicLength(); }
@@ -153,7 +161,7 @@ public:
     static CompleteSubspace* subspaceFor(VM& vm)
     {
         // We allocate out of the JSValue gigacage as other code expects all butterflies to live there.
-        return &vm.immutableButterflyJSValueGigacageAuxiliarySpace;
+        return &vm.immutableButterflyAuxiliarySpace();
     }
 
     // Only call this if you just allocated this butterfly.
@@ -170,12 +178,12 @@ public:
         return WTF::roundUpToMultipleOf<sizeof(WriteBarrier<Unknown>)>(sizeof(JSImmutableButterfly));
     }
 
-    static ptrdiff_t offsetOfPublicLength()
+    static constexpr ptrdiff_t offsetOfPublicLength()
     {
         return OBJECT_OFFSETOF(JSImmutableButterfly, m_header) + IndexingHeader::offsetOfPublicLength();
     }
 
-    static ptrdiff_t offsetOfVectorLength()
+    static constexpr ptrdiff_t offsetOfVectorLength()
     {
         return OBJECT_OFFSETOF(JSImmutableButterfly, m_header) + IndexingHeader::offsetOfVectorLength();
     }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2011-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,10 +28,17 @@
 #if ENABLE(VIDEO) && USE(AVFOUNDATION)
 
 #include "MediaPlayerPrivateAVFoundation.h"
+#include "VideoFrameMetadata.h"
+#include <CoreMedia/CMTime.h>
+#include <wtf/CompletionHandler.h>
 #include <wtf/Function.h>
-#include <wtf/HashMap.h>
+#include <wtf/MainThreadDispatcher.h>
+#include <wtf/Observer.h>
+#include <wtf/RobinHoodHashMap.h>
+#include <wtf/WorkQueue.h>
 
 OBJC_CLASS AVAssetImageGenerator;
+OBJC_CLASS AVAssetTrack;
 OBJC_CLASS AVAssetResourceLoadingRequest;
 OBJC_CLASS AVMediaSelectionGroup;
 OBJC_CLASS AVOutputContext;
@@ -50,6 +57,9 @@ OBJC_CLASS WebCoreAVFPullDelegate;
 
 typedef struct CGImage *CGImageRef;
 typedef struct __CVBuffer *CVPixelBufferRef;
+typedef struct OpaqueFigVideoTarget *FigVideoTargetRef;
+typedef NSString *AVMediaCharacteristic;
+typedef double NSTimeInterval;
 
 namespace WebCore {
 
@@ -58,10 +68,12 @@ class AudioTrackPrivateAVFObjC;
 class CDMInstanceFairPlayStreamingAVFObjC;
 class CDMSessionAVFoundationObjC;
 class ImageRotationSessionVT;
+class InbandChapterTrackPrivateAVFObjC;
 class InbandMetadataTextTrackPrivateAVF;
 class MediaPlaybackTarget;
 class MediaSelectionGroupAVFObjC;
 class PixelBufferConformerCV;
+class QueuedVideoOutput;
 class SharedBuffer;
 class VideoLayerManagerObjC;
 class VideoTrackPrivateAVFObjC;
@@ -76,6 +88,7 @@ public:
 
     void setAsset(RetainPtr<id>&&);
     void didEnd() final;
+    void metadataLoaded() final;
 
     void processCue(NSArray *, NSArray *, const MediaTime&);
     void flushCues();
@@ -86,6 +99,7 @@ public:
 
 #if ENABLE(LEGACY_ENCRYPTED_MEDIA)
     RetainPtr<AVAssetResourceLoadingRequest> takeRequestForKeyURI(const String&);
+    void setShouldContinueAfterKeyNeeded(bool) final;
 #endif
 
     void playerItemStatusDidChange(int);
@@ -96,9 +110,10 @@ public:
     void playbackBufferFullWillChange();
     void playbackBufferFullDidChange(bool);
     void loadedTimeRangesDidChange(RetainPtr<NSArray>&&);
-    void seekableTimeRangesDidChange(RetainPtr<NSArray>&&);
+    void seekableTimeRangesDidChange(RetainPtr<NSArray>&&, NSTimeInterval, NSTimeInterval);
     void tracksDidChange(const RetainPtr<NSArray>&);
     void hasEnabledAudioDidChange(bool);
+    void hasEnabledVideoDidChange(bool);
     void presentationSizeDidChange(FloatSize);
     void durationDidChange(const MediaTime&);
     void rateDidChange(double);
@@ -116,8 +131,9 @@ public:
 
     void outputObscuredDueToInsufficientExternalProtectionChanged(bool);
 
-    MediaTime currentMediaTime() const final;
+    MediaTime currentTime() const final;
     void outputMediaDataWillChange();
+    void processChapterTracks();
 
 private:
 #if ENABLE(ENCRYPTED_MEDIA)
@@ -128,12 +144,10 @@ private:
     bool waitingForKey() const final { return m_waitingForKey; }
 #endif
 
-    float currentTime() const final;
-
     // engine support
     class Factory;
     static bool isAvailable();
-    static void getSupportedTypes(HashSet<String, ASCIICaseInsensitiveHash>& types);
+    static void getSupportedTypes(HashSet<String>& types);
     static MediaPlayer::SupportsType supportsTypeAndCodecs(const MediaEngineSupportParameters&);
     static bool supportsKeySystem(const String& keySystem, const String& mimeType);
     static HashSet<SecurityOriginData> originsInMediaCache(const String&);
@@ -149,11 +163,10 @@ private:
     void beginSimulatedHDCPError() final { outputObscuredDueToInsufficientExternalProtectionChanged(true); }
     void endSimulatedHDCPError() final { outputObscuredDueToInsufficientExternalProtectionChanged(false); }
 
-#if ENABLE(AVF_CAPTIONS)
     void notifyTrackModeChanged() final;
     void synchronizeTextTrackState() final;
-#endif
 
+    bool timeIsProgressing() const final { return effectiveRate(); }
     void platformSetVisible(bool) final;
     void platformPlay() final;
     void platformPause() final;
@@ -201,9 +214,9 @@ private:
     double effectiveRate() const final;
     void setPreservesPitch(bool) final;
     void setPitchCorrectionAlgorithm(MediaPlayer::PitchCorrectionAlgorithm) final;
-    void seekToTime(const MediaTime&, const MediaTime& negativeTolerance, const MediaTime& positiveTolerance) final;
+    void seekToTargetInternal(const SeekTarget&) final;
     unsigned long long totalBytes() const final;
-    std::unique_ptr<PlatformTimeRanges> platformBufferedTimeRanges() const final;
+    const PlatformTimeRanges& platformBufferedTimeRanges() const final;
     MediaTime platformMinTimeSeekable() const final;
     MediaTime platformMaxTimeSeekable() const final;
     MediaTime platformDuration() const final;
@@ -211,6 +224,8 @@ private:
     void beginLoadingMetadata() final;
     void sizeChanged() final;
     void resolvedURLChanged() final;
+
+    bool isHLS() const final { return m_cachedAssetIsHLS.value_or(false); }
 
     bool hasAvailableVideoFrame() const final;
 
@@ -223,14 +238,16 @@ private:
     bool hasContextRenderer() const final;
     bool hasLayerRenderer() const final;
 
-    void updateVideoLayerGravity() final;
+
+    enum class ShouldAnimate : bool { No, Yes };
+    void updateVideoLayerGravity() final { updateVideoLayerGravity(ShouldAnimate::No); }
+    void updateVideoLayerGravity(ShouldAnimate);
 
     bool didPassCORSAccessCheck() const final;
-    std::optional<bool> wouldTaintOrigin(const SecurityOrigin&) const final;
+    std::optional<bool> isCrossOrigin(const SecurityOrigin&) const final;
 
     MediaTime getStartDate() const final;
 
-    bool requiresTextTrackRepresentation() const final;
     void setTextTrackRepresentation(TextTrackRepresentation*) final;
     void syncTextTrackBounds() final;
 
@@ -243,24 +260,25 @@ private:
     void createImageGenerator();
     void destroyImageGenerator();
     RetainPtr<CGImageRef> createImageForTimeInRect(float, const FloatRect&);
-    void paintWithImageGenerator(GraphicsContext&, const FloatRect&);
 
-    enum class UpdateType { UpdateSynchronously, UpdateAsynchronously };
-    void updateLastImage(UpdateType type = UpdateType::UpdateAsynchronously);
+    using UpdateCompletion = CompletionHandler<void()>;
+    void updateLastImage(UpdateCompletion&&);
 
     void createVideoOutput();
     void destroyVideoOutput();
     bool updateLastPixelBuffer();
     bool videoOutputHasAvailableFrame();
     void paintWithVideoOutput(GraphicsContext&, const FloatRect&);
+    RefPtr<VideoFrame> videoFrameForCurrentTime() final;
     RefPtr<NativeImage> nativeImageForCurrentTime() final;
-    void waitForVideoOutputMediaDataWillChange();
+    DestinationColorSpace colorSpace() final;
 
-    RetainPtr<CVPixelBufferRef> pixelBufferForCurrentTime() final;
+    enum class UpdateResult { Succeeded, Failed, TimedOut, ObjectDestroyed };
+    UpdateResult waitForVideoOutputMediaDataWillChange();
 
 #if ENABLE(LEGACY_ENCRYPTED_MEDIA)
     void keyAdded() final;
-    std::unique_ptr<LegacyCDMSession> createSession(const String& keySystem, LegacyCDMSessionClient*) final;
+    std::unique_ptr<LegacyCDMSession> createSession(const String& keySystem, LegacyCDMSessionClient&) final;
 #endif
 
     String languageOfPrimaryAudioTrack() const final;
@@ -272,8 +290,9 @@ private:
     AVMediaSelectionGroup *safeMediaSelectionGroupForAudibleMedia();
     AVMediaSelectionGroup *safeMediaSelectionGroupForVisualMedia();
 
-    NSArray *safeAVAssetTracksForAudibleMedia();
-    NSArray *safeAVAssetTracksForVisualMedia();
+    AVAssetTrack* firstEnabledAudibleTrack() const;
+    AVAssetTrack* firstEnabledVisibleTrack() const;
+    AVAssetTrack* firstEnabledTrack(AVMediaCharacteristic) const;
 
 #if ENABLE(DATACUE_VALUE)
     void processMetadataTrack();
@@ -311,33 +330,69 @@ private:
     void updateRotationSession();
 
     std::optional<VideoPlaybackQualityMetrics> videoPlaybackQualityMetrics() final;
+    Ref<VideoPlaybackQualityMetricsPromise> asyncVideoPlaybackQualityMetrics() final;
 
 #if !RELEASE_LOG_DISABLED
-    const char* logClassName() const final { return "MediaPlayerPrivateAVFoundationObjC"; }
+    ASCIILiteral logClassName() const final { return "MediaPlayerPrivateAVFoundationObjC"_s; }
 #endif
 
     AVPlayer *objCAVFoundationAVPlayer() const final { return m_avPlayer.get(); }
 
-    bool performTaskAtMediaTime(Function<void()>&&, const MediaTime&) final;
+    bool performTaskAtTime(Function<void()>&&, const MediaTime&) final;
     void setShouldObserveTimeControlStatus(bool);
 
     void setPreferredDynamicRangeMode(DynamicRangeMode) final;
     void audioOutputDeviceChanged() final;
 
-    void currentMediaTimeDidChange(MediaTime&&) const;
+    void currentTimeDidChange(MediaTime&&) const;
     bool setCurrentTimeDidChangeCallback(MediaPlayer::CurrentTimeDidChangeCallback&&) final;
 
-    bool currentMediaTimeIsBuffered() const;
+    bool currentTimeIsBuffered() const;
 
     bool supportsPlayAtHostTime() const final { return true; }
     bool supportsPauseAtHostTime() const final { return true; }
     bool playAtHostTime(const MonotonicTime&) final;
     bool pauseAtHostTime(const MonotonicTime&) final;
+    bool haveBeenAskedToPaint() const { return m_haveBeenAskedToPaint; }
+
+    void startVideoFrameMetadataGathering() final;
+    void stopVideoFrameMetadataGathering() final;
+    std::optional<VideoFrameMetadata> videoFrameMetadata() final { return std::exchange(m_videoFrameMetadata, { }); }
+    void setResourceOwner(const ProcessIdentity& resourceOwner) final { m_resourceOwner = resourceOwner; }
+
+    void checkNewVideoFrameMetadata();
+
+    void setShouldDisableHDR(bool) final;
+
+    std::optional<bool> allTracksArePlayable() const;
+    bool containsDisabledTracks() const;
+    bool trackIsPlayable(AVAssetTrack*) const;
+
+    std::optional<VideoPlaybackQualityMetrics> videoPlaybackQualityMetrics(AVPlayerLayer*) const;
+
+    void setVideoTarget(const PlatformVideoTarget&) final;
+
+#if HAVE(SPATIAL_TRACKING_LABEL)
+    const String& defaultSpatialTrackingLabel() const;
+    void setDefaultSpatialTrackingLabel(const String&) final;
+
+    const String& spatialTrackingLabel() const;
+    void setSpatialTrackingLabel(const String&) final;
+
+    void updateSpatialTrackingLabel();
+#endif
+
+    void isInFullscreenOrPictureInPictureChanged(bool) final;
+
+#if ENABLE(LINEAR_MEDIA_PLAYER)
+    bool supportsLinearMediaPlayer() const final { return true; }
+#endif
+    VideoPlaybackConfiguration videoPlaybackConfiguration() const { return m_cachedVideoPlaybackConfiguration; }
 
     RetainPtr<AVURLAsset> m_avAsset;
     RetainPtr<AVPlayer> m_avPlayer;
     RetainPtr<AVPlayerItem> m_avPlayerItem;
-    RetainPtr<AVPlayerLayer> m_videoLayer;
+    RetainPtr<AVPlayerLayer> m_videoLayer WTF_GUARDED_BY_CAPABILITY(mainThread);
     std::unique_ptr<VideoLayerManagerObjC> m_videoLayerManager;
     MediaPlayer::VideoGravity m_videoFullscreenGravity { MediaPlayer::VideoGravity::ResizeAspect };
     RetainPtr<WebCoreAVFMovieObserver> m_objcObserver;
@@ -347,12 +402,16 @@ private:
     bool m_haveCheckedPlayability { false };
     bool m_createAssetPending { false };
 
+#if ENABLE(LINEAR_MEDIA_PLAYER)
+    RetainPtr<FigVideoTargetRef> m_videoTarget;
+#endif
+
 #if ENABLE(WEB_AUDIO) && USE(MEDIATOOLBOX)
     RefPtr<AudioSourceProviderAVFObjC> m_provider;
 #endif
 
     RetainPtr<AVAssetImageGenerator> m_imageGenerator;
-    RetainPtr<AVPlayerItemVideoOutput> m_videoOutput;
+    RefPtr<QueuedVideoOutput> m_videoOutput;
     RetainPtr<WebCoreAVFPullDelegate> m_videoOutputDelegate;
     RetainPtr<CVPixelBufferRef> m_lastPixelBuffer;
     RefPtr<NativeImage> m_lastImage;
@@ -362,8 +421,8 @@ private:
     friend class WebCoreAVFResourceLoader;
     HashMap<RetainPtr<CFTypeRef>, RefPtr<WebCoreAVFResourceLoader>> m_resourceLoaderMap;
     RetainPtr<WebCoreAVFLoaderDelegate> m_loaderDelegate;
-    HashMap<String, RetainPtr<AVAssetResourceLoadingRequest>> m_keyURIToRequestMap;
-    HashMap<String, RetainPtr<AVAssetResourceLoadingRequest>> m_sessionIDToRequestMap;
+    MemoryCompactRobinHoodHashMap<String, RetainPtr<AVAssetResourceLoadingRequest>> m_keyURIToRequestMap;
+    MemoryCompactRobinHoodHashMap<String, RetainPtr<AVAssetResourceLoadingRequest>> m_sessionIDToRequestMap;
 
     RetainPtr<AVPlayerItemLegibleOutput> m_legibleOutput;
 
@@ -378,13 +437,16 @@ private:
     RefPtr<InbandMetadataTextTrackPrivateAVF> m_metadataTrack;
 #endif
 
+    MemoryCompactRobinHoodHashMap<String, RefPtr<InbandChapterTrackPrivateAVFObjC>> m_chapterTracks;
+
 #if ENABLE(WIRELESS_PLAYBACK_TARGET) && PLATFORM(MAC)
     RetainPtr<AVOutputContext> m_outputContext;
-    RefPtr<MediaPlaybackTarget> m_playbackTarget { nullptr };
+    RefPtr<MediaPlaybackTarget> m_playbackTarget;
 #endif
 
 #if ENABLE(LEGACY_ENCRYPTED_MEDIA)
     WeakPtr<CDMSessionAVFoundationObjC> m_session;
+    bool m_shouldContinueAfterKeyNeeded { false };
 #endif
 
 #if ENABLE(ENCRYPTED_MEDIA)
@@ -400,14 +462,13 @@ private:
     RetainPtr<id> m_currentTimeObserver;
 
     mutable RetainPtr<NSArray> m_cachedSeekableRanges;
-    mutable RetainPtr<NSArray> m_cachedLoadedRanges;
     RetainPtr<NSArray> m_cachedTracks;
     RetainPtr<NSArray> m_currentMetaData;
     FloatSize m_cachedPresentationSize;
-    MediaTime m_cachedDuration;
     mutable MediaPlayer::CurrentTimeDidChangeCallback m_currentTimeDidChangeCallback;
-    mutable MediaTime m_cachedCurrentMediaTime;
-    mutable std::optional<WallTime> m_wallClockAtCachedCurrentTime;
+    mutable MediaTime m_cachedCurrentTime { -1, 1, 0 };
+    mutable MediaTime m_lastPeriodicObserverMediaTime;
+    mutable Markable<WallTime> m_wallClockAtCachedCurrentTime;
     mutable int m_timeControlStatusAtCachedCurrentTime { 0 };
     mutable double m_requestedRateAtCachedCurrentTime { 0 };
     RefPtr<SharedBuffer> m_keyID;
@@ -418,17 +479,22 @@ private:
     mutable long long m_cachedTotalBytes { 0 };
     unsigned m_pendingStatusChanges { 0 };
     int m_cachedItemStatus;
+    int m_runLoopNestingLevel { 0 };
     MediaPlayer::BufferingPolicy m_bufferingPolicy { MediaPlayer::BufferingPolicy::Default };
     bool m_cachedLikelyToKeepUp { false };
     bool m_cachedBufferEmpty { false };
     bool m_cachedBufferFull { false };
     bool m_cachedHasEnabledAudio { false };
+    bool m_cachedHasEnabledVideo { false };
     bool m_cachedIsReadyForDisplay { false };
     bool m_haveBeenAskedToCreateLayer { false };
     bool m_cachedCanPlayFastForward { false };
     bool m_cachedCanPlayFastReverse { false };
     mutable bool m_cachedAssetIsLoaded { false };
+    mutable bool m_cachedTracksAreLoaded { false };
     mutable std::optional<bool> m_cachedAssetIsPlayable;
+    mutable std::optional<bool> m_cachedTracksArePlayable;
+    mutable std::optional<bool> m_cachedAssetIsHLS;
     bool m_muted { false };
     bool m_shouldObserveTimeControlStatus { false };
     mutable std::optional<bool> m_tracksArePlayable;
@@ -437,7 +503,26 @@ private:
     mutable bool m_allowsWirelessVideoPlayback { true };
     bool m_shouldPlayToPlaybackTarget { false };
 #endif
-    bool m_runningModalPaint { false };
+    bool m_haveProcessedChapterTracks { false };
+    bool m_waitForVideoOutputMediaDataWillChangeTimedOut { false };
+    bool m_haveBeenAskedToPaint { false };
+    uint64_t m_sampleCount { 0 };
+    RetainPtr<id> m_videoFrameMetadataGatheringObserver;
+    bool m_isGatheringVideoFrameMetadata { false };
+    std::optional<VideoFrameMetadata> m_videoFrameMetadata;
+    mutable std::optional<NSTimeInterval> m_cachedSeekableTimeRangesLastModifiedTime;
+    mutable std::optional<NSTimeInterval> m_cachedLiveUpdateInterval;
+    std::unique_ptr<Observer<void()>> m_currentImageChangedObserver;
+    std::unique_ptr<Observer<void()>> m_waitForVideoOutputMediaDataWillChangeObserver;
+    ProcessIdentity m_resourceOwner;
+    PlatformTimeRanges m_buffered;
+    TrackID m_currentTextTrackID { 0 };
+    Ref<RefCountedSerialFunctionDispatcher> m_targetDispatcher { MainThreadDispatcher::singleton() };
+#if HAVE(SPATIAL_TRACKING_LABEL)
+    String m_defaultSpatialTrackingLabel;
+    String m_spatialTrackingLabel;
+#endif
+    VideoPlaybackConfiguration m_cachedVideoPlaybackConfiguration;
 };
 
 }

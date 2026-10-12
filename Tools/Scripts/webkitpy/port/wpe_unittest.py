@@ -33,16 +33,21 @@ import unittest
 
 from webkitpy.common.system.executive_mock import MockExecutive
 from webkitpy.common.system.filesystem_mock import MockFileSystem
-from webkitpy.port.config import clear_cached_configuration
 from webkitpy.port.wpe import WPEPort
 from webkitpy.port import port_testcase
 from webkitpy.thirdparty.mock import Mock, patch
 from webkitpy.tool.mocktool import MockOptions
-
+from webkitcorepy import OutputCapture
+import logging
 
 class WPEPortTest(port_testcase.PortTestCase):
     port_name = 'wpe'
     port_maker = WPEPort
+
+    def _mock_port_cog_is_built(self, port):
+        port._filesystem = MockFileSystem({
+            '/mock-build/Tools/cog-prefix/src/cog-build/launcher/cog': '',
+        })
 
     def test_default_baseline_search_path(self):
         port = self.make_port()
@@ -62,15 +67,14 @@ class WPEPortTest(port_testcase.PortTestCase):
     def test_default_timeout_ms(self):
         self.assertEqual(self.make_port(options=MockOptions(configuration='Release')).default_timeout_ms(), 15000)
         self.assertEqual(self.make_port(options=MockOptions(configuration='Debug')).default_timeout_ms(), 30000)
-        self.assertEqual(self.make_port(options=MockOptions(configuration='Release', leaks=True)).default_timeout_ms(), 150000)
-        self.assertEqual(self.make_port(options=MockOptions(configuration='Debug', leaks=True)).default_timeout_ms(), 300000)
+        self.assertEqual(self.make_port(options=MockOptions(configuration='Release', leaks=True, wrapper="valgrind")).default_timeout_ms(), 150000)
+        self.assertEqual(self.make_port(options=MockOptions(configuration='Debug', leaks=True, wrapper="valgrind")).default_timeout_ms(), 300000)
 
     def test_get_crash_log(self):
         # This function tested in linux_get_crash_log_unittest.py
         pass
 
     def test_default_upload_configuration(self):
-        clear_cached_configuration()
         port = self.make_port()
         configuration = port.configuration_for_upload()
         self.assertEqual(configuration['architecture'], port.architecture())
@@ -78,24 +82,20 @@ class WPEPortTest(port_testcase.PortTestCase):
         self.assertEqual(configuration['platform'], 'WPE')
         self.assertEqual(configuration['style'], 'release')
 
-    def test_browser_name_default(self):
+    def test_browser_name_default_wihout_cog_built(self):
         port = self.make_port()
         self.assertEqual(port.browser_name(), "minibrowser")
 
-    def test_browser_name_with_cog_built(self):
-        with patch('os.environ', {'WPE_BROWSER': ''}):
-            port = self.make_port()
-            port._filesystem = MockFileSystem({
-                "/mock-build/Tools/cog-prefix/src/cog-build/cog": "",
-            })
+    def test_browser_name_default_with_cog_built(self):
+        port = self.make_port()
+        self._mock_port_cog_is_built(port)
+        with patch('os.environ', {}):
             self.assertEqual(port.browser_name(), "cog")
 
     def test_browser_name_override_minibrowser_with_cog_built(self):
         with patch('os.environ', {'WPE_BROWSER': 'MiniBrowser'}):
             port = self.make_port()
-            port._filesystem = MockFileSystem({
-                "/mock-build/Tools/cog-prefix/src/cog-build/cog": "",
-            })
+            self._mock_port_cog_is_built(port)
             self.assertEqual(port.browser_name(), "minibrowser")
 
     def test_browser_name_override_cog_without_cog_built(self):
@@ -103,7 +103,55 @@ class WPEPortTest(port_testcase.PortTestCase):
             port = self.make_port()
             self.assertEqual(port.browser_name(), "cog")
 
-    def test_browser_name_override_unknown(self):
+    def test_browser_name_override_unknown_without_cog_built(self):
         with patch('os.environ', {'WPE_BROWSER': 'Mosaic'}):
             port = self.make_port()
             self.assertEqual(port.browser_name(), "minibrowser")
+
+    def test_browser_name_override_unknown_with_cog_built(self):
+        with patch('os.environ', {'WPE_BROWSER': 'Mosaic'}):
+            port = self.make_port()
+            self._mock_port_cog_is_built(port)
+            self.assertEqual(port.browser_name(), "cog")
+
+    def test_browser_cog_parameters_platform_default(self):
+        with patch('os.environ', {'WPE_BROWSER': 'cog'}):
+            port = self.make_port()
+            port._executive = MockExecutive(should_log=True)
+            self._mock_port_cog_is_built(port)
+            self.assertEqual(port.browser_name(), "cog")
+            with OutputCapture(level=logging.DEBUG) as captured:
+                url = 'https://url.com'
+                port.run_minibrowser([url])
+                mock_command = captured.root.log.getvalue()
+                self.assertTrue(url in mock_command)
+                self.assertTrue('--platform=gtk4' in mock_command)
+
+    def test_browser_cog_parameters_platform_override_via_cmdline(self):
+        with patch('os.environ', {'WPE_BROWSER': 'cog'}):
+            port = self.make_port()
+            port._executive = MockExecutive(should_log=True)
+            self._mock_port_cog_is_built(port)
+            self.assertEqual(port.browser_name(), "cog")
+            with OutputCapture(level=logging.DEBUG) as captured:
+                url = 'https://url.com'
+                port.run_minibrowser(['-P', 'drm', url])
+                mock_command = captured.root.log.getvalue()
+                self.assertTrue(url in mock_command)
+                self.assertFalse('--platform' in mock_command)
+                self.assertTrue('-P' in mock_command)
+                self.assertTrue('drm' in mock_command)
+
+    def test_browser_cog_parameters_platform_override_via_environ(self):
+        with patch('os.environ', {'WPE_BROWSER': 'cog', 'COG_PLATFORM_NAME': 'drm'}):
+            port = self.make_port()
+            port._executive = MockExecutive(should_log=True)
+            self._mock_port_cog_is_built(port)
+            self.assertEqual(port.browser_name(), "cog")
+            with OutputCapture(level=logging.DEBUG) as captured:
+                url = 'https://url.com'
+                port.run_minibrowser([url])
+                mock_command = captured.root.log.getvalue()
+                self.assertTrue(url in mock_command)
+                self.assertFalse('--platform' in mock_command)
+                self.assertFalse('-P' in mock_command)

@@ -29,7 +29,7 @@
 #include "Color.h"
 #include "LayoutUnit.h"
 #include "RenderObject.h"
-#include "RenderStyle.h"
+#include "RenderStyleInlines.h"
 
 namespace WebCore {
 
@@ -46,12 +46,13 @@ BorderEdge::BorderEdge(float edgeWidth, Color edgeColor, BorderStyle edgeStyle, 
     m_flooredToDevicePixelWidth = floorf(edgeWidth * devicePixelRatio) / devicePixelRatio;
 }
 
-BorderEdges borderEdges(const RenderStyle& style, float deviceScaleFactor, bool includeLogicalLeftEdge, bool includeLogicalRightEdge)
+BorderEdges borderEdges(const RenderStyle& style, float deviceScaleFactor, bool setColorsToBlack, bool includeLogicalLeftEdge, bool includeLogicalRightEdge)
 {
     bool horizontal = style.isHorizontalWritingMode();
 
     auto constructBorderEdge = [&](float width, CSSPropertyID borderColorProperty, BorderStyle borderStyle, bool isTransparent, bool isPresent) {
-        return BorderEdge(width, style.visitedDependentColorWithColorFilter(borderColorProperty), borderStyle, isTransparent, isPresent, deviceScaleFactor);
+        auto color = setColorsToBlack ? Color::black : style.visitedDependentColorWithColorFilter(borderColorProperty);
+        return BorderEdge(width, color, borderStyle, !setColorsToBlack && isTransparent, isPresent, deviceScaleFactor);
     };
 
     return {
@@ -59,6 +60,20 @@ BorderEdges borderEdges(const RenderStyle& style, float deviceScaleFactor, bool 
         constructBorderEdge(style.borderRightWidth(), CSSPropertyBorderRightColor, style.borderRightStyle(), style.borderRightIsTransparent(), !horizontal || includeLogicalRightEdge),
         constructBorderEdge(style.borderBottomWidth(), CSSPropertyBorderBottomColor, style.borderBottomStyle(), style.borderBottomIsTransparent(), horizontal || includeLogicalRightEdge),
         constructBorderEdge(style.borderLeftWidth(), CSSPropertyBorderLeftColor, style.borderLeftStyle(), style.borderLeftIsTransparent(), !horizontal || includeLogicalLeftEdge)
+    };
+}
+
+BorderEdges borderEdgesForOutline(const RenderStyle& style, float deviceScaleFactor)
+{
+    auto color = style.visitedDependentColorWithColorFilter(CSSPropertyOutlineColor);
+    auto isTransparent = color.isValid() && !color.isVisible();
+    auto size = style.outlineWidth();
+    auto outlineStyle = style.outlineStyle();
+    return {
+        BorderEdge { size, color, outlineStyle, isTransparent, true, deviceScaleFactor },
+        BorderEdge { size, color, outlineStyle, isTransparent, true, deviceScaleFactor },
+        BorderEdge { size, color, outlineStyle, isTransparent, true, deviceScaleFactor },
+        BorderEdge { size, color, outlineStyle, isTransparent, true, deviceScaleFactor } 
     };
 }
 

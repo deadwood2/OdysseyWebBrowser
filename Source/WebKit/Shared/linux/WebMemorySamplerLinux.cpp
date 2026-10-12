@@ -58,15 +58,15 @@ static inline String nextToken(FILE* file)
     unsigned int index = 0;
     while (index < maxBuffer) {
         int ch = fgetc(file);
-        if (ch == EOF || (isASCIISpace(ch) && index)) // Break on non-initial ASCII space.
+        if (ch == EOF || (isUnicodeCompatibleASCIIWhitespace(ch) && index)) // Break on non-initial ASCII space.
             break;
-        if (!isASCIISpace(ch)) {
+        if (!isUnicodeCompatibleASCIIWhitespace(ch)) {
             buffer[index] = ch;
             index++;
         }
     }
 
-    return String(buffer);
+    return String::fromLatin1(buffer);
 }
 
 static inline void appendKeyValuePair(WebMemoryStatistics& stats, const String& key, size_t value)

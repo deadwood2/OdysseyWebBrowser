@@ -26,11 +26,11 @@
 #include "config.h"
 
 #include "Test.h"
-#include "WTFStringUtilities.h"
 #include <WebCore/Color.h>
 #include <WebCore/ColorConversion.h>
 #include <WebCore/ColorSerialization.h>
 #include <WebCore/ColorTypes.h>
+#include <wtf/Hasher.h>
 #include <wtf/MathExtras.h>
 
 using namespace WebCore;
@@ -41,7 +41,7 @@ TEST(Color, RGBToHSL_White)
 {
     Color color = Color::white;
 
-    auto hslaColor = color.toColorTypeLossy<HSLA<float>>();
+    auto hslaColor = color.toColorTypeLossy<HSLA<float>>().resolved();
 
     EXPECT_FLOAT_EQ(0, hslaColor.hue);
     EXPECT_FLOAT_EQ(0, hslaColor.saturation);
@@ -57,7 +57,7 @@ TEST(Color, RGBToHSL_Black)
 {
     Color color = Color::black;
 
-    auto hslaColor = color.toColorTypeLossy<HSLA<float>>();
+    auto hslaColor = color.toColorTypeLossy<HSLA<float>>().resolved();
 
     EXPECT_FLOAT_EQ(0, hslaColor.hue);
     EXPECT_FLOAT_EQ(0, hslaColor.saturation);
@@ -73,7 +73,7 @@ TEST(Color, RGBToHSL_Red)
 {
     Color color = Color::red;
 
-    auto hslaColor = color.toColorTypeLossy<HSLA<float>>();
+    auto hslaColor = color.toColorTypeLossy<HSLA<float>>().resolved();
 
     EXPECT_FLOAT_EQ(0, hslaColor.hue);
     EXPECT_FLOAT_EQ(100, hslaColor.saturation);
@@ -89,7 +89,7 @@ TEST(Color, RGBToHSL_Green)
 {
     Color color = Color::green;
 
-    auto hslaColor = color.toColorTypeLossy<HSLA<float>>();
+    auto hslaColor = color.toColorTypeLossy<HSLA<float>>().resolved();
 
     EXPECT_FLOAT_EQ(120, hslaColor.hue);
     EXPECT_FLOAT_EQ(100, hslaColor.saturation);
@@ -105,7 +105,7 @@ TEST(Color, RGBToHSL_Blue)
 {
     Color color = Color::blue;
 
-    auto hslaColor = color.toColorTypeLossy<HSLA<float>>();
+    auto hslaColor = color.toColorTypeLossy<HSLA<float>>().resolved();
 
     EXPECT_FLOAT_EQ(240, hslaColor.hue);
     EXPECT_FLOAT_EQ(100, hslaColor.saturation);
@@ -121,7 +121,7 @@ TEST(Color, RGBToHSL_DarkGray)
 {
     Color color = Color::darkGray;
 
-    auto hslaColor = color.toColorTypeLossy<HSLA<float>>();
+    auto hslaColor = color.toColorTypeLossy<HSLA<float>>().resolved();
 
     EXPECT_FLOAT_EQ(0, hslaColor.hue);
     EXPECT_FLOAT_EQ(0, hslaColor.saturation);
@@ -137,7 +137,7 @@ TEST(Color, RGBToHSL_Gray)
 {
     Color color = Color::gray;
 
-    auto hslaColor = color.toColorTypeLossy<HSLA<float>>();
+    auto hslaColor = color.toColorTypeLossy<HSLA<float>>().resolved();
 
     EXPECT_FLOAT_EQ(0, hslaColor.hue);
     EXPECT_FLOAT_EQ(0, hslaColor.saturation);
@@ -153,7 +153,7 @@ TEST(Color, RGBToHSL_LightGray)
 {
     Color color = Color::lightGray;
 
-    auto hslaColor = color.toColorTypeLossy<HSLA<float>>();
+    auto hslaColor = color.toColorTypeLossy<HSLA<float>>().resolved();
 
     EXPECT_FLOAT_EQ(0, hslaColor.hue);
     EXPECT_FLOAT_EQ(0, hslaColor.saturation);
@@ -181,7 +181,7 @@ TEST(Color, Validity)
 
     validColor = SRGBA<uint8_t> { 1, 2, 3, 4 };
     EXPECT_TRUE(validColor.isValid());
-    auto validColorComponents = validColor.toSRGBALossy<uint8_t>();
+    auto validColorComponents = validColor.toColorTypeLossy<SRGBA<uint8_t>>().resolved();
     EXPECT_EQ(validColorComponents.red, 1);
     EXPECT_EQ(validColorComponents.green, 2);
     EXPECT_EQ(validColorComponents.blue, 3);
@@ -189,7 +189,7 @@ TEST(Color, Validity)
 
     Color yetAnotherValidColor(WTFMove(validColor));
     EXPECT_TRUE(yetAnotherValidColor.isValid());
-    auto yetAnotherValidColorComponents = yetAnotherValidColor.toSRGBALossy<uint8_t>();
+    auto yetAnotherValidColorComponents = yetAnotherValidColor.toColorTypeLossy<SRGBA<uint8_t>>().resolved();
     EXPECT_EQ(yetAnotherValidColorComponents.red, 1);
     EXPECT_EQ(yetAnotherValidColorComponents.green, 2);
     EXPECT_EQ(yetAnotherValidColorComponents.blue, 3);
@@ -197,7 +197,7 @@ TEST(Color, Validity)
 
     otherValidColor = WTFMove(yetAnotherValidColor);
     EXPECT_TRUE(otherValidColor.isValid());
-    auto otherValidColorComponents = otherValidColor.toSRGBALossy<uint8_t>();
+    auto otherValidColorComponents = otherValidColor.toColorTypeLossy<SRGBA<uint8_t>>().resolved();
     EXPECT_EQ(otherValidColorComponents.red, 1);
     EXPECT_EQ(otherValidColorComponents.green, 2);
     EXPECT_EQ(otherValidColorComponents.blue, 3);
@@ -209,20 +209,20 @@ TEST(Color, Luminance)
     EXPECT_FLOAT_EQ(Color(Color::black).luminance(), 0);
     EXPECT_FLOAT_EQ(Color(Color::white).luminance(), 1);
 
-    auto cComponents = SRGBA<uint8_t> { 85, 90, 160 };
+    auto cComponents = SRGBA<uint8_t> { 85, 90, 160 }.resolved();
     EXPECT_FLOAT_EQ(Color(cComponents).luminance(), 0.11781455);
 
     EXPECT_EQ(cComponents.red, 85);
     EXPECT_EQ(cComponents.green, 90);
     EXPECT_EQ(cComponents.blue, 160);
 
-    auto cLigtened = Color(cComponents).lightened().toSRGBALossy<uint8_t>();
+    auto cLigtened = Color(cComponents).lightened().toColorTypeLossy<SRGBA<uint8_t>>().resolved();
     EXPECT_FLOAT_EQ(Color(cLigtened).luminance(), 0.291682);
     EXPECT_EQ(cLigtened.red, 130);
     EXPECT_EQ(cLigtened.green, 137);
     EXPECT_EQ(cLigtened.blue, 244);
 
-    auto cDarkened = Color(cComponents).darkened().toSRGBALossy<uint8_t>();
+    auto cDarkened = Color(cComponents).darkened().toColorTypeLossy<SRGBA<uint8_t>>().resolved();
     EXPECT_FLOAT_EQ(Color(cDarkened).luminance(), 0.027006242);
     EXPECT_EQ(cDarkened.red, 40);
     EXPECT_EQ(cDarkened.green, 43);
@@ -233,14 +233,14 @@ TEST(Color, Constructor)
 {
     Color c1 { DisplayP3<float> { 1.0, 0.5, 0.25, 1.0 } };
 
-    auto [colorSpace, components] = c1.colorSpaceAndComponents();
+    auto [colorSpace, components] = c1.colorSpaceAndResolvedColorComponents();
     auto [r, g, b, alpha] = components;
 
     EXPECT_FLOAT_EQ(1.0, r);
     EXPECT_FLOAT_EQ(0.5, g);
     EXPECT_FLOAT_EQ(0.25, b);
     EXPECT_FLOAT_EQ(1.0, alpha);
-    EXPECT_EQ(serializationForCSS(c1), "color(display-p3 1 0.5 0.25)");
+    EXPECT_EQ(serializationForCSS(c1), "color(display-p3 1 0.5 0.25)"_s);
 }
 
 TEST(Color, CopyConstructor)
@@ -248,14 +248,14 @@ TEST(Color, CopyConstructor)
     Color c1 { DisplayP3<float> { 1.0, 0.5, 0.25, 1.0 } };
     Color c2(c1);
 
-    auto [colorSpace, components] = c2.colorSpaceAndComponents();
+    auto [colorSpace, components] = c2.colorSpaceAndResolvedColorComponents();
     auto [r, g, b, alpha] = components;
 
     EXPECT_FLOAT_EQ(1.0, r);
     EXPECT_FLOAT_EQ(0.5, g);
     EXPECT_FLOAT_EQ(0.25, b);
     EXPECT_FLOAT_EQ(1.0, alpha);
-    EXPECT_EQ(serializationForCSS(c2), "color(display-p3 1 0.5 0.25)");
+    EXPECT_EQ(serializationForCSS(c2), "color(display-p3 1 0.5 0.25)"_s);
 }
 
 TEST(Color, Assignment)
@@ -263,14 +263,14 @@ TEST(Color, Assignment)
     Color c1 { DisplayP3<float> { 1.0, 0.5, 0.25, 1.0 } };
     Color c2 = c1;
 
-    auto [colorSpace, components] = c2.colorSpaceAndComponents();
+    auto [colorSpace, components] = c2.colorSpaceAndResolvedColorComponents();
     auto [r, g, b, alpha] = components;
 
     EXPECT_FLOAT_EQ(1.0, r);
     EXPECT_FLOAT_EQ(0.5, g);
     EXPECT_FLOAT_EQ(0.25, b);
     EXPECT_FLOAT_EQ(1.0, alpha);
-    EXPECT_EQ(serializationForCSS(c2), "color(display-p3 1 0.5 0.25)");
+    EXPECT_EQ(serializationForCSS(c2), "color(display-p3 1 0.5 0.25)"_s);
 }
 
 TEST(Color, Equality)
@@ -299,19 +299,19 @@ TEST(Color, Hash)
     {
         Color c1 { DisplayP3<float> { 1.0, 0.5, 0.25, 1.0 } };
         Color c2 { DisplayP3<float> { 1.0, 0.5, 0.25, 1.0 } };
-        EXPECT_EQ(c1.hash(), c2.hash());
+        EXPECT_EQ(computeHash(c1), computeHash(c2));
     }
 
     {
         Color c1 { DisplayP3<float> { 1.0, 0.5, 0.25, 1.0 } };
         Color c2 { SRGBA<float> { 1.0, 0.5, 0.25, 1.0 } };
-        EXPECT_NE(c1.hash(), c2.hash());
+        EXPECT_NE(computeHash(c1), computeHash(c2));
     }
 
     auto componentBytes = SRGBA<uint8_t> { 255, 128, 63, 127 };
     Color rgb1 { convertColor<SRGBA<float>>(componentBytes) };
     Color rgb2 { componentBytes };
-    EXPECT_NE(rgb1.hash(), rgb2.hash());
+    EXPECT_NE(computeHash(rgb1), computeHash(rgb2));
 }
 
 TEST(Color, MoveConstructor)
@@ -323,7 +323,7 @@ TEST(Color, MoveConstructor)
     // and set c1 to invalid so that it doesn't cause deletion.
     EXPECT_FALSE(c1.isValid());
 
-    auto [colorSpace, components] = c2.colorSpaceAndComponents();
+    auto [colorSpace, components] = c2.colorSpaceAndResolvedColorComponents();
     EXPECT_EQ(colorSpace, ColorSpace::DisplayP3);
 
     auto [r, g, b, alpha] = components;
@@ -332,7 +332,7 @@ TEST(Color, MoveConstructor)
     EXPECT_FLOAT_EQ(0.5, g);
     EXPECT_FLOAT_EQ(0.25, b);
     EXPECT_FLOAT_EQ(1.0, alpha);
-    EXPECT_EQ(serializationForCSS(c2), "color(display-p3 1 0.5 0.25)");
+    EXPECT_EQ(serializationForCSS(c2), "color(display-p3 1 0.5 0.25)"_s);
 }
 
 TEST(Color, MoveAssignment)
@@ -344,7 +344,7 @@ TEST(Color, MoveAssignment)
     // and set c1 to invalid so that it doesn't cause deletion.
     EXPECT_FALSE(c1.isValid());
 
-    auto [colorSpace, components] = c2.colorSpaceAndComponents();
+    auto [colorSpace, components] = c2.colorSpaceAndResolvedColorComponents();
     EXPECT_EQ(colorSpace, ColorSpace::DisplayP3);
 
     auto [r, g, b, alpha] = components;
@@ -353,7 +353,7 @@ TEST(Color, MoveAssignment)
     EXPECT_FLOAT_EQ(0.5, g);
     EXPECT_FLOAT_EQ(0.25, b);
     EXPECT_FLOAT_EQ(1.0, alpha);
-    EXPECT_EQ(serializationForCSS(c2), "color(display-p3 1 0.5 0.25)");
+    EXPECT_EQ(serializationForCSS(c2), "color(display-p3 1 0.5 0.25)"_s);
 }
 
 Color makeColor()
@@ -364,14 +364,24 @@ Color makeColor()
 TEST(Color, ReturnValues)
 {
     Color c2 = makeColor();
-    EXPECT_EQ(serializationForCSS(c2), "color(display-p3 1 0.5 0.25)");
+    EXPECT_EQ(serializationForCSS(c2), "color(display-p3 1 0.5 0.25)"_s);
 }
 
 TEST(Color, P3ConversionToSRGB)
 {
     Color p3Color { DisplayP3<float> { 1.0, 0.5, 0.25, 0.75 } };
-    auto sRGBAColor = p3Color.toSRGBALossy<float>();
+    auto sRGBAColor = p3Color.toColorTypeLossy<SRGBA<float>>().resolved();
     EXPECT_FLOAT_EQ(sRGBAColor.red, 1.0f);
+    EXPECT_FLOAT_EQ(sRGBAColor.green, 0.46253288f);
+    EXPECT_FLOAT_EQ(sRGBAColor.blue, 0.14912745f);
+    EXPECT_FLOAT_EQ(sRGBAColor.alpha, 0.75f);
+}
+
+TEST(Color, P3ConversionToExtendedSRGB)
+{
+    Color p3Color { DisplayP3<float> { 1.0, 0.5, 0.25, 0.75 } };
+    auto sRGBAColor = p3Color.toColorTypeLossy<ExtendedSRGBA<float>>().resolved();
+    EXPECT_FLOAT_EQ(sRGBAColor.red, 1.0740442f);
     EXPECT_FLOAT_EQ(sRGBAColor.green, 0.46253282f);
     EXPECT_FLOAT_EQ(sRGBAColor.blue, 0.14912748f);
     EXPECT_FLOAT_EQ(sRGBAColor.alpha, 0.75f);
@@ -380,7 +390,7 @@ TEST(Color, P3ConversionToSRGB)
 TEST(Color, LinearSRGBConversionToSRGB)
 {
     Color linearSRGBAColor { LinearSRGBA<float> { 1.0, 0.5, 0.25, 0.75 } };
-    auto sRGBAColor = linearSRGBAColor.toSRGBALossy<float>();
+    auto sRGBAColor = linearSRGBAColor.toColorTypeLossy<SRGBA<float>>().resolved();
     EXPECT_FLOAT_EQ(sRGBAColor.red, 1.0f);
     EXPECT_FLOAT_EQ(sRGBAColor.green, 0.735356927f);
     EXPECT_FLOAT_EQ(sRGBAColor.blue, 0.537098706f);
@@ -398,7 +408,7 @@ TEST(Color, ColorWithAlphaMultipliedBy)
 
     {
         Color colorWithAlphaMultipliedBy = color.colorWithAlphaMultipliedBy(0.5);
-        auto [colorSpace, components] = colorWithAlphaMultipliedBy.colorSpaceAndComponents();
+        auto [colorSpace, components] = colorWithAlphaMultipliedBy.colorSpaceAndResolvedColorComponents();
         EXPECT_EQ(colorSpace, ColorSpace::SRGB);
         auto [r, g, b, a] = components;
         EXPECT_FLOAT_EQ(r, 0.);
@@ -409,7 +419,7 @@ TEST(Color, ColorWithAlphaMultipliedBy)
 
     {
         Color colorWithAlphaMultipliedBy = color.colorWithAlphaMultipliedBy(0.);
-        auto [colorSpace, components] = colorWithAlphaMultipliedBy.colorSpaceAndComponents();
+        auto [colorSpace, components] = colorWithAlphaMultipliedBy.colorSpaceAndResolvedColorComponents();
         EXPECT_EQ(colorSpace, ColorSpace::SRGB);
         auto [r, g, b, a] = components;
         EXPECT_FLOAT_EQ(r, 0.);

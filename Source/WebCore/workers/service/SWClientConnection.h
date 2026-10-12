@@ -25,10 +25,13 @@
 
 #pragma once
 
-#if ENABLE(SERVICE_WORKER)
-
-#include "DocumentIdentifier.h"
+#include "BackgroundFetchRecordIdentifier.h"
 #include "ExceptionOr.h"
+#include "NavigationPreloadState.h"
+#include "NotificationData.h"
+#include "PushPermissionState.h"
+#include "PushSubscriptionData.h"
+#include "ScriptExecutionContextIdentifier.h"
 #include "ServiceWorkerJob.h"
 #include "ServiceWorkerTypes.h"
 #include <wtf/CompletionHandler.h>
@@ -38,24 +41,36 @@
 namespace WebCore {
 
 class ResourceError;
+class ResourceResponse;
 class SecurityOrigin;
+class ScriptExecutionContext;
 class SerializedScriptValue;
 class ServiceWorkerContainer;
 class ServiceWorkerRegistration;
 enum class ServiceWorkerRegistrationState : uint8_t;
 enum class ServiceWorkerState : uint8_t;
 enum class ShouldNotifyWhenResolved : bool;
+struct BackgroundFetchInformation;
+struct BackgroundFetchOptions;
+struct BackgroundFetchRecordInformation;
+struct BackgroundFetchRequest;
+struct CacheQueryOptions;
+struct ClientOrigin;
 struct ExceptionData;
 struct MessageWithMessagePorts;
+struct NotificationData;
+struct RetrieveRecordsOptions;
 struct ServiceWorkerClientData;
-struct ServiceWorkerClientIdentifier;
+struct ServiceWorkerClientPendingMessage;
 struct ServiceWorkerData;
-struct ServiceWorkerFetchResult;
 struct ServiceWorkerRegistrationData;
+struct WorkerFetchResult;
 
 class SWClientConnection : public RefCounted<SWClientConnection> {
 public:
     WEBCORE_EXPORT virtual ~SWClientConnection();
+
+    static Ref<SWClientConnection> fromScriptExecutionContext(ScriptExecutionContext&);
 
     using RegistrationCallback = CompletionHandler<void(std::optional<ServiceWorkerRegistrationData>&&)>;
     virtual void matchRegistration(SecurityOriginData&& topOrigin, const URL& clientURL, RegistrationCallback&&) = 0;
@@ -68,9 +83,9 @@ public:
 
     virtual void addServiceWorkerRegistrationInServer(ServiceWorkerRegistrationIdentifier) = 0;
     virtual void removeServiceWorkerRegistrationInServer(ServiceWorkerRegistrationIdentifier) = 0;
-    virtual void scheduleUnregisterJobInServer(ServiceWorkerRegistrationIdentifier, DocumentOrWorkerIdentifier, CompletionHandler<void(ExceptionOr<bool>&&)>&&) = 0;
+    virtual void scheduleUnregisterJobInServer(ServiceWorkerRegistrationIdentifier, ServiceWorkerOrClientIdentifier, CompletionHandler<void(ExceptionOr<bool>&&)>&&) = 0;
 
-    WEBCORE_EXPORT virtual void scheduleJob(DocumentOrWorkerIdentifier, const ServiceWorkerJobData&);
+    WEBCORE_EXPORT virtual void scheduleJob(ServiceWorkerOrClientIdentifier, const ServiceWorkerJobData&);
 
     virtual void didResolveRegistrationPromise(const ServiceWorkerRegistrationKey&) = 0;
 
@@ -79,30 +94,69 @@ public:
     virtual SWServerConnectionIdentifier serverConnectionIdentifier() const = 0;
     virtual bool mayHaveServiceWorkerRegisteredForOrigin(const SecurityOriginData&) const = 0;
 
-    virtual void registerServiceWorkerClient(const SecurityOrigin& topOrigin, const ServiceWorkerClientData&, const std::optional<ServiceWorkerRegistrationIdentifier>&, const String& userAgent) = 0;
-    virtual void unregisterServiceWorkerClient(DocumentIdentifier) = 0;
+    virtual void registerServiceWorkerClient(const ClientOrigin&, ServiceWorkerClientData&&, const std::optional<ServiceWorkerRegistrationIdentifier>&, String&& userAgent) = 0;
+    virtual void unregisterServiceWorkerClient(ScriptExecutionContextIdentifier) = 0;
 
-    virtual void finishFetchingScriptInServer(const ServiceWorkerFetchResult&) = 0;
+    virtual void finishFetchingScriptInServer(const ServiceWorkerJobDataIdentifier&, ServiceWorkerRegistrationKey&&, WorkerFetchResult&&) = 0;
 
     virtual void storeRegistrationsOnDiskForTesting(CompletionHandler<void()>&& callback) { callback(); }
     virtual void whenServiceWorkerIsTerminatedForTesting(ServiceWorkerIdentifier, CompletionHandler<void()>&& callback) { callback(); }
+    
+    using SubscribeToPushServiceCallback = CompletionHandler<void(ExceptionOr<PushSubscriptionData>&&)>;
+    virtual void subscribeToPushService(ServiceWorkerRegistrationIdentifier, const Vector<uint8_t>& applicationServerKey, SubscribeToPushServiceCallback&&) = 0;
+    
+    using UnsubscribeFromPushServiceCallback = CompletionHandler<void(ExceptionOr<bool>&&)>;
+    virtual void unsubscribeFromPushService(ServiceWorkerRegistrationIdentifier, PushSubscriptionIdentifier, UnsubscribeFromPushServiceCallback&&) = 0;
+    
+    using GetPushSubscriptionCallback = CompletionHandler<void(ExceptionOr<std::optional<PushSubscriptionData>>&&)>;
+    virtual void getPushSubscription(ServiceWorkerRegistrationIdentifier, GetPushSubscriptionCallback&&) = 0;
+
+    using GetPushPermissionStateCallback = CompletionHandler<void(ExceptionOr<PushPermissionState>&&)>;
+    virtual void getPushPermissionState(ServiceWorkerRegistrationIdentifier, GetPushPermissionStateCallback&&) = 0;
+
+    using GetNotificationsCallback = CompletionHandler<void(ExceptionOr<Vector<NotificationData>>&&)>;
+    virtual void getNotifications(const URL&, const String&, GetNotificationsCallback&&) = 0;
+
+    using ExceptionOrVoidCallback = CompletionHandler<void(ExceptionOr<void>&&)>;
+    virtual void enableNavigationPreload(ServiceWorkerRegistrationIdentifier, ExceptionOrVoidCallback&&) = 0;
+    virtual void disableNavigationPreload(ServiceWorkerRegistrationIdentifier, ExceptionOrVoidCallback&&) = 0;
+    virtual void setNavigationPreloadHeaderValue(ServiceWorkerRegistrationIdentifier, String&&, ExceptionOrVoidCallback&&) = 0;
+    using ExceptionOrNavigationPreloadStateCallback = CompletionHandler<void(ExceptionOr<NavigationPreloadState>&&)>;
+    virtual void getNavigationPreloadState(ServiceWorkerRegistrationIdentifier, ExceptionOrNavigationPreloadStateCallback&&) = 0;
 
     WEBCORE_EXPORT void registerServiceWorkerClients();
     bool isClosed() const { return m_isClosed; }
 
+    using ExceptionOrBackgroundFetchInformationCallback = CompletionHandler<void(ExceptionOr<BackgroundFetchInformation>&&)>;
+    virtual void startBackgroundFetch(ServiceWorkerRegistrationIdentifier, const String&, Vector<BackgroundFetchRequest>&&, BackgroundFetchOptions&&, ExceptionOrBackgroundFetchInformationCallback&&) = 0;
+    virtual void backgroundFetchInformation(ServiceWorkerRegistrationIdentifier, const String&, ExceptionOrBackgroundFetchInformationCallback&&) = 0;
+    using BackgroundFetchIdentifiersCallback = CompletionHandler<void(Vector<String>&&)>;
+    virtual void backgroundFetchIdentifiers(ServiceWorkerRegistrationIdentifier, BackgroundFetchIdentifiersCallback&&) = 0;
+    using AbortBackgroundFetchCallback = CompletionHandler<void(bool)>;
+    virtual void abortBackgroundFetch(ServiceWorkerRegistrationIdentifier, const String&, AbortBackgroundFetchCallback&&) = 0;
+    using MatchBackgroundFetchCallback = CompletionHandler<void(Vector<BackgroundFetchRecordInformation>&&)>;
+    virtual void matchBackgroundFetch(ServiceWorkerRegistrationIdentifier, const String&, RetrieveRecordsOptions&&, MatchBackgroundFetchCallback&&) = 0;
+    using RetrieveRecordResponseCallback = CompletionHandler<void(ExceptionOr<ResourceResponse>&&)>;
+    virtual void retrieveRecordResponse(BackgroundFetchRecordIdentifier, RetrieveRecordResponseCallback&&) = 0;
+    using RetrieveRecordResponseBodyCallback = Function<void(Expected<RefPtr<SharedBuffer>, ResourceError>&&)>;
+    virtual void retrieveRecordResponseBody(BackgroundFetchRecordIdentifier, RetrieveRecordResponseBodyCallback&&) = 0;
+
+#if !OS(MORPHOS)
 protected:
+#endif
     WEBCORE_EXPORT SWClientConnection();
 
-    WEBCORE_EXPORT void jobRejectedInServer(ServiceWorkerJobIdentifier, const ExceptionData&);
+    WEBCORE_EXPORT void jobRejectedInServer(ServiceWorkerJobIdentifier, ExceptionData&&);
     WEBCORE_EXPORT void registrationJobResolvedInServer(ServiceWorkerJobIdentifier, ServiceWorkerRegistrationData&&, ShouldNotifyWhenResolved);
-    WEBCORE_EXPORT void startScriptFetchForServer(ServiceWorkerJobIdentifier, const ServiceWorkerRegistrationKey&, FetchOptions::Cache);
-    WEBCORE_EXPORT void postMessageToServiceWorkerClient(DocumentIdentifier destinationContextIdentifier, MessageWithMessagePorts&&, ServiceWorkerData&& source, String&& sourceOrigin);
+    WEBCORE_EXPORT void startScriptFetchForServer(ServiceWorkerJobIdentifier, ServiceWorkerRegistrationKey&&, FetchOptions::Cache);
+    WEBCORE_EXPORT void postMessageToServiceWorkerClient(ScriptExecutionContextIdentifier destinationContextIdentifier, MessageWithMessagePorts&&, ServiceWorkerData&& source, String&& sourceOrigin);
     WEBCORE_EXPORT void updateRegistrationState(ServiceWorkerRegistrationIdentifier, ServiceWorkerRegistrationState, const std::optional<ServiceWorkerData>&);
     WEBCORE_EXPORT void updateWorkerState(ServiceWorkerIdentifier, ServiceWorkerState);
     WEBCORE_EXPORT void fireUpdateFoundEvent(ServiceWorkerRegistrationIdentifier);
     WEBCORE_EXPORT void setRegistrationLastUpdateTime(ServiceWorkerRegistrationIdentifier, WallTime);
     WEBCORE_EXPORT void setRegistrationUpdateViaCache(ServiceWorkerRegistrationIdentifier, ServiceWorkerUpdateViaCache);
-    WEBCORE_EXPORT void notifyClientsOfControllerChange(const HashSet<DocumentIdentifier>& contextIdentifiers, ServiceWorkerData&& newController);
+    WEBCORE_EXPORT void notifyClientsOfControllerChange(const HashSet<ScriptExecutionContextIdentifier>& contextIdentifiers, std::optional<ServiceWorkerData>&& newController);
+    WEBCORE_EXPORT void updateBackgroundFetchRegistration(const BackgroundFetchInformation&);
 
     WEBCORE_EXPORT void clearPendingJobs();
     void setIsClosed() { m_isClosed = true; }
@@ -110,13 +164,11 @@ protected:
 private:
     virtual void scheduleJobInServer(const ServiceWorkerJobData&) = 0;
 
-    enum class IsJobComplete { No, Yes };
+    enum class IsJobComplete : bool { No, Yes };
     bool postTaskForJob(ServiceWorkerJobIdentifier, IsJobComplete, Function<void(ServiceWorkerJob&)>&&);
 
     bool m_isClosed { false };
-    HashMap<ServiceWorkerJobIdentifier, DocumentOrWorkerIdentifier> m_scheduledJobSources;
+    HashMap<ServiceWorkerJobIdentifier, ServiceWorkerOrClientIdentifier> m_scheduledJobSources;
 };
 
 } // namespace WebCore
-
-#endif // ENABLE(SERVICE_WORKER)

@@ -28,6 +28,7 @@
 
 #if PLATFORM(IOS_FAMILY)
 
+#import "CGUtilities.h"
 #import "GraphicsContext.h"
 #import "WAKClipView.h"
 #import "WAKScrollView.h"
@@ -209,7 +210,7 @@ static void invalidateGStateCallback(WKViewRef view)
     if (!self)
         return nil;
 
-    viewRef = static_cast<WKViewRef>(const_cast<void*>(WKRetain(viewR)));
+    viewRef = static_cast<WKViewRef>(const_cast<void*>(WAKRetain(viewR)));
     viewRef->wrapper = (void *)self;
 
     return self;
@@ -232,7 +233,7 @@ static void invalidateGStateCallback(WKViewRef view)
         viewContext.willRemoveSubviewCallback = willRemoveSubviewCallback;
         viewContext.invalidateGStateCallback = invalidateGStateCallback;
     }
-    WKRelease(view);
+    WAKRelease(view);
     return self;
 }
 
@@ -243,7 +244,7 @@ static void invalidateGStateCallback(WKViewRef view)
     if (viewRef) {
         _WKViewSetViewContext (viewRef, 0);
         viewRef->wrapper = NULL;
-        WKRelease (viewRef);
+        WAKRelease (viewRef);
     }
     
     [subviewReferences release];
@@ -465,25 +466,6 @@ static void _WAKCopyWrapper(const void *value, void *context)
     ASSERT(context);
     CGContextRestoreGState(context);
     setGlobalFocusView(nil);
-}
-
-static CGInterpolationQuality toCGInterpolationQuality(WebCore::InterpolationQuality quality)
-{
-    switch (quality) {
-    case WebCore::InterpolationQuality::Default:
-        return kCGInterpolationDefault;
-    case WebCore::InterpolationQuality::DoNotInterpolate:
-        return kCGInterpolationNone;
-    case WebCore::InterpolationQuality::Low:
-        return kCGInterpolationLow;
-    case WebCore::InterpolationQuality::Medium:
-        return kCGInterpolationMedium;
-    case WebCore::InterpolationQuality::High:
-        return kCGInterpolationHigh;
-    default:
-        ASSERT_NOT_REACHED();
-        return kCGInterpolationLow;
-    }
 }
 
 + (void)_setInterpolationQuality:(int)quality

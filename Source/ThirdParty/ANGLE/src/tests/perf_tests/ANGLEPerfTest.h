@@ -12,8 +12,9 @@
 
 #include <gtest/gtest.h>
 
+#include <mutex>
+#include <queue>
 #include <string>
-#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -77,10 +78,16 @@ class ANGLEPerfTest : public testing::Test, angle::NonCopyable
     virtual void finishTest() {}
     virtual void flush() {}
 
+    // Can be overridden in child tests that require a certain number of steps per trial.
+    virtual int getStepAlignment() const;
+
+    virtual bool isRenderTest() const { return false; }
+
   protected:
-    enum class RunLoopPolicy
+    enum class RunTrialPolicy
     {
         FinishEveryStep,
+        RunContinuouslyWarmup,
         RunContinuously,
     };
 
@@ -88,7 +95,7 @@ class ANGLEPerfTest : public testing::Test, angle::NonCopyable
     void SetUp() override;
     void TearDown() override;
 
-    // Normalize a time value according to the number of test loop iterations (mFrameCount)
+    // Normalize a time value according to the number of test trial iterations (mFrameCount)
     double normalizedTime(size_t value) const;
 
     // Call if the test step was aborted and the test should stop running.
@@ -96,31 +103,58 @@ class ANGLEPerfTest : public testing::Test, angle::NonCopyable
 
     int getNumStepsPerformed() const { return mTrialNumStepsPerformed; }
 
-    // Defaults to one step per run loop. Can be changed in any test.
-    void setStepsPerRunLoopStep(int stepsPerRunLoop);
-    void doRunLoop(double maxRunTime, int maxStepsToRun, RunLoopPolicy runPolicy);
+    void runTrial(double maxRunTime, int maxStepsToRun, RunTrialPolicy runPolicy);
 
     // Overriden in trace perf tests.
     virtual void saveScreenshot(const std::string &screenshotName) {}
     virtual void computeGPUTime() {}
 
-    double printResults();
     void calibrateStepsToRun();
+    int estimateStepsToRun() const;
+
+    void recordIntegerMetric(const char *metric, size_t value, const std::string &units);
+    void recordDoubleMetric(const char *metric, double value, const std::string &units);
+    void addHistogramSample(const char *metric, double value, const std::string &units);
+
+    void processResults();
+    void processClockResult(const char *metric, double resultSeconds);
+    void processMemoryResult(const char *metric, uint64_t resultKB);
+
+    void skipTest(const std::string &reason)
+    {
+        mSkipTestReason = reason;
+        mSkipTest       = true;
+    }
+
+    void failTest(const std::string &reason)
+    {
+        skipTest(reason);
+        FAIL() << reason;
+    }
 
     std::string mName;
     std::string mBackend;
     std::string mStory;
-    Timer mTimer;
+    Timer mTrialTimer;
     uint64_t mGPUTimeNs;
     bool mSkipTest;
+    std::string mSkipTestReason;
     std::unique_ptr<perf_test::PerfResultReporter> mReporter;
     int mStepsToRun;
     int mTrialNumStepsPerformed;
     int mTotalNumStepsPerformed;
-    int mStepsPerRunLoopStep;
     int mIterationsPerStep;
     bool mRunning;
     std::vector<double> mTestTrialResults;
+
+    struct CounterInfo
+    {
+        std::string name;
+        std::vector<GLuint64> samples;
+    };
+    std::map<GLuint, CounterInfo> mPerfCounterInfo;
+    GLuint mPerfMonitor;
+    std::vector<uint64_t> mProcessMemoryUsageKBSamples;
 };
 
 enum class SurfaceType
@@ -132,6 +166,7 @@ enum class SurfaceType
 
 struct RenderTestParams : public angle::PlatformParameters
 {
+    RenderTestParams();
     virtual ~RenderTestParams() {}
 
     virtual std::string backend() const;
@@ -143,6 +178,9 @@ struct RenderTestParams : public angle::PlatformParameters
     unsigned int iterationsPerStep = 0;
     bool trackGpuTime              = false;
     SurfaceType surfaceType        = SurfaceType::Window;
+    EGLenum colorSpace             = EGL_COLORSPACE_LINEAR;
+    bool multisample               = false;
+    EGLint samples                 = -1;
 };
 
 class ANGLERenderTest : public ANGLEPerfTest
@@ -153,7 +191,8 @@ class ANGLERenderTest : public ANGLEPerfTest
                     const char *units = "ns");
     ~ANGLERenderTest() override;
 
-    void addExtensionPrerequisite(const char *extensionName);
+    void addExtensionPrerequisite(std::string extensionName);
+    void addIntegerPrerequisite(GLenum target, int min);
 
     virtual void initializeBenchmark() {}
     virtual void destroyBenchmark() {}
@@ -171,6 +210,8 @@ class ANGLERenderTest : public ANGLEPerfTest
     void onErrorMessage(const char *errorMessage);
 
     uint32_t getCurrentThreadSerial();
+    std::mutex &getTraceEventMutex() { return mTraceEventMutex; }
+    bool isRenderTest() const override { return true; }
 
   protected:
     const RenderTestParams &mTestParams;
@@ -187,23 +228,35 @@ class ANGLERenderTest : public ANGLEPerfTest
     void endGLTraceEvent(const char *name, double hostTimeSec);
 
     void disableTestHarnessSwap() { mSwapEnabled = false; }
+    void updatePerfCounters();
 
     bool mIsTimestampQueryAvailable;
+    bool mEnableDebugCallback = true;
+
+    void startTest() override;
+    void finishTest() override;
 
   private:
     void SetUp() override;
     void TearDown() override;
 
     void step() override;
-    void startTest() override;
-    void finishTest() override;
     void computeGPUTime() override;
 
-    bool areExtensionPrerequisitesFulfilled() const;
+    void skipTestIfMissingExtensionPrerequisites();
+    void skipTestIfFailsIntegerPrerequisite();
+
+    void initPerfCounters();
 
     GLWindowBase *mGLWindow;
     OSWindow *mOSWindow;
-    std::vector<const char *> mExtensionPrerequisites;
+    std::vector<std::string> mExtensionPrerequisites;
+    struct IntegerPrerequisite
+    {
+        GLenum target;
+        int min;
+    };
+    std::vector<IntegerPrerequisite> mIntegerPrerequisites;
     angle::PlatformMethods mPlatformMethods;
     ConfigParameters mConfigParams;
     bool mSwapEnabled;
@@ -215,7 +268,7 @@ class ANGLERenderTest : public ANGLEPerfTest
     };
 
     GLuint mCurrentTimestampBeginQuery = 0;
-    std::vector<TimestampSample> mTimestampQueries;
+    std::queue<TimestampSample> mTimestampQueries;
 
     // Trace event record that can be output.
     std::vector<TraceEvent> mTraceEventBuffer;
@@ -223,7 +276,8 @@ class ANGLERenderTest : public ANGLEPerfTest
     // Handle to the entry point binding library.
     std::unique_ptr<angle::Library> mEntryPointsLib;
 
-    std::vector<std::thread::id> mThreadIDs;
+    std::vector<uint64_t> mThreadIDs;
+    std::mutex mTraceEventMutex;
 };
 
 // Mixins.

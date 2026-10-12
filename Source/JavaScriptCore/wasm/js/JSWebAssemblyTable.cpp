@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -34,7 +34,7 @@
 
 namespace JSC {
 
-const ClassInfo JSWebAssemblyTable::s_info = { "WebAssembly.Table", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSWebAssemblyTable) };
+const ClassInfo JSWebAssemblyTable::s_info = { "WebAssembly.Table"_s, &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSWebAssemblyTable) };
 
 JSWebAssemblyTable* JSWebAssemblyTable::tryCreate(JSGlobalObject* globalObject, VM& vm, Structure* structure, Ref<Wasm::Table>&& table)
 {
@@ -45,7 +45,7 @@ JSWebAssemblyTable* JSWebAssemblyTable::tryCreate(JSGlobalObject* globalObject, 
         return nullptr;
     }
 
-    auto* instance = new (NotNull, allocateCell<JSWebAssemblyTable>(vm.heap)) JSWebAssemblyTable(vm, structure, WTFMove(table));
+    auto* instance = new (NotNull, allocateCell<JSWebAssemblyTable>(vm)) JSWebAssemblyTable(vm, structure, WTFMove(table));
     instance->table()->setOwner(instance);
     instance->finishCreation(vm);
     return instance;
@@ -60,12 +60,6 @@ JSWebAssemblyTable::JSWebAssemblyTable(VM& vm, Structure* structure, Ref<Wasm::T
     : Base(vm, structure)
     , m_table(WTFMove(table))
 {
-}
-
-void JSWebAssemblyTable::finishCreation(VM& vm)
-{
-    Base::finishCreation(vm);
-    ASSERT(inherits(vm, info()));
 }
 
 void JSWebAssemblyTable::destroy(JSCell* cell)
@@ -110,7 +104,7 @@ void JSWebAssemblyTable::set(uint32_t index, WebAssemblyFunctionBase* function)
     RELEASE_ASSERT(index < length());
     RELEASE_ASSERT(m_table->asFuncrefTable());
     auto& subThis = *static_cast<Wasm::FuncRefTable*>(&m_table.get());
-    subThis.setFunction(index, function, function->importableFunction(), &function->instance()->instance());
+    subThis.setFunction(index, function, function->importableFunction(), function->instance());
 }
 
 void JSWebAssemblyTable::clear(uint32_t index)
@@ -127,10 +121,16 @@ JSObject* JSWebAssemblyTable::type(JSGlobalObject* globalObject)
     JSString* elementString = nullptr;
     switch (element) {
     case Wasm::TableElementType::Funcref:
-        elementString = jsNontrivialString(vm, "funcref");
+        if (m_table->wasmType().isNullable())
+            elementString = jsNontrivialString(vm, "funcref"_s);
+        else
+            return nullptr;
         break;
     case Wasm::TableElementType::Externref:
-        elementString = jsNontrivialString(vm, "externref");
+        if (isExternref(m_table->wasmType()) && m_table->wasmType().isNullable())
+            elementString = jsNontrivialString(vm, "externref"_s);
+        else
+            return nullptr;
         break;
     default:
         RELEASE_ASSERT_NOT_REACHED();
@@ -140,13 +140,13 @@ JSObject* JSWebAssemblyTable::type(JSGlobalObject* globalObject)
     auto maximum = m_table->maximum();
     if (maximum) {
         result = constructEmptyObject(globalObject, globalObject->objectPrototype(), 3);
-        result->putDirect(vm, Identifier::fromString(vm, "maximum"), jsNumber(*maximum));
+        result->putDirect(vm, Identifier::fromString(vm, "maximum"_s), jsNumber(*maximum));
     } else
         result = constructEmptyObject(globalObject, globalObject->objectPrototype(), 2);
 
     uint32_t minimum = m_table->length();
-    result->putDirect(vm, Identifier::fromString(vm, "minimum"), jsNumber(minimum));
-    result->putDirect(vm, Identifier::fromString(vm, "element"), elementString);
+    result->putDirect(vm, Identifier::fromString(vm, "minimum"_s), jsNumber(minimum));
+    result->putDirect(vm, Identifier::fromString(vm, "element"_s), elementString);
     return result;
 }
 

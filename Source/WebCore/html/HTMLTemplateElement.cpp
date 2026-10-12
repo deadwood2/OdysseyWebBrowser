@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012, 2013 Google Inc. All rights reserved.
+ * Copyright (C) 2013-2024 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -31,19 +32,27 @@
 #include "config.h"
 #include "HTMLTemplateElement.h"
 
+#include "Document.h"
 #include "DocumentFragment.h"
+#include "ElementInlines.h"
+#include "ElementRareData.h"
+#include "HTMLNames.h"
+#include "NodeTraversal.h"
+#include "ShadowRoot.h"
+#include "ShadowRootInit.h"
+#include "SlotAssignmentMode.h"
 #include "TemplateContentDocumentFragment.h"
 #include "markup.h"
-#include <wtf/IsoMallocInlines.h>
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(HTMLTemplateElement);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(HTMLTemplateElement);
 
 using namespace HTMLNames;
 
 inline HTMLTemplateElement::HTMLTemplateElement(const QualifiedName& tagName, Document& document)
-    : HTMLElement(tagName, document)
+    : HTMLElement(tagName, document, TypeFlag::HasDidMoveToNewDocument)
 {
 }
 
@@ -63,12 +72,42 @@ DocumentFragment* HTMLTemplateElement::contentIfAvailable() const
     return m_content.get();
 }
 
+DocumentFragment& HTMLTemplateElement::fragmentForInsertion() const
+{
+    if (m_declarativeShadowRoot)
+        return *m_declarativeShadowRoot;
+    return content();
+}
+
 DocumentFragment& HTMLTemplateElement::content() const
 {
+    ASSERT(!m_declarativeShadowRoot);
     if (!m_content)
-        m_content = TemplateContentDocumentFragment::create(document().ensureTemplateDocument(), this);
-
+        m_content = TemplateContentDocumentFragment::create(document().ensureTemplateDocument(), *this);
     return *m_content;
+}
+
+const AtomString& HTMLTemplateElement::shadowRootMode() const
+{
+    static MainThreadNeverDestroyed<const AtomString> open("open"_s);
+    static MainThreadNeverDestroyed<const AtomString> closed("closed"_s);
+
+    auto modeString = attributeWithoutSynchronization(HTMLNames::shadowrootmodeAttr);
+    if (equalLettersIgnoringASCIICase(modeString, "closed"_s))
+        return closed;
+    if (equalLettersIgnoringASCIICase(modeString, "open"_s))
+        return open;
+    return emptyAtom();
+}
+
+void HTMLTemplateElement::setShadowRootMode(const AtomString& value)
+{
+    setAttribute(HTMLNames::shadowrootmodeAttr, value);
+}
+
+void HTMLTemplateElement::setDeclarativeShadowRoot(ShadowRoot& shadowRoot)
+{
+    m_declarativeShadowRoot = shadowRoot;
 }
 
 Ref<Node> HTMLTemplateElement::cloneNodeInternal(Document& targetDocument, CloningOperation type)
@@ -96,6 +135,43 @@ void HTMLTemplateElement::didMoveToNewDocument(Document& oldDocument, Document& 
         return;
     ASSERT_WITH_SECURITY_IMPLICATION(&document() == &newDocument);
     m_content->setTreeScopeRecursively(newDocument.ensureTemplateDocument());
+}
+
+void HTMLTemplateElement::attachAsDeclarativeShadowRootIfNeeded(Element& host)
+{
+    if (m_declarativeShadowRoot) {
+        ASSERT(host.shadowRoot());
+        return;
+    }
+
+    auto modeString = shadowRootMode();
+    if (modeString.isEmpty())
+        return;
+
+    ASSERT(modeString == "closed"_s || modeString == "open"_s);
+    auto mode = modeString == "closed"_s ? ShadowRootMode::Closed : ShadowRootMode::Open;
+
+    auto delegatesFocus = hasAttributeWithoutSynchronization(HTMLNames::shadowrootdelegatesfocusAttr) ? ShadowRootDelegatesFocus::Yes : ShadowRootDelegatesFocus::No;
+    auto clonable = hasAttributeWithoutSynchronization(HTMLNames::shadowrootclonableAttr) ? ShadowRootClonable::Yes : ShadowRootClonable::No;
+    auto serializable = hasAttributeWithoutSynchronization(HTMLNames::shadowrootserializableAttr) ? ShadowRootSerializable::Yes : ShadowRootSerializable::No;
+
+    auto exceptionOrShadowRoot = host.attachDeclarativeShadow(mode, delegatesFocus, clonable, serializable);
+    if (exceptionOrShadowRoot.hasException())
+        return;
+
+    auto importedContent = document().importNode(content(), /* deep */ true).releaseReturnValue();
+    for (RefPtr<Node> node = NodeTraversal::next(importedContent), next; node; node = next) {
+        next = NodeTraversal::next(*node);
+        if (auto* templateElement = dynamicDowncast<HTMLTemplateElement>(*node)) {
+            if (RefPtr parentElement = node->parentElement())
+                templateElement->attachAsDeclarativeShadowRootIfNeeded(*parentElement);
+        }
+    }
+
+    Ref shadowRoot = exceptionOrShadowRoot.releaseReturnValue();
+    shadowRoot->appendChild(WTFMove(importedContent));
+
+    remove();
 }
 
 } // namespace WebCore

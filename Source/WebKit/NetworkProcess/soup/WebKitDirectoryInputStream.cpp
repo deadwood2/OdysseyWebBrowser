@@ -47,8 +47,8 @@ static GBytes* webkitDirectoryInputStreamCreateHeader(WebKitDirectoryInputStream
         "<html><head>"
         "<title>%s</title>"
         "<meta http-equiv=\"Content-Type\" content=\"text/html;\" charset=\"UTF-8\">"
-        "<style>%s</style>"
-        "<script>%s</script>"
+        "<style>%.*s</style>"
+        "<script>%.*s</script>"
         "</head>"
         "<body>"
         "<table>"
@@ -56,8 +56,10 @@ static GBytes* webkitDirectoryInputStreamCreateHeader(WebKitDirectoryInputStream
         "<th align=\"left\">%s</th><th align=\"right\">%s</th><th align=\"right\">%s</th>"
         "</thead>",
         stream->priv->uri.data(),
-        WebCore::directoryUserAgentStyleSheet,
-        WebCore::directoryJavaScript,
+        static_cast<int>(WebCore::directoryUserAgentStyleSheet.size()),
+        WebCore::directoryUserAgentStyleSheet.data(),
+        static_cast<int>(WebCore::directoryJavaScript.size()),
+        WebCore::directoryJavaScript.data(),
         _("Name"),
         _("Size"),
         _("Date Modified"));
@@ -155,7 +157,7 @@ static gssize webkitDirectoryInputStreamRead(GInputStream* input, void* buffer, 
         if (bytesRead == bufferSize)
             stream->priv->buffer = nullptr;
         else
-            stream->priv->buffer = g_bytes_new_from_bytes(stream->priv->buffer.get(), bytesRead, bufferSize - bytesRead);
+            stream->priv->buffer = adoptGRef(g_bytes_new_from_bytes(stream->priv->buffer.get(), bytesRead, bufferSize - bytesRead));
         totalBytesRead += bytesRead;
     }
 

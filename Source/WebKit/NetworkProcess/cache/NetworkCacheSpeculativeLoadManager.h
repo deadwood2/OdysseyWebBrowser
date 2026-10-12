@@ -32,8 +32,24 @@
 #include "NetworkCacheStorage.h"
 #include <WebCore/ResourceRequest.h>
 #include <wtf/HashMap.h>
+#include <wtf/TZoneMalloc.h>
 #include <wtf/Vector.h>
 #include <wtf/WeakPtr.h>
+
+namespace WebKit {
+namespace NetworkCache {
+class SpeculativeLoadManager;
+}
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebKit::NetworkCache::SpeculativeLoadManager> : std::true_type { };
+}
+
+namespace WebCore {
+enum class AdvancedPrivacyProtections : uint16_t;
+}
 
 namespace WebKit {
 
@@ -45,12 +61,12 @@ class SubresourceInfo;
 class SubresourcesEntry;
 
 class SpeculativeLoadManager : public CanMakeWeakPtr<SpeculativeLoadManager> {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED(SpeculativeLoadManager);
 public:
     explicit SpeculativeLoadManager(Cache&, Storage&);
     ~SpeculativeLoadManager();
 
-    void registerLoad(const GlobalFrameID&, const WebCore::ResourceRequest&, const Key& resourceKey, std::optional<NavigatingToAppBoundDomain>);
+    void registerLoad(const GlobalFrameID&, const WebCore::ResourceRequest&, const Key& resourceKey, std::optional<NavigatingToAppBoundDomain>, bool allowPrivacyProxy, OptionSet<WebCore::AdvancedPrivacyProtections>);
     void registerMainResourceLoadResponse(const GlobalFrameID&, const WebCore::ResourceRequest&, const WebCore::ResourceResponse&);
 
     typedef Function<void (std::unique_ptr<Entry>)> RetrieveCompletionHandler;
@@ -63,13 +79,13 @@ private:
 
     static bool shouldRegisterLoad(const WebCore::ResourceRequest&);
     void addPreloadedEntry(std::unique_ptr<Entry>, const GlobalFrameID&, std::optional<WebCore::ResourceRequest>&& revalidationRequest = std::nullopt);
-    void preloadEntry(const Key&, const SubresourceInfo&, const GlobalFrameID&, std::optional<NavigatingToAppBoundDomain>);
+    void preloadEntry(const Key&, const SubresourceInfo&, const GlobalFrameID&, std::optional<NavigatingToAppBoundDomain>, bool allowPrivacyProxy, OptionSet<WebCore::AdvancedPrivacyProtections>);
     void retrieveEntryFromStorage(const SubresourceInfo&, RetrieveCompletionHandler&&);
-    void revalidateSubresource(const SubresourceInfo&, std::unique_ptr<Entry>, const GlobalFrameID&, std::optional<NavigatingToAppBoundDomain>);
+    void revalidateSubresource(const SubresourceInfo&, std::unique_ptr<Entry>, const GlobalFrameID&, std::optional<NavigatingToAppBoundDomain>, bool allowPrivacyProxy, OptionSet<WebCore::AdvancedPrivacyProtections>);
     void preconnectForSubresource(const SubresourceInfo&, Entry*, const GlobalFrameID&, std::optional<NavigatingToAppBoundDomain>);
     bool satisfyPendingRequests(const Key&, Entry*);
     void retrieveSubresourcesEntry(const Key& storageKey, WTF::Function<void (std::unique_ptr<SubresourcesEntry>)>&&);
-    void startSpeculativeRevalidation(const GlobalFrameID&, SubresourcesEntry&, bool, std::optional<NavigatingToAppBoundDomain>);
+    void startSpeculativeRevalidation(const GlobalFrameID&, SubresourcesEntry&, bool, std::optional<NavigatingToAppBoundDomain>, bool allowPrivacyProxy, OptionSet<WebCore::AdvancedPrivacyProtections>);
 
     static bool canUsePreloadedEntry(const PreloadedEntry&, const WebCore::ResourceRequest& actualRequest);
     static bool canUsePendingPreload(const SpeculativeLoad&, const WebCore::ResourceRequest& actualRequest);

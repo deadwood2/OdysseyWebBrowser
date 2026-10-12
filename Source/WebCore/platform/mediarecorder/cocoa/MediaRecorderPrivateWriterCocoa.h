@@ -24,7 +24,7 @@
 
 #pragma once
 
-#if ENABLE(MEDIA_STREAM) && HAVE(AVASSETWRITERDELEGATE)
+#if ENABLE(MEDIA_RECORDER)
 
 #include "AudioStreamDescription.h"
 
@@ -33,8 +33,7 @@
 #include <wtf/Deque.h>
 #include <wtf/Lock.h>
 #include <wtf/RetainPtr.h>
-#include <wtf/ThreadSafeRefCounted.h>
-#include <wtf/WeakPtr.h>
+#include <wtf/ThreadSafeWeakPtr.h>
 #include <wtf/threads/BinarySemaphore.h>
 
 #include <CoreAudio/CoreAudioTypes.h>
@@ -56,30 +55,32 @@ namespace WebCore {
 
 class AudioSampleBufferCompressor;
 class AudioStreamDescription;
-class MediaSample;
 class MediaStreamTrackPrivate;
 class PlatformAudioData;
+class VideoFrame;
 class VideoSampleBufferCompressor;
 struct MediaRecorderPrivateOptions;
 
-class WEBCORE_EXPORT MediaRecorderPrivateWriter : public ThreadSafeRefCounted<MediaRecorderPrivateWriter, WTF::DestructionThread::Main>, public CanMakeWeakPtr<MediaRecorderPrivateWriter, WeakPtrFactoryInitialization::Eager> {
+class WEBCORE_EXPORT MediaRecorderPrivateWriter : public ThreadSafeRefCountedAndCanMakeThreadSafeWeakPtr<MediaRecorderPrivateWriter, WTF::DestructionThread::Main> {
 public:
     static RefPtr<MediaRecorderPrivateWriter> create(bool hasAudio, bool hasVideo, const MediaRecorderPrivateOptions&);
     ~MediaRecorderPrivateWriter();
 
-    void appendVideoSampleBuffer(MediaSample&);
+    void appendVideoFrame(VideoFrame&);
     void appendAudioSampleBuffer(const PlatformAudioData&, const AudioStreamDescription&, const WTF::MediaTime&, size_t);
     void stopRecording();
-    void fetchData(CompletionHandler<void(RefPtr<SharedBuffer>&&, double)>&&);
+    void fetchData(CompletionHandler<void(RefPtr<FragmentedSharedBuffer>&&, double)>&&);
 
     void pause();
     void resume();
 
-    void appendData(const uint8_t*, size_t);
+    void appendData(std::span<const uint8_t>);
 
     const String& mimeType() const;
     unsigned audioBitRate() const;
     unsigned videoBitRate() const;
+
+    void close();
 
 private:
     MediaRecorderPrivateWriter(bool hasAudio, bool hasVideo);
@@ -105,7 +106,7 @@ private:
 
     void finishedFlushingSamples();
     void completeFetchData();
-    RefPtr<SharedBuffer> takeData();
+    RefPtr<FragmentedSharedBuffer> takeData();
 
     bool m_hasAudio { false };
     bool m_hasVideo { false };
@@ -117,8 +118,8 @@ private:
     RetainPtr<AVAssetWriter> m_writer;
 
     Lock m_dataLock;
-    RefPtr<SharedBuffer> m_data WTF_GUARDED_BY_LOCK(m_dataLock);
-    CompletionHandler<void(RefPtr<SharedBuffer>&&, double)> m_fetchDataCompletionHandler;
+    SharedBufferBuilder m_data WTF_GUARDED_BY_LOCK(m_dataLock);
+    CompletionHandler<void(RefPtr<FragmentedSharedBuffer>&&, double)> m_fetchDataCompletionHandler;
 
     RetainPtr<CMFormatDescriptionRef> m_audioFormatDescription;
     std::unique_ptr<AudioSampleBufferCompressor> m_audioCompressor;
@@ -132,7 +133,7 @@ private:
     bool m_hasEncodedVideoSamples { false };
 
     RetainPtr<WebAVAssetWriterDelegate> m_writerDelegate;
-    Deque<RetainPtr<CMSampleBufferRef>> m_pendingVideoSampleQueue;
+    Deque<RetainPtr<CMSampleBufferRef>> m_pendingVideoFrameQueue;
     Deque<RetainPtr<CMSampleBufferRef>> m_pendingAudioSampleQueue;
 
     bool m_isFlushingSamples { false };
@@ -147,4 +148,4 @@ private:
 
 } // namespace WebCore
 
-#endif // ENABLE(MEDIA_STREAM) && HAVE(AVASSETWRITERDELEGATE)
+#endif // ENABLE(MEDIA_RECORDER)

@@ -2,8 +2,10 @@
 #import "WkCertificate.h"
 #import <ob/OBFramework.h>
 #undef __OBJC__
+#import "WebKit.h"
 #import <WebCore/ResourceError.h>
 #import <WebCore/CertificateInfo.h>
+#import <curl/curl.h>
 #define __OBJC__
 
 @interface WkErrorPrivate : WkError
@@ -53,9 +55,9 @@
 			}
 		}
 		
-		if (error.isSSLCertVerificationError())
+		if (error.isCertificationVerificationError())
 			_type = WkErrorType_SSLCertification;
-		else if (error.isSSLConnectError())
+		else if (error.errorCode() == CURLE_SSL_CONNECT_ERROR)
 			_type = WkErrorType_SSLConnection;
 		else switch (error.type())
 		{

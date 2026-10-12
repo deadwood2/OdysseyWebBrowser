@@ -24,19 +24,20 @@
 
 #if ENABLE(MEDIA_SESSION_COORDINATOR)
 
+[EnabledBy=MediaSessionCoordinatorEnabled]
 messages -> RemoteMediaSessionCoordinatorProxy NotRefCounted {
 
-    Join() -> (std::optional<WebCore::ExceptionData> error) Async
+    Join() -> (std::optional<WebCore::ExceptionData> error)
 
     Leave()
 
-    CoordinateSeekTo(double time) -> (std::optional<WebCore::ExceptionData> error) Async
+    CoordinateSeekTo(double time) -> (std::optional<WebCore::ExceptionData> error)
 
-    CoordinatePlay() -> (std::optional<WebCore::ExceptionData> error) Async
+    CoordinatePlay() -> (std::optional<WebCore::ExceptionData> error)
 
-    CoordinatePause() -> (std::optional<WebCore::ExceptionData> error) Async
+    CoordinatePause() -> (std::optional<WebCore::ExceptionData> error)
 
-    CoordinateSetTrack(String trackIdentifier) -> (std::optional<WebCore::ExceptionData> error) Async
+    CoordinateSetTrack(String trackIdentifier) -> (std::optional<WebCore::ExceptionData> error)
 
     PositionStateChanged(std::optional<WebCore::MediaPositionState> state);
 

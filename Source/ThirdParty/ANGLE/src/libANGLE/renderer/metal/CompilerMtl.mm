@@ -9,8 +9,9 @@
 
 #include "libANGLE/renderer/metal/CompilerMtl.h"
 
+#include <stdio.h>
+
 #include "common/debug.h"
-#include "compiler/translator/TranslatorMetalDirect/EnvironmentVariable.h"
 
 namespace rx
 {
@@ -21,16 +22,7 @@ CompilerMtl::~CompilerMtl() {}
 
 ShShaderOutput CompilerMtl::getTranslatorOutputType() const
 {
-    if (sh::readBoolEnvVar("ANGLE_GEN_MTL_WITH_SPIRV"))
-    {
-        // We want to return GL output first, we can't actually
-        // get MSL code until link time. Translation time is too early
-        return SH_GLSL_METAL_OUTPUT;
-    }
-    else
-    {
-        return SH_MSL_METAL_OUTPUT;
-    }
+    return SH_MSL_METAL_OUTPUT;
 }
 
 }  // namespace rx

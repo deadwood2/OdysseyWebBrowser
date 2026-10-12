@@ -26,6 +26,7 @@
 #include "config.h"
 #include "InjectedBundlePageUIClient.h"
 
+#include "APIArray.h"
 #include "APISecurityOrigin.h"
 #include "InjectedBundleHitTestResult.h"
 #include "InjectedBundleNodeHandle.h"
@@ -47,6 +48,12 @@ void InjectedBundlePageUIClient::willAddMessageToConsole(WebPage* page, MessageS
 {
     if (m_client.willAddMessageToConsole)
         m_client.willAddMessageToConsole(toAPI(page), toAPI(message.impl()), lineNumber, m_client.base.clientInfo);
+}
+
+void InjectedBundlePageUIClient::willAddMessageWithArgumentsToConsole(WebPage* page, MessageSource, MessageLevel, const String& message, std::span<const String> messageArguments, unsigned lineNumber, unsigned columnNumber, const String& sourceID)
+{
+    if (m_client.willAddMessageWithDetailsToConsole)
+        m_client.willAddMessageWithDetailsToConsole(toAPI(page), toAPI(message.impl()), toAPI(&API::Array::createStringArray(messageArguments).leakRef()), lineNumber, columnNumber, toAPI(sourceID.impl()), m_client.base.clientInfo);
 }
 
 void InjectedBundlePageUIClient::willSetStatusbarText(WebPage* page, const String& statusbarText)
@@ -73,7 +80,7 @@ void InjectedBundlePageUIClient::willRunJavaScriptPrompt(WebPage* page, const St
         m_client.willRunJavaScriptPrompt(toAPI(page), toAPI(message.impl()), toAPI(defaultValue.impl()), toAPI(frame), m_client.base.clientInfo);
 }
 
-void InjectedBundlePageUIClient::mouseDidMoveOverElement(WebPage* page, const HitTestResult& coreHitTestResult, OptionSet<WebEvent::Modifier> modifiers, RefPtr<API::Object>& userData)
+void InjectedBundlePageUIClient::mouseDidMoveOverElement(WebPage* page, const HitTestResult& coreHitTestResult, OptionSet<WebEventModifier> modifiers, RefPtr<API::Object>& userData)
 {
     if (!m_client.mouseDidMoveOverElement)
         return;
@@ -130,15 +137,6 @@ API::InjectedBundle::PageUIClient::UIElementVisibility InjectedBundlePageUIClien
         return API::InjectedBundle::PageUIClient::UIElementVisibility::Unknown;
     
     return toUIElementVisibility(m_client.toolbarsAreVisible(toAPI(page), m_client.base.clientInfo));
-}
-
-bool InjectedBundlePageUIClient::didReachApplicationCacheOriginQuota(WebPage* page, API::SecurityOrigin* origin, int64_t totalBytesNeeded)
-{
-    if (!m_client.didReachApplicationCacheOriginQuota)
-        return false;
-
-    m_client.didReachApplicationCacheOriginQuota(toAPI(page), toAPI(origin), totalBytesNeeded, m_client.base.clientInfo);
-    return true;
 }
 
 uint64_t InjectedBundlePageUIClient::didExceedDatabaseQuota(WebPage* page, API::SecurityOrigin* origin, const String& databaseName, const String& databaseDisplayName, uint64_t currentQuotaBytes, uint64_t currentOriginUsageBytes, uint64_t currentDatabaseUsageBytes, uint64_t expectedUsageBytes)

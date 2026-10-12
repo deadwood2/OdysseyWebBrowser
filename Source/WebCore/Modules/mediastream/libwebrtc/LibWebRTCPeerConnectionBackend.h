@@ -24,10 +24,19 @@
 
 #pragma once
 
-#if USE(LIBWEBRTC)
+#if ENABLE(WEB_RTC) && USE(LIBWEBRTC)
 
 #include "PeerConnectionBackend.h"
 #include "RealtimeMediaSource.h"
+
+namespace WebCore {
+class LibWebRTCPeerConnectionBackend;
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebCore::LibWebRTCPeerConnectionBackend> : std::true_type { };
+}
 
 namespace webrtc {
 class IceCandidateInterface;
@@ -62,22 +71,15 @@ private:
     void doCreateAnswer(RTCAnswerOptions&&) final;
     void doSetLocalDescription(const RTCSessionDescription*) final;
     void doSetRemoteDescription(const RTCSessionDescription&) final;
-    void doAddIceCandidate(RTCIceCandidate&) final;
+    void doAddIceCandidate(RTCIceCandidate&, AddIceCandidateCallback&&) final;
     void doStop() final;
     std::unique_ptr<RTCDataChannelHandler> createDataChannelHandler(const String&, const RTCDataChannelInit&) final;
     void restartIce() final;
     bool setConfiguration(MediaEndpointConfiguration&&) final;
+    void gatherDecoderImplementationName(Function<void(String&&)>&&) final;
     void getStats(Ref<DeferredPromise>&&) final;
     void getStats(RTCRtpSender&, Ref<DeferredPromise>&&) final;
     void getStats(RTCRtpReceiver&, Ref<DeferredPromise>&&) final;
-
-    RefPtr<RTCSessionDescription> localDescription() const final;
-    RefPtr<RTCSessionDescription> currentLocalDescription() const final;
-    RefPtr<RTCSessionDescription> pendingLocalDescription() const final;
-
-    RefPtr<RTCSessionDescription> remoteDescription() const final;
-    RefPtr<RTCSessionDescription> currentRemoteDescription() const final;
-    RefPtr<RTCSessionDescription> pendingRemoteDescription() const final;
 
     std::optional<bool> canTrickleIceCandidates() const final;
 
@@ -90,14 +92,14 @@ private:
 
     void getStatsSucceeded(const DeferredPromise&, Ref<RTCStatsReport>&&);
 
-    ExceptionOr<Ref<RTCRtpSender>> addTrack(MediaStreamTrack&, Vector<String>&&) final;
+    ExceptionOr<Ref<RTCRtpSender>> addTrack(MediaStreamTrack&, FixedVector<String>&&) final;
     void removeTrack(RTCRtpSender&) final;
 
-    ExceptionOr<Ref<RTCRtpTransceiver>> addTransceiver(const String&, const RTCRtpTransceiverInit&) final;
+    ExceptionOr<Ref<RTCRtpTransceiver>> addTransceiver(const String&, const RTCRtpTransceiverInit&, IgnoreNegotiationNeededFlag) final;
     ExceptionOr<Ref<RTCRtpTransceiver>> addTransceiver(Ref<MediaStreamTrack>&&, const RTCRtpTransceiverInit&) final;
     void setSenderSourceFromTrack(LibWebRTCRtpSenderBackend&, MediaStreamTrack&);
 
-    RTCRtpTransceiver* existingTransceiver(WTF::Function<bool(LibWebRTCRtpTransceiverBackend&)>&&);
+    RTCRtpTransceiver* existingTransceiver(Function<bool(LibWebRTCRtpTransceiverBackend&)>&&);
     RTCRtpTransceiver& newRemoteTransceiver(std::unique_ptr<LibWebRTCRtpTransceiverBackend>&&, RealtimeMediaSource::Type);
 
     void collectTransceivers() final;
@@ -105,14 +107,20 @@ private:
 private:
     bool isLocalDescriptionSet() const final { return m_isLocalDescriptionSet; }
 
+    void startGatheringStatLogs(Function<void(String&&)>&&) final;
+    void stopGatheringStatLogs() final;
+    void provideStatLogs(String&&);
+    friend class RtcEventLogOutput;
+
     template<typename T>
-    ExceptionOr<Ref<RTCRtpTransceiver>> addTransceiverFromTrackOrKind(T&& trackOrKind, const RTCRtpTransceiverInit&);
+    ExceptionOr<Ref<RTCRtpTransceiver>> addTransceiverFromTrackOrKind(T&& trackOrKind, const RTCRtpTransceiverInit&, IgnoreNegotiationNeededFlag = IgnoreNegotiationNeededFlag::No);
 
     Ref<RTCRtpReceiver> createReceiver(std::unique_ptr<LibWebRTCRtpReceiverBackend>&&);
 
     void suspend() final;
     void resume() final;
     void disableICECandidateFiltering() final;
+    bool isNegotiationNeeded(uint32_t) const final;
 
     Ref<LibWebRTCMediaEndpoint> m_endpoint;
     bool m_isLocalDescriptionSet { false };
@@ -120,8 +128,10 @@ private:
 
     Vector<std::unique_ptr<webrtc::IceCandidateInterface>> m_pendingCandidates;
     Vector<Ref<RTCRtpReceiver>> m_pendingReceivers;
+
+    Function<void(String&&)> m_rtcStatsLogCallback;
 };
 
 } // namespace WebCore
 
-#endif // USE(LIBWEBRTC)
+#endif // ENABLE(WEB_RTC) && USE(LIBWEBRTC)

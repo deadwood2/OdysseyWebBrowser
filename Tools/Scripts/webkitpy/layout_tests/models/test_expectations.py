@@ -1093,8 +1093,7 @@ class TestExpectations(object):
         self.parse_default_port_expectations()
         self.parse_override_expectations()
 
-        # FIXME: move ignore_tests into port.skipped_layout_tests()
-        self.add_skipped_tests(self._port.skipped_layout_tests(self._full_test_list, device_type=self._device_type).union(set(self._port.get_option('ignore_tests', []))))
+        self.add_skipped_tests(self._port.skipped_layout_tests(device_type=self._device_type))
 
         self._report_warnings()
         self._process_tests_without_expectations()
@@ -1173,30 +1172,6 @@ class TestExpectations(object):
     def has_warnings(self):
         # type: () -> bool
         return self._has_warnings
-
-    def remove_configuration_from_test(self, test, test_configuration):
-        # type: (str, TestConfiguration) -> str
-        expectations_to_remove = []
-        modified_expectations = []
-
-        for expectation in self._expectations:
-            if expectation.name != test or expectation.is_flaky() or not expectation.parsed_expectations:
-                continue
-            if not any([value in (FAIL, IMAGE) for value in expectation.parsed_expectations]):
-                continue
-            if test_configuration not in expectation.matching_configurations:
-                continue
-
-            expectation.matching_configurations.remove(test_configuration)
-            if expectation.matching_configurations:
-                modified_expectations.append(expectation)
-            else:
-                expectations_to_remove.append(expectation)
-
-        for expectation in expectations_to_remove:
-            self._expectations.remove(expectation)
-
-        return self.list_to_string(self._expectations, self._parser._test_configuration_converter, modified_expectations)
 
     def remove_rebaselined_tests(self, except_these_tests, filename):
         # type: (List[str], str) -> str

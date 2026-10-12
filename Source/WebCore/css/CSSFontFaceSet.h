@@ -26,19 +26,38 @@
 #pragma once
 
 #include "CSSFontFace.h"
+#include <variant>
 #include <wtf/HashMap.h>
 #include <wtf/Observer.h>
-#include <wtf/Variant.h>
 #include <wtf/Vector.h>
 #include <wtf/WeakHashSet.h>
 #include <wtf/text/StringHash.h>
 
 namespace WebCore {
+struct FontEventClient;
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebCore::FontEventClient> : std::true_type { };
+}
+
+namespace WebCore {
 
 class CSSPrimitiveValue;
+class CSSSegmentedFontFace;
 class FontFaceSet;
 
-class CSSFontFaceSet final : public RefCounted<CSSFontFaceSet>, public CSSFontFace::Client {
+template<typename> class ExceptionOr;
+
+struct FontEventClient : public CanMakeWeakPtr<FontEventClient> {
+    virtual ~FontEventClient() = default;
+    virtual void faceFinished(CSSFontFace&, CSSFontFace::Status) = 0;
+    virtual void startedLoading() = 0;
+    virtual void completedLoading() = 0;
+};
+
+class CSSFontFaceSet final : public RefCounted<CSSFontFaceSet>, public CSSFontFaceClient {
 public:
     static Ref<CSSFontFaceSet> create(CSSFontSelector* owningFontSelector = nullptr)
     {
@@ -49,13 +68,10 @@ public:
     using FontModifiedObserver = Observer<void()>;
     void addFontModifiedObserver(const FontModifiedObserver&);
 
-    struct FontEventClient : public CanMakeWeakPtr<FontEventClient> {
-        virtual ~FontEventClient() = default;
-        virtual void faceFinished(CSSFontFace&, CSSFontFace::Status) = 0;
-        virtual void startedLoading() = 0;
-        virtual void completedLoading() = 0;
-    };
     void addFontEventClient(const FontEventClient&);
+
+    // Calling updateStyleIfNeeded() might delete |this|.
+    void updateStyleIfNeeded();
 
     bool hasFace(const CSSFontFace&) const;
     size_t faceCount() const { return m_faces.size(); }
@@ -81,9 +97,11 @@ public:
 
     ExceptionOr<Vector<std::reference_wrapper<CSSFontFace>>> matchingFacesExcludingPreinstalledFonts(const String& font, const String& text);
 
-    // CSSFontFace::Client needs to be able to be held in a RefPtr.
-    void ref() final { RefCounted::ref(); }
-    void deref() final { RefCounted::deref(); }
+    // CSSFontFaceClient needs to be able to be held in a RefPtr.
+    void ref() const final { RefCounted::ref(); }
+    void deref() const final { RefCounted::deref(); }
+    // FIXME: Should this be implemented?
+    void updateStyleIfNeeded(CSSFontFace&) final { }
 
 private:
     CSSFontFaceSet(CSSFontSelector*);
@@ -97,7 +115,7 @@ private:
     void fontStateChanged(CSSFontFace&, CSSFontFace::Status oldState, CSSFontFace::Status newState) final;
     void fontPropertyChanged(CSSFontFace&, CSSValueList* oldFamilies = nullptr) final;
 
-    void ensureLocalFontFacesForFamilyRegistered(const String&);
+    void ensureLocalFontFacesForFamilyRegistered(const AtomString&);
 
     static String familyNameFromPrimitive(const CSSPrimitiveValue&);
 

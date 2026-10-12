@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,11 +25,9 @@
 
 #pragma once
 
-#include <wtf/EnumTraits.h>
 #include <wtf/RetainPtr.h>
 #include <wtf/Vector.h>
 #include <wtf/cf/TypeCastsCF.h>
-#include <wtf/persistence/PersistentCoder.h>
 
 #if PLATFORM(COCOA)
 #include <Security/SecCertificate.h>
@@ -45,84 +43,36 @@ struct CertificateSummary;
 
 class CertificateInfo {
 public:
-     CertificateInfo() = default;
- 
-    enum class Type {
-        None,
-        CertificateChain,
-#if HAVE(SEC_TRUST_SERIALIZATION)
-        Trust,
-#endif
-    };
-
-#if HAVE(SEC_TRUST_SERIALIZATION)
+    CertificateInfo() = default;
     explicit CertificateInfo(RetainPtr<SecTrustRef>&& trust)
         : m_trust(WTFMove(trust))
     {
     }
- 
-    SecTrustRef trust() const { return m_trust.get(); }
-#endif
-
-    CertificateInfo(RetainPtr<CFArrayRef>&& certificateChain)
-        : m_certificateChain(WTFMove(certificateChain))
-    {
-    }
-
+    const RetainPtr<SecTrustRef>& trust() const { return m_trust; }
     CertificateInfo isolatedCopy() const { return *this; }
 
-    WEBCORE_EXPORT CFArrayRef certificateChain() const;
-
-    WEBCORE_EXPORT Type type() const;
     WEBCORE_EXPORT bool containsNonRootSHA1SignedCertificate() const;
 
     std::optional<CertificateSummary> summary() const;
 
-    bool isEmpty() const { return type() == Type::None; }
+    bool isEmpty() const
+    {
+        return !m_trust;
+    }
 
-#if PLATFORM(COCOA)
-    static RetainPtr<CFArrayRef> certificateChainFromSecTrust(SecTrustRef);
-#endif
+    friend bool operator==(const CertificateInfo&, const CertificateInfo&) = default;
+
+    WEBCORE_EXPORT static RetainPtr<CFArrayRef> certificateChainFromSecTrust(SecTrustRef);
+    WEBCORE_EXPORT static RetainPtr<SecTrustRef> secTrustFromCertificateChain(CFArrayRef);
 
 #ifndef NDEBUG
-#if PLATFORM(COCOA)
     void dump() const;
-#endif
 #endif
 
 private:
-#if HAVE(SEC_TRUST_SERIALIZATION)
     RetainPtr<SecTrustRef> m_trust;
-#endif
-    mutable RetainPtr<CFArrayRef> m_certificateChain;
 };
 
-#if PLATFORM(COCOA)
 WEBCORE_EXPORT bool certificatesMatch(SecTrustRef, SecTrustRef);
-#endif
 
 } // namespace WebCore
-
-namespace WTF {
-
-template<> struct EnumTraits<WebCore::CertificateInfo::Type> {
-    using values = EnumValues<
-        WebCore::CertificateInfo::Type,
-        WebCore::CertificateInfo::Type::None,
-        WebCore::CertificateInfo::Type::CertificateChain
-#if HAVE(SEC_TRUST_SERIALIZATION)
-        , WebCore::CertificateInfo::Type::Trust
-#endif
-    >;
-};
-
-namespace Persistence {
-
-template<> struct Coder<WebCore::CertificateInfo> {
-    static WEBCORE_EXPORT void encode(Encoder&, const WebCore::CertificateInfo&);
-    static WEBCORE_EXPORT std::optional<WebCore::CertificateInfo> decode(Decoder&);
-};
-
-} // namespace WTF::Persistence
-
-} // namespace WTF

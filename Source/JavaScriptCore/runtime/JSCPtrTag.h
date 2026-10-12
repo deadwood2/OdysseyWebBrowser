@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2018-2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2018-2024 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,10 +26,8 @@
 #pragma once
 
 #include "JITOperationList.h"
+#include "JITOperationValidation.h"
 #include <wtf/PtrTag.h>
-#if ENABLE(JIT_CAGE)
-#include <WebKitAdditions/JITCageAdditions.h>
-#endif
 
 #if ENABLE(JIT_CAGE)
 extern "C" JS_EXPORT_PRIVATE void* jitCagePtr(void* pointer, uintptr_t tag);
@@ -41,7 +39,6 @@ using PtrTag = WTF::PtrTag;
 
 #define FOR_EACH_JSC_PTRTAG(v) \
     /* Callee:Native Caller:None */ \
-    v(DOMJITFunctionPtrTag, PtrTagCalleeType::Native, PtrTagCallerType::None) \
     v(DisassemblyPtrTag, PtrTagCalleeType::Native, PtrTagCallerType::None) \
     /* Callee:JIT Caller:None */ \
     v(JITCompilationPtrTag, PtrTagCalleeType::JIT, PtrTagCallerType::None) \
@@ -54,6 +51,10 @@ using PtrTag = WTF::PtrTag;
     /* Callee:Native Caller:Native */ \
     v(BytecodePtrTag, PtrTagCalleeType::Native, PtrTagCallerType::Native) \
     v(CustomAccessorPtrTag, PtrTagCalleeType::Native, PtrTagCallerType::Native) \
+    v(GetValueFuncPtrTag, PtrTagCalleeType::Native, PtrTagCallerType::Native) \
+    v(GetValueFuncWithPtrPtrTag, PtrTagCalleeType::Native, PtrTagCallerType::Native) \
+    v(PutValueFuncPtrTag, PtrTagCalleeType::Native, PtrTagCallerType::Native) \
+    v(PutValueFuncWithPtrPtrTag, PtrTagCalleeType::Native, PtrTagCallerType::Native) \
     v(HostFunctionPtrTag, PtrTagCalleeType::Native, PtrTagCallerType::Native) \
     v(JITProbePtrTag, PtrTagCalleeType::Native, PtrTagCallerType::Native) \
     v(JITProbePCPtrTag, PtrTagCalleeType::Native, PtrTagCallerType::Native) \
@@ -62,6 +63,7 @@ using PtrTag = WTF::PtrTag;
     /* Callee:JIT Caller:Native */ \
     v(NativeToJITGatePtrTag, PtrTagCalleeType::JIT, PtrTagCallerType::Native) \
     v(YarrEntryPtrTag, PtrTagCalleeType::JIT, PtrTagCallerType::Native) \
+    v(LLIntToWasmEntryPtrTag, PtrTagCalleeType::JIT, PtrTagCallerType::Native) \
     v(CSSSelectorPtrTag, PtrTagCalleeType::JIT, PtrTagCallerType::Native) \
     /* Callee:Native Caller:JIT */ \
     v(OperationPtrTag, PtrTagCalleeType::Native, PtrTagCallerType::JIT) \
@@ -104,21 +106,23 @@ using PtrTag = WTF::PtrTag;
             else \
                 return JSC::untagJSCCodePtrImpl<tag, calleeType, callerType>(ptr); \
         } \
+    \
+        template<typename PtrType> \
+        ALWAYS_INLINE static bool isTagged(PtrType ptr) \
+        { \
+            if constexpr (!isSpecialized) \
+                return WTF::isTaggedNativeCodePtrImpl<tag>(ptr); \
+            else \
+                return JSC::isTaggedJSCCodePtrImpl<tag, calleeType, callerType>(ptr); \
+        } \
     };
-
-#if COMPILER(MSVC)
-#pragma warning(push)
-#pragma warning(disable:4307)
-#endif
 
 FOR_EACH_JSC_PTRTAG(JSC_DECLARE_PTRTAG)
 
-#if COMPILER(MSVC)
-#pragma warning(pop)
-#endif
-
+#if CPU(ARM64E)
 JS_EXPORT_PRIVATE PtrTagCallerType callerType(PtrTag);
 JS_EXPORT_PRIVATE PtrTagCalleeType calleeType(PtrTag);
+#endif
 
 template<PtrTag tag, PtrTagCalleeType calleeType, PtrTagCallerType callerType, typename PtrType>
 ALWAYS_INLINE static PtrType tagJSCCodePtrImpl(PtrType ptr)
@@ -129,7 +133,7 @@ ALWAYS_INLINE static PtrType tagJSCCodePtrImpl(PtrType ptr)
         JITOperationList::assertIsJITOperation(ptr);
 #if ENABLE(JIT_CAGE)
         if (Options::useJITCage())
-            return bitwise_cast<PtrType>(JITOperationList::instance().map(bitwise_cast<void*>(ptr)));
+            return bitwise_cast<PtrType>(JITOperationList::singleton().map(ptr));
     } else {
         if (Options::useJITCage())
             return bitwise_cast<PtrType>(jitCagePtr(bitwise_cast<void*>(ptr), tag));
@@ -144,11 +148,12 @@ ALWAYS_INLINE static PtrType untagJSCCodePtrImpl(PtrType ptr)
     static_assert(callerType == PtrTagCallerType::JIT);
     if constexpr (calleeType == PtrTagCalleeType::Native) {
         static_assert(tag == OperationPtrTag);
-        JITOperationList::assertIsJITOperation(ptr);
+        JITOperationList::assertIsJITOperationWithValidation(ptr);
 #if ENABLE(JIT_CAGE)
         if (Options::useJITCage()) {
-            RELEASE_ASSERT(bitwise_cast<PtrType>(JITOperationList::instance().map(bitwise_cast<void*>(ptr))) == ptr);
-            return removeCodePtrTag(ptr);
+            // This case is currently not used. If this changes in the future, we'll have to implement
+            // an inverse mapping of a validation operation back to the original operation.
+            RELEASE_ASSERT_NOT_REACHED();
         }
     } else {
         if (Options::useJITCage()) {
@@ -159,6 +164,30 @@ ALWAYS_INLINE static PtrType untagJSCCodePtrImpl(PtrType ptr)
 #endif // ENABLE(JIT_CAGE)
     }
     return WTF::untagNativeCodePtrImpl<tag>(ptr);
+}
+
+template<PtrTag tag, PtrTagCalleeType calleeType, PtrTagCallerType callerType, typename PtrType>
+ALWAYS_INLINE static bool isTaggedJSCCodePtrImpl(PtrType ptr)
+{
+    static_assert(callerType == PtrTagCallerType::JIT);
+    if constexpr (calleeType == PtrTagCalleeType::Native) {
+        static_assert(tag == OperationPtrTag);
+#if ENABLE(JIT_CAGE)
+        if (Options::useJITCage()) {
+#if ENABLE(JIT_OPERATION_VALIDATION_ASSERT)
+            return JITOperationList::singleton().inverseMap(ptr);
+#else
+            // Not supported. We currently don't use this, and don't have an
+            // efficient way to implement this. So, just assert that it's not used.
+            RELEASE_ASSERT_NOT_REACHED();
+#endif
+        }
+    } else {
+        if (Options::useJITCage())
+            return ptr == tagJSCCodePtrImpl<tag, calleeType, callerType>(removeCodePtrTag(ptr));
+#endif // ENABLE(JIT_CAGE)
+    }
+    return WTF::isTaggedNativeCodePtrImpl<tag>(ptr);
 }
 
 template<typename PtrType>
@@ -216,18 +245,13 @@ void initializePtrTagLookup();
 inline void initializePtrTagLookup() { }
 #endif
 
+#if CPU(ARM64E) && (ENABLE(PTRTAG_DEBUGGING) || ENABLE(DISASSEMBLER))
+const char* ptrTagName(PtrTag);
+#endif
+
 } // namespace JSC
 namespace WTF {
 
-#if COMPILER(MSVC)
-#pragma warning(push)
-#pragma warning(disable:4307)
-#endif
-
 FOR_EACH_JSC_PTRTAG(JSC_DECLARE_PTRTAG_TRAIT)
-
-#if COMPILER(MSVC)
-#pragma warning(pop)
-#endif
 
 } // namespace WTF

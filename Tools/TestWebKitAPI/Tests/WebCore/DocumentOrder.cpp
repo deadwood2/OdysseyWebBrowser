@@ -25,17 +25,20 @@
 
 #include "config.h"
 
-#include <WebCore/Document.h>
+#include <WebCore/CommonAtomStrings.h>
+#include <WebCore/DocumentInlines.h>
 #include <WebCore/HTMLBodyElement.h>
 #include <WebCore/HTMLDivElement.h>
 #include <WebCore/HTMLHtmlElement.h>
 #include <WebCore/HTMLTextAreaElement.h>
 #include <WebCore/Position.h>
+#include <WebCore/ProcessWarming.h>
 #include <WebCore/Settings.h>
 #include <WebCore/ShadowRoot.h>
 #include <WebCore/SimpleRange.h>
 #include <WebCore/TextControlInnerElements.h>
 #include <WebCore/WebKitFontFamilyNames.h>
+#include <wtf/text/MakeString.h>
 
 // FIXME(https://webkit.org/b/228175): Expose the functions tested here in WebKit internals object, then replace this test with one written in JavaScript.
 // FIXME: When doing the above, don't forget to remove the many WEBCORE_EXPORT that were added so we could compile and link this test.
@@ -51,8 +54,8 @@ using namespace WebCore;
 
 static Ref<Document> createDocument()
 {
-    HTMLNames::init();
-    WebKitFontFamilyNames::init();
+    ProcessWarming::initializeNames();
+
     auto settings = Settings::create(nullptr);
     auto document = Document::create(settings.get(), aboutBlankURL());
     auto documentElement = HTMLHtmlElement::create(document);
@@ -62,23 +65,23 @@ static Ref<Document> createDocument()
     return document;
 }
 
-static constexpr const char* string(PartialOrdering ordering)
+static constexpr ASCIILiteral string(std::partial_ordering ordering)
 {
     if (is_lt(ordering))
-        return "less";
+        return "less"_s;
     if (is_gt(ordering))
-        return "greater";
-    if (is_eq(ordering))
-        return "equivalent";
-    return "unordered";
+        return "greater"_s;
+    if (WebCore::is_eq(ordering))
+        return "equivalent"_s;
+    return "unordered"_s;
 }
 
-static PartialOrdering operator-(PartialOrdering ordering)
+static std::partial_ordering operator-(std::partial_ordering ordering)
 {
     if (is_lt(ordering))
-        return PartialOrdering::greater;
+        return std::partial_ordering::greater;
     if (is_gt(ordering))
-        return PartialOrdering::less;
+        return std::partial_ordering::less;
     return ordering;
 }
 
@@ -108,21 +111,21 @@ static Vector<Position> allPositionTypes(Node* node, unsigned offset)
     return positions;
 }
 
-static constexpr const char* typeStringSuffix(const Position& position)
+static constexpr ASCIILiteral typeStringSuffix(const Position& position)
 {
     switch (position.anchorType()) {
     case Position::PositionIsOffsetInAnchor:
-        return "";
+        return ""_s;
     case Position::PositionIsBeforeChildren:
-        return "[before-children]";
+        return "[before-children]"_s;
     case Position::PositionIsAfterChildren:
-        return "[after-children]";
+        return "[after-children]"_s;
     case Position::PositionIsBeforeAnchor:
-        return "[before]";
+        return "[before]"_s;
     case Position::PositionIsAfterAnchor:
-        return "[after]";
+        return "[after]"_s;
     }
-    return "[invalid]";
+    return "[invalid]"_s;
 }
 
 static String join(const Vector<String>& vector, ASCIILiteral separator)
@@ -138,55 +141,55 @@ static String join(const Vector<String>& vector, ASCIILiteral separator)
     return builder.toString();
 }
 
-static CString allPositionTypeFailures(const Position& a, Node* nodeB, unsigned offsetB, PartialOrdering expectedResult)
+static CString allPositionTypeFailures(const Position& a, Node* nodeB, unsigned offsetB, std::partial_ordering expectedResult)
 {
     Vector<String> failures;
     for (auto& b : allPositionTypes(nodeB, offsetB)) {
         auto result = string(documentOrder(a, b));
         if (strcmp(result, string(expectedResult)))
-            failures.append(makeString("order(b", typeStringSuffix(b), ")=", result, "<expected:", string(expectedResult), '>'));
+            failures.append(makeString("order(b"_s, typeStringSuffix(b), ")="_s, result, "<expected:"_s, string(expectedResult), '>'));
         result = string(documentOrder(b, a));
         if (strcmp(result, string(-expectedResult)))
-            failures.append(makeString("order(b", typeStringSuffix(b), ")=", result, "<expected:", string(-expectedResult), '>'));
+            failures.append(makeString("order(b"_s, typeStringSuffix(b), ")="_s, result, "<expected:"_s, string(-expectedResult), '>'));
     }
     return join(failures, ", "_s).utf8();
 }
 
-static CString allPositionTypeFailures(Node* nodeA, unsigned offsetA, Node* nodeB, unsigned offsetB, PartialOrdering expectedResult)
+static CString allPositionTypeFailures(Node* nodeA, unsigned offsetA, Node* nodeB, unsigned offsetB, std::partial_ordering expectedResult)
 {
     Vector<String> failures;
     for (auto& a : allPositionTypes(nodeA, offsetA)) {
         for (auto& b : allPositionTypes(nodeB, offsetB)) {
             auto result = string(documentOrder(a, b));
             if (strcmp(result, string(expectedResult)))
-                failures.append(makeString("order(a", typeStringSuffix(a), ",b", typeStringSuffix(b), ")=", result, "<expected:", string(expectedResult), '>'));
+                failures.append(makeString("order(a"_s, typeStringSuffix(a), ",b"_s, typeStringSuffix(b), ")="_s, result, "<expected:"_s, string(expectedResult), '>'));
             result = string(documentOrder(b, a));
             if (strcmp(result, string(-expectedResult)))
-                failures.append(makeString("order(b", typeStringSuffix(b), ",a", typeStringSuffix(a), ")=", result, "<expected:", string(-expectedResult), '>'));
+                failures.append(makeString("order(b"_s, typeStringSuffix(b), ",a"_s, typeStringSuffix(a), ")="_s, result, "<expected:"_s, string(-expectedResult), '>'));
         }
     }
     return join(failures, " | "_s).utf8();
 }
 
-static CString allPositionTypeFailures(Node& nodeA, unsigned offsetA, Node& nodeB, unsigned offsetB, PartialOrdering expectedResult)
+static CString allPositionTypeFailures(Node& nodeA, unsigned offsetA, Node& nodeB, unsigned offsetB, std::partial_ordering expectedResult)
 {
     return allPositionTypeFailures(&nodeA, offsetA, &nodeB, offsetB, expectedResult);
 }
 
-static CString allPositionTypeFailures(Node* nodeA, unsigned offsetA, Node& nodeB, unsigned offsetB, PartialOrdering expectedResult)
+static CString allPositionTypeFailures(Node* nodeA, unsigned offsetA, Node& nodeB, unsigned offsetB, std::partial_ordering expectedResult)
 {
     return allPositionTypeFailures(nodeA, offsetA, &nodeB, offsetB, expectedResult);
 }
 
-static CString allPositionTypeFailures(const Position& a, Node& nodeB, unsigned offsetB, PartialOrdering expectedResult)
+static CString allPositionTypeFailures(const Position& a, Node& nodeB, unsigned offsetB, std::partial_ordering expectedResult)
 {
     return allPositionTypeFailures(a, &nodeB, offsetB, expectedResult);
 }
 
 #define TEST_ALL_POSITION_TYPES(nodeA, offsetA, nodeB, offsetB, expectedResult) \
-    EXPECT_STREQ(allPositionTypeFailures(nodeA, offsetA, nodeB, offsetB, PartialOrdering::expectedResult).data(), "")
+    EXPECT_STREQ(allPositionTypeFailures(nodeA, offsetA, nodeB, offsetB, std::partial_ordering::expectedResult).data(), "")
 #define TEST_ALL_POSITION_TYPES_B(positionA, nodeB, offsetB, expectedResult) \
-    EXPECT_STREQ(allPositionTypeFailures(positionA, nodeB, offsetB, PartialOrdering::expectedResult).data(), "")
+    EXPECT_STREQ(allPositionTypeFailures(positionA, nodeB, offsetB, std::partial_ordering::expectedResult).data(), "")
 
 static Position makePositionBefore(Node& node)
 {

@@ -49,7 +49,7 @@ TEST(WKProcessPool, WarmInitialProcess)
     EXPECT_TRUE([pool _hasPrewarmedWebProcess]);
 }
 
-enum class ShouldUseEphemeralStore { No, Yes };
+enum class ShouldUseEphemeralStore : bool { No, Yes };
 static void runInitialWarmedProcessUsedTest(ShouldUseEphemeralStore shouldUseEphemeralStore)
 {
     auto processPoolConfiguration = adoptNS([[_WKProcessPoolConfiguration alloc] init]);
@@ -109,7 +109,7 @@ TEST(WKProcessPool, AutomaticProcessWarming)
     [webView1 _test_waitForDidFinishNavigation];
 
     while (![pool _hasPrewarmedWebProcess])
-        TestWebKitAPI::Util::sleep(0.01);
+        TestWebKitAPI::Util::runFor(0.01_s);
 
     EXPECT_TRUE([pool _hasPrewarmedWebProcess]);
     EXPECT_EQ(2U, [pool _webPageContentProcessCount]);
@@ -134,12 +134,12 @@ TEST(WKProcessPool, PrewarmedProcessCrash)
 
     // Wait for prewarmed process to finish launching.
     while (![pool _prewarmedProcessIdentifier])
-        TestWebKitAPI::Util::sleep(0.01);
+        TestWebKitAPI::Util::runFor(0.01_s);
 
     kill([pool _prewarmedProcessIdentifier], 9);
 
     while ([pool _hasPrewarmedWebProcess])
-        TestWebKitAPI::Util::sleep(0.01);
+        TestWebKitAPI::Util::runFor(0.01_s);
 }
 
 TEST(WebKit, TryUsingPrewarmedProcessThatJustCrashed)
@@ -153,7 +153,7 @@ TEST(WebKit, TryUsingPrewarmedProcessThatJustCrashed)
 
     // Wait for prewarmed process to finish launching.
     while (![pool _prewarmedProcessIdentifier])
-        TestWebKitAPI::Util::sleep(0.01);
+        TestWebKitAPI::Util::runFor(0.01_s);
 
     // Kill the prewarmed process.
     kill([pool _prewarmedProcessIdentifier], 9);
@@ -162,6 +162,12 @@ TEST(WebKit, TryUsingPrewarmedProcessThatJustCrashed)
     auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
     configuration.get().processPool = pool.get();
     auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
+    auto delegate = adoptNS([[TestNavigationDelegate alloc] init]);
+    delegate.get().webContentProcessDidTerminate = ^(WKWebView *view, _WKProcessTerminationReason) {
+        [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:loadableURL]]];
+    };
+    [webView setNavigationDelegate:delegate.get()];
+
     [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:loadableURL]]];
-    [webView _test_waitForDidFinishNavigation];
+    [delegate waitForDidFinishNavigation];
 }

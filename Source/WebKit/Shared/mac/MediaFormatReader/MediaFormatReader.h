@@ -28,6 +28,7 @@
 #if ENABLE(WEBM_FORMAT_READER)
 
 #include "CoreMediaWrapped.h"
+#include <WebCore/SourceBufferParserWebM.h>
 #include <WebCore/SourceBufferPrivateClient.h>
 #include <wtf/Condition.h>
 #include <wtf/Lock.h>
@@ -36,14 +37,15 @@
 DECLARE_CORE_MEDIA_TRAITS(FormatReader);
 
 namespace WebCore {
-class SourceBufferParser;
+class MediaSamplesBlock;
+class WebMParser;
 }
 
 namespace WebKit {
 
 class MediaTrackReader;
 
-class MediaFormatReader final : public CoreMediaWrapped<MediaFormatReader> {
+class MediaFormatReader final : public CoreMediaWrapped<MediaFormatReader> , public WebCore::WebMParser::Callback {
 public:
     using CoreMediaWrapped<MediaFormatReader>::unwrap;
 
@@ -54,7 +56,7 @@ public:
     static RefPtr<MediaFormatReader> create(Allocator&&);
 
     void startOnMainThread(MTPluginByteSourceRef);
-    const MediaTime& duration() const { return m_duration; }
+    MediaTime duration() const;
 
     const Logger& logger() const { ASSERT(m_logger); return *m_logger.get(); }
     const Logger* loggerPtr() const { return m_logger.get(); }
@@ -63,12 +65,16 @@ public:
 private:
     explicit MediaFormatReader(Allocator&&);
 
+    // WebMParser::Callback
+    void parsedInitializationData(WebCore::SourceBufferParser::InitializationSegment&&) final;
+    void parsedMediaData(WebCore::MediaSamplesBlock&&) final;
+
     void parseByteSource(RetainPtr<MTPluginByteSourceRef>&&);
     void didParseTracks(WebCore::SourceBufferPrivateClient::InitializationSegment&&, uint64_t errorCode);
     void didSelectVideoTrack(WebCore::VideoTrackPrivate&, bool) { }
     void didEnableAudioTrack(WebCore::AudioTrackPrivate&, bool) { }
-    void didProvideMediaData(Ref<WebCore::MediaSample>&&, uint64_t, const String&);
-    void finishParsing(Ref<WebCore::SourceBufferParser>&&);
+    void didProvideMediaData(WebCore::MediaSamplesBlock&&);
+    void finishParsing();
 
     // CMBaseClass
     String debugDescription() const final { return "WebKit::MediaFormatReader"_s; }
@@ -77,16 +83,20 @@ private:
     // WrapperClass
     OSStatus copyTrackArray(CFArrayRef*);
     
+    static const void* nextLogIdentifier();
+    static WTFLogChannel& logChannel();
+    static ASCIILiteral logClassName() { return "MediaFormatReader"_s; }
     const void* logIdentifier() const { return m_logIdentifier; }
 
     RetainPtr<MTPluginByteSourceRef> m_byteSource WTF_GUARDED_BY_LOCK(m_parseTracksLock);
     Condition m_parseTracksCondition;
-    Lock m_parseTracksLock;
+    mutable Lock m_parseTracksLock;
     MediaTime m_duration WTF_GUARDED_BY_LOCK(m_parseTracksLock);
     std::optional<OSStatus> m_parseTracksStatus WTF_GUARDED_BY_LOCK(m_parseTracksLock);
     Vector<Ref<MediaTrackReader>> m_trackReaders WTF_GUARDED_BY_LOCK(m_parseTracksLock);
     RefPtr<const Logger> m_logger;
     const void* m_logIdentifier;
+    bool m_init { false };
 };
 
 constexpr MediaFormatReader::WrapperClass MediaFormatReader::wrapperClass()

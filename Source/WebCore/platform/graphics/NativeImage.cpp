@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Apple Inc.  All rights reserved.
+ * Copyright (C) 2020-2023 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,27 +26,75 @@
 #include "config.h"
 #include "NativeImage.h"
 
-#include <wtf/NeverDestroyed.h>
-
 namespace WebCore {
 
-RefPtr<NativeImage> NativeImage::create(PlatformImagePtr&& platformImage, RenderingResourceIdentifier renderingResourceIdentifier)
+NativeImageBackend::NativeImageBackend() = default;
+
+NativeImageBackend::~NativeImageBackend() = default;
+
+bool NativeImageBackend::isRemoteNativeImageBackendProxy() const
+{
+    return false;
+}
+
+PlatformImageNativeImageBackend::~PlatformImageNativeImageBackend() = default;
+
+const PlatformImagePtr& PlatformImageNativeImageBackend::platformImage() const
+{
+    return m_platformImage;
+}
+
+PlatformImageNativeImageBackend::PlatformImageNativeImageBackend(PlatformImagePtr platformImage)
+    : m_platformImage(WTFMove(platformImage))
+{
+}
+
+#if !USE(CG)
+RefPtr<NativeImage> NativeImage::create(PlatformImagePtr&& platformImage, RenderingResourceIdentifier identifier)
 {
     if (!platformImage)
         return nullptr;
-    return adoptRef(*new NativeImage(WTFMove(platformImage), renderingResourceIdentifier));
+    UniqueRef<PlatformImageNativeImageBackend> backend { *new PlatformImageNativeImageBackend(WTFMove(platformImage)) };
+    return adoptRef(*new NativeImage(WTFMove(backend), identifier));
 }
 
-NativeImage::NativeImage(PlatformImagePtr&& platformImage, RenderingResourceIdentifier renderingResourceIdentifier)
-    : m_platformImage(WTFMove(platformImage))
-    , m_renderingResourceIdentifier(renderingResourceIdentifier)
+RefPtr<NativeImage> NativeImage::createTransient(PlatformImagePtr&& image, RenderingResourceIdentifier identifier)
+{
+    return create(WTFMove(image), identifier);
+}
+#endif
+
+NativeImage::NativeImage(UniqueRef<NativeImageBackend> backend, RenderingResourceIdentifier renderingResourceIdentifier)
+    : RenderingResource(renderingResourceIdentifier)
+    , m_backend(WTFMove(backend))
 {
 }
 
-NativeImage::~NativeImage()
+NativeImage::~NativeImage() = default;
+
+const PlatformImagePtr& NativeImage::platformImage() const
 {
-    for (auto observer : m_observers)
-        observer->releaseNativeImage(m_renderingResourceIdentifier);
+    return m_backend->platformImage();
+}
+
+IntSize NativeImage::size() const
+{
+    return m_backend->size();
+}
+
+bool NativeImage::hasAlpha() const
+{
+    return m_backend->hasAlpha();
+}
+
+DestinationColorSpace NativeImage::colorSpace() const
+{
+    return m_backend->colorSpace();
+}
+
+void NativeImage::replaceBackend(UniqueRef<NativeImageBackend> backend)
+{
+    m_backend = WTFMove(backend);
 }
 
 } // namespace WebCore

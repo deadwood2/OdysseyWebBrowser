@@ -34,7 +34,7 @@ enum Vendor
 };
 }  // namespace
 
-class InstancingTest : public ANGLETest
+class InstancingTest : public ANGLETest<>
 {
   protected:
     InstancingTest()
@@ -110,21 +110,9 @@ class InstancingTest : public ANGLETest
             ANGLE_SKIP_TEST_IF(!IsGLExtensionEnabled("GL_EXT_instanced_arrays"));
         }
 
-        // TODO: Fix these.  http://anglebug.com/3129
+        // TODO: Fix these.  http://anglebug.com/42261805
         ANGLE_SKIP_TEST_IF(IsD3D9() && draw == Indexed && geometry == Point);
         ANGLE_SKIP_TEST_IF(IsD3D9() && IsAMD());
-
-        // D3D11 FL9_3 has a special codepath that emulates instanced points rendering
-        // but it has bugs and was only implemented for vertex positions in a buffer object,
-        // not client memory as used in this test.
-        ANGLE_SKIP_TEST_IF(IsD3D11_FL93() && geometry == Point);
-
-        // Unknown problem.  FL9_3 is not officially supported anyway.
-        ANGLE_SKIP_TEST_IF(IsD3D11_FL93() && geometry == Quad && draw == NonIndexed);
-
-        // http://anglebug.com/5271
-        ANGLE_SKIP_TEST_IF(IsOSX() && IsIntelUHD630Mobile() && IsDesktopOpenGL() &&
-                           draw == NonIndexed && offset != 0);
 
         // The window is divided into kMaxDrawn slices of size kDrawSize.
         // The slice drawn into is determined by the instance datum.
@@ -349,7 +337,7 @@ constexpr GLushort InstancingTest::kPointIndices[];
         runTest(numInstance, divisor, 1, Quad, NonIndexed, Buffer, Angle, 0); \
     }
 
-// D3D9 and D3D11 FL9_3, have a special codepath that rearranges the input layout sent to D3D,
+// D3D9 has a special codepath that rearranges the input layout sent to D3D,
 // to ensure that slot/stream zero of the input layout doesn't contain per-instance data, so
 // we test with attribute 0 being instanced, as will as attribute 1 being instanced.
 //
@@ -708,8 +696,6 @@ TEST_P(InstancingTestES31, UpdateAttribBindingByVertexAttribDivisor)
 // Verify that a large divisor that also changes doesn't cause issues and renders correctly.
 TEST_P(InstancingTestES3, LargeDivisor)
 {
-    // http://anglebug.com/4092
-    ANGLE_SKIP_TEST_IF(isSwiftshader());
     constexpr char kVS[] = R"(#version 300 es
 layout(location = 0) in vec4 a_position;
 layout(location = 1) in vec4 a_color;
@@ -809,8 +795,6 @@ void main()
 // incorrectly clamped down to the maximum signed integer.
 TEST_P(InstancingTestES3, LargestDivisor)
 {
-    // http://anglebug.com/4092
-    ANGLE_SKIP_TEST_IF(isSwiftshader());
     constexpr GLuint kLargeDivisor = std::numeric_limits<GLuint>::max();
     glVertexAttribDivisor(0, kLargeDivisor);
 
@@ -820,8 +804,90 @@ TEST_P(InstancingTestES3, LargestDivisor)
         << "Vertex attrib divisor read was not the same that was passed in.";
 }
 
+// Regression test for D3D11 streaming of GL_DYNAMIC_DRAW buffers not taking into account instanced
+// attributes for buffer size calculations. http://crbug.com/1425606
+TEST_P(InstancingTestES3, D3D11StreamingInstancedData)
+{
+    constexpr char kVS[] = R"(#version 300 es
+in float scale;
+void main()
+{
+    gl_Position = vec4(vec2(gl_VertexID % 2, gl_VertexID % 3) * scale, 0, 1);
+})";
+
+    constexpr char kFS[] = R"(#version 300 es
+precision mediump float;
+out vec4 color;
+void main()
+{
+    color = vec4(1, 0, 0, 1);
+})";
+
+    ANGLE_GL_PROGRAM(program, kVS, kFS);
+    glUseProgram(program);
+
+    GLBuffer buffer;
+    float data = 0.5f;
+    glBindBuffer(GL_ARRAY_BUFFER, buffer);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(data), &data, GL_DYNAMIC_DRAW);
+
+    GLint loc = glGetAttribLocation(program, "scale");
+    glEnableVertexAttribArray(loc);
+    glVertexAttribPointer(loc, 1, GL_FLOAT, false, 0, 0);
+    glVertexAttribDivisor(loc, 1);
+
+    // Both of these should succeed
+    glDrawArraysInstanced(GL_TRIANGLES, 0, 3, 1);
+    EXPECT_GL_NO_ERROR();
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+    EXPECT_GL_NO_ERROR();
+}
+
+// Regression test for D3D11 streaming of GL_DYNAMIC_DRAW buffers not taking into account instanced
+// attributes for buffer size calculations. http://crbug.com/1425606
+TEST_P(InstancingTestES3, D3D11StreamingInstancedData2)
+{
+    constexpr char kVS[] = R"(#version 300 es
+in float scale;
+void main()
+{
+    gl_Position = vec4(vec2(gl_VertexID % 2, gl_VertexID % 3) * scale, 0, 1);
+    gl_PointSize = 1.0;
+})";
+
+    constexpr char kFS[] = R"(#version 300 es
+precision mediump float;
+out vec4 color;
+void main()
+{
+    color = vec4(1, 0, 0, 1);
+})";
+
+    ANGLE_GL_PROGRAM(program, kVS, kFS);
+    glUseProgram(program);
+
+    GLBuffer buffer;
+    glBindBuffer(GL_ARRAY_BUFFER, buffer);
+
+    GLint loc = glGetAttribLocation(program, "scale");
+    glEnableVertexAttribArray(loc);
+    glVertexAttribPointer(loc, 1, GL_FLOAT, false, 0, 0);
+    glVertexAttribDivisor(loc, 10001);
+
+    for (size_t i = 0; i < 100; i++)
+    {
+        float data = 0.5f;
+        glBufferData(GL_ARRAY_BUFFER, sizeof(data), &data, GL_DYNAMIC_DRAW);
+
+        glDrawArrays(GL_POINTS, 0, 10000);
+        EXPECT_GL_NO_ERROR();
+    }
+}
+
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(InstancingTestES3);
 ANGLE_INSTANTIATE_TEST_ES3(InstancingTestES3);
 
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(InstancingTestES31);
 ANGLE_INSTANTIATE_TEST_ES31(InstancingTestES31);
 
 ANGLE_INSTANTIATE_TEST_ES2(InstancingTest);

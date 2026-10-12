@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2021 Apple Inc.  All rights reserved.
+ * Copyright (C) 2020-2023 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,64 +27,74 @@
 
 #if HAVE(IOSURFACE)
 
+#include "ImageBuffer.h"
 #include "ImageBufferCGBackend.h"
 #include "IOSurface.h"
-#include <wtf/IsoMalloc.h>
+#include "IOSurfacePool.h"
+#include <wtf/TZoneMalloc.h>
 
 namespace WebCore {
 
 class WEBCORE_EXPORT ImageBufferIOSurfaceBackend : public ImageBufferCGBackend {
-    WTF_MAKE_ISO_ALLOCATED(ImageBufferIOSurfaceBackend);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(ImageBufferIOSurfaceBackend);
     WTF_MAKE_NONCOPYABLE(ImageBufferIOSurfaceBackend);
 public:
     static IntSize calculateSafeBackendSize(const Parameters&);
     static unsigned calculateBytesPerRow(const IntSize& backendSize);
     static size_t calculateMemoryCost(const Parameters&);
-    static size_t calculateExternalMemoryCost(const Parameters&);
+
+    static std::unique_ptr<ImageBufferIOSurfaceBackend> create(const Parameters&, const ImageBufferCreationContext&);
+
+    ~ImageBufferIOSurfaceBackend();
     
-    static std::unique_ptr<ImageBufferIOSurfaceBackend> create(const Parameters&, const HostWindow*);
-    // FIXME: Rename to createUsingColorSpaceOfGraphicsContext() (or something like that).
-    static std::unique_ptr<ImageBufferIOSurfaceBackend> create(const Parameters&, const GraphicsContext&);
+    static constexpr RenderingMode renderingMode = RenderingMode::Accelerated;
+    bool canMapBackingStore() const final;
 
-    ImageBufferIOSurfaceBackend(const Parameters&, std::unique_ptr<IOSurface>&&);
-
-    IOSurface* surface();
-
-    GraphicsContext& context() const override;
+    IOSurface* surface() override;
+    GraphicsContext& context() override;
     void flushContext() override;
 
-    IntSize backendSize() const override;
+protected:
+    ImageBufferIOSurfaceBackend(const Parameters&, std::unique_ptr<IOSurface>, RetainPtr<CGContextRef> platformContext, PlatformDisplayID, IOSurfacePool*);
+    CGContextRef ensurePlatformContext();
+    // Returns true if flush happened.
+    bool flushContextDraws();
     
-    RefPtr<NativeImage> copyNativeImage(BackingStoreCopy = CopyBackingStore) const override;
+    RefPtr<NativeImage> copyNativeImage() override;
+    RefPtr<NativeImage> createNativeImageReference() override;
     RefPtr<NativeImage> sinkIntoNativeImage() override;
 
-    void drawConsuming(GraphicsContext&, const FloatRect& destRect, const FloatRect& srcRect, const ImagePaintingOptions&) override;
-
-    std::optional<PixelBuffer> getPixelBuffer(const PixelBufferFormat& outputFormat, const IntRect&) const override;
+    void getPixelBuffer(const IntRect&, PixelBuffer&) override;
     void putPixelBuffer(const PixelBuffer&, const IntRect& srcRect, const IntPoint& destPoint, AlphaPremultiplication destFormat) override;
 
     bool isInUse() const override;
     void releaseGraphicsContext() override;
-    VolatilityState setVolatile(bool) override;
-    void releaseBufferToPool() override;
 
-    static constexpr RenderingMode renderingMode = RenderingMode::Accelerated;
+    bool setVolatile() final;
+    SetNonVolatileResult setNonVolatile() final;
+    VolatilityState volatilityState() const final;
+    void setVolatilityState(VolatilityState) final;
 
-protected:
-    static RetainPtr<CGColorSpaceRef> contextColorSpace(const GraphicsContext&);
+    void ensureNativeImagesHaveCopiedBackingStore() final;
+
+    void transferToNewContext(const ImageBufferCreationContext&) final;
+
     unsigned bytesPerRow() const override;
 
-    // ImageBufferCGBackend overrides.
-    RetainPtr<CGImageRef> copyCGImageForEncoding(CFStringRef destinationUTI, PreserveResolution) const final;
+    void invalidateCachedNativeImage();
+    void prepareForExternalRead();
+    void prepareForExternalWrite();
 
-    void prepareToDrawIntoContext(GraphicsContext& destinationContext) override;
-    void invalidateCachedNativeImage() const;
+    RetainPtr<CGImageRef> createImage();
+    RetainPtr<CGImageRef> createImageReference();
 
     std::unique_ptr<IOSurface> m_surface;
-    IOSurfaceSeed m_lastSeedWhenDrawingImage { 0 };
-    mutable bool m_requiresDrawAfterPutPixelBuffer { false };
-
-    mutable bool m_needsSetupContext { false };
+    RetainPtr<CGContextRef> m_platformContext;
+    const PlatformDisplayID m_displayID;
+    bool m_mayHaveOutstandingBackingStoreReferences { false };
+    VolatilityState m_volatilityState { VolatilityState::NonVolatile };
+    RefPtr<IOSurfacePool> m_ioSurfacePool;
+    bool m_needsFirstFlush { true };
 };
 
 } // namespace WebCore

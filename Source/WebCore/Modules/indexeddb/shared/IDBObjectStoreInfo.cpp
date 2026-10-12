@@ -25,6 +25,9 @@
 
 #include "config.h"
 #include "IDBObjectStoreInfo.h"
+
+#include <wtf/CrossThreadCopier.h>
+#include <wtf/text/MakeString.h>
 #include <wtf/text/StringBuilder.h>
 
 namespace WebCore {
@@ -33,11 +36,12 @@ IDBObjectStoreInfo::IDBObjectStoreInfo()
 {
 }
 
-IDBObjectStoreInfo::IDBObjectStoreInfo(uint64_t identifier, const String& name, std::optional<IDBKeyPath>&& keyPath, bool autoIncrement)
+IDBObjectStoreInfo::IDBObjectStoreInfo(uint64_t identifier, const String& name, std::optional<IDBKeyPath>&& keyPath, bool autoIncrement, HashMap<uint64_t, IDBIndexInfo>&& indexMap)
     : m_identifier(identifier)
     , m_name(name)
     , m_keyPath(WTFMove(keyPath))
     , m_autoIncrement(autoIncrement)
+    , m_indexMap(WTFMove(indexMap))
 {
 }
 
@@ -90,24 +94,25 @@ IDBIndexInfo* IDBObjectStoreInfo::infoForExistingIndex(uint64_t identifier)
     return &iterator->value;
 }
 
-IDBObjectStoreInfo IDBObjectStoreInfo::isolatedCopy() const
+IDBObjectStoreInfo IDBObjectStoreInfo::isolatedCopy() const &
 {
-    IDBObjectStoreInfo result = { m_identifier, m_name.isolatedCopy(), WebCore::isolatedCopy(m_keyPath), m_autoIncrement };
+    IDBObjectStoreInfo result = { m_identifier, m_name.isolatedCopy(), crossThreadCopy(m_keyPath), m_autoIncrement };
+    result.m_indexMap = crossThreadCopy(m_indexMap);
+    return result;
+}
 
-    for (auto& iterator : m_indexMap)
-        result.m_indexMap.set(iterator.key, iterator.value.isolatedCopy());
-
+IDBObjectStoreInfo IDBObjectStoreInfo::isolatedCopy() &&
+{
+    IDBObjectStoreInfo result = { m_identifier, WTFMove(m_name).isolatedCopy(), crossThreadCopy(WTFMove(m_keyPath)), m_autoIncrement };
+    result.m_indexMap = crossThreadCopy(WTFMove(m_indexMap));
     return result;
 }
 
 Vector<String> IDBObjectStoreInfo::indexNames() const
 {
-    Vector<String> names;
-    names.reserveCapacity(m_indexMap.size());
-    for (auto& index : m_indexMap.values())
-        names.uncheckedAppend(index.name());
-
-    return names;
+    return WTF::map(m_indexMap, [](auto& pair) -> String {
+        return pair.value.name();
+    });
 }
 
 void IDBObjectStoreInfo::deleteIndex(const String& indexName)
@@ -131,7 +136,7 @@ String IDBObjectStoreInfo::loggingString(int indent) const
     StringBuilder builder;
     for (int i = 0; i < indent; ++i)
         builder.append(' ');
-    builder.append("Object store: ", m_name, m_identifier);
+    builder.append("Object store: "_s, m_name, m_identifier);
     for (auto index : m_indexMap.values())
         builder.append(index.loggingString(indent + 1), '\n');
     return builder.toString();
@@ -139,7 +144,7 @@ String IDBObjectStoreInfo::loggingString(int indent) const
 
 String IDBObjectStoreInfo::condensedLoggingString() const
 {
-    return makeString("<OS: ", m_name, " (", m_identifier, ")>");
+    return makeString("<OS: "_s, m_name, " ("_s, m_identifier, ")>"_s);
 }
 
 #endif

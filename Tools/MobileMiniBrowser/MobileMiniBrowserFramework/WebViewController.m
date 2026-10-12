@@ -25,12 +25,15 @@
 
 #import "WebViewController.h"
 
+#import "SettingsViewController.h"
 #import "TabViewController.h"
 #import <WebKit/WKNavigation.h>
 #import <WebKit/WKNavigationDelegate.h>
 #import <WebKit/WKPreferencesPrivate.h>
 #import <WebKit/WKWebView.h>
 #import <WebKit/WKWebViewConfiguration.h>
+
+static const NSString * const kURLArgumentString = @"--url";
 
 @implementation NSURL (BundleURLMethods)
 + (NSURL *)__bundleURLForFileURL:(NSURL *)url bundle:(NSBundle *)bundle
@@ -72,12 +75,22 @@ void* URLContext = &URLContext;
 {
     [super viewDidLoad];
     self.webViews = [[NSMutableArray alloc] initWithCapacity:1];
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     self.tabViewController = [self.storyboard instantiateViewControllerWithIdentifier:@"idTabViewController"];
+#pragma clang diagnostic pop
     self.tabViewController.parent = self;
     self.tabViewController.modalPresentationStyle = UIModalPresentationPopover;
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    self.settingsViewController = [self.storyboard instantiateViewControllerWithIdentifier:@"idSettingsViewController"];
+#pragma clang diagnostic pop
+    self.settingsViewController.parent = self;
+    self.settingsViewController.modalPresentationStyle = UIModalPresentationPopover;
+
     WKWebView *webView = [self createWebView];
-    [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"https://webkit.org"]]];
+    [webView loadRequest:[NSURLRequest requestWithURL:[self targetURLorDefaultURL]]];
     [self setCurrentWebView:webView];
 }
 
@@ -130,6 +143,13 @@ void* URLContext = &URLContext;
     self.tabViewController.popoverPresentationController.barButtonItem = self.tabButton;
 }
 
+- (IBAction)showSettings:(id)sender
+{
+    UIPopoverPresentationController *presentationController = [self.settingsViewController popoverPresentationController];
+    presentationController.barButtonItem = self.settingsButton;
+    [self presentViewController:self.settingsViewController animated:YES completion:nil];
+}
+
 #pragma mark Public methods
 
 @dynamic currentWebView;
@@ -171,6 +191,11 @@ void* URLContext = &URLContext;
     self.currentWebView = [self createWebView];
 }
 
+- (NSURL *)currentURL
+{
+    return self.currentWebView.URL;
+}
+
 #pragma mark Internal methods
 
 - (WKWebView *)createWebView
@@ -178,8 +203,10 @@ void* URLContext = &URLContext;
     WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
 
     configuration.preferences._mockCaptureDevicesEnabled = YES;
+    configuration.preferences.elementFullscreenEnabled = YES;
 
     WKWebView *webView = [[WKWebView alloc] initWithFrame:self.webViewContainer.bounds configuration:configuration];
+    webView.inspectable = YES;
     webView.navigationDelegate = self;
     webView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     [webView addObserver:self forKeyPath:@"title" options:NSKeyValueObservingOptionNew context:TitleContext];
@@ -203,6 +230,39 @@ void* URLContext = &URLContext;
     [self setCurrentWebView:self.webViews[index]];
 
     [self.tabViewController.tableView reloadData];
+}
+
+- (NSString *)addProtocolIfNecessary:(NSString *)address
+{
+    if ([address rangeOfString:@"://"].length > 0)
+        return address;
+
+    if ([address hasPrefix:@"data:"])
+        return address;
+
+    if ([address hasPrefix:@"about:"])
+        return address;
+
+    return [@"http://" stringByAppendingString:address];
+}
+
+- (NSURL *)targetURLorDefaultURL
+{
+    NSArray *args = [[NSProcessInfo processInfo] arguments];
+    const NSUInteger targetURLIndex = [args indexOfObject:kURLArgumentString];
+
+    // FIXME: Add support for passing file URLs on the command line.
+    if (targetURLIndex != NSNotFound && targetURLIndex + 1 < [args count]) {
+        NSString *targetURL = [self addProtocolIfNecessary:[args objectAtIndex:targetURLIndex + 1]];
+        NSURL *url = [NSURL URLWithString:targetURL];
+        if (url)
+            return url;
+    }
+
+    if (NSProcessInfo.processInfo.arguments.count >= 2)
+        return [NSURL URLWithString:NSProcessInfo.processInfo.arguments[1]];
+
+    return [NSURL URLWithString:[self.settingsViewController defaultURL]];
 }
 
 #pragma mark Navigation Delegate

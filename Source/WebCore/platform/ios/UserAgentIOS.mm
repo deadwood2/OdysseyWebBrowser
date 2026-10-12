@@ -28,12 +28,15 @@
 
 #if PLATFORM(IOS_FAMILY)
 
-#import "Device.h"
 #import "SystemVersion.h"
+#import <WebCore/RuntimeApplicationChecks.h>
 #import <pal/spi/ios/MobileGestaltSPI.h>
 #import <pal/spi/ios/UIKitSPI.h>
+#import <pal/system/ios/Device.h>
 #import <wtf/RetainPtr.h>
 #import <wtf/cf/TypeCastsCF.h>
+#import <wtf/cocoa/RuntimeApplicationChecksCocoa.h>
+#import <wtf/text/MakeString.h>
 
 #import <pal/ios/UIKitSoftLink.h>
 
@@ -54,45 +57,60 @@ static inline bool isClassicPhone()
     return isClassic() && [PAL::getUIApplicationClass() _classicMode] != UIApplicationSceneClassicModeOriginalPad;
 }
 
-String osNameForUserAgent()
+ASCIILiteral osNameForUserAgent()
 {
-    if (deviceHasIPadCapability() && !isClassicPhone())
-        return "OS";
-    return "iPhone OS";
+    if (PAL::deviceHasIPadCapability() && !isClassicPhone())
+        return "OS"_s;
+    return "iPhone OS"_s;
 }
 
+#if !ENABLE(STATIC_IPAD_USER_AGENT_VALUE)
 static StringView deviceNameForUserAgent()
 {
     if (isClassic()) {
         if (isClassicPad())
-            return "iPad";
-        return "iPhone";
+            return "iPad"_s;
+        return "iPhone"_s;
     }
 
     static NeverDestroyed<String> name = [] {
-        auto name = deviceName();
+        auto name = PAL::deviceName();
 #if PLATFORM(IOS_FAMILY_SIMULATOR)
-        size_t location = name.find(" Simulator");
+        size_t location = name.find(" Simulator"_s);
         if (location != notFound)
-            return name.substring(0, location);
+            return name.left(location);
 #endif
         return name;
     }();
     return name.get();
 }
+#endif
 
 String standardUserAgentWithApplicationName(const String& applicationName, const String& userAgentOSVersion, UserAgentType type)
 {
-    auto separator = applicationName.isEmpty() ? "" : " ";
-    if (type == UserAgentType::Desktop)
-        return makeString("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/605.1.15 (KHTML, like Gecko)", separator, applicationName);
+    auto separator = applicationName.isEmpty() ? ""_s : " "_s;
 
-    // FIXME: We should deprecate and remove this override; see https://bugs.webkit.org/show_bug.cgi?id=217927 for details.
-    if (auto override = dynamic_cf_cast<CFStringRef>(adoptCF(CFPreferencesCopyAppValue(CFSTR("UserAgent"), CFSTR("com.apple.WebFoundation")))))
-        return override.get();
+    if (type == UserAgentType::Desktop)
+        return makeString("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)"_s, separator, applicationName);
+
+#if ENABLE(STATIC_IPAD_USER_AGENT_VALUE)
+    UNUSED_PARAM(userAgentOSVersion);
+    return makeString("Mozilla/5.0 (iPad; CPU OS 16_3_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko)"_s, separator, applicationName);
+#else
+    if (!linkedOnOrAfterSDKWithBehavior(SDKAlignedBehavior::DoesNotOverrideUAFromNSUserDefault)) {
+        if (auto override = dynamic_cf_cast<CFStringRef>(adoptCF(CFPreferencesCopyAppValue(CFSTR("UserAgent"), CFSTR("com.apple.WebFoundation"))))) {
+            static BOOL hasLoggedDeprecationWarning = NO;
+            if (!hasLoggedDeprecationWarning) {
+                NSLog(@"Reading an override UA from the NSUserDefault [com.apple.WebFoundation UserAgent]. This is incompatible with the modern need to compose the UA and clients should use the API to set the application name or UA instead.");
+                hasLoggedDeprecationWarning = YES;
+            }
+            return override.get();
+        }
+    }
 
     auto osVersion = userAgentOSVersion.isEmpty() ? systemMarketingVersionForUserAgentString() : userAgentOSVersion;
-    return makeString("Mozilla/5.0 (", deviceNameForUserAgent(), "; CPU ", osNameForUserAgent(), " ", osVersion, " like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko)", separator, applicationName);
+    return makeString("Mozilla/5.0 ("_s, deviceNameForUserAgent(), "; CPU "_s, osNameForUserAgent(), ' ', osVersion, " like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko)"_s, separator, applicationName);
+#endif
 }
 
 } // namespace WebCore.

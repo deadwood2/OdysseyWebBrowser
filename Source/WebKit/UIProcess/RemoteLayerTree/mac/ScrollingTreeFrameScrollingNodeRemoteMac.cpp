@@ -29,15 +29,14 @@
 #if ENABLE(ASYNC_SCROLLING) && PLATFORM(MAC)
 
 #include "RemoteScrollingTree.h"
-#include "ScrollerPairMac.h"
 
 namespace WebKit {
 using namespace WebCore;
 
 ScrollingTreeFrameScrollingNodeRemoteMac::ScrollingTreeFrameScrollingNodeRemoteMac(ScrollingTree& tree, ScrollingNodeType nodeType, ScrollingNodeID nodeID)
     : ScrollingTreeFrameScrollingNodeMac(tree, nodeType, nodeID)
-    , m_scrollerPair(makeUnique<ScrollerPairMac>(*this))
 {
+    m_delegate->initScrollbars();
 }
 
 ScrollingTreeFrameScrollingNodeRemoteMac::~ScrollingTreeFrameScrollingNodeRemoteMac()
@@ -49,41 +48,35 @@ Ref<ScrollingTreeFrameScrollingNodeRemoteMac> ScrollingTreeFrameScrollingNodeRem
     return adoptRef(*new ScrollingTreeFrameScrollingNodeRemoteMac(tree, nodeType, nodeID));
 }
 
-void ScrollingTreeFrameScrollingNodeRemoteMac::commitStateBeforeChildren(const ScrollingStateNode& stateNode)
-{
-    ScrollingTreeFrameScrollingNodeMac::commitStateBeforeChildren(stateNode);
-    const auto& scrollingStateNode = downcast<ScrollingStateFrameScrollingNode>(stateNode);
-
-    // FIXME: Push to ScrollingTreeScrollingNodeDelegateMac?
-    if (scrollingStateNode.hasChangedProperty(ScrollingStateNode::Property::VerticalScrollbarLayer))
-        m_scrollerPair->verticalScroller().setHostLayer(static_cast<CALayer*>(scrollingStateNode.verticalScrollbarLayer()));
-
-    if (scrollingStateNode.hasChangedProperty(ScrollingStateNode::Property::HorizontalScrollbarLayer))
-        m_scrollerPair->horizontalScroller().setHostLayer(static_cast<CALayer*>(scrollingStateNode.horizontalScrollbarLayer()));
-
-    m_scrollerPair->updateValues();
-}
-
 void ScrollingTreeFrameScrollingNodeRemoteMac::repositionRelatedLayers()
 {
     ScrollingTreeFrameScrollingNodeMac::repositionRelatedLayers();
-
-    if (m_scrollerPair)
-        m_scrollerPair->updateValues();
+    m_delegate->updateScrollbarLayers();
 }
 
-WheelEventHandlingResult ScrollingTreeFrameScrollingNodeRemoteMac::handleWheelEvent(const PlatformWheelEvent& wheelEvent, EventTargeting eventTargeting)
+void ScrollingTreeFrameScrollingNodeRemoteMac::handleWheelEventPhase(const PlatformWheelEventPhase phase)
 {
-    ScrollingTreeFrameScrollingNodeMac::handleWheelEvent(wheelEvent, eventTargeting);
-
-    return WheelEventHandlingResult::result(m_scrollerPair->handleWheelEvent(wheelEvent));
+    m_delegate->handleWheelEventPhase(phase);
 }
 
-bool ScrollingTreeFrameScrollingNodeRemoteMac::handleMouseEvent(const PlatformMouseEvent& mouseEvent)
+void ScrollingTreeFrameScrollingNodeRemoteMac::viewWillStartLiveResize()
 {
-    if (!m_scrollerPair)
-        return false;
-    return m_scrollerPair->handleMouseEvent(mouseEvent);
+    m_delegate->viewWillStartLiveResize();
+}
+
+void ScrollingTreeFrameScrollingNodeRemoteMac::viewWillEndLiveResize()
+{
+    m_delegate->viewWillEndLiveResize();
+}
+
+void ScrollingTreeFrameScrollingNodeRemoteMac::viewSizeDidChange()
+{
+    m_delegate->viewSizeDidChange();
+}
+
+String ScrollingTreeFrameScrollingNodeRemoteMac::scrollbarStateForOrientation(ScrollbarOrientation orientation) const
+{
+    return m_delegate->scrollbarStateForOrientation(orientation);
 }
 
 }

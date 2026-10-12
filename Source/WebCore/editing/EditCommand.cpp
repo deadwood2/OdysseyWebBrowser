@@ -28,7 +28,7 @@
 
 #include "AXObjectCache.h"
 #include "CompositeEditCommand.h"
-#include "Document.h"
+#include "DocumentInlines.h"
 #include "Editing.h"
 #include "Editor.h"
 #include "Element.h"
@@ -37,7 +37,7 @@
 
 namespace WebCore {
 
-String inputTypeNameForEditingAction(EditAction action)
+ASCIILiteral inputTypeNameForEditingAction(EditAction action)
 {
     switch (action) {
     case EditAction::Justify:
@@ -117,20 +117,34 @@ String inputTypeNameForEditingAction(EditAction action)
     case EditAction::CreateLink:
         return "insertLink"_s;
     default:
-        return emptyString();
+        return ""_s;
     }
 }
 
-EditCommand::EditCommand(Document& document, EditAction editingAction)
-    : m_document { document }
+bool isInputMethodComposingForEditingAction(EditAction action)
+{
+    switch (action) {
+    case EditAction::TypingDeletePendingComposition:
+    case EditAction::TypingDeleteFinalComposition:
+    case EditAction::TypingInsertPendingComposition:
+    case EditAction::TypingInsertFinalComposition:
+        return true;
+    default:
+        break;
+    }
+    return false;
+}
+
+EditCommand::EditCommand(Ref<Document>&& document, EditAction editingAction)
+    : m_document { WTFMove(document) }
     , m_startingSelection { m_document->selection().selection() }
     , m_endingSelection { m_startingSelection }
     , m_editingAction { editingAction }
 {
 }
 
-EditCommand::EditCommand(Document& document, const VisibleSelection& startingSelection, const VisibleSelection& endingSelection)
-    : m_document { document }
+EditCommand::EditCommand(Ref<Document>&& document, const VisibleSelection& startingSelection, const VisibleSelection& endingSelection)
+    : m_document { WTFMove(document) }
     , m_startingSelection { startingSelection }
     , m_endingSelection { endingSelection }
 {
@@ -157,7 +171,7 @@ bool EditCommand::isEditingTextAreaOrTextInput() const
 
 void EditCommand::setStartingSelection(const VisibleSelection& selection)
 {
-    for (auto command = makeRefPtr(this); ; command = command->m_parent.get()) {
+    for (RefPtr command = this; ; command = command->m_parent.get()) {
         if (auto composition = compositionIfPossible(*command))
             composition->setStartingSelection(selection);
         command->m_startingSelection = selection;
@@ -168,20 +182,20 @@ void EditCommand::setStartingSelection(const VisibleSelection& selection)
 
 void EditCommand::setEndingSelection(const VisibleSelection& selection)
 {
-    for (auto command = makeRefPtr(this); command; command = command->m_parent.get()) {
+    for (RefPtr command = this; command; command = command->m_parent.get()) {
         if (auto composition = compositionIfPossible(*command))
             composition->setEndingSelection(selection);
         command->m_endingSelection = selection;
     }
 }
 
-void EditCommand::setParent(CompositeEditCommand* parent)
+void EditCommand::setParent(RefPtr<CompositeEditCommand>&& parent)
 {
     ASSERT((parent && !m_parent) || (!parent && m_parent));
-    m_parent = makeWeakPtr(parent);
-    if (parent) {
-        m_startingSelection = parent->m_endingSelection;
-        m_endingSelection = parent->m_endingSelection;
+    m_parent = WTFMove(parent);
+    if (m_parent) {
+        m_startingSelection = m_parent->m_endingSelection;
+        m_endingSelection = m_parent->m_endingSelection;
     }
 }
 
@@ -198,15 +212,16 @@ void EditCommand::postTextStateChangeNotification(AXTextEditType type, const Str
         return;
     if (!text.length())
         return;
-    auto* cache = document().existingAXObjectCache();
+    auto document = protectedDocument();
+    CheckedPtr cache = document->existingAXObjectCache();
     if (!cache)
         return;
-    auto node = makeRefPtr(highestEditableRoot(position.deepEquivalent(), HasEditableAXRole));
+    RefPtr node { highestEditableRoot(position.deepEquivalent(), HasEditableAXRole) };
     cache->postTextStateChangeNotification(node.get(), type, text, position);
 }
 
-SimpleEditCommand::SimpleEditCommand(Document& document, EditAction editingAction)
-    : EditCommand(document, editingAction)
+SimpleEditCommand::SimpleEditCommand(Ref<Document>&& document, EditAction editingAction)
+    : EditCommand(WTFMove(document), editingAction)
 {
 }
 
@@ -218,7 +233,7 @@ void SimpleEditCommand::doReapply()
 #ifndef NDEBUG
 void SimpleEditCommand::addNodeAndDescendants(Node* startNode, HashSet<Ref<Node>>& nodes)
 {
-    for (Node* node = startNode; node; node = NodeTraversal::next(*node, startNode))
+    for (RefPtr node = startNode; node; node = NodeTraversal::next(*node, startNode))
         nodes.add(*node);
 }
 #endif

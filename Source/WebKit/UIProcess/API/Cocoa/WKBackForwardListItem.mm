@@ -33,6 +33,8 @@
     API::ObjectStorage<WebKit::WebBackForwardListItem> _item;
 }
 
+WK_OBJECT_DISABLE_DISABLE_KVC_IVAR_ACCESS;
+
 - (void)dealloc
 {
     if (WebCoreObjCScheduleDeallocateOnMainRunLoop(WKBackForwardListItem.class, self))
@@ -73,9 +75,14 @@
     return nullptr;
 }
 
-- (CGPoint) _scrollPosition
+- (CGPoint)_scrollPosition
 {
     return CGPointMake(_item->pageState().mainFrameState.scrollPosition.x(), _item->pageState().mainFrameState.scrollPosition.y());
+}
+
+- (BOOL)_wasCreatedByJSWithoutUserInteraction
+{
+    return _item->wasCreatedByJSWithoutUserInteraction();
 }
 
 #pragma mark WKObject protocol implementation

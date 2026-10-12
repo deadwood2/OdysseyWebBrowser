@@ -12,7 +12,7 @@
 #include <iterator>
 
 #include <EGL/eglext.h>
-#include <platform/Platform.h>
+#include <platform/PlatformMethods.h>
 
 #include "anglebase/no_destructor.h"
 #include "common/debug.h"
@@ -20,7 +20,7 @@
 #include "libANGLE/renderer/DeviceImpl.h"
 
 #if defined(ANGLE_ENABLE_D3D11)
-#    include "libANGLE/renderer/d3d/DeviceD3D.h"
+#    include "libANGLE/renderer/d3d/d3d11/Device11.h"
 #endif
 
 namespace egl
@@ -54,7 +54,7 @@ egl::Error Device::CreateDevice(EGLint deviceType, void *nativeDevice, Device **
 #if defined(ANGLE_ENABLE_D3D11)
     if (deviceType == EGL_D3D11_DEVICE_ANGLE)
     {
-        newDeviceImpl.reset(new rx::DeviceD3D(deviceType, nativeDevice));
+        newDeviceImpl.reset(new rx::Device11(nativeDevice));
     }
 #endif
 
@@ -110,11 +110,6 @@ Error Device::getAttribute(EGLint attribute, EGLAttrib *value)
     return error;
 }
 
-EGLint Device::getType()
-{
-    return getImplementation()->getType();
-}
-
 void Device::initDeviceExtensions()
 {
     mImplementation->generateExtensions(&mDeviceExtensions);
@@ -129,5 +124,15 @@ const DeviceExtensions &Device::getExtensions() const
 const std::string &Device::getExtensionString() const
 {
     return mDeviceExtensionString;
+}
+
+const std::string &Device::getDeviceString(EGLint name)
+{
+    if (mDeviceStrings.find(name) == mDeviceStrings.end())
+    {
+        mDeviceStrings.emplace(name, mImplementation.get()->getDeviceString(name));
+    }
+
+    return mDeviceStrings.find(name)->second;
 }
 }  // namespace egl

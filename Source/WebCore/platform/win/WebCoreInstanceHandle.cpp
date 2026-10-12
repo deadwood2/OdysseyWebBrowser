@@ -30,4 +30,20 @@ namespace WebCore {
 
 HINSTANCE s_instanceHandle;
 
+HINSTANCE instanceHandle()
+{
+    ASSERT(s_instanceHandle);
+    return s_instanceHandle;
+}
+
 } // namespace WebCore
+
+BOOL WINAPI DllMain(HINSTANCE hInstance, DWORD reason, LPVOID)
+{
+    switch (reason) {
+    case DLL_PROCESS_ATTACH:
+        WebCore::s_instanceHandle = hInstance;
+        break;
+    }
+    return true;
+}

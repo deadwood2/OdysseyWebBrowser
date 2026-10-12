@@ -66,7 +66,7 @@ static bool parseVersion(const String& version, uint64_t& major, uint64_t& minor
 
 bool WebDriverService::platformCompareBrowserVersions(const String& requiredVersion, const String& proposedVersion)
 {
-    // We require clients to use format major.micro.minor as version string.
+    // We require clients to use format major.minor.micro as version string.
     uint64_t requiredMajor, requiredMinor, requiredMicro;
     if (!parseVersion(requiredVersion, requiredMajor, requiredMinor, requiredMicro))
         return false;
@@ -80,9 +80,9 @@ bool WebDriverService::platformCompareBrowserVersions(const String& requiredVers
         || (proposedMajor == requiredMajor && proposedMinor == requiredMinor && proposedMicro >= requiredMicro);
 }
 
-bool WebDriverService::platformSupportProxyType(const String& proxyType) const
+bool WebDriverService::platformSupportProxyType(const String&) const
 {
-    return proxyType != "pac";
+    return true;
 }
 
 } // namespace WebDriver

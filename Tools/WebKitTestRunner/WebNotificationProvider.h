@@ -29,8 +29,11 @@
 #include <WebKit/WKNotificationManager.h>
 #include <WebKit/WKNotificationProvider.h>
 #include <WebKit/WKRetainPtr.h>
+#include <WebKit/WKSecurityOriginRef.h>
 #include <wtf/HashMap.h>
 #include <wtf/HashSet.h>
+#include <wtf/UUID.h>
+#include <wtf/text/StringHash.h>
 
 namespace WTR {
 
@@ -45,16 +48,21 @@ public:
     void addNotificationManager(WKNotificationManagerRef);
     void removeNotificationManager(WKNotificationManagerRef);
     WKDictionaryRef notificationPermissions();
+    std::optional<bool> permissionState(WKSecurityOriginRef);
 
-    void simulateWebNotificationClick(WKPageRef, uint64_t notificationID);
+    void simulateWebNotificationClick(WKPageRef, WKDataRef notificationID);
+    void simulateWebNotificationClickForServiceWorkerNotifications();
+
     void reset();
 
-private:
-    // Inverses of each other.
-    HashMap<WKRetainPtr<WKNotificationManagerRef>, HashSet<uint64_t>> m_ownedNotifications;
-    HashMap<uint64_t, WKNotificationManagerRef> m_owningManager;
+    void setPermission(const String& origin, bool allowed);
 
-    HashMap<std::pair<WKPageRef, uint64_t>, uint64_t> m_localToGlobalNotificationIDMap;
+private:
+    HashSet<WKRetainPtr<WKNotificationManagerRef>> m_knownManagers;
+    HashMap<WTF::UUID, WKNotificationManagerRef> m_owningManager;
+    WKRetainPtr<WKMutableDictionaryRef> m_permissions;
+
+    HashSet<WKRetainPtr<WKNotificationRef>> m_knownPersistentNotifications;
 };
 
 }

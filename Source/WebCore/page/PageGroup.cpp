@@ -29,7 +29,7 @@
 #include "BackForwardCache.h"
 #include "DOMWrapperWorld.h"
 #include "Document.h"
-#include "Frame.h"
+#include "LocalFrame.h"
 #include "Page.h"
 #include "StorageNamespace.h"
 #include <JavaScriptCore/HeapInlines.h>
@@ -113,9 +113,9 @@ CaptionUserPreferences& PageGroup::ensureCaptionPreferences()
 {
     if (!m_captionPreferences) {
 #if PLATFORM(MAC) || HAVE(MEDIA_ACCESSIBILITY_FRAMEWORK)
-        m_captionPreferences = makeUnique<CaptionUserPreferencesMediaAF>(*this);
+        m_captionPreferences = CaptionUserPreferencesMediaAF::create(*this);
 #else
-        m_captionPreferences = makeUnique<CaptionUserPreferences>(*this);
+        m_captionPreferences = CaptionUserPreferences::create(*this);
 #endif
     }
 

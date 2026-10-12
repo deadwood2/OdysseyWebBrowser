@@ -39,6 +39,7 @@ class CCallHelpers;
 namespace DFG {
 
 class Graph;
+class Plan;
 
 // Represents either a JSValue, or for JSValues that require allocation in the heap,
 // it tells you everything you'd need to know in order to allocate it.
@@ -66,7 +67,7 @@ public:
         return result;
     }
     
-    static LazyJSValue knownStringImpl(StringImpl* string)
+    static LazyJSValue knownStringImpl(AtomStringImpl* string)
     {
         LazyJSValue result;
         result.m_kind = KnownStringImpl;
@@ -100,8 +101,6 @@ public:
         return u.character;
     }
 
-    const StringImpl* tryGetStringImpl(VM&) const;
-    
     String tryGetString(Graph&) const;
     
     StringImpl* stringImpl() const
@@ -114,12 +113,14 @@ public:
     
     uintptr_t switchLookupValue(SwitchKind) const;
 
-    void emit(CCallHelpers&, JSValueRegs) const;
+    void emit(CCallHelpers&, JSValueRegs, Plan&) const;
     
     void dump(PrintStream&) const;
     void dumpInContext(PrintStream&, DumpContext*) const;
     
 private:
+    const StringImpl* tryGetStringImpl() const;
+    
     union {
         FrozenValue* value;
         UChar character;

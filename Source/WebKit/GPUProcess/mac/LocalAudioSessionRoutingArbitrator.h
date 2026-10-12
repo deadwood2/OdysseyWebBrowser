@@ -28,13 +28,21 @@
 #if ENABLE(ROUTING_ARBITRATION) && HAVE(AVAUDIO_ROUTING_ARBITER)
 
 #include "AudioSessionRoutingArbitratorProxy.h"
+#include <wtf/TZoneMalloc.h>
+#include <wtf/ThreadSafeWeakPtr.h>
+#include <wtf/WeakRef.h>
+
+namespace WTF {
+class Logger;
+}
 
 namespace WebKit {
 
+class GPUConnectionToWebProcess;
+
 class LocalAudioSessionRoutingArbitrator final
-    : public WebCore::AudioSessionRoutingArbitrationClient
-    , public CanMakeWeakPtr<LocalAudioSessionRoutingArbitrator> {
-    WTF_MAKE_FAST_ALLOCATED;
+    : public WebCore::AudioSessionRoutingArbitrationClient {
+    WTF_MAKE_TZONE_ALLOCATED(LocalAudioSessionRoutingArbitrator);
 
     friend UniqueRef<LocalAudioSessionRoutingArbitrator> WTF::makeUniqueRefWithoutFastMallocCheck<LocalAudioSessionRoutingArbitrator>(GPUConnectionToWebProcess&);
 public:
@@ -52,7 +60,14 @@ private:
     void beginRoutingArbitrationWithCategory(WebCore::AudioSession::CategoryType, ArbitrationCallback&&) final;
     void leaveRoutingAbritration() final;
 
-    GPUConnectionToWebProcess& m_connectionToWebProcess;
+    Logger& logger();
+    ASCIILiteral logClassName() const { return "LocalAudioSessionRoutingArbitrator"_s; }
+    WTFLogChannel& logChannel() const;
+    const void* logIdentifier() const final { return m_logIdentifier; }
+    bool canLog() const final;
+
+    ThreadSafeWeakPtr<GPUConnectionToWebProcess> m_connectionToWebProcess;
+    const void* m_logIdentifier;
 };
 
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007, 2012 Apple Inc.  All rights reserved.
+ * Copyright (C) 2007-2021 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,10 +27,11 @@
 
 #import "WebDatabaseManagerPrivate.h"
 #import "WebSecurityOriginInternal.h"
-#import <wtf/MainThread.h>
-#import <wtf/RetainPtr.h>
 #import <WebCore/DatabaseTracker.h>
 #import <WebCore/SecurityOrigin.h>
+#import <wtf/MainThread.h>
+#import <wtf/RetainPtr.h>
+#import <wtf/TZoneMallocInlines.h>
 
 #if PLATFORM(IOS_FAMILY)
 #import <WebCore/WebCoreThread.h>
@@ -44,9 +45,11 @@ static const CFStringRef WebDatabaseWasDeletedNotification = CFSTR("com.apple.Mo
 static const CFStringRef WebDatabaseOriginWasDeletedNotification = CFSTR("com.apple.MobileSafariSettings.WebDatabaseOriginWasDeletedNotification");
 #endif
 
-WebDatabaseManagerClient* WebDatabaseManagerClient::sharedWebDatabaseManagerClient()
+namespace WebKit {
+
+WebDatabaseManagerClient& WebDatabaseManagerClient::sharedWebDatabaseManagerClient()
 {
-    static WebDatabaseManagerClient* sharedClient = new WebDatabaseManagerClient();
+    static NeverDestroyed<WebDatabaseManagerClient> sharedClient;
     return sharedClient;
 }
 
@@ -94,7 +97,7 @@ WebDatabaseManagerClient::~WebDatabaseManagerClient()
 }
 
 class DidModifyOriginData {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED_INLINE(DidModifyOriginData);
 public:
     static void dispatchToMainThread(WebDatabaseManagerClient& client, const SecurityOriginData& origin)
     {
@@ -215,3 +218,5 @@ void WebDatabaseManagerClient::databaseOriginsDidChange()
 }
 
 #endif // PLATFORM(IOS_FAMILY)
+
+} // namespace WebKit

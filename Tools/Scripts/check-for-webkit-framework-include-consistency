@@ -1,5 +1,7 @@
 #!/usr/bin/env ruby
 
+require 'fileutils'
+
 # Copyright (C) 2010, 2013 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -88,7 +90,7 @@ def resolve_include(header, included_header, permitted_types)
 end
 
 def verify_includes(header, permitted_types)
-  File.open(header) do |file|
+  File.open(header, :encoding => 'utf-8') do |file|
     file.each_line do |line|
       if /#(include|import) (.*)/.match(line)
         resolve_include(header, $2, permitted_types)
@@ -107,3 +109,5 @@ $HEADERS_BY_TYPE.each do |header_type, headers|
 end
 
 exit 1 if $error_printed
+
+FileUtils.touch "#{ENV['TARGET_TEMP_DIR']}/#{File.basename($0)}.timestamp"

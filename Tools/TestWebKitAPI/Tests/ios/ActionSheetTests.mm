@@ -24,17 +24,18 @@
  */
 
 #import "config.h"
-#import "Test.h"
 
 #if PLATFORM(IOS_FAMILY) && !PLATFORM(MACCATALYST)
 
-#import "ClassMethodSwizzler.h"
 #import "PlatformUtilities.h"
+#import "Test.h"
 #import "TestNavigationDelegate.h"
 #import "TestWKWebView.h"
 #import "TestWKWebViewController.h"
-#import "UIKitSPI.h"
+#import "UIKitSPIForTesting.h"
+#import "UIKitUtilities.h"
 #import "UserInterfaceSwizzler.h"
+#import "WKWebViewConfigurationExtras.h"
 #import <MobileCoreServices/MobileCoreServices.h>
 #import <WebKit/WKUIDelegatePrivate.h>
 #import <WebKit/WKWebViewPrivateForTesting.h>
@@ -62,6 +63,19 @@
 }
 
 @end
+
+#if ENABLE(ACCESSIBILITY_ANIMATION_CONTROL)
+@interface TestWKWebViewForAnimationControls : TestWKWebView
+- (BOOL)_allowAnimationControls;
+@end
+
+@implementation TestWKWebViewForAnimationControls
+- (BOOL)_allowAnimationControls
+{
+    return YES;
+}
+@end
+#endif // ENABLE(ACCESSIBILITY_ANIMATION_CONTROL)
 
 namespace TestWebKitAPI {
 
@@ -96,11 +110,11 @@ TEST(ActionSheetTests, DISABLED_DismissingActionSheetShouldNotDismissPresentingV
     [webView setNavigationDelegate:navigationDelegate.get()];
     [rootViewController presentViewController:webViewController.get() animated:NO completion:nil];
 
-    // Since TestWebKitAPI is not a UI application, +[UIViewController _viewControllerForFullScreenPresentationFromView:]
+    // Since TestWebKitAPI is not a UI application, -[UIView _wk_viewControllerForFullScreenPresentation]
     // returns nil. To ensure that we actually present the action sheet from the web view controller, we mock this for the
     // time being until https://webkit.org/b/175204 is fixed.
     setOverrideViewControllerForFullscreenPresentation(webViewController.get());
-    ClassMethodSwizzler swizzler([UIViewController class], @selector(_viewControllerForFullScreenPresentationFromView:), reinterpret_cast<IMP>(overrideViewControllerForFullscreenPresentation));
+    InstanceMethodSwizzler swizzler([UIView class], @selector(_wk_viewControllerForFullScreenPresentation), reinterpret_cast<IMP>(overrideViewControllerForFullscreenPresentation));
 
     [observer setPresentationHandler:^(_WKActivatedElementInfo *, NSArray *actions) {
         // Killing the web content process should dismiss the action sheet.
@@ -110,7 +124,7 @@ TEST(ActionSheetTests, DISABLED_DismissingActionSheetShouldNotDismissPresentingV
     }];
 
     __block bool done = false;
-    [navigationDelegate setWebContentProcessDidTerminate:^(WKWebView *) {
+    [navigationDelegate setWebContentProcessDidTerminate:^(WKWebView *, _WKProcessTerminationReason) {
         dispatch_async(dispatch_get_main_queue(), ^{
             done = true;
         });
@@ -179,7 +193,7 @@ TEST(ActionSheetTests, DataDetectorsLinkIsNotPresentedAsALink)
         // We shouldn't present a normal action sheet, but instead a data detectors sheet.
         [observer setDataDetectionContextHandler:^{
             done = true;
-            return @{ };
+            return @{ @"unused" : [NSUUID UUID] };
         }];
         [observer setPresentationHandler:^(_WKActivatedElementInfo *, NSArray *) {
             done = true;
@@ -361,6 +375,100 @@ TEST(ActionSheetTests, CopyLinkWritesURLAndPlainText)
 }
 
 #endif // !PLATFORM(WATCHOS) && !PLATFORM(APPLETV)
+
+#if ENABLE(ACCESSIBILITY_ANIMATION_CONTROL)
+static void performLongPressAction(WKWebView *webView, ActionSheetObserver *observer, CGPoint originalLocation, _WKElementActionType actionType)
+{
+    // This function spins until it finds the specified action type.
+    // To avoid hitting InteractionInformationAtPosition caches, use a slightly different long-press location each attempt.
+    bool shouldAlterPressLocation = false;
+    __block RetainPtr<_WKElementAction> copyAction;
+    __block RetainPtr<_WKActivatedElementInfo> copyElement;
+    while (!copyAction) {
+        // First reset interaction state (simulating real behavior in a long-press, dismiss sheet, long-press cycle).
+        [webView _resetInteraction];
+
+        CGPoint location = shouldAlterPressLocation ? CGPointMake(originalLocation.x, originalLocation.y - 1) : originalLocation;
+        shouldAlterPressLocation = !shouldAlterPressLocation;
+
+        __block bool done = false;
+        [observer setPresentationHandler:^(_WKActivatedElementInfo *element, NSArray *actions) {
+            copyElement = element;
+            for (_WKElementAction *action in actions) {
+                if (action.type == actionType)
+                    copyAction = action;
+            }
+            done = true;
+            return actions;
+        }];
+        [webView _simulateLongPressActionAtLocation:location];
+        TestWebKitAPI::Util::run(&done);
+
+        // Spin a bit to allow underlying data structures to update, hopefully resulting in our expected action appearing next long-press.
+        if (!copyAction)
+            TestWebKitAPI::Util::runFor(0.1_s);
+    }
+
+    EXPECT_TRUE(!!copyElement);
+    [copyAction runActionWithElementInfo:copyElement.get()];
+}
+
+static void playPauseAnimationTest(NSString *testFilename)
+{
+    WKWebViewConfiguration *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
+    auto webView = adoptNS([[TestWKWebViewForAnimationControls alloc] initWithFrame:CGRectMake(0, 0, 320, 500) configuration:configuration addToWindow:YES]);
+    auto observer = adoptNS([[ActionSheetObserver alloc] init]);
+    [webView setUIDelegate:observer.get()];
+    [webView synchronouslyLoadTestPageNamed:testFilename];
+    [webView stringByEvaluatingJavaScript:@"window.internals.settings.setImageAnimationControlEnabled(true)"];
+    // Pause animations globally to establish a known state.
+    [webView stringByEvaluatingJavaScript:@"window.internals.setImageAnimationEnabled(false)"];
+
+    // Start the animation.
+    performLongPressAction(webView.get(), observer.get(), CGPointMake(100, 100), _WKElementActionPlayAnimation);
+
+    // After the animation begins playing again, expect to have "Pause Animation" in the action sheet.
+    performLongPressAction(webView.get(), observer.get(), CGPointMake(100, 100), _WKElementActionPauseAnimation);
+
+    // Wait until we have "Play Animation" again (indicating the animation was successfully paused).
+    performLongPressAction(webView.get(), observer.get(), CGPointMake(100, 100), _WKElementActionPlayAnimation);
+}
+
+TEST(ActionSheetTests, PlayPauseAnimationInsideLink)
+{
+    playPauseAnimationTest(@"img-animation-in-anchor");
+}
+
+TEST(ActionSheetTests, PlayPauseAnimationCoveredByLink)
+{
+    playPauseAnimationTest(@"img-animation-covered-by-link");
+}
+
+TEST(ActionSheetTests, PlayPauseAnimationSheetActionsNotPresentByDefault)
+{
+    WKWebViewConfiguration *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
+    // Note that this is a TestWKWebView, not a TestWKWebViewForAnimationControls, which has the necessary testing only override.
+    // Without the testing override, the only way "Play Animation" and "Pause Animation" should appear is when a system setting is in a non-default state.
+    // So this test ensures these actions are not available by default.
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 320, 500) configuration:configuration addToWindow:YES]);
+    auto observer = adoptNS([[ActionSheetObserver alloc] init]);
+    [webView setUIDelegate:observer.get()];
+    [webView synchronouslyLoadTestPageNamed:@"img-animation-in-anchor"];
+    [webView stringByEvaluatingJavaScript:@"window.internals.settings.setImageAnimationControlEnabled(true)"];
+
+    __block bool done = false;
+    [observer setPresentationHandler:^(_WKActivatedElementInfo *element, NSArray *actions) {
+        for (_WKElementAction *action in actions) {
+            EXPECT_FALSE(action.type == _WKElementActionPlayAnimation);
+            EXPECT_FALSE(action.type == _WKElementActionPauseAnimation);
+        }
+        done = true;
+        return @[ ];
+    }];
+    [webView _simulateLongPressActionAtLocation:CGPointMake(100, 100)];
+    TestWebKitAPI::Util::run(&done);
+}
+#endif // ENABLE(ACCESSIBILITY_ANIMATION_CONTROL)
 
 } // namespace TestWebKitAPI
 

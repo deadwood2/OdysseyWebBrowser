@@ -42,11 +42,13 @@ namespace WebCore {
 class CurlRequestClient;
 class NetworkLoadMetrics;
 class ResourceError;
-class SharedBuffer;
+class FragmentedSharedBuffer;
 class SynchronousLoaderMessageQueue;
 
-class CurlRequest : public ThreadSafeRefCounted<CurlRequest>, public CurlRequestSchedulerClient, public CurlMultipartHandleClient {
+class CurlRequest : public ThreadSafeRefCounted<CurlRequest>, public CurlRequestSchedulerClient, public CurlMultipartHandleClient, public CanMakeThreadSafeCheckedPtr<CurlRequest> {
     WTF_MAKE_NONCOPYABLE(CurlRequest);
+    WTF_MAKE_FAST_ALLOCATED;
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(CurlRequest);
 
 public:
     enum class ShouldSuspend : bool {
@@ -71,19 +73,20 @@ public:
 
     virtual ~CurlRequest();
 
-    void invalidateClient();
-    WEBCORE_EXPORT void setAuthenticationScheme(ProtectionSpaceAuthenticationScheme);
+    WEBCORE_EXPORT void invalidateClient();
+    WEBCORE_EXPORT void setAuthenticationScheme(ProtectionSpace::AuthenticationScheme);
     WEBCORE_EXPORT void setUserPass(const String&, const String&);
     bool isServerTrustEvaluationDisabled() { return m_shouldDisableServerTrustEvaluation; }
     void disableServerTrustEvaluation() { m_shouldDisableServerTrustEvaluation = true; }
 
-    void start();
-    void cancel();
+    WEBCORE_EXPORT void start();
+    WEBCORE_EXPORT void cancel();
     WEBCORE_EXPORT void suspend();
     WEBCORE_EXPORT void resume();
 
     long long resumeOffset() { return m_downloadResumeOffset; }
     void setResumeOffset(long long offset) { m_downloadResumeOffset = offset; }
+    void setResumeOffset(long long offset, long long endoffset) { m_downloadResumeOffset = offset; m_downloadEndOffset = endoffset; }
 
     const ResourceRequest& resourceRequest() const { return m_request; }
     bool isCancelled();
@@ -105,6 +108,8 @@ public:
 		
     static void SetDownloadPath(const String &downloadPath) { m_downloadPath = downloadPath; }
 
+    void disableAcceptEncoding(bool disable) { m_disableAcceptEncoding = disable; }
+
 private:
     enum class Action {
         None,
@@ -113,7 +118,13 @@ private:
         FinishTransfer
     };
 
-    CurlRequest(const ResourceRequest&, CurlRequestClient*, ShouldSuspend, EnableMultipart, CaptureNetworkLoadMetrics, RefPtr<SynchronousLoaderMessageQueue>&&);
+    WEBCORE_EXPORT CurlRequest(const ResourceRequest&, CurlRequestClient*, ShouldSuspend, EnableMultipart, CaptureNetworkLoadMetrics, RefPtr<SynchronousLoaderMessageQueue>&&);
+
+    // CheckedPtr interface
+    uint32_t ptrCount() const final { return CanMakeThreadSafeCheckedPtr::ptrCount(); }
+    uint32_t ptrCountWithoutThreadCheck() const final { return CanMakeThreadSafeCheckedPtr::ptrCountWithoutThreadCheck(); }
+    void incrementPtrCount() const final { CanMakeThreadSafeCheckedPtr::incrementPtrCount(); }
+    void decrementPtrCount() const final { CanMakeThreadSafeCheckedPtr::decrementPtrCount(); }
 
     void retain() override { ref(); }
     void release() override { deref(); }
@@ -130,15 +141,16 @@ private:
     CURL* setupTransfer() override;
     size_t willSendData(char*, size_t, size_t);
     size_t didReceiveHeader(String&&);
-    size_t didReceiveData(Ref<SharedBuffer>&&);
-    void didReceiveHeaderFromMultipart(const Vector<String>&) override;
-    void didReceiveDataFromMultipart(Ref<SharedBuffer>&&) override;
+    size_t didReceiveData(std::span<const uint8_t>);
+    void didReceiveHeaderFromMultipart(Vector<String>&&) override;
+    void didReceiveDataFromMultipart(std::span<const uint8_t>) override;
+    void didCompleteFromMultipart() override;
     void didCompleteTransfer(CURLcode) override;
     void didCancelTransfer() override;
     void finalizeTransfer();
     void invokeCancel();
 
-    int didReceiveDebugInfo(curl_infotype, char*, size_t);
+    int didReceiveDebugInfo(curl_infotype, std::span<const char> data);
 
     // For setup 
     void appendAcceptLanguageHeader(HTTPHeaderMap&);
@@ -161,7 +173,7 @@ private:
     NetworkLoadMetrics networkLoadMetrics();
 
     // Download
-    void writeDataToDownloadFileIfEnabled(const SharedBuffer&);
+    void writeDataToDownloadFileIfEnabled(std::span<const uint8_t>);
     void closeDownloadFile();
     void cleanupDownloadFile();
 
@@ -218,12 +230,15 @@ private:
     String m_downloadFilePath;
     FileSystem::PlatformFileHandle m_downloadFileHandle { FileSystem::invalidPlatformFileHandle };
     long long m_downloadResumeOffset { 0 };
+    long long m_downloadEndOffset { 0 };
+    bool m_downloadPendingResume { false };
     static String m_downloadPath;
 
     bool m_captureExtraMetrics;
     HTTPHeaderMap m_requestHeaders;
     MonotonicTime m_performStartTime;
     size_t m_totalReceivedSize { 0 };
+    bool m_disableAcceptEncoding { false };
 };
 
 } // namespace WebCore

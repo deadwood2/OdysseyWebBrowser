@@ -25,10 +25,17 @@
 
 #pragma once
 
+#include "CSSPropertyNames.h"
 #include "CSSValue.h"
+#include "EventTarget.h"
+#include <wtf/BitSet.h>
 #include <wtf/HashMap.h>
 #include <wtf/ListHashSet.h>
 #include <wtf/Markable.h>
+#include <wtf/OptionSet.h>
+#include <wtf/WeakPtr.h>
+#include <wtf/text/AtomString.h>
+#include <wtf/text/AtomStringHash.h>
 
 namespace WebCore {
 
@@ -36,6 +43,7 @@ class AnimationEventBase;
 class AnimationList;
 class CSSAnimation;
 class CSSTransition;
+class StyleOriginatedAnimation;
 class WebAnimation;
 
 struct WebAnimationsMarkableDoubleTraits {
@@ -50,24 +58,93 @@ struct WebAnimationsMarkableDoubleTraits {
     }
 };
 
-enum class AnimationImpact {
+enum class AnimationImpact : uint8_t {
     RequiresRecomposite     = 1 << 0,
     ForcesStackingContext   = 1 << 1
 };
 
-enum class AcceleratedActionApplicationResult {
-    TransformRelatedAnimationCannotBeAccelerated  = 1 << 0
-};
+enum class UseAcceleratedAction : bool { No, Yes };
 
-enum class UseAcceleratedAction : uint8_t { Yes, No };
+enum class WebAnimationType : uint8_t { CSSAnimation, CSSTransition, WebAnimation };
 
 using MarkableDouble = Markable<double, WebAnimationsMarkableDoubleTraits>;
 
-using AnimationCollection = ListHashSet<RefPtr<WebAnimation>>;
+using WeakStyleOriginatedAnimations = Vector<WeakPtr<StyleOriginatedAnimation, WeakPtrImplWithEventTargetData>>;
+using AnimationCollection = ListHashSet<Ref<WebAnimation>>;
 using AnimationEvents = Vector<Ref<AnimationEventBase>>;
-using PropertyToTransitionMap = HashMap<CSSPropertyID, RefPtr<CSSTransition>>;
-using CSSAnimationCollection = ListHashSet<RefPtr<CSSAnimation>>;
+using CSSAnimationCollection = ListHashSet<Ref<CSSAnimation>>;
+
+using AnimatableCSSProperty = std::variant<CSSPropertyID, AtomString>;
+using AnimatableCSSPropertyToTransitionMap = HashMap<AnimatableCSSProperty, Ref<CSSTransition>>;
+
+enum class AcceleratedEffectProperty : uint16_t {
+    Invalid = 1 << 0,
+    Opacity = 1 << 1,
+    Transform = 1 << 2,
+    Translate = 1 << 3,
+    Rotate = 1 << 4,
+    Scale = 1 << 5,
+    OffsetPath = 1 << 6,
+    OffsetDistance = 1 << 7,
+    OffsetPosition = 1 << 8,
+    OffsetAnchor = 1 << 9,
+    OffsetRotate = 1 << 10,
+    Filter = 1 << 11,
+    BackdropFilter = 1 << 12
+};
+
+constexpr OptionSet<AcceleratedEffectProperty> transformRelatedAcceleratedProperties = {
+    AcceleratedEffectProperty::Transform,
+    AcceleratedEffectProperty::Translate,
+    AcceleratedEffectProperty::Rotate,
+    AcceleratedEffectProperty::Scale,
+    AcceleratedEffectProperty::OffsetAnchor,
+    AcceleratedEffectProperty::OffsetDistance,
+    AcceleratedEffectProperty::OffsetPath,
+    AcceleratedEffectProperty::OffsetPosition,
+    AcceleratedEffectProperty::OffsetRotate
+};
+
+struct CSSPropertiesBitSet {
+    WTF::BitSet<numCSSProperties> m_properties { };
+};
 
 } // namespace WebCore
 
+namespace WTF {
 
+template<> struct DefaultHash<WebCore::AnimatableCSSProperty> {
+    static unsigned hash(const WebCore::AnimatableCSSProperty& key) {
+        return WTF::switchOn(key,
+            [] (WebCore::CSSPropertyID property) {
+                return DefaultHash<WebCore::CSSPropertyID>::hash(property);
+            },
+            [] (const AtomString& string) {
+                return DefaultHash<AtomString>::hash(string);
+            }
+        );
+    }
+    static bool equal(const WebCore::AnimatableCSSProperty& a, const WebCore::AnimatableCSSProperty& b) { return a == b; }
+    static const bool safeToCompareToEmptyOrDeleted = true;
+};
+
+template<> struct HashTraits<WebCore::AnimatableCSSProperty> : GenericHashTraits<WebCore::AnimatableCSSProperty> {
+    static const bool emptyValueIsZero = true;
+    static void constructDeletedValue(WebCore::AnimatableCSSProperty& slot) {
+        WebCore::CSSPropertyID property;
+        HashTraits<WebCore::CSSPropertyID>::constructDeletedValue(property);
+        new (NotNull, &slot) WebCore::AnimatableCSSProperty(property);
+    }
+    static bool isDeletedValue(const WebCore::AnimatableCSSProperty& value) {
+        return WTF::switchOn(value,
+            [] (WebCore::CSSPropertyID property) {
+                return HashTraits<WebCore::CSSPropertyID>::isDeletedValue(property);
+            },
+            [] (const AtomString&) {
+                return false;
+            }
+        );
+    }
+};
+
+} // namespace WTF

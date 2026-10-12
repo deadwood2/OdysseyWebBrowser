@@ -30,16 +30,11 @@
 #import "APIDictionary.h"
 #import "APINumber.h"
 #import "APIString.h"
-#import "PluginInfoStore.h"
-#import "PluginInformation.h"
-#import "StringUtilities.h"
 #import "WKAPICast.h"
 #import "WKPluginInformation.h"
 #import "WKSharedAPICast.h"
 #import "WKStringCF.h"
 #import "WebProcessPool.h"
-#import <WebCore/PluginBlocklist.h>
-#import <WebCore/WebGLBlocklist.h>
 #import <wtf/BlockPtr.h>
 #import <wtf/RetainPtr.h>
 
@@ -58,38 +53,11 @@ void WKContextClearPluginClientPolicies(WKContextRef)
 
 WKDictionaryRef WKContextCopyPlugInInfoForBundleIdentifier(WKContextRef contextRef, WKStringRef plugInBundleIdentifierRef)
 {
-#if ENABLE(NETSCAPE_PLUGIN_API)
-    WebKit::PluginModuleInfo plugin = WebKit::toImpl(contextRef)->pluginInfoStore().findPluginWithBundleIdentifier(WebKit::toWTFString(plugInBundleIdentifierRef));
-    if (plugin.path.isNull())
-        return 0;
-
-    auto dictionary = createPluginInformationDictionary(plugin);
-    return WebKit::toAPI(&dictionary.leakRef());
-#else
     return 0;
-#endif
 }
 
 void WKContextGetInfoForInstalledPlugIns(WKContextRef contextRef, WKContextGetInfoForInstalledPlugInsBlock block)
 {
-#if ENABLE(NETSCAPE_PLUGIN_API)
-    Vector<WebKit::PluginModuleInfo> plugins = WebKit::toImpl(contextRef)->pluginInfoStore().plugins();
-
-    Vector<RefPtr<API::Object>> pluginInfoDictionaries;
-    pluginInfoDictionaries.reserveInitialCapacity(plugins.size());
-
-    for (const auto& plugin: plugins)
-        pluginInfoDictionaries.uncheckedAppend(createPluginInformationDictionary(plugin));
-
-    RefPtr<API::Array> array = API::Array::create(WTFMove(pluginInfoDictionaries));
-
-    WebKit::toImpl(contextRef)->ref();
-    RunLoop::main().dispatch([block = makeBlockPtr(block), array = WTFMove(array), contextRef] {
-        block(WebKit::toAPI(array.get()), 0);
-    
-        WebKit::toImpl(contextRef)->deref();
-    });
-#endif
 }
 
 void WKContextResetHSTSHosts(WKContextRef)
@@ -140,24 +108,6 @@ WKStringRef WKPlugInInfoUpdatePastLastBlockedVersionIsKnownAvailableKey()
 WKStringRef WKPlugInInfoIsSandboxedKey()
 {
     return WKPluginInformationHasSandboxProfileKey();
-}
-
-bool WKContextShouldBlockWebGL()
-{
-#if PLATFORM(MAC)
-    return WebCore::WebGLBlocklist::shouldBlockWebGL();
-#else
-    return false;
-#endif
-}
-
-bool WKContextShouldSuggestBlockWebGL()
-{
-#if PLATFORM(MAC)
-    return WebCore::WebGLBlocklist::shouldSuggestBlockingWebGL();
-#else
-    return false;
-#endif
 }
 
 bool WKContextHandlesSafeBrowsing()

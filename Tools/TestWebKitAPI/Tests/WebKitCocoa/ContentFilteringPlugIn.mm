@@ -28,7 +28,7 @@
 #if ENABLE(CONTENT_FILTERING)
 
 #import "ContentFiltering.h"
-#import "MockContentFilterSettings.h"
+#import <WebCore/MockContentFilterSettings.h>
 #import <WebKit/WKWebProcessPlugIn.h>
 #import <WebKit/WKWebProcessPlugInBrowserContextControllerPrivate.h>
 #import <WebKit/_WKRemoteObjectInterface.h>
@@ -63,7 +63,7 @@ using DecisionPoint = MockContentFilterSettings::DecisionPoint;
     settings.setEnabled(true);
     settings.setDecision(static_cast<Decision>([decoder decodeIntForKey:@"Decision"]));
     settings.setDecisionPoint(static_cast<DecisionPoint>([decoder decodeIntForKey:@"DecisionPoint"]));
-    settings.setBlockedString("blocked"_s);
+    settings.setBlockedString("blocked<img src='about:blank'/><script>document.cookie='key=value';document.cookie</script>"_s);
     return self;
 }
 

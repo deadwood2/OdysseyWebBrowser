@@ -34,40 +34,46 @@ namespace TestWebKitAPI {
 
 TEST(RegistrableDomain, StringVsURL)
 {
-    URL webkitURL { URL(), "https://webkit.org" };
+    URL webkitURL { "https://webkit.org"_str };
     RegistrableDomain webkitDomainFromURL { webkitURL };
-    auto webkitDomainFromString = RegistrableDomain::uncheckedCreateFromRegistrableDomainString("webkit.org");
+    auto webkitDomainFromString = RegistrableDomain::uncheckedCreateFromRegistrableDomainString("webkit.org"_s);
 
     ASSERT_EQ(webkitDomainFromURL, webkitDomainFromString);
 
-    URL localhostURL { URL(), "https://localhost:8000" };
+    URL localhostURL { "https://localhost:8000"_str };
     RegistrableDomain localhostDomainFromURL { localhostURL };
-    auto localhostDomainFromString = RegistrableDomain::uncheckedCreateFromRegistrableDomainString("localhost");
+    auto localhostDomainFromString = RegistrableDomain::uncheckedCreateFromRegistrableDomainString("localhost"_s);
 
     ASSERT_EQ(localhostDomainFromURL, localhostDomainFromString);
 
-    URL fileURL { URL(), "file:///some/file" };
+    URL fileURL { "file:///some/file"_str };
     RegistrableDomain fileDomainFromURL { fileURL };
-    auto fileDomainFromString = RegistrableDomain::uncheckedCreateFromRegistrableDomainString("");
+    auto fileDomainFromString = RegistrableDomain::uncheckedCreateFromRegistrableDomainString(emptyString());
     
     ASSERT_EQ(fileDomainFromURL, fileDomainFromString);
 }
 
 TEST(RegistrableDomain, MatchesURLs)
 {
-    URL webkitURL { URL(), "https://webkit.org" };
-    URL webkitURLWithPath { URL(), "https://webkit.org/road/to/nowhere/" };
-    URL webkitSubdomainURL { URL(), "https://sub.domain.webkit.org" };
-    URL webkitSubdomainURLWithPath { URL(), "https://sub.domain.webkit.org/road/to/nowhere/" };
+    URL webkitURL { "https://webkit.org"_str };
+    URL webkitURLWithPath { "https://webkit.org/road/to/nowhere/"_str };
+    URL webkitSubdomainURL { "https://sub.domain.webkit.org"_str };
+    URL webkitOtherSubdomainURL { "https://sub.other.webkit.org"_str };
+    URL webkitDuplicateSubdomainURL { "https://domain.domain.webkit.org"_str };
+    URL webkitSubdomainURLWithPath { "https://sub.domain.webkit.org/road/to/nowhere/"_str };
     RegistrableDomain webkitDomain { webkitURL };
+    RegistrableDomain webkitSubdomain { webkitSubdomainURL };
 
     ASSERT_TRUE(webkitDomain.matches(webkitURL));
     ASSERT_TRUE(webkitDomain.matches(webkitURLWithPath));
     ASSERT_TRUE(webkitDomain.matches(webkitSubdomainURL));
+    ASSERT_TRUE(webkitDomain.matches(webkitDuplicateSubdomainURL));
     ASSERT_TRUE(webkitDomain.matches(webkitSubdomainURLWithPath));
+    ASSERT_TRUE(webkitSubdomain.matches(webkitOtherSubdomainURL));
+    ASSERT_TRUE(webkitSubdomain.matches(webkitDuplicateSubdomainURL));
 
-    URL localhostURL { URL(), "http://localhost" };
-    URL localhostURLWithPath { URL(), "http://localhost/road/to/nowhere/" };
+    URL localhostURL { "http://localhost"_s };
+    URL localhostURLWithPath { "http://localhost/road/to/nowhere/"_s };
     RegistrableDomain localhostDomain { localhostURL };
 
     ASSERT_TRUE(localhostDomain.matches(localhostURL));
@@ -78,18 +84,18 @@ TEST(RegistrableDomain, MatchesURLs)
     ASSERT_FALSE(webkitDomain.matches(localhostURL));
     ASSERT_FALSE(webkitDomain.matches(localhostURLWithPath));
 
-    URL ebkitURL { URL(), "https://ebkit.org" };
+    URL ebkitURL { "https://ebkit.org"_s };
     ASSERT_FALSE(webkitDomain.matches(ebkitURL));
 }
 
 TEST(RegistrableDomain, UncheckedCreateFromHost)
 {
-    auto webkitDomainFromString = RegistrableDomain::uncheckedCreateFromRegistrableDomainString("webkit.org");
+    auto webkitDomainFromString = RegistrableDomain::uncheckedCreateFromRegistrableDomainString("webkit.org"_s);
 
-    auto webkitDomainFromHost = RegistrableDomain::uncheckedCreateFromHost("webkit.org");
+    auto webkitDomainFromHost = RegistrableDomain::uncheckedCreateFromHost("webkit.org"_s);
     ASSERT_EQ(webkitDomainFromHost, webkitDomainFromString);
     // This test is important for matching cookies' domain attributes which often have a leading dot.
-    auto dotWebkitDomainFromHost = RegistrableDomain::uncheckedCreateFromHost(".webkit.org");
+    auto dotWebkitDomainFromHost = RegistrableDomain::uncheckedCreateFromHost(".webkit.org"_s);
     ASSERT_EQ(dotWebkitDomainFromHost, webkitDomainFromString);
 }
 

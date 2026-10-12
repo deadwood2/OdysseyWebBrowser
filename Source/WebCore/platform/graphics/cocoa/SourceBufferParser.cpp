@@ -29,10 +29,13 @@
 #if ENABLE(MEDIA_SOURCE)
 
 #include "ContentType.h"
+#include "SharedBuffer.h"
 #include "SourceBufferParserAVFObjC.h"
 #include "SourceBufferParserWebM.h"
-#include <pal/cocoa/MediaToolboxSoftLink.h>
+#include <pal/spi/cocoa/MediaToolboxSPI.h>
 #include <wtf/text/WTFString.h>
+
+#include <pal/cocoa/MediaToolboxSoftLink.h>
 
 namespace WebCore {
 
@@ -47,7 +50,7 @@ MediaPlayerEnums::SupportsType SourceBufferParser::isContentTypeSupported(const 
 RefPtr<SourceBufferParser> SourceBufferParser::create(const ContentType& type, bool webMParserEnabled)
 {
     if (SourceBufferParserWebM::isContentTypeSupported(type) != MediaPlayerEnums::SupportsType::IsNotSupported && webMParserEnabled)
-        return adoptRef(new SourceBufferParserWebM());
+        return SourceBufferParserWebM::create();
 
     if (SourceBufferParserAVFObjC::isContentTypeSupported(type) != MediaPlayerEnums::SupportsType::IsNotSupported)
         return adoptRef(new SourceBufferParserAVFObjC());
@@ -77,8 +80,8 @@ void SourceBufferParser::setMinimumAudioSampleDuration(float)
 {
 }
 
-SourceBufferParser::Segment::Segment(Vector<uint8_t>&& segment)
-    : m_segment(WTFMove(segment))
+SourceBufferParser::Segment::Segment(Ref<SharedBuffer>&& buffer)
+    : m_segment(WTFMove(buffer))
 {
 }
 
@@ -98,49 +101,71 @@ size_t SourceBufferParser::Segment::size() const
             return clampTo<size_t>(MTPluginByteSourceGetLength(byteSource.get()));
         },
 #endif
-        [](const Vector<uint8_t>& vector)
+        [](const Ref<SharedBuffer>& buffer)
         {
-            return vector.size();
+            return buffer->size();
         }
     );
 }
 
-size_t SourceBufferParser::Segment::read(size_t position, size_t sizeToRead, uint8_t* destination) const
+auto SourceBufferParser::Segment::read(std::span<uint8_t> destination, size_t position) const -> ReadResult
 {
     size_t segmentSize = size();
-    sizeToRead = std::min(sizeToRead, segmentSize - std::min(position, segmentSize));
+    destination = destination.first(std::min(destination.size(), segmentSize - std::min(position, segmentSize)));
     return WTF::switchOn(m_segment,
 #if HAVE(MT_PLUGIN_FORMAT_READER)
-        [&](const RetainPtr<MTPluginByteSourceRef>& byteSource) -> size_t
+        [&](const RetainPtr<MTPluginByteSourceRef>& byteSource) -> ReadResult
         {
             size_t sizeRead = 0;
-            if (MTPluginByteSourceRead(byteSource.get(), sizeToRead, CheckedInt64(position), destination, &sizeRead) != noErr)
-                return 0;
-            return sizeRead;
+            auto status = MTPluginByteSourceRead(byteSource.get(), destination.size(), CheckedInt64(position), destination.data(), &sizeRead);
+            if (status == noErr)
+                return sizeRead;
+            if (status == kMTPluginByteSourceError_EndOfStream)
+                return Unexpected<ReadError> { ReadError::EndOfFile };
+            return Unexpected<ReadError> { ReadError::FatalError };
         },
 #endif
-        [&](const Vector<uint8_t>& vector)
+        [&](const Ref<SharedBuffer>& buffer) -> ReadResult
         {
-            memcpy(destination, vector.data() + position, sizeToRead);
-            return sizeToRead;
+            buffer->copyTo(destination, position);
+            return destination.size();
         }
     );
 }
 
-Vector<uint8_t> SourceBufferParser::Segment::takeVector()
+Ref<SharedBuffer> SourceBufferParser::Segment::takeSharedBuffer()
 {
     return WTF::switchOn(m_segment,
 #if HAVE(MT_PLUGIN_FORMAT_READER)
         [&](RetainPtr<MTPluginByteSourceRef>&)
         {
             Vector<uint8_t> vector(size());
-            vector.shrink(read(0, vector.size(), vector.data()));
-            return vector;
+            auto readResult = read(vector.mutableSpan());
+            if (!readResult.has_value())
+                return SharedBuffer::create();
+            vector.shrink(readResult.value());
+            return SharedBuffer::create(WTFMove(vector));
         },
 #endif
-        [](Vector<uint8_t>& vector)
+        [&](Ref<SharedBuffer>& buffer)
         {
-            return std::exchange(vector, { });
+            return std::exchange(buffer, SharedBuffer::create());
+        }
+    );
+}
+
+RefPtr<SharedBuffer> SourceBufferParser::Segment::getSharedBuffer() const
+{
+    return WTF::switchOn(m_segment,
+#if HAVE(MT_PLUGIN_FORMAT_READER)
+        [&](const RetainPtr<MTPluginByteSourceRef>&) -> RefPtr<SharedBuffer>
+        {
+            return nullptr;
+        },
+#endif
+        [&](const Ref<SharedBuffer>& buffer) -> RefPtr<SharedBuffer>
+        {
+            return buffer.ptr();
         }
     );
 }

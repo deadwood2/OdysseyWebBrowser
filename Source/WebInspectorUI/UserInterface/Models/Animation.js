@@ -25,12 +25,13 @@
 
 WI.Animation = class Animation extends WI.Object
 {
-    constructor(animationId, {name, cssAnimationName, cssTransitionProperty, effect, backtrace} = {})
+    constructor(animationId, {name, cssAnimationName, cssTransitionProperty, effect, stackTrace} = {})
     {
         super();
 
         console.assert(animationId);
         console.assert((!cssAnimationName && !cssTransitionProperty) || !!cssAnimationName !== !!cssTransitionProperty);
+        console.assert(!stackTrace || stackTrace instanceof WI.StackTrace, stackTrace);
 
         this._animationId = animationId;
 
@@ -38,7 +39,7 @@ WI.Animation = class Animation extends WI.Object
         this._cssAnimationName = cssAnimationName || null;
         this._cssTransitionProperty = cssTransitionProperty || null;
         this._updateEffect(effect);
-        this._backtrace = backtrace || [];
+        this._stackTrace = stackTrace || null;
 
         this._effectTarget = undefined;
         this._requestEffectTargetCallbacks = null;
@@ -48,12 +49,16 @@ WI.Animation = class Animation extends WI.Object
 
     static fromPayload(payload)
     {
+        // COMPATIBILITY (macOS 13.0, iOS 16.0): `backtrace` was renamed to `stackTrace`.
+        if (payload.backtrace)
+            payload.stackTrace = {callFrames: payload.backtrace};
+
         return new WI.Animation(payload.animationId, {
             name: payload.name,
             cssAnimationName: payload.cssAnimationName,
             cssTransitionProperty: payload.cssTransitionProperty,
             effect: payload.effect,
-            backtrace: Array.isArray(payload.backtrace) ? payload.backtrace.map((item) => WI.CallFrame.fromPayload(WI.mainTarget, item)) : [],
+            stackTrace: WI.StackTrace.fromPayload(WI.assumingMainTarget(), payload.stackTrace),
         });
     }
 
@@ -119,7 +124,7 @@ WI.Animation = class Animation extends WI.Object
     get name() { return this._name; }
     get cssAnimationName() { return this._cssAnimationName; }
     get cssTransitionProperty() { return this._cssTransitionProperty; }
-    get backtrace() { return this._backtrace; }
+    get stackTrace() { return this._stackTrace; }
 
     get animationType()
     {
@@ -208,8 +213,12 @@ WI.Animation = class Animation extends WI.Object
         WI.domManager.ensureDocument();
 
         let target = WI.assumingMainTarget();
-        target.AnimationAgent.requestEffectTarget(this._animationId, (error, nodeId) => {
-            this._effectTarget = !error ? WI.domManager.nodeForId(nodeId) : null;
+        target.AnimationAgent.requestEffectTarget(this._animationId, (error, effectTarget) => {
+            // COMPATIBILITY (macOS 12.3, iOS 15.4): nodeId was renamed to effectTarget and changed from DOM.NodeId to DOM.Styleable.
+            if (!isNaN(effectTarget))
+                effectTarget = {nodeId: effectTarget};
+
+            this._effectTarget = !error ? WI.DOMStyleable.fromPayload(effectTarget) : null;
 
             for (let requestEffectTargetCallback of this._requestEffectTargetCallbacks)
                 requestEffectTargetCallback(this._effectTarget);
@@ -256,7 +265,7 @@ WI.Animation = class Animation extends WI.Object
 
         if ("timingFunction" in this._effect) {
             let timingFunction = this._effect.timingFunction;
-            this._effect.timingFunction = WI.CubicBezier.fromString(timingFunction) || WI.StepsFunction.fromString(timingFunction) || WI.Spring.fromString(timingFunction);
+            this._effect.timingFunction = WI.CubicBezierTimingFunction.fromString(timingFunction) || WI.LinearTimingFunction.fromString(timingFunction) || WI.StepsTimingFunction.fromString(timingFunction) || WI.SpringTimingFunction.fromString(timingFunction);
             console.assert(this._effect.timingFunction, timingFunction);
         }
 
@@ -264,7 +273,7 @@ WI.Animation = class Animation extends WI.Object
             for (let keyframe of this._effect.keyframes) {
                 if (keyframe.easing) {
                     let easing = keyframe.easing;
-                    keyframe.easing = WI.CubicBezier.fromString(easing) || WI.StepsFunction.fromString(easing) || WI.Spring.fromString(easing);
+                    keyframe.easing = WI.CubicBezierTimingFunction.fromString(easing) || WI.LinearTimingFunction.fromString(easing) || WI.StepsTimingFunction.fromString(easing) || WI.SpringTimingFunction.fromString(easing);
                     console.assert(keyframe.easing, easing);
                 }
 

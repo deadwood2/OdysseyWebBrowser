@@ -1,3 +1,5 @@
+#include "config.h"
+
 #include "AcinerellaHLS.h"
 #include <wtf/DateMath.h>
 #include <wtf/text/StringToIntegerConversion.h>
@@ -14,15 +16,15 @@ namespace Acinerella {
 #define DIO(x)
 #define DENC(x) 
 
-static const String rnReplace("\r\n");
-static const String rnReplacement("\n");
+static const String rnReplace("\r\n"_s);
+static const String rnReplacement("\n"_s);
 
 class HLSMasterPlaylistParser
 {
 public:
 	HLSMasterPlaylistParser(const URL &baseURL, const String &sdata)
 	{
-		Vector<String> lines = String(sdata).replace(rnReplace, rnReplacement).split('\n');
+		Vector<String> lines = makeStringByReplacingAll(sdata, rnReplace, rnReplacement).split('\n');
 
 		// Must contain at the very least:
 		// #EXTM3U
@@ -31,7 +33,7 @@ public:
 		// url
 		//
 		// So 4 lines at minimum, otherwise it won't be a valid playlist
-		if (lines.size() >= 4 && equalIgnoringASCIICase(lines[0], "#extm3u"))
+		if (lines.size() >= 4 && equalIgnoringASCIICase(lines[0], "#extm3u"_s))
 		{
 			// Format kida-verified. Look for Streams
 			HLSStreamInfo info;
@@ -44,7 +46,7 @@ public:
 
 				DCONTENTS(dprintf("[M]: %s\n", line.utf8().data()));
 
-				if (startsWithLettersIgnoringASCIICase(line, "#ext-x-stream-inf:"))
+				if (startsWithLettersIgnoringASCIICase(line, "#ext-x-stream-inf:"_s))
 				{
 					// reset
 					info = { };
@@ -82,7 +84,7 @@ public:
 						}
 						DCONTENTS(dprintf("[M]: %s = %s\n", key.utf8().data(), param.utf8().data()));
 
-						if (startsWithLettersIgnoringASCIICase(key, "resolution"))
+						if (startsWithLettersIgnoringASCIICase(key, "resolution"_s))
 						{
 							auto res = param.convertToASCIILowercase().split('x');
 							if (res.size() >= 2)
@@ -91,15 +93,15 @@ public:
 								info.m_height = parseIntegerAllowingTrailingJunk<int>(res[1]).value_or(0);
 							}
 						}
-						else if (startsWithLettersIgnoringASCIICase(key, "frame-rate"))
+						else if (startsWithLettersIgnoringASCIICase(key, "frame-rate"_s))
 						{
 							info.m_fps = parseIntegerAllowingTrailingJunk<int>(param).value_or(0);
 						}
-						else if (startsWithLettersIgnoringASCIICase(key, "codecs"))
+						else if (startsWithLettersIgnoringASCIICase(key, "codecs"_s))
 						{
 							info.m_codecs = param.split(',');
 						}
-						else if (startsWithLettersIgnoringASCIICase(key, "bandwidth"))
+						else if (startsWithLettersIgnoringASCIICase(key, "bandwidth"_s))
 						{
 							info.m_bandwidth = parseIntegerAllowingTrailingJunk<int>(param).value_or(0);
 						}
@@ -115,16 +117,16 @@ public:
 				}
 				else if (hopingForM3U8)
 				{
-					if (line.contains("m3u8"))
+					if (line.contains("m3u8"_s))
 					{
 						info.m_url = URL(baseURL, line).string();
 						D(dprintf("[M]: append stream bw %d res %dx%d fps %d '%s'\n", info.m_bandwidth, info.m_width, info.m_height, info.m_fps, info.m_url.utf8().data()));
 						m_streams.append(info);
-						info.m_url = "";
+						info.m_url = emptyString();
 						hopingForM3U8 = false;
 					}
 				}
-				else if (startsWithLettersIgnoringASCIICase(line, "#extinf:"))
+				else if (startsWithLettersIgnoringASCIICase(line, "#extinf:"_s))
 				{
 					foundChunks = true;
 				}
@@ -153,9 +155,9 @@ protected:
 
 HLSStream::HLSStream(const URL &baseURL, const String &sdata)
 {
-	Vector<String> lines = String(sdata).replace(rnReplace, rnReplacement).split('\n');
+	Vector<String> lines = makeStringByReplacingAll(sdata, rnReplace, rnReplacement).split('\n');
 
-	if (lines.size() >= 2 && equalIgnoringASCIICase(lines[0], "#EXTM3U"))
+	if (lines.size() >= 2 && equalIgnoringASCIICase(lines[0], "#EXTM3U"_s))
 	{
 		String keyURL;
 		unsigned char iv[16];
@@ -171,36 +173,36 @@ HLSStream::HLSStream(const URL &baseURL, const String &sdata)
 
 			DCONTENTS(dprintf("[P]: %s\n", line.utf8().data()));
 
-			if (startsWithLettersIgnoringASCIICase(line, "#ext-x-media-sequence"))
+			if (startsWithLettersIgnoringASCIICase(line, "#ext-x-media-sequence"_s))
 			{
 				m_mediaSequence = parseIntegerAllowingTrailingJunk<uint64_t>(line.substring(22)).value_or(0);
 				D(dprintf("mediaseq: %llu\n", m_mediaSequence));
 				m_mediaSequence--; //! we want 1st added chunk to have the right sequence!
 			}
 			// #EXT-X-TARGETDURATION:1
-			else if (startsWithLettersIgnoringASCIICase(line, "#ext-x-targetduration:"))
+			else if (startsWithLettersIgnoringASCIICase(line, "#ext-x-targetduration:"_s))
 			{
 				m_targetDuration = line.substring(22).toDouble();
 				duration = m_targetDuration;
 			}
-			else if (startsWithLettersIgnoringASCIICase(line, "#ext-x-program-date-time"))
+			else if (startsWithLettersIgnoringASCIICase(line, "#ext-x-program-date-time"_s))
 			{
 				bool local;
-				auto time = WTF::parseES5DateFromNullTerminatedCharacters(line.substring(25).utf8().data(), local);
+				auto time = WTF::parseES5Date(line.substring(25).utf8().span(), local);
 				if (time == time)
 				{
 					programTimeDate = time / 1000.0;
 					m_initialTimeStamp = programTimeDate;
 				}
 			}
-			else if (startsWithLettersIgnoringASCIICase(line, "#extinf:"))
+			else if (startsWithLettersIgnoringASCIICase(line, "#extinf:"_s))
 			{
 				duration = line.substring(8).toDouble();
 				if (duration <= 0.0)
 					duration = m_targetDuration;
 				hopingForURL = true;
 			}
-			else if (hopingForURL && !startsWithLettersIgnoringASCIICase(line,"#"))
+			else if (hopingForURL && !startsWithLettersIgnoringASCIICase(line,"#"_s))
 			{
 				HLSChunk chunk;
 				chunk.m_mediaSequence = ++m_mediaSequence;
@@ -215,20 +217,20 @@ HLSStream::HLSStream(const URL &baseURL, const String &sdata)
 				chunk.m_url = URL(baseURL, line).string();
 				if (keyURL.length() > 0)
 					chunk.m_encryption.m_keyURL = URL(baseURL, keyURL).string();
-				m_chunks.emplace(WTFMove(chunk));
+				m_chunks.append(WTFMove(chunk));
 				
 				duration = m_targetDuration; // reset
 			}
 			// #EXT-X-KEY:METHOD=AES-128,URI="keys/1.key",IV=0xf1dd959d87ccb58a9bf47ebd8bb73e24
-			else if (startsWithLettersIgnoringASCIICase(line, "#ext-x-key"))
+			else if (startsWithLettersIgnoringASCIICase(line, "#ext-x-key"_s))
 			{
-				size_t encryption = line.findIgnoringASCIICase("METHOD=AES-128");
+				size_t encryption = line.findIgnoringASCIICase("METHOD=AES-128"_s);
 				if (WTF::notFound != encryption)
 				{
-					size_t uri = line.findIgnoringASCIICase("URI=\"");
+					size_t uri = line.findIgnoringASCIICase("URI=\""_s);
 					if (WTF::notFound != uri)
 					{
-						size_t uriEnd = line.findIgnoringASCIICase("\"", uri + 6);
+						size_t uriEnd = line.findIgnoringASCIICase("\""_s, uri + 6);
 						if (WTF::notFound != uri)
 						{
 							keyURL = line.substring(uri + 5, uriEnd - (uri + 5));
@@ -237,16 +239,16 @@ HLSStream::HLSStream(const URL &baseURL, const String &sdata)
 						}
 					}
 					
-					size_t ivpos = line.findIgnoringASCIICase("IV=");
+					size_t ivpos = line.findIgnoringASCIICase("IV="_s);
 					if (WTF::notFound != ivpos)
 					{
 						String ivs = line.substring(ivpos + 3);
-						if (WTF::notFound != ivs.find(","))
+						if (WTF::notFound != ivs.find(","_s))
 						{
-							ivs = ivs.substring(0,ivs.find(",") - 1);
+							ivs = ivs.substring(0,ivs.find(","_s) - 1);
 						}
 
-						if (startsWithLettersIgnoringASCIICase(ivs, "0x"))
+						if (startsWithLettersIgnoringASCIICase(ivs, "0x"_s))
 						{
 							ivs = ivs.substring(2);
 							auto ascii = ivs.ascii();
@@ -266,21 +268,21 @@ HLSStream::HLSStream(const URL &baseURL, const String &sdata)
 						}
 					}
 				}
-				else if (line.findIgnoringASCIICase("METHOD=NONE") == WTF::notFound)
+				else if (line.findIgnoringASCIICase("METHOD=NONE"_s) == WTF::notFound)
 				{
 					DCONTENTS(dprintf("[P]: unknown encryption, bailing out!\n"));
 					return;
 				}
 			}
-			else if (startsWithLettersIgnoringASCIICase(line, "#ext-x-endlist"))
+			else if (startsWithLettersIgnoringASCIICase(line, "#ext-x-endlist"_s))
 			{
 				m_ended = true;
 				break; // no chunks must follow this!
 			}
-			else if (startsWithLettersIgnoringASCIICase(line, "#ext-x-map:"))
+			else if (startsWithLettersIgnoringASCIICase(line, "#ext-x-map:"_s))
 			{
 				// #ext-x-map:URI="url",BYTERANGE=length[@offset]
-				size_t urlPos = line.findIgnoringASCIICase("URI=", 11);
+				size_t urlPos = line.findIgnoringASCIICase("URI="_s, 11);
 				if (WTF::notFound != urlPos)
 				{
 					int quotes = line.characterStartingAt(urlPos + 4) == '\"' ? 1 : 0;
@@ -288,11 +290,11 @@ HLSStream::HLSStream(const URL &baseURL, const String &sdata)
 					String url = line.substring(urlPos + 4 + quotes);
 					if (quotes)
 					{
-						url = url.substring(0, url.find("\"", 1));
+						url = url.substring(0, url.find("\""_s, 1));
 					}
 					else
 					{
-						size_t comma = url.find(",");
+						size_t comma = url.find(","_s);
 						if (WTF::notFound != comma)
 							url = url.substring(0, comma);
 					}
@@ -311,16 +313,16 @@ HLSStream::HLSStream(const URL &baseURL, const String &sdata)
 
 HLSStream& HLSStream::operator+=(HLSStream& append)
 {
-	while (!append.m_chunks.empty())
+	while (!append.m_chunks.isEmpty())
 	{
-		if (append.m_chunks.front().m_mediaSequence > m_mediaSequence || (m_chunks.empty() && m_mediaSequence == -1))
+		if (append.m_chunks.first().m_mediaSequence > m_mediaSequence || (m_chunks.isEmpty() && m_mediaSequence == -1))
 		{
-			m_mediaSequence = append.m_chunks.front().m_mediaSequence;
-			m_remainingDuration += append.m_chunks.front().m_duration;
-			m_chunks.emplace(append.m_chunks.front());
+			m_mediaSequence = append.m_chunks.first().m_mediaSequence;
+			m_remainingDuration += append.m_chunks.first().m_duration;
+			m_chunks.append(append.m_chunks.first());
 		}
 
-		append.m_chunks.pop();
+		append.m_chunks.removeFirst();
 	}
 
 	m_ended = append.m_ended;
@@ -363,7 +365,7 @@ void HLSStream::popUntil(double position)
 {
 	while (position > 0 && !empty())
 	{
-		double duration = m_chunks.front().m_duration;
+		double duration = m_chunks.first().m_duration;
 		position -= duration;
 		m_initialTimeStamp += duration;
 		pop();
@@ -398,7 +400,7 @@ void AcinerellaNetworkBufferHLS::start(uint64_t from)
 		m_stream.clear();
 		m_hasMasterList = false;
 
-		m_hlsRequest = AcinerellaNetworkFileRequest::create(m_url, [this, protect = makeRef(*this)](bool succ) { masterPlaylistReceived(succ); });
+		m_hlsRequest = AcinerellaNetworkFileRequest::create(m_url, [this, protect = Ref{*this}](bool succ) { masterPlaylistReceived(succ); });
 	}
 	else
 	{
@@ -438,10 +440,10 @@ void AcinerellaNetworkBufferHLS::stop()
 
 	D(dprintf("%s(%p) killing old chunks\n", __func__, this));
 	auto lock = Locker(m_lock);
-	while (!m_chunksRequestPreviouslyRead.empty())
+	while (!m_chunksRequestPreviouslyRead.isEmpty())
 	{
-		m_chunksRequestPreviouslyRead.front()->die();
-		m_chunksRequestPreviouslyRead.pop();
+		m_chunksRequestPreviouslyRead.first()->die();
+		m_chunksRequestPreviouslyRead.removeFirst();
 	}
 }
 
@@ -456,7 +458,7 @@ void AcinerellaNetworkBufferHLS::masterPlaylistReceived(bool succ)
 
 		if (buffer && buffer->size())
 		{
-			HLSMasterPlaylistParser parser(m_baseURL, String::fromUTF8(buffer->data(), buffer->size()));
+			HLSMasterPlaylistParser parser(m_baseURL, String::fromUTF8(buffer->span()));
 
 			m_hasMasterList = true;
 			m_streams = WTFMove(parser.streams());
@@ -477,7 +479,7 @@ void AcinerellaNetworkBufferHLS::masterPlaylistReceived(bool succ)
 					return;
 				}
 
-				m_hlsRequest = AcinerellaNetworkFileRequest::create(m_selectedStream.m_url, [this, protect = makeRef(*this)](bool succ) { childPlaylistReceived(succ); });
+				m_hlsRequest = AcinerellaNetworkFileRequest::create(m_selectedStream.m_url, [this, protect = Ref{*this}](bool succ) { childPlaylistReceived(succ); });
 				return;
 			}
 		}
@@ -520,7 +522,7 @@ void AcinerellaNetworkBufferHLS::childPlaylistReceived(bool succ)
 
 		if (buffer && buffer->size())
 		{
-			auto contents = String::fromUTF8(buffer->data(), buffer->size());
+			auto contents = String::fromUTF8(buffer->span());
 			bool initial = m_stream.empty();
 			HLSStream stream(URL({}, m_selectedStream.m_url), contents);
 			m_stream += stream; // append and merge :)
@@ -551,7 +553,7 @@ void AcinerellaNetworkBufferHLS::childPlaylistReceived(bool succ)
 				if (initial && 0 != m_stream.map().m_url.length())
 				{
 					D(dprintf("%s(%p) initial %d, map url %s\n", __func__, this, initial, m_stream.map().m_url.utf8().data()));
-					m_initializationChunkRequest = AcinerellaNetworkFileRequest::create(m_stream.map().m_url, [this, protect = makeRef(*this)](bool succ) { initializationSegmentReceived(succ); });
+					m_initializationChunkRequest = AcinerellaNetworkFileRequest::create(m_stream.map().m_url, [this, protect = Ref{*this}](bool succ) { initializationSegmentReceived(succ); });
 				}
 				else
 				{
@@ -631,17 +633,17 @@ bool AcinerellaNetworkBufferHLS::encryptionKeyNeeded(const HLSChunk& chunk)
 		if (it == m_keys.end())
 		{
 			DENC(dprintf("%s(%p) requesting a key...\n", "encryptionKeyNeeded", this));
-			m_keys.emplace(std::make_pair(chunk.m_encryption.m_keyURL, AcinerellaNetworkFileRequest::create(chunk.m_encryption.m_keyURL, [this, protect = makeRef(*this), url = chunk.m_encryption.m_keyURL](bool) {
+			m_keys.add(chunk.m_encryption.m_keyURL, AcinerellaNetworkFileRequest::create(chunk.m_encryption.m_keyURL, [this, protect = Ref{*this}, url = chunk.m_encryption.m_keyURL](bool) {
 
 				requestNextChunk();
 				DENC(dprintf("%s(%p) key obtained\n", "encryptionKeyNeeded", this));
-			})));
+			}));
 			
 			return true;
 		}
 
 		// still waiting for key!
-		return !it->second->buffer();
+		return !it->value->buffer();
 	}
 	
 	return false;
@@ -653,7 +655,7 @@ RefPtr<SharedBuffer> AcinerellaNetworkBufferHLS::encryptionKey(const HLSChunk& c
 	{
 		auto it = m_keys.find(chunk.m_encryption.m_keyURL);
 		if (m_keys.end() != it)
-			return it->second->buffer();
+			return it->value->buffer();
 	}
 	return nullptr;
 }
@@ -675,7 +677,7 @@ void AcinerellaNetworkBufferHLS::refreshTimerFired()
 	D(dprintf("%s(%p) \n", __func__, this));
 	if (m_hlsRequest)
 		m_hlsRequest->cancel();
-	m_hlsRequest = AcinerellaNetworkFileRequest::create(m_selectedStream.m_url, [this, protect = makeRef(*this)](bool succ) { childPlaylistReceived(succ); });
+	m_hlsRequest = AcinerellaNetworkFileRequest::create(m_selectedStream.m_url, [this, protect = Ref{*this}](bool succ) { childPlaylistReceived(succ); });
 }
 
 // main thread
@@ -685,10 +687,10 @@ void AcinerellaNetworkBufferHLS::chunkSwallowed()
 
 	{
 		auto lock = Locker(m_lock);
-		while (!m_chunksRequestPreviouslyRead.empty())
+		while (!m_chunksRequestPreviouslyRead.isEmpty())
 		{
-			m_chunksRequestPreviouslyRead.front()->stop();
-			m_chunksRequestPreviouslyRead.pop();
+			m_chunksRequestPreviouslyRead.first()->stop();
+			m_chunksRequestPreviouslyRead.removeFirst();
 		}
 	}
 
@@ -748,12 +750,12 @@ int AcinerellaNetworkBufferHLS::read(uint8_t *outBuffer, int size, int64_t readP
 				m_skipping = false;
 				if (m_chunkRequestInRead)
 				{
-					m_chunksRequestPreviouslyRead.emplace(m_chunkRequestInRead);
+					m_chunksRequestPreviouslyRead.append(m_chunkRequestInRead);
 					m_chunkRequestInRead = nullptr;
 				}
 			}
 			
-			WTF::callOnMainThread([this, protect = makeRef(*this)]() {
+			WTF::callOnMainThread([this, protect = Ref{*this}]() {
 				chunkSwallowed();
 			});
 		}
@@ -764,7 +766,7 @@ int AcinerellaNetworkBufferHLS::read(uint8_t *outBuffer, int size, int64_t readP
 
 			if (signalChunkSwallowed)
 			{
-				WTF::callOnMainThread([this, protect = makeRef(*this)]() {
+				WTF::callOnMainThread([this, protect = Ref{*this}]() {
 					chunkSwallowed();
 				});
 			}
@@ -780,7 +782,7 @@ int AcinerellaNetworkBufferHLS::read(uint8_t *outBuffer, int size, int64_t readP
 				{
 					auto lock = Locker(m_lock);
 					ended = m_stream.empty() && m_stream.ended();
-					m_chunksRequestPreviouslyRead.emplace(m_chunkRequestInRead);
+					m_chunksRequestPreviouslyRead.append(m_chunkRequestInRead);
 					m_chunkRequestInRead = nullptr;
 					DIO(dprintf("%s(%p): discontinuity, ended %d \n", __PRETTY_FUNCTION__, this, ended));
 				}
@@ -807,7 +809,7 @@ int AcinerellaNetworkBufferHLS::read(uint8_t *outBuffer, int size, int64_t readP
 	if (m_stopping && m_chunkRequestInRead)
 	{
 		auto lock = Locker(m_lock);
-		m_chunksRequestPreviouslyRead.emplace(m_chunkRequestInRead);
+		m_chunksRequestPreviouslyRead.append(m_chunkRequestInRead);
 		m_chunkRequestInRead = nullptr;
 	}
 
@@ -825,7 +827,7 @@ bool AcinerellaNetworkBufferHLS::markLastFrameRead()
 		auto lock = Locker(m_lock);
 		if (m_chunkRequestInRead)
 		{
-			m_chunksRequestPreviouslyRead.emplace(m_chunkRequestInRead);
+			m_chunksRequestPreviouslyRead.append(m_chunkRequestInRead);
 			m_chunkRequestInRead = nullptr;
 			doSwallow = true;
 		}
@@ -836,7 +838,7 @@ bool AcinerellaNetworkBufferHLS::markLastFrameRead()
 	
 	if (doSwallow)
 	{
-		WTF::callOnMainThread([this, protect = makeRef(*this)]() {
+		WTF::callOnMainThread([this, protect = Ref{*this}]() {
 			chunkSwallowed();
 		});
 	}

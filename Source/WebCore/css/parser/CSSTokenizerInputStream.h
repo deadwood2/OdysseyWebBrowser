@@ -35,14 +35,14 @@ namespace WebCore {
 
 constexpr LChar kEndOfFileMarker = 0;
 
+DECLARE_ALLOCATOR_WITH_HEAP_IDENTIFIER(CSSTokenizerInputStream);
 class CSSTokenizerInputStream {
     WTF_MAKE_NONCOPYABLE(CSSTokenizerInputStream);
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(CSSTokenizerInputStream);
 public:
     explicit CSSTokenizerInputStream(const String& input);
 
-    // Gets the char in the stream replacing NUL characters with a unicode
-    // replacement character. Will return (NUL) kEndOfFileMarker when at the
+    // Gets the char in the stream. Will return (NUL) kEndOfFileMarker when at the
     // end of the stream.
     UChar nextInputChar() const
     {
@@ -73,11 +73,11 @@ public:
     unsigned skipWhilePredicate(unsigned offset)
     {
         if (m_string->is8Bit()) {
-            const LChar* characters8 = m_string->characters8();
+            auto characters8 = m_string->span8();
             while ((m_offset + offset) < m_stringLength && characterPredicate(characters8[m_offset + offset]))
                 ++offset;
         } else {
-            const UChar* characters16 = m_string->characters16();
+            auto characters16 = m_string->span16();
             while ((m_offset + offset) < m_stringLength && characterPredicate(characters16[m_offset + offset]))
                 ++offset;
         }
@@ -85,6 +85,7 @@ public:
     }
 
     void advanceUntilNonWhitespace();
+    void advanceUntilNewlineOrNonWhitespace();
 
     unsigned length() const { return m_stringLength; }
     unsigned offset() const { return std::min(m_offset, m_stringLength); }

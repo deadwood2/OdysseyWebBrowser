@@ -9,15 +9,15 @@
 #define COMMON_HASHUTILS_H_
 
 #include "common/debug.h"
-#include "common/third_party/xxhash/xxhash.h"
+#include "xxhash.h"
 
 namespace angle
 {
 // Computes a hash of "key". Any data passed to this function must be multiples of
 // 4 bytes, since the PMurHash32 method can only operate increments of 4-byte words.
-inline std::size_t ComputeGenericHash(const void *key, size_t keySize)
+inline size_t ComputeGenericHash(const void *key, size_t keySize)
 {
-    static constexpr unsigned int kSeed = 0xABCDEF98;
+    constexpr unsigned int kSeed = 0xABCDEF98;
 
     // We can't support "odd" alignments.  ComputeGenericHash requires aligned types
     ASSERT(keySize % 4 == 0);
@@ -29,11 +29,30 @@ inline std::size_t ComputeGenericHash(const void *key, size_t keySize)
 }
 
 template <typename T>
-std::size_t ComputeGenericHash(const T &key)
+size_t ComputeGenericHash(const T &key)
 {
     static_assert(sizeof(key) % 4 == 0, "ComputeGenericHash requires aligned types");
     return ComputeGenericHash(&key, sizeof(key));
 }
+
+inline void HashCombine(size_t &seed) {}
+
+template <typename T, typename... Rest>
+inline void HashCombine(std::size_t &seed, const T &hashableObject, Rest... rest)
+{
+    std::hash<T> hasher;
+    seed ^= hasher(hashableObject) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+    HashCombine(seed, rest...);
+}
+
+template <typename T, typename... Rest>
+inline size_t HashMultiple(const T &hashableObject, Rest... rest)
+{
+    size_t seed = 0;
+    HashCombine(seed, hashableObject, rest...);
+    return seed;
+}
+
 }  // namespace angle
 
 #endif  // COMMON_HASHUTILS_H_

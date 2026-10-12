@@ -24,7 +24,6 @@
  */
 
 #import <Foundation/Foundation.h>
-#import <WebKit/WKDeclarationSpecifiers.h>
 #import <WebKit/WKFoundation.h>
 
 NS_ASSUME_NONNULL_BEGIN
@@ -52,6 +51,7 @@ typedef NS_ENUM(NSInteger, _WKWebAuthenticationPanelUpdate) {
     _WKWebAuthenticationPanelUpdateLAError,
     _WKWebAuthenticationPanelUpdateLAExcludeCredentialsMatched,
     _WKWebAuthenticationPanelUpdateLANoCredential,
+    _WKWebAuthenticationPanelUpdateKeyStoreFull,
 } WK_API_AVAILABLE(macos(10.15.4), ios(13.4));
 
 typedef NS_ENUM(NSInteger, _WKWebAuthenticationResult) {
@@ -62,7 +62,11 @@ typedef NS_ENUM(NSInteger, _WKWebAuthenticationResult) {
 typedef NS_ENUM(NSInteger, _WKWebAuthenticationTransport) {
     _WKWebAuthenticationTransportUSB,
     _WKWebAuthenticationTransportNFC,
+    _WKWebAuthenticationTransportBLE,
     _WKWebAuthenticationTransportInternal,
+    _WKWebAuthenticationTransportCaBLE,
+    _WKWebAuthenticationTransportHybrid,
+    _WKWebAuthenticationTransportSmartCard,
 } WK_API_AVAILABLE(macos(10.15.4), ios(13.4));
 
 typedef NS_ENUM(NSInteger, _WKWebAuthenticationType) {
@@ -80,9 +84,29 @@ typedef NS_ENUM(NSInteger, _WKWebAuthenticationSource) {
     _WKWebAuthenticationSourceExternal,
 } WK_API_AVAILABLE(macos(11.0), ios(14.0));
 
-WK_EXPORT extern NSString * const _WKLocalAuthenticatorCredentialNameKey;
-WK_EXPORT extern NSString * const _WKLocalAuthenticatorCredentialIDKey;
-WK_EXPORT extern NSString * const _WKLocalAuthenticatorCredentialRelyingPartyIDKey;
+typedef NS_ENUM(NSInteger, _WKWebAuthenticationUserVerificationAvailability) {
+    _WKWebAuthenticationUserVerificationAvailabilitySupportedAndConfigured,
+    _WKWebAuthenticationUserVerificationAvailabilitySupportedButNotConfigured,
+    _WKWebAuthenticationUserVerificationAvailabilityNotSupported,
+} WK_API_AVAILABLE(macos(13.0), ios(16.0));
+
+typedef NS_ENUM(NSInteger, _WKWebAuthenticationMediationRequirement) {
+    _WKWebAuthenticationMediationRequirementSilent,
+    _WKWebAuthenticationMediationRequirementOptional,
+    _WKWebAuthenticationMediationRequirementRequired,
+    _WKWebAuthenticationMediationRequirementConditional,
+} WK_API_AVAILABLE(macos(13.0), ios(16.0));
+
+WK_EXTERN NSString * const _WKLocalAuthenticatorCredentialNameKey;
+WK_EXTERN NSString * const _WKLocalAuthenticatorCredentialDisplayNameKey;
+WK_EXTERN NSString * const _WKLocalAuthenticatorCredentialIDKey;
+WK_EXTERN NSString * const _WKLocalAuthenticatorCredentialRelyingPartyIDKey;
+WK_EXTERN NSString * const _WKLocalAuthenticatorCredentialLastModificationDateKey;
+WK_EXTERN NSString * const _WKLocalAuthenticatorCredentialCreationDateKey;
+WK_EXTERN NSString * const _WKLocalAuthenticatorCredentialGroupKey;
+WK_EXTERN NSString * const _WKLocalAuthenticatorCredentialSynchronizableKey;
+WK_EXTERN NSString * const _WKLocalAuthenticatorCredentialUserHandleKey;
+WK_EXTERN NSString * const _WKLocalAuthenticatorCredentialLastUsedDateKey;
 
 @protocol _WKWebAuthenticationPanelDelegate <NSObject>
 
@@ -104,16 +128,44 @@ WK_CLASS_AVAILABLE(macos(10.15.4), ios(13.4))
 @property (nullable, nonatomic, weak) id <_WKWebAuthenticationPanelDelegate> delegate;
 
 + (NSArray<NSDictionary *> *)getAllLocalAuthenticatorCredentials WK_API_AVAILABLE(macos(12.0), ios(15.0));
++ (NSArray<NSDictionary *> *)getAllLocalAuthenticatorCredentialsWithRPID:(NSString *)rpID WK_API_AVAILABLE(macos(13.0), ios(16.0));
++ (NSArray<NSDictionary *> *)getAllLocalAuthenticatorCredentialsWithCredentialID:(NSData *)credentialID WK_API_AVAILABLE(macos(13.0), ios(16.0));
+
 + (void)deleteLocalAuthenticatorCredentialWithID:(NSData *)credentialID WK_API_AVAILABLE(macos(12.0), ios(15.0));
++ (void)deleteLocalAuthenticatorCredentialWithGroupAndID:(NSString * _Nullable)group credential:(NSData *)credentialID WK_API_AVAILABLE(macos(12.0), ios(15.0));
 + (void)clearAllLocalAuthenticatorCredentials WK_API_AVAILABLE(macos(12.0), ios(15.0));
++ (void)setDisplayNameForLocalCredentialWithGroupAndID:(NSString * _Nullable)group credential:(NSData *)credentialID displayName: (NSString *)displayName WK_API_AVAILABLE(macos(13.0), ios(16.0));
++ (void)setNameForLocalCredentialWithGroupAndID:(NSString * _Nullable)group credential:(NSData *)credentialID name:(NSString *)name WK_API_AVAILABLE(macos(13.0), ios(16.0));
+
++ (NSData *)exportLocalAuthenticatorCredentialWithID:(NSData *)credentialID error:(NSError **)error WK_API_AVAILABLE(macos(13.0), ios(16.0));
++ (NSData *)exportLocalAuthenticatorCredentialWithGroupAndID:(NSString * _Nullable)group credential:(NSData *)credentialID error:(NSError **)error WK_API_AVAILABLE(macos(13.0), ios(16.0));
++ (NSData *)importLocalAuthenticatorCredential:(NSData *)credentialBlob error:(NSError **)error WK_API_AVAILABLE(macos(13.0), ios(16.0));
++ (NSData *)importLocalAuthenticatorWithAccessGroup:(NSString *)accessGroup credential:(NSData *)credentialBlob error:(NSError **)error WK_API_AVAILABLE(macos(13.0), ios(16.0));
 
 + (BOOL)isUserVerifyingPlatformAuthenticatorAvailable WK_API_AVAILABLE(macos(12.0), ios(15.0));
+
++ (NSData *)getClientDataJSONForAuthenticationType:(_WKWebAuthenticationType)type challenge:(NSData *)challenge origin:(NSString *)origin WK_API_AVAILABLE(macos(13.0), ios(16.0));
++ (NSData *)getClientDataJSONWithTopOrigin:(_WKWebAuthenticationType)type challenge:(NSData *)challenge origin:(NSString *)origin topOrigin:(NSString *)topOrigin crossOrigin:(BOOL)crossOrigin
+    WK_API_AVAILABLE(macos(14.0), ios(17.0));
++ (NSData *)encodeMakeCredentialCommandWithClientDataJSON:(NSData *)clientDataJSON options:(_WKPublicKeyCredentialCreationOptions *)options userVerificationAvailability:(_WKWebAuthenticationUserVerificationAvailability)userVerificationAvailability WK_API_AVAILABLE(macos(13.0), ios(16.0));
++ (NSData *)encodeMakeCredentialCommandWithClientDataJSON:(NSData *)clientDataJSON options:(_WKPublicKeyCredentialCreationOptions *)options userVerificationAvailability:(_WKWebAuthenticationUserVerificationAvailability)userVerificationAvailability authenticatorSupportedExtensions:(nullable NSArray<NSString *> *)authenticatorSupportedExtensions WK_API_AVAILABLE(macos(14.0), ios(17.0));
++ (NSData *)encodeGetAssertionCommandWithClientDataJSON:(NSData *)clientDataJSON options:(_WKPublicKeyCredentialRequestOptions *)options userVerificationAvailability:(_WKWebAuthenticationUserVerificationAvailability)userVerificationAvailability WK_API_AVAILABLE(macos(13.0), ios(16.0));
++ (NSData *)encodeGetAssertionCommandWithClientDataJSON:(NSData *)clientDataJSON options:(_WKPublicKeyCredentialRequestOptions *)options userVerificationAvailability:(_WKWebAuthenticationUserVerificationAvailability)userVerificationAvailability authenticatorSupportedExtensions:(nullable NSArray<NSString *> *)authenticatorSupportedExtensions WK_API_AVAILABLE(macos(14.0), ios(17.0));
+
++ (NSData *)encodeMakeCredentialCommandWithClientDataHash:(NSData *)clientDataHash options:(_WKPublicKeyCredentialCreationOptions *)options userVerificationAvailability:(_WKWebAuthenticationUserVerificationAvailability)userVerificationAvailability WK_API_AVAILABLE(macos(13.0), ios(16.0));
++ (NSData *)encodeMakeCredentialCommandWithClientDataHash:(NSData *)clientDataHash options:(_WKPublicKeyCredentialCreationOptions *)options userVerificationAvailability:(_WKWebAuthenticationUserVerificationAvailability)userVerificationAvailability authenticatorSupportedExtensions:(nullable NSArray<NSString *> *)authenticatorSupportedExtensions WK_API_AVAILABLE(macos(14.0), ios(17.0));
++ (NSData *)encodeGetAssertionCommandWithClientDataHash:(NSData *)clientDataHash options:(_WKPublicKeyCredentialRequestOptions *)options userVerificationAvailability:(_WKWebAuthenticationUserVerificationAvailability)userVerificationAvailability WK_API_AVAILABLE(macos(13.0), ios(16.0));
++ (NSData *)encodeGetAssertionCommandWithClientDataHash:(NSData *)clientDataHash options:(_WKPublicKeyCredentialRequestOptions *)options userVerificationAvailability:(_WKWebAuthenticationUserVerificationAvailability)userVerificationAvailability authenticatorSupportedExtensions:(nullable NSArray<NSString *> *)authenticatorSupportedExtensions WK_API_AVAILABLE(macos(14.0), ios(17.0));
 
 - (instancetype)init;
 
 // FIXME: <rdar://problem/71509485> Adds detailed NSError.
-- (void)makeCredentialWithChallenge:(NSData *)challenge origin:(NSString *)origin options:(_WKPublicKeyCredentialCreationOptions *)options completionHandler:(void (^)(_WKAuthenticatorAttestationResponse *, NSError *))handler WK_API_AVAILABLE(macos(12.0), ios(15.0));
-- (void)getAssertionWithChallenge:(NSData *)challenge origin:(NSString *)origin options:(_WKPublicKeyCredentialRequestOptions *)options completionHandler:(void (^)(_WKAuthenticatorAssertionResponse *, NSError *))handler WK_API_AVAILABLE(macos(12.0), ios(15.0));
+- (void)makeCredentialWithChallenge:(NSData *)challenge origin:(NSString *)origin options:(_WKPublicKeyCredentialCreationOptions *)options completionHandler:(void (^)(_WKAuthenticatorAttestationResponse * _Nullable, NSError * _Nullable))handler WK_API_AVAILABLE(macos(12.0), ios(15.0));
+- (void)makeCredentialWithClientDataHash:(NSData *)clientDataHash options:(_WKPublicKeyCredentialCreationOptions *)options completionHandler:(void (^)(_WKAuthenticatorAttestationResponse * _Nullable, NSError * _Nullable))handler WK_API_AVAILABLE(macos(13.0), ios(16.0));
+- (void)makeCredentialWithMediationRequirement:(_WKWebAuthenticationMediationRequirement)mediation clientDataHash:(NSData *)clientDataHash options:(_WKPublicKeyCredentialCreationOptions *)options completionHandler:(void (^)(_WKAuthenticatorAttestationResponse *  _Nullable, NSError *  _Nullable))handler WK_API_AVAILABLE(macos(13.0), ios(16.0));
+- (void)getAssertionWithChallenge:(NSData *)challenge origin:(NSString *)origin options:(_WKPublicKeyCredentialRequestOptions *)options completionHandler:(void (^)(_WKAuthenticatorAssertionResponse * _Nullable, NSError * _Nullable))handler WK_API_AVAILABLE(macos(12.0), ios(15.0));
+- (void)getAssertionWithClientDataHash:(NSData *)clientDataHash options:(_WKPublicKeyCredentialRequestOptions *)options completionHandler:(void (^)(_WKAuthenticatorAssertionResponse * _Nullable, NSError * _Nullable))handler WK_API_AVAILABLE(macos(13.0), ios(16.0));
+- (void)getAssertionWithMediationRequirement:(_WKWebAuthenticationMediationRequirement)mediation clientDataHash:(NSData *)clientDataHash options:(_WKPublicKeyCredentialRequestOptions *)options completionHandler:(void (^)(_WKAuthenticatorAssertionResponse * _Nullable, NSError * _Nullable))handler WK_API_AVAILABLE(macos(13.0), ios(16.0));
 - (void)cancel;
 
 // FIXME: <rdar://problem/71509848> Deprecate the following properties.

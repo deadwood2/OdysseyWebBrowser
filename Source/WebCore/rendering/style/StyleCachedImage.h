@@ -2,7 +2,7 @@
  * Copyright (C) 2000 Lars Knoll (knoll@kde.org)
  *           (C) 2000 Antti Koivisto (koivisto@kde.org)
  *           (C) 2000 Dirk Mueller (mueller@kde.org)
- * Copyright (C) 2003-2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2003-2023 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -32,25 +32,31 @@ class CSSValue;
 class CSSImageValue;
 class CachedImage;
 class Document;
+class LegacyRenderSVGResourceContainer;
+class RenderElement;
+class RenderSVGResourceContainer;
+class TreeScope;
 
 class StyleCachedImage final : public StyleImage {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    static Ref<StyleCachedImage> create(CSSImageValue& cssValue, float scaleFactor = 1);
+    static Ref<StyleCachedImage> create(Ref<CSSImageValue>, float scaleFactor = 1);
+    static Ref<StyleCachedImage> copyOverridingScaleFactor(StyleCachedImage&, float scaleFactor);
     virtual ~StyleCachedImage();
 
-    bool operator==(const StyleImage& other) const final;
+    bool operator==(const StyleImage&) const final;
+    bool equals(const StyleCachedImage&) const;
 
     CachedImage* cachedImage() const final;
 
     WrappedImagePtr data() const final { return m_cachedImage.get(); }
 
-    Ref<CSSValue> cssValue() const final;
+    Ref<CSSValue> computedStyleValue(const RenderStyle&) const final;
     
     bool canRender(const RenderElement*, float multiplier) const final;
     bool isPending() const final;
     void load(CachedResourceLoader&, const ResourceLoaderOptions&) final;
-    bool isLoaded() const final;
+    bool isLoaded(const RenderElement*) const final;
     bool errorOccurred() const final;
     FloatSize imageSize(const RenderElement*, float multiplier) const final;
     bool imageHasRelativeWidth() const final;
@@ -62,19 +68,30 @@ public:
     void removeClient(RenderElement&) final;
     bool hasClient(RenderElement&) const final;
     bool hasImage() const final;
-    RefPtr<Image> image(RenderElement*, const FloatSize&) const final;
+    RefPtr<Image> image(const RenderElement*, const FloatSize&, bool isForFirstLine) const final;
     float imageScaleFactor() const final;
     bool knownToBeOpaque(const RenderElement&) const final;
     bool usesDataProtocol() const final;
 
+    URL reresolvedURL(const Document&) const;
+
+    URL imageURL() const;
+
 private:
-    StyleCachedImage(CSSImageValue&, float);
-    URL imageURL();
+    StyleCachedImage(Ref<CSSImageValue>&&, float);
+
+    LegacyRenderSVGResourceContainer* uncheckedRenderSVGResource(TreeScope&, const AtomString& fragment) const;
+    LegacyRenderSVGResourceContainer* uncheckedRenderSVGResource(const RenderElement*) const;
+    LegacyRenderSVGResourceContainer* legacyRenderSVGResource(const RenderElement*) const;
+    RenderSVGResourceContainer* renderSVGResource(const RenderElement*) const;
+    bool isRenderSVGResource(const RenderElement*) const;
 
     Ref<CSSImageValue> m_cssValue;
     bool m_isPending { true };
     mutable float m_scaleFactor { 1 };
     mutable CachedResourceHandle<CachedImage> m_cachedImage;
+    mutable std::optional<bool> m_isRenderSVGResource;
+    FloatSize m_containerSize;
 };
 
 } // namespace WebCore

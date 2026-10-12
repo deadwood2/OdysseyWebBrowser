@@ -7,20 +7,17 @@
 //   Tests to validate our Vulkan dynamic uniform updates are working as expected.
 //
 
-#include "test_utils/ANGLETest.h"
-#include "test_utils/angle_test_instantiate.h"
-// 'None' is defined as 'struct None {};' in
-// third_party/googletest/src/googletest/include/gtest/internal/gtest-type-util.h.
-// But 'None' is also defined as a numeric constant 0L in <X11/X.h>.
-// So we need to include ANGLETest.h first to avoid this conflict.
-
 #include "libANGLE/Context.h"
+#include "libANGLE/Display.h"
 #include "libANGLE/angletypes.h"
 #include "libANGLE/renderer/vulkan/ContextVk.h"
 #include "libANGLE/renderer/vulkan/ProgramVk.h"
 #include "libANGLE/renderer/vulkan/TextureVk.h"
+#include "test_utils/ANGLETest.h"
+#include "test_utils/angle_test_instantiate.h"
 #include "test_utils/gl_raii.h"
 #include "util/EGLWindow.h"
+#include "util/random_utils.h"
 #include "util/shader_utils.h"
 
 using namespace angle;
@@ -28,7 +25,7 @@ using namespace angle;
 namespace
 {
 
-class VulkanUniformUpdatesTest : public ANGLETest
+class VulkanUniformUpdatesTest : public ANGLETest<>
 {
   protected:
     VulkanUniformUpdatesTest() : mLastContext(nullptr) {}
@@ -52,17 +49,24 @@ class VulkanUniformUpdatesTest : public ANGLETest
             mMaxSetsPerPoolMultiplier);
     }
 
+    gl::Context *hackContext() const
+    {
+        egl::Display *display   = static_cast<egl::Display *>(getEGLWindow()->getDisplay());
+        gl::ContextID contextID = {
+            static_cast<GLuint>(reinterpret_cast<uintptr_t>(getEGLWindow()->getContext()))};
+        return display->getContext(contextID);
+    }
+
     rx::ContextVk *hackANGLE() const
     {
         // Hack the angle!
-        const gl::Context *context = static_cast<gl::Context *>(getEGLWindow()->getContext());
-        return rx::GetImplAs<rx::ContextVk>(context);
+        return rx::GetImplAs<rx::ContextVk>(hackContext());
     }
 
     rx::TextureVk *hackTexture(GLuint handle) const
     {
         // Hack the angle!
-        const gl::Context *context = static_cast<gl::Context *>(getEGLWindow()->getContext());
+        const gl::Context *context = hackContext();
         const gl::Texture *texture = context->getTexture({handle});
         return rx::vk::GetImpl(texture);
     }
@@ -77,12 +81,11 @@ class VulkanUniformUpdatesTest : public ANGLETest
             kMaxSetsMultiplierForTesting);
     }
 
-    static constexpr size_t kTextureStagingBufferSizeForTesting = 128;
-
-    void limitTextureStagingBufferSize(GLuint texture)
+    void setExplicitMaxSetsLimit(uint32_t limit)
     {
-        rx::TextureVk *textureVk = hackTexture(texture);
-        textureVk->overrideStagingBufferSizeForTesting(kTextureStagingBufferSizeForTesting);
+        rx::vk::DynamicDescriptorPool::SetMaxSetsPerPoolForTesting(limit);
+        rx::vk::DynamicDescriptorPool::SetMaxSetsPerPoolMultiplierForTesting(
+            kMaxSetsMultiplierForTesting);
     }
 
   private:
@@ -416,7 +419,6 @@ TEST_P(VulkanUniformUpdatesTest, TextureStagingBufferRecycling)
 
     GLTexture tex;
     glBindTexture(GL_TEXTURE_2D, tex);
-    limitTextureStagingBufferSize(tex);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, getWindowWidth(), getWindowHeight(), 0, GL_RGBA,
                  GL_UNSIGNED_BYTE, nullptr);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -549,6 +551,67 @@ void main()
         drawQuad(program, "position", 0.5f, 1.0f);
         ASSERT_GL_NO_ERROR();
         EXPECT_PIXEL_RECT_EQ(xoffset, yoffset, kHalfX, kHalfY, expectedColor);
+    }
+}
+
+// Covers a usage pattern where two programs share a descriptor pool.
+TEST_P(VulkanUniformUpdatesTest, MultipleProgramsShareDescriptors)
+{
+    setExplicitMaxSetsLimit(2);
+
+    // Set a min size so uniform updates allocate a new buffer every 2nd time.
+    rx::ContextVk *contextVk = hackANGLE();
+    contextVk->setDefaultUniformBlocksMinSizeForTesting(512);
+
+    static constexpr size_t kNumPrograms    = 2;
+    static constexpr size_t kDrawIterations = 4;
+    static constexpr GLint kPosLoc          = 0;
+
+    std::array<GLuint, kNumPrograms> programs = {};
+
+    for (GLuint &program : programs)
+    {
+        auto preLinkCallback = [](GLuint program) {
+            glBindAttribLocation(program, kPosLoc, essl1_shaders::PositionAttrib());
+        };
+
+        program = CompileProgram(essl1_shaders::vs::Simple(), essl1_shaders::fs::UniformColor(),
+                                 preLinkCallback);
+        ASSERT_NE(program, 0u);
+    }
+
+    const std::array<Vector3, 6> &quadVerts = GetQuadVertices();
+
+    GLBuffer vbo;
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferData(GL_ARRAY_BUFFER, quadVerts.size() * sizeof(quadVerts[0]), quadVerts.data(),
+                 GL_STATIC_DRAW);
+
+    glVertexAttribPointer(kPosLoc, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
+    glEnableVertexAttribArray(kPosLoc);
+
+    ASSERT_GL_NO_ERROR();
+
+    RNG rng;
+
+    for (size_t drawIteration = 0; drawIteration < kDrawIterations; ++drawIteration)
+    {
+        for (GLuint program : programs)
+        {
+            Vector3 randVec = RandomVec3(rng.randomInt(), 0.0f, 1.0f);
+
+            glUseProgram(program);
+            glUniform4f(0, randVec.x(), randVec.y(), randVec.z(), 1.0f);
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+            EXPECT_PIXEL_COLOR_NEAR(0, 0, GLColor(randVec), 5);
+        }
+    }
+
+    ASSERT_GL_NO_ERROR();
+
+    for (GLuint &program : programs)
+    {
+        glDeleteProgram(program);
     }
 }
 

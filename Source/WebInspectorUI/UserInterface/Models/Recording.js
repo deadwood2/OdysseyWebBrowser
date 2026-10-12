@@ -71,14 +71,26 @@ WI.Recording = class Recording extends WI.Object
         case InspectorBackend.Enum.Recording.Type.Canvas2D:
             type = WI.Recording.Type.Canvas2D;
             break;
+        case InspectorBackend.Enum.Recording.Type.OffscreenCanvas2D:
+            type = WI.Recording.Type.OffscreenCanvas2D;
+            break;
         case InspectorBackend.Enum.Recording.Type.CanvasBitmapRenderer:
             type = WI.Recording.Type.CanvasBitmapRenderer;
+            break;
+        case InspectorBackend.Enum.Recording.Type.OffscreenCanvasBitmapRenderer:
+            type = WI.Recording.Type.OffscreenCanvasBitmapRenderer;
             break;
         case InspectorBackend.Enum.Recording.Type.CanvasWebGL:
             type = WI.Recording.Type.CanvasWebGL;
             break;
+        case InspectorBackend.Enum.Recording.Type.OffscreenCanvasWebGL:
+            type = WI.Recording.Type.OffscreenCanvasWebGL;
+            break;
         case InspectorBackend.Enum.Recording.Type.CanvasWebGL2:
             type = WI.Recording.Type.CanvasWebGL2;
+            break;
+        case InspectorBackend.Enum.Recording.Type.OffscreenCanvasWebGL2:
+            type = WI.Recording.Type.OffscreenCanvasWebGL2;
             break;
         default:
             WI.Recording.synthesizeWarning(WI.UIString("unknown %s \u0022%s\u0022").format(WI.unlocalizedString("type"), payload.type));
@@ -152,13 +164,21 @@ WI.Recording = class Recording extends WI.Object
     {
         switch (recordingType) {
         case Recording.Type.Canvas2D:
-            return WI.UIString("2D");
+            return WI.UIString("2D", "Recording Type Canvas 2D", "A type of canvas recording in the Graphics Tab.");
+        case Recording.Type.OffscreenCanvas2D:
+            return WI.UIString("Offscreen2D", "Recording Type Offscreen Canvas 2D", "A type of canvas recording in the Graphics Tab.");
         case Recording.Type.CanvasBitmapRenderer:
-            return WI.UIString("Bitmap Renderer", "Recording Type Canvas Bitmap Renderer", "A type of canvas recording in the Graphics Tab");
+            return WI.UIString("Bitmap Renderer", "Recording Type Canvas Bitmap Renderer", "A type of canvas recording in the Graphics Tab.");
+        case Recording.Type.OffscreenCanvasBitmapRenderer:
+            return WI.UIString("Bitmap Renderer (Offscreen)", "Recording Type Offscreen Canvas Bitmap Renderer", "A type of canvas recording in the Graphics Tab.");
         case Recording.Type.CanvasWebGL:
-            return WI.unlocalizedString("WebGL");
+            return WI.UIString("WebGL", "Recording Type Canvas WebGL", "A type of canvas recording in the Graphics Tab.");
+        case Recording.Type.OffscreenCanvasWebGL:
+            return WI.UIString("WebGL (Offscreen)", "Recording Type Offscreen Canvas WebGL", "A type of canvas recording in the Graphics Tab.");
         case Recording.Type.CanvasWebGL2:
-            return WI.unlocalizedString("WebGL2");
+            return WI.UIString("WebGL2", "Recording Type Canvas WebGL2", "A type of canvas recording in the Graphics Tab.");
+        case Recording.Type.OffscreenCanvasWebGL2:
+            return WI.UIString("WebGL2 (Offscreen)", "Recording Type Offscreen Canvas WebGL2", "A type of canvas recording in the Graphics Tab.");
         }
 
         console.assert(false, "Unknown recording type", recordingType);
@@ -218,6 +238,8 @@ WI.Recording = class Recording extends WI.Object
             return WI.unlocalizedString("WebGLTransformFeedback");
         case WI.Recording.Swizzle.WebGLVertexArrayObject:
             return WI.unlocalizedString("WebGLVertexArrayObject");
+        case WI.Recording.Swizzle.DOMPointInit:
+            return WI.unlocalizedString("DOMPointInit");
         default:
             console.error("Unknown swizzle type", swizzleType);
             return null;
@@ -274,6 +296,31 @@ WI.Recording = class Recording extends WI.Object
         return this._actions.lastValue.ready;
     }
 
+    get isCanvas()
+    {
+        return this.isCanvas2D || this.isCanvasBitmapRender || this.isCanvasWebGL || this.isCanvasWebGL2;
+    }
+
+    get isCanvas2D()
+    {
+        return this._type === WI.Recording.Type.Canvas2D || this._type === WI.Recording.Type.OffscreenCanvas2D;
+    }
+
+    get isCanvasBitmapRender()
+    {
+        return this._type === WI.Recording.Type.CanvasBitmapRenderer || this._type === WI.Recording.Type.OffscreenCanvasBitmapRenderer;
+    }
+
+    get isCanvasWebGL()
+    {
+        return this._type === WI.Recording.Type.CanvasWebGL || this._type === WI.Recording.Type.OffscreenCanvasWebGL;
+    }
+
+    get isCanvasWebGL2()
+    {
+        return this._type === WI.Recording.Type.CanvasWebGL2 || this._type === WI.Recording.Type.OffscreenCanvasWebGL2;
+    }
+
     startProcessing()
     {
         console.assert(!this._processing, "Cannot start an already started process().");
@@ -321,6 +368,11 @@ WI.Recording = class Recording extends WI.Object
 
         recordingNameSet.add(name);
         this._displayName = name;
+    }
+
+    is2D()
+    {
+        return WI.Recording.is2D(this._type);
     }
 
     async swizzle(index, type)
@@ -455,22 +507,45 @@ WI.Recording = class Recording extends WI.Object
 
                 case WI.Recording.Swizzle.CallStack: {
                     let array = await this.swizzle(data, WI.Recording.Swizzle.Array);
-                    this._swizzle[index][type] = await Promise.all(array.map((item) => this.swizzle(item, WI.Recording.Swizzle.CallFrame)));
+                    if (!isNaN(array[0])) {
+                        // COMPATIBILITY (macOS 13.0, iOS 16.0): "stackTrace" was sent as an array of call frames instead of a single call stack
+                        array = [array];
+                    }
+
+                    let promises = [];
+
+                    // callFrames
+                    promises.push(Promise.all(array[0].map((item) => this.swizzle(item, WI.Recording.Swizzle.CallFramePayload))));
+
+                    // topCallFrameIsBoundary
+                    if (array.length > 1)
+                        promises.push(this.swizzle(array[1], WI.Recording.Swizzle.Boolean));
+
+                    // truncated
+                    if (array.length > 2)
+                        promises.push(this.swizzle(array[2], WI.Recording.Swizzle.Boolean));
+
+                    // parentStackTrace
+                    if (array.length > 3)
+                        promises.push(this.swizzle(array[3], WI.Recording.Swizzle.StackTrace));
+
+                    let [callFrames, topCallFrameIsBoundary, truncated, parentStackTrace] = await Promise.all(promises);
+                    this._swizzle[index][type] = WI.StackTrace.fromPayload(WI.assumingMainTarget(), {callFrames, topCallFrameIsBoundary, truncated, parentStackTrace});
                     break;
                 }
 
-                case WI.Recording.Swizzle.CallFrame: {
+                case WI.Recording.Swizzle.CallFramePayload: {
                     let array = await this.swizzle(data, WI.Recording.Swizzle.Array);
                     let [functionName, url] = await Promise.all([
                         this.swizzle(array[0], WI.Recording.Swizzle.String),
                         this.swizzle(array[1], WI.Recording.Swizzle.String),
                     ]);
-                    this._swizzle[index][type] = WI.CallFrame.fromPayload(WI.assumingMainTarget(), {
+                    this._swizzle[index][type] = {
                         functionName,
                         url,
                         lineNumber: array[2],
                         columnNumber: array[3],
-                    });
+                    };
                     break;
                 }
                 }
@@ -490,18 +565,35 @@ WI.Recording = class Recording extends WI.Object
                 canvas.height = this._initialState.attributes.height;
             return canvas.getContext(type, ...this._initialState.parameters);
         };
+        let createOffscreenCanvasContext = (type) => {
+            let width = 1;
+            let height = 1;
+            if ("width" in this._initialState.attributes)
+                width = this._initialState.attributes.width;
+            if ("height" in this._initialState.attributes)
+                height = this._initialState.attributes.height;
+            let canvas = new OffscreenCanvas(width, height);
+            return canvas.getContext(type, ...this._initialState.parameters);
+        };
 
-        if (this._type === WI.Recording.Type.Canvas2D)
+        switch (this._type) {
+        case WI.Recording.Type.Canvas2D:
             return createCanvasContext("2d");
-
-        if (this._type === WI.Recording.Type.CanvasBitmapRenderer)
+        case WI.Recording.Type.OffscreenCanvas2D:
+            return createOffscreenCanvasContext("2d");
+        case WI.Recording.Type.CanvasBitmapRenderer:
             return createCanvasContext("bitmaprenderer");
-
-        if (this._type === WI.Recording.Type.CanvasWebGL)
+        case WI.Recording.Type.OffscreenCanvasBitmapRenderer:
+            return createOffscreenCanvasContext("bitmaprenderer");
+        case WI.Recording.Type.CanvasWebGL:
             return createCanvasContext("webgl");
-
-        if (this._type === WI.Recording.Type.CanvasWebGL2)
+        case WI.Recording.Type.OffscreenCanvasWebGL:
+            return createOffscreenCanvasContext("webgl");
+        case WI.Recording.Type.CanvasWebGL2:
             return createCanvasContext("webgl2");
+        case WI.Recording.Type.OffscreenCanvasWebGL2:
+            return createOffscreenCanvasContext("webgl2");
+        }
 
         console.error("Unknown recording type", this._type);
         return null;
@@ -530,7 +622,7 @@ WI.Recording = class Recording extends WI.Object
 
     toHTML()
     {
-        console.assert(this._type === WI.Recording.Type.Canvas2D);
+        console.assert(this.isCanvas2D);
         console.assert(this.ready);
 
         let lines = [];
@@ -805,7 +897,7 @@ WI.Recording = class Recording extends WI.Object
         if (!this._processContext) {
             this._processContext = this.createContext();
 
-            if (this._type === WI.Recording.Type.Canvas2D) {
+            if (this.isCanvas2D) {
                 let initialContent = await WI.ImageUtilities.promisifyLoad(this._initialState.content);
                 this._processContext.drawImage(initialContent, 0, 0);
 
@@ -816,7 +908,7 @@ WI.Recording = class Recording extends WI.Object
                     // The last state represents the current state, which should not be saved.
                     if (initialState !== this._initialState.states.lastValue) {
                         this._processContext.save();
-                        this._processStates.push(WI.RecordingState.fromContext(this._type, this._processContext));
+                        this._processStates.push(WI.RecordingState.fromCanvasContext2D(this._processContext));
                     }
                 }
             }
@@ -887,7 +979,7 @@ WI.Recording = class Recording extends WI.Object
 };
 
 // Keep this in sync with Inspector::Protocol::Recording::VERSION.
-WI.Recording.Version = 1;
+WI.Recording.Version = 2;
 
 WI.Recording.Event = {
     ProcessedAction: "recording-processed-action",
@@ -900,9 +992,13 @@ WI.Recording.CanvasRecordingNamesSymbol = Symbol("canvas-recording-names");
 
 WI.Recording.Type = {
     Canvas2D: "canvas-2d",
+    OffscreenCanvas2D: "offscreen-canvas-2d",
     CanvasBitmapRenderer: "canvas-bitmaprenderer",
+    OffscreenCanvasBitmapRenderer: "offscreen-canvas-bitmaprenderer",
     CanvasWebGL: "canvas-webgl",
+    OffscreenCanvasWebGL: "offscreen-canvas-webgl",
     CanvasWebGL2: "canvas-webgl2",
+    OffscreenCanvasWebGL2: "offscreen-canvas-webgl2",
 };
 
 // Keep this in sync with WebCore::RecordingSwizzleType.
@@ -935,5 +1031,5 @@ WI.Recording.Swizzle = {
 
     // Special frontend-only swizzle types.
     CallStack: Symbol("CallStack"),
-    CallFrame: Symbol("CallFrame"),
+    CallFramePayload: Symbol("CallFramePayload"),
 };

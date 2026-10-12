@@ -35,6 +35,9 @@
 #include "HTMLNames.h"
 #include "JSAttr.h"
 #include "JSDOMBinding.h"
+#include "JSDOMConvertInterface.h"
+#include "JSDOMConvertNullable.h"
+#include "JSDOMConvertSequences.h"
 #include "JSHTMLElementWrapperFactory.h"
 #include "JSMathMLElementWrapperFactory.h"
 #include "JSNodeList.h"
@@ -42,6 +45,7 @@
 #include "MathMLElement.h"
 #include "NodeList.h"
 #include "SVGElement.h"
+#include "WebCoreJSClientData.h"
 
 
 namespace WebCore {
@@ -51,13 +55,13 @@ using namespace HTMLNames;
 
 static JSValue createNewElementWrapper(JSDOMGlobalObject* globalObject, Ref<Element>&& element)
 {
-    if (is<HTMLElement>(element))
-        return createJSHTMLWrapper(globalObject, static_reference_cast<HTMLElement>(WTFMove(element)));
-    if (is<SVGElement>(element))
-        return createJSSVGWrapper(globalObject, static_reference_cast<SVGElement>(WTFMove(element)));
+    if (auto* htmlElement = dynamicDowncast<HTMLElement>(element.get()))
+        return createJSHTMLWrapper(globalObject, *htmlElement);
+    if (auto* svgElement = dynamicDowncast<SVGElement>(element.get()))
+        return createJSSVGWrapper(globalObject, *svgElement);
 #if ENABLE(MATHML)
-    if (is<MathMLElement>(element))
-        return createJSMathMLWrapper(globalObject, static_reference_cast<MathMLElement>(WTFMove(element)));
+    if (auto* mathmlElement = dynamicDowncast<MathMLElement>(element.get()))
+        return createJSMathMLWrapper(globalObject, *mathmlElement);
 #endif
     return createWrapper<Element>(globalObject, WTFMove(element));
 }
@@ -79,6 +83,69 @@ JSValue toJSNewlyCreated(JSGlobalObject*, JSDOMGlobalObject* globalObject, Ref<E
     }
     ASSERT(!getCachedWrapper(globalObject->world(), element));
     return createNewElementWrapper(globalObject, WTFMove(element));
+}
+
+static JSValue getElementsArrayAttribute(JSGlobalObject& lexicalGlobalObject, const JSElement& thisObject, const QualifiedName& attributeName)
+{
+    auto& vm = JSC::getVM(&lexicalGlobalObject);
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
+
+    JSObject* cachedObject = nullptr;
+    JSValue cachedObjectValue = thisObject.getDirect(vm, builtinNames(vm).cachedAttrAssociatedElementsPrivateName());
+    if (cachedObjectValue)
+        cachedObject = asObject(cachedObjectValue);
+    else {
+        cachedObject = constructEmptyObject(vm, thisObject.globalObject()->nullPrototypeObjectStructure());
+        const_cast<JSElement&>(thisObject).putDirect(vm, builtinNames(vm).cachedAttrAssociatedElementsPrivateName(), cachedObject);
+    }
+
+    std::optional<Vector<Ref<Element>>> elements = thisObject.wrapped().getElementsArrayAttribute(attributeName);
+    auto propertyName = PropertyName(Identifier::fromString(vm, attributeName.toString()));
+    JSValue cachedValue = cachedObject->getDirect(vm, propertyName);
+    if (!cachedValue.isEmpty()) {
+        auto cachedElements = convert<IDLNullable<IDLFrozenArray<IDLInterface<Element>>>>(lexicalGlobalObject, cachedValue);
+        if (!cachedElements.hasException(throwScope) && elements == cachedElements.returnValue())
+            return cachedValue;
+    }
+
+    JSValue elementsValue = toJS<IDLNullable<IDLFrozenArray<IDLInterface<Element>>>>(lexicalGlobalObject, *thisObject.globalObject(), throwScope, elements);
+    cachedObject->putDirect(vm, propertyName, elementsValue);
+    return elementsValue;
+}
+
+JSValue JSElement::ariaControlsElements(JSGlobalObject& lexicalGlobalObject) const
+{
+    return getElementsArrayAttribute(lexicalGlobalObject, *this, WebCore::HTMLNames::aria_controlsAttr);
+}
+
+JSValue JSElement::ariaDescribedByElements(JSGlobalObject& lexicalGlobalObject) const
+{
+    return getElementsArrayAttribute(lexicalGlobalObject, *this, WebCore::HTMLNames::aria_describedbyAttr);
+}
+
+JSValue JSElement::ariaDetailsElements(JSGlobalObject& lexicalGlobalObject) const
+{
+    return getElementsArrayAttribute(lexicalGlobalObject, *this, WebCore::HTMLNames::aria_detailsAttr);
+}
+
+JSValue JSElement::ariaErrorMessageElements(JSGlobalObject& lexicalGlobalObject) const
+{
+    return getElementsArrayAttribute(lexicalGlobalObject, *this, WebCore::HTMLNames::aria_errormessageAttr);
+}
+
+JSValue JSElement::ariaFlowToElements(JSGlobalObject& lexicalGlobalObject) const
+{
+    return getElementsArrayAttribute(lexicalGlobalObject, *this, WebCore::HTMLNames::aria_flowtoAttr);
+}
+
+JSValue JSElement::ariaLabelledByElements(JSGlobalObject& lexicalGlobalObject) const
+{
+    return getElementsArrayAttribute(lexicalGlobalObject, *this, WebCore::HTMLNames::aria_labelledbyAttr);
+}
+
+JSValue JSElement::ariaOwnsElements(JSGlobalObject& lexicalGlobalObject) const
+{
+    return getElementsArrayAttribute(lexicalGlobalObject, *this, WebCore::HTMLNames::aria_ownsAttr);
 }
 
 } // namespace WebCore

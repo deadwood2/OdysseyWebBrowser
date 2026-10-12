@@ -28,6 +28,7 @@ class IOSurfaceSurfaceEAGL : public SurfaceGL
 {
   public:
     IOSurfaceSurfaceEAGL(const egl::SurfaceState &state,
+                         RendererGL *renderer,
                          EAGLContextObj cglContext,
                          EGLClientBuffer buffer,
                          const egl::AttributeMap &attribs);
@@ -57,20 +58,29 @@ class IOSurfaceSurfaceEAGL : public SurfaceGL
     EGLint getSwapBehavior() const override;
 
     static bool validateAttributes(EGLClientBuffer buffer, const egl::AttributeMap &attribs);
-    FramebufferImpl *createDefaultFramebuffer(const gl::Context *context,
-                                              const gl::FramebufferState &state) override;
 
     bool hasEmulatedAlphaChannel() const override;
+
+    egl::Error attachToFramebuffer(const gl::Context *context,
+                                   gl::Framebuffer *framebuffer) override;
+    egl::Error detachFromFramebuffer(const gl::Context *context,
+                                     gl::Framebuffer *framebuffer) override;
 
   private:
     angle::Result initializeAlphaChannel(const gl::Context *context, GLuint texture);
 
-#if defined(ANGLE_PLATFORM_IOS_SIMULATOR)
+#if ANGLE_PLATFORM_IOS_FAMILY_SIMULATOR
     IOSurfaceLockOptions getIOSurfaceLockOptions() const;
 #endif
+    // TODO(geofflang): Don't store these, they are potentially specific to a single GL context.
+    // http://anglebug.com/40096492
+    const FunctionsGL *mFunctions;
+    StateManagerGL *mStateManager;
 
     EAGLContextObj mEAGLContext;
     IOSurfaceRef mIOSurface;
+    GLuint mFramebufferID;
+    GLuint mTextureID;
     int mWidth;
     int mHeight;
     int mPlane;
@@ -78,7 +88,7 @@ class IOSurfaceSurfaceEAGL : public SurfaceGL
     int mRowStrideInPixels;
 
     bool mAlphaInitialized;
-#if defined(ANGLE_PLATFORM_IOS_SIMULATOR)
+#if ANGLE_PLATFORM_IOS_FAMILY_SIMULATOR
     GLuint mBoundTextureID;
     bool mUploadFromIOSurface;
     bool mReadbackToIOSurface;

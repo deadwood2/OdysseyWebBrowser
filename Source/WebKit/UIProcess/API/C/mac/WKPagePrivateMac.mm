@@ -26,6 +26,7 @@
 #import "config.h"
 #import "WKPagePrivateMac.h"
 
+#import "APIPageConfiguration.h"
 #import "FullscreenClient.h"
 #import "PageLoadStateObserver.h"
 #import "WKAPICast.h"
@@ -93,7 +94,7 @@
 
 - (BOOL)_webProcessIsResponsive
 {
-    return _page->process().isResponsive();
+    return _page->legacyMainFrameProcess().isResponsive();
 }
 
 - (double)estimatedProgress
@@ -108,15 +109,7 @@
 
 - (SecTrustRef)serverTrust
 {
-#if HAVE(SEC_TRUST_SERIALIZATION)
-    auto certificateInfo = _page->pageLoadState().certificateInfo();
-    if (!certificateInfo)
-        return nil;
-
-    return certificateInfo->certificateInfo().trust();
-#else
-    return nil;
-#endif
+    return _page->pageLoadState().certificateInfo().trust().get();
 }
 
 @end
@@ -139,18 +132,18 @@ bool WKPageIsURLKnownHSTSHost(WKPageRef page, WKURLRef url)
 {
     WebKit::WebPageProxy* webPageProxy = WebKit::toImpl(page);
 
-    return webPageProxy->process().processPool().isURLKnownHSTSHost(WebKit::toImpl(url)->string());
+    return webPageProxy->configuration().processPool().isURLKnownHSTSHost(WebKit::toImpl(url)->string());
 }
 
 WKNavigation *WKPageLoadURLRequestReturningNavigation(WKPageRef pageRef, WKURLRequestRef urlRequestRef)
 {
     auto resourceRequest = WebKit::toImpl(urlRequestRef)->resourceRequest();
-    return WebKit::wrapper(WebKit::toImpl(pageRef)->loadRequest(WTFMove(resourceRequest)));
+    return WebKit::wrapper(WebKit::toImpl(pageRef)->loadRequest(WTFMove(resourceRequest))).autorelease();
 }
 
 WKNavigation *WKPageLoadFileReturningNavigation(WKPageRef pageRef, WKURLRef fileURL, WKURLRef resourceDirectoryURL)
 {
-    return WebKit::wrapper(WebKit::toImpl(pageRef)->loadFile(WebKit::toWTFString(fileURL), WebKit::toWTFString(resourceDirectoryURL)));
+    return WebKit::wrapper(WebKit::toImpl(pageRef)->loadFile(WebKit::toWTFString(fileURL), WebKit::toWTFString(resourceDirectoryURL))).autorelease();
 }
 
 WKWebView *WKPageGetWebView(WKPageRef page)

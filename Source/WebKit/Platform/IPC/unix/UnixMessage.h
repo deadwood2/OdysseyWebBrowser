@@ -28,6 +28,9 @@
 #pragma once
 
 #include "Attachment.h"
+#include "Encoder.h"
+#include <wtf/StdLibExtras.h>
+#include <wtf/TZoneMallocInlines.h>
 #include <wtf/Vector.h>
 
 namespace IPC {
@@ -76,27 +79,27 @@ private:
 };
 
 class UnixMessage {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED_INLINE(UnixMessage);
 public:
     UnixMessage(Encoder& encoder)
         : m_attachments(encoder.releaseAttachments())
-        , m_messageInfo(encoder.bufferSize(), m_attachments.size())
-        , m_body(encoder.buffer())
+        , m_messageInfo(encoder.span().size(), m_attachments.size())
+        , m_body(const_cast<uint8_t*>(encoder.span().data()), encoder.span().size())
     {
     }
 
     UnixMessage(UnixMessage&& other)
+        : m_attachments(WTFMove(other.m_attachments))
+        , m_messageInfo(WTFMove(other.m_messageInfo))
     {
-        m_attachments = WTFMove(other.m_attachments);
-        m_messageInfo = WTFMove(other.m_messageInfo);
         if (other.m_bodyOwned) {
             std::swap(m_body, other.m_body);
             std::swap(m_bodyOwned, other.m_bodyOwned);
         } else if (!m_messageInfo.isBodyOutOfLine()) {
-            m_body = static_cast<uint8_t*>(fastMalloc(m_messageInfo.bodySize()));
-            memcpy(m_body, other.m_body, m_messageInfo.bodySize());
+            m_body = std::span { static_cast<uint8_t*>(fastMalloc(m_messageInfo.bodySize())), m_messageInfo.bodySize() };
+            memcpySpan(m_body, other.m_body);
             m_bodyOwned = true;
-            other.m_body = nullptr;
+            other.m_body = { };
             other.m_bodyOwned = false;
         }
     }
@@ -104,13 +107,13 @@ public:
     ~UnixMessage()
     {
         if (m_bodyOwned)
-            fastFree(m_body);
+            fastFree(m_body.data());
     }
 
     const Vector<Attachment>& attachments() const { return m_attachments; }
     MessageInfo& messageInfo() { return m_messageInfo; }
 
-    uint8_t* body() const { return m_body; }
+    std::span<uint8_t> body() const { return m_body; }
     size_t bodySize() const  { return m_messageInfo.bodySize(); }
 
     void appendAttachment(Attachment&& attachment)
@@ -121,7 +124,7 @@ public:
 private:
     Vector<Attachment> m_attachments;
     MessageInfo m_messageInfo;
-    uint8_t* m_body { nullptr };
+    std::span<uint8_t> m_body;
     bool m_bodyOwned { false };
 };
 

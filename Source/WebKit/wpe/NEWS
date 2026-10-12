@@ -1,89 +1,220 @@
 =================
-WPE WebKit 2.34.5
+WPE WebKit 2.46.0
 =================
 
-What's new in WPE WebKit 2.34.5?
+What's new in WPE WebKit 2.46.0?
 
-  - Improve VP8 codec selection when using GStreamer 1.20.
-  - Fix connecting to the accessiblity bus when using the Bubblewrap sandbox.
-  - Fix the build with recent toolchains based on GCC 12 and on older ones as
-    included e.g. in Ubuntu 18.04.
-  - Fix the build with ICU 60, version 61 is no longer required.
+  - Fix rendering of images in PDF documents.
+  - Make process launching fast again.
+  - Fix webkit_web_resource_get_data() regression that caused we were always retuning empty data.
+  - Fix the build with touch events disabled.
+  - Fix the build with GLib < 2.68.
   - Fix several crashes and rendering issues.
-
-=================
-WPE WebKit 2.34.4
-=================
-
-What's new in WPE WebKit 2.34.4?
-
-  - Fix several crashes and rendering issues.
-
-=================
-WPE WebKit 2.34.3
-=================
-
-What's new in WPE WebKit 2.34.3?
-
-  - Make audio tools (like mixers) display the actual name of the application
-    producing sound, instead of a generic one.
-  - Fix several crashes and rendering issues.
-
-=================
-WPE WebKit 2.34.2
-=================
-
-What's new in WPE WebKit 2.34.2?
-
-  - Fix scrolling issues when pressing Home and PgDown keys.
-  - Fix the build with video disabled.
-
-=================
-WPE WebKit 2.34.1
-=================
-
-What's new in WPE WebKit 2.34.0?
-
-  - Update User-Agent browser versions.
-  - Fix a crash when loading videos on Reddit.
-  - Fix file type detection when application calls
-    g_desktop_app_info_set_as_default_for_extension() passing HTML.
-
-=================
-WPE WebKit 2.34.0
-=================
-
-What's new in WPE WebKit 2.34.0?
-
-  - Use the right display refresh monitor for animations in accelerated compositng mode.
-  - Fix several issues in JavaScriptCore on 32bit systems.
-  - Prefer python3 over python2 in CMake.
 
 ==================
-WPE WebKit 2.33.90
+WPE WebKit 2.45.90
 ==================
 
-What's new in WPE WebKit 2.33.90?
+What's new in WPE WebKit 2.45.90?
 
-  - Add new API to access/modify capture devices states.
-  - Add new API to configure the memory pressure handler.
-  - Add multi-track support to media backend.
-  - Add support for A420 compositing in the media player.
-  - Add support for authentication using client side certificates.
-  - Add support for dark scrollbars.
-  - Add support for display capture.
-  - Add support for drawing the scrollbars corner.
-  - Add support for the Fullscreen API, which needs libwpe 1.11.1 or newer.
-  - Add support for the color-schemes CSS property.
-  - Allow to opt-out of GL rendering at runtime for the media player.
-  - Avoid strong alias computations in font fallback code.
-  - Fix cookies configuration after a network process crash.
-  - Fix deadlock tearing down pipeline when using fallback sink.
-  - Fix rendering of elliptic radial gradients.
+  - Add explicit fencing support when available.
+  - Add new API to WebKitAutomationSession to be notified when the session is
+    about to be closed.
+  - Add webkit://gpu/stdout to dump the information from webkit://gpu to
+    standard output stream.
+  - Add signposts to allow observing graphics tile rendering in Sysprof.
+  - Add quirk to allow totale.rosettastone.com to load properly.
+  - Undeprecate injected bundle frame access interfaces.
+  - Use RGBA as the pixel format for texture backed SkSurfaces.
+  - Ensure that the WPEMonitor properties "width" and "height" are set at
+    the same time.
+  - Fix WebGL with accelerated compositing disabled.
+  - Fix build with GStreamer versions < 1.22.
+  - Fix connection to the accessibility bus under Flatpak.
+  - Fix image filtering not being applied in some cases.
+  - Fix linker relocation errors on Debug/RelWithDebInfo builds.
+  - Fix the build in non-linux systems.
+  - Fix the build with -DUSE_TEXTURE_MAPPER_DMABUF=OFF
+  - Fix the build with Wayland and GBM disabled.
   - Fix several crashes and rendering issues.
-  - Fix touchscreen navigation swipe when the page scrolls horizontally.
-  - Improve pinch to zoom gesture in accerlerated compositing mode.
-  - Show TLS protocol version and ciphersuite in the inspector when building with libsoup3.
+
+=================
+WPE WebKit 2.45.3
+=================
+
+What's new in WPE WebKit 2.45.3?
+
+  - Enable offscreen canvas by default.
+  - Enable ImageBitmap acceleration.
+  - Add support for accelerated offscreen canvas.
+  - Do not display WebGL front buffer before it's initialized.
+  - Add a new setting to enable or disable the 2D canvas acceleration (enabled by default).
+  - Add support for building QtWPE with Qt6.
+  - Fix several crashes and rendering issues.
+
+=================
+WPE WebKit 2.45.2
+=================
+
+What's new in WPE WebKit 2.45.2?
+
+  - Use Cairo on big-endian platforms for now, since Skia does not support them.
+  - Fix a crash in GIF image decoder.
+  - Revert the text scaling fix, since it caused several issues in some sites.
+  - Add new API to load settings from a config file.
+  - Fix several crashes and rendering issues.
+
+=================
+WPE WebKit 2.45.1
+=================
+
+What's new in WPE WebKit 2.45.1?
+
+  - Use Skia by default instead of Cairo for rendering. Cairo support may
+    still be built passing -DUSE_SKIA=OFF to CMake.
+  - Synchronize WebGL content using fences, where available.
+  - Disable the gst-libav AAC decoder.
+  - Support AXActiveElement and AXSelectedChildren for combo boxes,
+    lists and list boxes.
+  - Decrease input notifications for gamepad inputs.
+  - Make gamepads visible on axis movements, and not only on button presses.
+  - Improve DMA-BUF format negotiation and buffer allocation to facilitate
+    faster code paths in buffer handling.
+  - Make user scripts and style sheets visible in the Web Inspector.
+  - Make hole-punch media playback support video elements with rounded
+	corners.
+  - Enable by default building support for the MediaSession and WebCodecs APIs.
+  - Allow WebDriver connections to already running browsers.
+  - Support downloading files from the Web Inspector when using HTTP
+    remote connections.
+  - Replace build-time per-platform multimedia support option with quirks
+    applied at runtime. Automatic quirk detection is used by default, and
+    quirks may be overriden using the WEBKIT_GST_QUIRKS and
+    WEBKIT_GST_HOLE_PUNCH environment variables.
+  - Deprecate the WebKitWebView::insecure-content-detected signal.
+  - Fix mouse location in WebDriver when output device scaling is in effect.
+  - Fix touch input event propagation.
+  - Fix missing mouse cursor in the WPE Wayland platform support.
+  - Fix several crashes and rendering issues.
+
+=================
+WPE WebKit 2.43.1
+=================
+
+What's new in WPE WebKit 2.43.1?
+
+  - Improve vblank synchronization when rendering.
+  - Improve DMA-BUF buffers handling for video frames.
+  - Use the buffer format preferred by the driver in DMA-BUF renderer.
+  - Do not block the compositing thread waiting for rendering threads.
+  - Improve performance when scaling images in a canvas.
+  - Allow disabling WebGL support using the API.
+  - Enable usage of libbacktrace by default.
+  - Fix several crashes and rendering issues.
+
+=================
+WPE WebKit 2.40.2
+=================
+
+What's new in WPE WebKit 2.40.2?
+
+  - Properly handle the modifier value when exporting/importing DMA-BUF buffers.
+  - Don't require GApplication for bubblewrap sandbox.
+  - The Bubblewrap sandbox no longer requires setting an application
+    identifier via GApplication to operate correctly. Using GApplication
+    is still recommended, but optional.
+  - Show DRM device and render node if available in webkit://gpu.
+  - Long touch presses no longer generate mouse click events, to align with
+    other web engines and WebKit ports.
+  - New build options to fine-tune WPE for certain hardware platforms
+    (Westeros, Broadcom, Broadcom Nexus, Amlogic, Raspberry Pi).
+  - Ensure that the correct GPU device is used for WebGL when using GBM.
+  - Fix touchmove events not being produced.
+  - Fix cap height calculation in font metrics.
+  - Fix the build on i386.
+  - Fix the build with libgbm disabled.
+  - Fix the build with USE_WPE_VIDEO_PLANE_DISPLAY_DMABUF enabled.
+  - Translation updates: Swedish.
+  - Add WebKitClipboardPermissionRequest to handle DOM paste access requests.
+  - Fix several crashes and rendering issues.
+
+=================
+WPE WebKit 2.39.4
+=================
+
+What's new in WPE WebKit 2.39.4?
+
+  - Use ANGLE for the WebGL implementation and enable WebGL2.
+  - Add support for background-repeat: space.
+  - Add API to check if a response policy decision is for the main resource.
+  - Add support for the "get computed label" and "get computed role"
+    WebDriver commands.
+  - Add API to support asynchronously returning values from user script messages.
+  - Add API to query the permission state of web features.
+  - Add API to disable Web security.
+  - Add support for client side certificates on WebSocket connections.
+  - Add webkit_web_hit_test_result_get_js_node() to get the JSCValue for the node.
+  - Add WebKitWebFormManager and deprecate WebKitWebPage form related signals.
+  - Make checkbox, radio and inner spin button scale along by page zoom.
+  - Use async scrolling also for keyboard scrolling.
+  - Deprecate the WebKitConsoleMessage API.
+  - Deprecate the event parameter of WebKitWebView::context-menu and
+    WebKitWebView::show-option-menu signals in favor of a getter in
+    WebKitContextMenu and WebKitOptionMenu.
+  - Do not emit context-menu signals for media settings popup menu.
+  - Do not perform position queries on the video sink when a player
+    is for audio only.
+  - Fix WebGL when sandbox is enabled.
+  - Fix loading of media documents.
+  - Fix first party for cookies set on every media request.
+  - Fix gibberish text when loading alternate data.
+  - Fix rendering of checkbox and radio buttons on black backgrounds.
+  - Fix several crashes and rendering issues.
+  - Fix several warnings when building for ARMv7 (32-bits).
+  - Fix web process leak when webkit_download_set_destination is called with empty destination.
+
+=================
+WPE WebKit 2.37.1
+=================
+
+What's new in WPE WebKit 2.37.1?
+
+  - Add initial implementation of WebRTC using GstWebRTC if GStreamer 1.20 is available,
+    disabled by default via web view settings.
+  - Add new API to set WebView's Content-Security-Policy for web extensions support.
+  - Add new API to run async JavaScript functions.
+  - Expose typed arrays in JavaScriptCore GLib API.
+  - Add support for PDF documents using PDF.js.
+  - Show font name and font variant settings in the inspector.
+  - MediaSession is enabled by default, allowing remote media control using MPRIS.
+  - Modernized media controls UI.
+  - Add Support Google Dynamic Ad Insertion (DAI).
+  - Add support for capturing encoded video streams from a webcam.
+  - Make it possible to use the remote inspector from other browsers using WEBKIT_INSPECTOR_HTTP_SERVER env var.
+  - Add support for IPv6 in the remote inspector.
+  - Update form elements style to match libadwaita.
+  - Fix canvas animations and images with threaded rendering enabled.
+  - Switch to use gi-docgen for API documentation instead of gtk-doc.
+  - Remove the ATK a11y implementation that has been replaced by AT-SPI DBus interfaces.
+  - Fix several crashes and rendering issues.
+
+=================
+WPE WebKit 2.35.1
+=================
+
+What's new in WPE WebKit 2.35.1?
+
+  - Make user interactive threads (event handler, scrolling, etc.) real time
+    on Linux.
+  - Add new API to set HTTP response information to custom URI schemes.
+  - Add support for the MediaSession API.
+  - Add initial support, disabled by default at build time, for the JPEG-XL
+	image format.
+  - Make the WPE Qt API use only public WPE library symbols, which makes
+    it possible to build it separately from the rest of WebKit.
+  - Fix jsc_value_object_define_property_accessor() to work with objects
+    not having a wrapped instance.
+  - Fix several crashes and rendering issues.
 
 =================
 WPE WebKit 2.33.2

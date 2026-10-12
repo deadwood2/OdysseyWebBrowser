@@ -67,6 +67,7 @@ enum class RequestKey : uint8_t {
     kPinAuth = 4,
     kNewPinEnc = 5,
     kPinHashEnc = 6,
+    kPinUvAuthParam = 7,
 };
 
 // ResponseKey enumerates the keys in the top-level CBOR map for all PIN
@@ -83,9 +84,6 @@ constexpr int64_t kProtocolVersion = 1;
 
 // encodeCOSEPublicKey takes a raw ECDH256 public key and returns it as a COSE structure.
 WEBCORE_EXPORT cbor::CBORValue::MapValue encodeCOSEPublicKey(const Vector<uint8_t>& key);
-
-// encodeRawPublicKey takes X & Y and returns them as a 0x04 || X || Y byte array.
-WEBCORE_EXPORT Vector<uint8_t> encodeRawPublicKey(const Vector<uint8_t>& X, const Vector<uint8_t>& Y);
 
 // validateAndConvertToUTF8 convert the input to a UTF8 CString if it is a syntactically valid PIN.
 WEBCORE_EXPORT std::optional<CString> validateAndConvertToUTF8(const String& pin);
@@ -129,9 +127,27 @@ struct KeyAgreementResponse {
     WEBCORE_EXPORT static std::optional<KeyAgreementResponse> parseFromCOSE(const cbor::CBORValue::MapValue&);
 
     Ref<WebCore::CryptoKeyEC> peerKey;
-
+    WEBCORE_EXPORT ~KeyAgreementResponse();
+    WEBCORE_EXPORT KeyAgreementResponse(KeyAgreementResponse&&);
+    WEBCORE_EXPORT KeyAgreementResponse& operator=(KeyAgreementResponse&&);
 private:
     explicit KeyAgreementResponse(Ref<WebCore::CryptoKeyEC>&&);
+};
+
+struct SetPinRequest {
+public:
+    WEBCORE_EXPORT const WebCore::CryptoKeyAES& sharedKey() const;
+    WEBCORE_EXPORT static std::optional<SetPinRequest> tryCreate(const String& newPin, const WebCore::CryptoKeyEC&);
+
+    friend Vector<uint8_t> encodeAsCBOR(const SetPinRequest&);
+
+private:
+    Ref<WebCore::CryptoKeyAES> m_sharedKey;
+    mutable cbor::CBORValue::MapValue m_coseKey;
+    Vector<uint8_t> m_newPinEnc;
+    Vector<uint8_t> m_pinUvAuthParam;
+
+    SetPinRequest(Ref<WebCore::CryptoKeyAES>&& sharedKey, cbor::CBORValue::MapValue&& coseKey, Vector<uint8_t>&& m_newPinEnc, Vector<uint8_t>&& m_pinUvAuthParam);
 };
 
 // TokenRequest requests a pin-token from an authenticator. These tokens can be
@@ -180,6 +196,7 @@ private:
 WEBCORE_EXPORT Vector<uint8_t> encodeAsCBOR(const RetriesRequest&);
 WEBCORE_EXPORT Vector<uint8_t> encodeAsCBOR(const KeyAgreementRequest&);
 WEBCORE_EXPORT Vector<uint8_t> encodeAsCBOR(const TokenRequest&);
+WEBCORE_EXPORT Vector<uint8_t> encodeAsCBOR(const SetPinRequest&);
 
 } // namespace pin
 } // namespace fido

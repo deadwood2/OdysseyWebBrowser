@@ -139,7 +139,7 @@ class SCM:
     def exists(self, path):
         self._subclass_must_implement()
 
-    def changed_files(self, git_commit=None):
+    def changed_files(self, git_commit=None, find_branch=False):
         self._subclass_must_implement()
 
     def changed_files_for_revision(self, revision):
@@ -157,9 +157,6 @@ class SCM:
     def display_name(self):
         self._subclass_must_implement()
 
-    def head_svn_revision(self):
-        return self.svn_revision(self.checkout_root)
-
     def svn_revision(self, path):
         self._subclass_must_implement()
 
@@ -172,7 +169,7 @@ class SCM:
     def timestamp_of_native_revision(self, path, revision):
         self._subclass_must_implement()
 
-    def create_patch(self, git_commit=None, changed_files=None):
+    def create_patch(self, git_commit=None, changed_files=None, commit_message=False, find_branch=False):
         self._subclass_must_implement()
 
     def committer_email_for_revision(self, revision):
@@ -181,13 +178,7 @@ class SCM:
     def contents_at_revision(self, path, revision):
         self._subclass_must_implement()
 
-    def diff_for_revision(self, revision):
-        self._subclass_must_implement()
-
     def diff_for_file(self, path, log=None):
-        self._subclass_must_implement()
-
-    def show_head(self, path):
         self._subclass_must_implement()
 
     def apply_reverse_diff(self, revision):
@@ -203,9 +194,6 @@ class SCM:
         self._subclass_must_implement()
 
     def last_svn_commit_log(self):
-        self._subclass_must_implement()
-
-    def svn_blame(self, path):
         self._subclass_must_implement()
 
     def has_working_directory_changes(self):
@@ -244,15 +232,15 @@ class SCM:
     def discard_local_commits(self):
         return
 
+    def cleanup_and_optimize_local_repository(self):
+        return
+
     def remote_merge_base(self):
         SCM._subclass_must_implement()
 
     def commit_locally_with_message(self, message):
         _log.error("Your source control manager does not support local commits.")
         sys.exit(1)
-
-    def local_changes_exist(self):
-        return (self.supports_local_commits() and self.has_local_commits()) or self.has_working_directory_changes()
 
     def discard_local_changes(self):
         if self.has_working_directory_changes():

@@ -19,6 +19,7 @@
 
 #pragma once
 
+#include "CompositeOperation.h"
 #include "Length.h"
 
 namespace WebCore {
@@ -29,18 +30,20 @@ struct LengthSize {
     Length width;
     Length height;
 
+    ALWAYS_INLINE friend bool operator==(const LengthSize&, const LengthSize&) = default;
+
     bool isEmpty() const { return width.isZero() || height.isZero(); }
     bool isZero() const { return width.isZero() && height.isZero(); }
 };
 
-ALWAYS_INLINE bool operator==(const LengthSize& a, const LengthSize& b)
-{
-    return a.width == b.width && a.height == b.height;
-}
-
 inline LengthSize blend(const LengthSize& from, const LengthSize& to, const BlendingContext& context)
 {
     return { blend(from.width, to.width, context), blend(from.height, to.height, context) };
+}
+
+inline LengthSize blend(const LengthSize& from, const LengthSize& to, const BlendingContext& context, ValueRange valueRange)
+{
+    return { blend(from.width, to.width, context, valueRange), blend(from.height, to.height, context, valueRange) };
 }
 
 WTF::TextStream& operator<<(WTF::TextStream&, const LengthSize&);

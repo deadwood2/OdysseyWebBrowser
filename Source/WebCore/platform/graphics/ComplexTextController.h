@@ -30,6 +30,7 @@
 #include <wtf/RefCounted.h>
 #include <wtf/RetainPtr.h>
 #include <wtf/Vector.h>
+#include <wtf/WeakHashSet.h>
 #include <wtf/text/WTFString.h>
 
 typedef unsigned short CGGlyph;
@@ -39,25 +40,29 @@ typedef const struct __CTLine * CTLineRef;
 
 typedef struct hb_buffer_t hb_buffer_t;
 
+namespace WTF {
+class CachedTextBreakIterator;
+}
+
 namespace WebCore {
 
 class FontCascade;
 class Font;
 class TextRun;
 
-enum GlyphIterationStyle { IncludePartialGlyphs, ByWholeGlyphs };
+enum class GlyphIterationStyle : bool { IncludePartialGlyphs, ByWholeGlyphs };
 
 // See https://trac.webkit.org/wiki/ComplexTextController for more information about ComplexTextController.
 class ComplexTextController {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    ComplexTextController(const FontCascade&, const TextRun&, bool mayUseNaturalWritingDirection = false, HashSet<const Font*>* fallbackFonts = 0, bool forTextEmphasis = false);
+    ComplexTextController(const FontCascade&, const TextRun&, bool mayUseNaturalWritingDirection = false, SingleThreadWeakHashSet<const Font>* fallbackFonts = 0, bool forTextEmphasis = false);
 
     class ComplexTextRun;
     WEBCORE_EXPORT ComplexTextController(const FontCascade&, const TextRun&, Vector<Ref<ComplexTextRun>>&);
 
     // Advance and emit glyphs up to the specified character.
-    WEBCORE_EXPORT void advance(unsigned to, GlyphBuffer* = nullptr, GlyphIterationStyle = IncludePartialGlyphs, HashSet<const Font*>* fallbackFonts = nullptr);
+    WEBCORE_EXPORT void advance(unsigned to, GlyphBuffer* = nullptr, GlyphIterationStyle = GlyphIterationStyle::IncludePartialGlyphs, SingleThreadWeakHashSet<const Font>* fallbackFonts = nullptr);
 
     // Compute the character offset for a given x coordinate.
     unsigned offsetForPosition(float x, bool includePartialGlyphs);
@@ -97,6 +102,7 @@ public:
         unsigned glyphCount() const { return m_glyphCount; }
         const Font& font() const { return m_font; }
         const UChar* characters() const { return m_characters; }
+        std::span<const UChar> span() const { return { m_characters, stringLength() }; }
         unsigned stringLocation() const { return m_stringLocation; }
         unsigned stringLength() const { return m_stringLength; }
         ALWAYS_INLINE unsigned indexAt(unsigned) const;
@@ -119,11 +125,15 @@ public:
         ComplexTextRun(const Font&, const UChar* characters, unsigned stringLocation, unsigned stringLength, unsigned indexBegin, unsigned indexEnd, bool ltr);
         WEBCORE_EXPORT ComplexTextRun(const Vector<FloatSize>& advances, const Vector<FloatPoint>& origins, const Vector<Glyph>& glyphs, const Vector<unsigned>& stringIndices, FloatSize initialAdvance, const Font&, const UChar* characters, unsigned stringLocation, unsigned stringLength, unsigned indexBegin, unsigned indexEnd, bool ltr);
 
-        Vector<FloatSize, 64> m_baseAdvances;
+        using BaseAdvancesVector = Vector<FloatSize, 64>;
+        using GlyphVector = Vector<CGGlyph, 64>;
+        using CoreTextIndicesVector = Vector<unsigned, 64>;
+
+        BaseAdvancesVector m_baseAdvances;
         Vector<FloatPoint, 64> m_glyphOrigins;
-        Vector<CGGlyph, 64> m_glyphs;
+        GlyphVector m_glyphs;
         Vector<unsigned, 64> m_glyphEndOffsets;
-        Vector<unsigned, 64> m_coreTextIndices;
+        CoreTextIndicesVector m_coreTextIndices;
         FloatSize m_initialAdvance;
         const Font& m_font;
         const UChar* m_characters;
@@ -144,7 +154,7 @@ private:
 
     void collectComplexTextRuns();
 
-    void collectComplexTextRunsForCharacters(const UChar*, unsigned length, unsigned stringLocation, const Font*);
+    void collectComplexTextRunsForCharacters(std::span<const UChar>, unsigned stringLocation, const Font*);
     void adjustGlyphsAndAdvances();
 
     unsigned indexOfCurrentRun(unsigned& leftmostGlyph);
@@ -153,6 +163,8 @@ private:
     float runWidthSoFarFraction(unsigned glyphStartOffset, unsigned glyphEndOffset, unsigned oldCharacterInCurrentGlyph, GlyphIterationStyle) const;
 
     FloatPoint glyphOrigin(unsigned index) const { return index < m_glyphOrigins.size() ? m_glyphOrigins[index] : FloatPoint(); }
+
+    void advanceByCombiningCharacterSequence(const WTF::CachedTextBreakIterator& graphemeClusterIterator, unsigned& location, char32_t& baseCharacter);
 
     Vector<FloatSize, 256> m_adjustedBaseAdvances;
     Vector<FloatPoint, 256> m_glyphOrigins;
@@ -180,7 +192,7 @@ private:
 
     Vector<String> m_stringsFor8BitRuns;
 
-    HashSet<const Font*>* m_fallbackFonts { nullptr };
+    SingleThreadWeakHashSet<const Font>* m_fallbackFonts { nullptr };
 
     const FontCascade& m_font;
     const TextRun& m_run;
@@ -198,7 +210,7 @@ private:
     float m_expansionPerOpportunity { 0 };
 
     float m_minGlyphBoundingBoxX { std::numeric_limits<float>::max() };
-    float m_maxGlyphBoundingBoxX { std::numeric_limits<float>::min() };
+    float m_maxGlyphBoundingBoxX { std::numeric_limits<float>::lowest() };
     float m_minGlyphBoundingBoxY { std::numeric_limits<float>::max() };
     float m_maxGlyphBoundingBoxY { std::numeric_limits<float>::min() };
 

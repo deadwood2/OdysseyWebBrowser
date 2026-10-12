@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2017-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,10 +26,11 @@
 #pragma once
 
 #include "PageClient.h"
+#include <WebCore/PlatformTextAlternatives.h>
 #include <wtf/Forward.h>
 #include <wtf/WeakObjCPtr.h>
 
-@class NSTextAlternatives;
+@class PlatformTextAlternatives;
 @class WKWebView;
 
 namespace API {
@@ -45,12 +46,27 @@ struct AppHighlight;
 
 namespace WebKit {
 
+struct TextAnimationData;
+enum class TextAnimationType : uint8_t;
+
 class PageClientImplCocoa : public PageClient {
 public:
     PageClientImplCocoa(WKWebView *);
     virtual ~PageClientImplCocoa();
 
     void pageClosed() override;
+
+    void topContentInsetDidChange() final;
+
+#if ENABLE(GPU_PROCESS)
+    void gpuProcessDidFinishLaunching() override;
+    void gpuProcessDidExit() override;
+#endif
+
+#if ENABLE(MODEL_PROCESS)
+    void modelProcessDidFinishLaunching() override;
+    void modelProcessDidExit() override;
+#endif
 
     void themeColorWillChange() final;
     void themeColorDidChange() final;
@@ -73,23 +89,63 @@ public:
     NSSet *serializableFileWrapperClasses() const final;
 #endif
 
-    WebCore::DictationContext addDictationAlternatives(NSTextAlternatives *) final;
+    WebCore::DictationContext addDictationAlternatives(PlatformTextAlternatives *) final;
+    void replaceDictationAlternatives(PlatformTextAlternatives *, WebCore::DictationContext) final;
     void removeDictationAlternatives(WebCore::DictationContext) final;
     Vector<String> dictationAlternatives(WebCore::DictationContext) final;
-    NSTextAlternatives *platformDictationAlternatives(WebCore::DictationContext) final;
+    PlatformTextAlternatives *platformDictationAlternatives(WebCore::DictationContext) final;
 
 #if ENABLE(APP_HIGHLIGHTS)
     void storeAppHighlight(const WebCore::AppHighlight&) final;
 #endif
 
+#if ENABLE(WRITING_TOOLS_UI)
+    void addTextAnimationForAnimationID(const WTF::UUID&, const WebCore::TextAnimationData&) final;
+    void removeTextAnimationForAnimationID(const WTF::UUID&) final;
+    void didEndPartialIntelligenceTextPonderingAnimation() final;
+#endif
+
     void microphoneCaptureWillChange() final;
     void cameraCaptureWillChange() final;
+    void displayCaptureWillChange() final;
+    void displayCaptureSurfacesWillChange() final;
+    void systemAudioCaptureWillChange() final;
+
     void microphoneCaptureChanged() final;
     void cameraCaptureChanged() final;
+    void displayCaptureChanged() final;
+    void displayCaptureSurfacesChanged() final;
+    void systemAudioCaptureChanged() final;
+
+    WindowKind windowKind() final;
+
+#if ENABLE(WRITING_TOOLS)
+    void proofreadingSessionShowDetailsForSuggestionWithIDRelativeToRect(const WebCore::WritingTools::TextSuggestionID&, WebCore::IntRect selectionBoundsInRootView) final;
+
+    void proofreadingSessionUpdateStateForSuggestionWithID(WebCore::WritingTools::TextSuggestionState, const WTF::UUID& replacementUUID) final;
+
+    void writingToolsActiveWillChange() final;
+    void writingToolsActiveDidChange() final;
+#endif
+
+#if ENABLE(GAMEPAD)
+    void setGamepadsRecentlyAccessed(GamepadsRecentlyAccessed) final;
+#if PLATFORM(VISION)
+    void gamepadsConnectedStateChanged() final;
+#endif
+#endif
+
+    void hasActiveNowPlayingSessionChanged(bool) final;
+
+    void videoControlsManagerDidChange() override;
+
+    CocoaWindow *platformWindow() const final;
 
 protected:
+    RetainPtr<WKWebView> webView() const { return m_webView.get(); }
+
     WeakObjCPtr<WKWebView> m_webView;
     std::unique_ptr<WebCore::AlternativeTextUIController> m_alternativeTextUIController;
 };
 
-}
+} // namespace WebKit

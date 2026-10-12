@@ -29,15 +29,20 @@
 #if ENABLE(LEGACY_ENCRYPTED_MEDIA) && ENABLE(MEDIA_SOURCE)
 
 #import "CDMPrivateMediaSourceAVFObjC.h"
+#import "Logging.h"
 #import "WebCoreNSErrorExtras.h"
 #import <AVFoundation/AVError.h>
 #import <wtf/FileSystem.h>
 
 namespace WebCore {
 
-CDMSessionMediaSourceAVFObjC::CDMSessionMediaSourceAVFObjC(CDMPrivateMediaSourceAVFObjC& cdm, LegacyCDMSessionClient* client)
+CDMSessionMediaSourceAVFObjC::CDMSessionMediaSourceAVFObjC(CDMPrivateMediaSourceAVFObjC& cdm, LegacyCDMSessionClient& client)
     : m_cdm(&cdm)
     , m_client(client)
+#if !RELEASE_LOG_DISABLED
+    , m_logger(client.logger())
+    , m_logIdentifier(client.logIdentifier())
+#endif
 {
 }
 
@@ -51,7 +56,7 @@ CDMSessionMediaSourceAVFObjC::~CDMSessionMediaSourceAVFObjC()
     m_sourceBuffers.clear();
 }
 
-void CDMSessionMediaSourceAVFObjC::layerDidReceiveError(AVSampleBufferDisplayLayer *, NSError *error, bool& shouldIgnore)
+void CDMSessionMediaSourceAVFObjC::videoRendererDidReceiveError(WebSampleBufferVideoRendering *, NSError *error, bool& shouldIgnore)
 {
     if (!m_client)
         return;
@@ -64,7 +69,7 @@ void CDMSessionMediaSourceAVFObjC::layerDidReceiveError(AVSampleBufferDisplayLay
         m_client->sendError(LegacyCDMSessionClient::MediaKeyErrorDomain, code);
 }
 
-void CDMSessionMediaSourceAVFObjC::rendererDidReceiveError(AVSampleBufferAudioRenderer *, NSError *error, bool& shouldIgnore)
+void CDMSessionMediaSourceAVFObjC::audioRendererDidReceiveError(AVSampleBufferAudioRenderer *, NSError *error, bool& shouldIgnore)
 {
     if (!m_client)
         return;
@@ -109,8 +114,15 @@ String CDMSessionMediaSourceAVFObjC::storagePath() const
     if (storageDirectory.isEmpty())
         return emptyString();
 
-    return FileSystem::pathByAppendingComponent(storageDirectory, "SecureStop.plist");
+    return FileSystem::pathByAppendingComponent(storageDirectory, "SecureStop.plist"_s);
 }
+
+#if !RELEASE_LOG_DISABLED
+WTFLogChannel& CDMSessionMediaSourceAVFObjC::logChannel() const
+{
+    return LogEME;
+}
+#endif
 
 }
 

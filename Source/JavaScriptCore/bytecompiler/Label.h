@@ -32,6 +32,10 @@
 #include <wtf/Vector.h>
 #include <limits.h>
 
+#if OS(MORPHOS)
+#undef bind
+#endif
+
 namespace JSC {
     template<typename Traits>
     class BytecodeGeneratorBase;

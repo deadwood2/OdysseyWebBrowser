@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010, 2011, 2014-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -88,12 +88,12 @@ static JSValueRef getMenuItemChildrenCallback(JSContextRef context, JSObjectRef 
     return array;
 }
 
-static JSStaticFunction staticMenuItemFunctions[] = {
+static const JSStaticFunction staticMenuItemFunctions[] = {
     { "click", menuItemClickCallback, kJSPropertyAttributeReadOnly | kJSPropertyAttributeDontDelete },
     { 0, 0, 0 }
 };
 
-static JSStaticValue staticMenuItemValues[] = {
+static const JSStaticValue staticMenuItemValues[] = {
     { "title", getMenuItemTitleCallback, 0, kJSPropertyAttributeReadOnly },
     { "children", getMenuItemChildrenCallback, 0, kJSPropertyAttributeReadOnly },
     { "enabled", getMenuItemEnabledCallback, 0, kJSPropertyAttributeReadOnly },
@@ -144,7 +144,7 @@ static WKEventModifiers parseModifier(const JSRetainPtr<JSStringRef>& modifier)
     if (JSStringIsEqualToUTF8CString(modifier.get(), "capsLockKey"))
         return kWKEventModifiersCapsLockKey;
     if (JSStringIsEqualToUTF8CString(modifier.get(), "addSelectionKey")) {
-#if OS(MAC_OS_X)
+#if OS(MACOS)
         return kWKEventModifiersMetaKey;
 #else
         return kWKEventModifiersControlKey;
@@ -191,11 +191,6 @@ static WKEventModifiers parseModifierArray(JSContextRef context, JSValueRef arra
     return modifiers;
 }
 
-static WKEventModifiers parseModifierArray(JSValueRef arrayValue)
-{
-    return parseModifierArray(WKBundleFrameGetJavaScriptContext(WKBundlePageGetMainFrame(InjectedBundle::singleton().page()->page())), arrayValue);
-}
-
 Ref<EventSendingController> EventSendingController::create()
 {
     return adoptRef(*new EventSendingController);
@@ -219,14 +214,14 @@ static WKRetainPtr<WKDictionaryRef> createMouseMessageBody(MouseState state, int
     return body;
 }
 
-void EventSendingController::mouseDown(int button, JSValueRef modifierArray, JSStringRef pointerType)
+void EventSendingController::mouseDown(JSContextRef context, int button, JSValueRef modifierArray, JSStringRef pointerType)
 {
-    postSynchronousPageMessage("EventSender", createMouseMessageBody(MouseDown, button, parseModifierArray(modifierArray), pointerType));
+    postSynchronousPageMessage("EventSender", createMouseMessageBody(MouseDown, button, parseModifierArray(context, modifierArray), pointerType));
 }
 
-void EventSendingController::mouseUp(int button, JSValueRef modifierArray, JSStringRef pointerType)
+void EventSendingController::mouseUp(JSContextRef context, int button, JSValueRef modifierArray, JSStringRef pointerType)
 {
-    postSynchronousPageMessage("EventSender", createMouseMessageBody(MouseUp, button, parseModifierArray(modifierArray), pointerType));
+    postSynchronousPageMessage("EventSender", createMouseMessageBody(MouseUp, button, parseModifierArray(context, modifierArray), pointerType));
 }
 
 void EventSendingController::mouseMoveTo(int x, int y, JSStringRef pointerType)
@@ -239,6 +234,33 @@ void EventSendingController::mouseMoveTo(int x, int y, JSStringRef pointerType)
         setValue(body, "PointerType", pointerType);
     m_position = WKPointMake(x, y);
     postSynchronousPageMessage("EventSender", body);
+
+    WKBundlePageFlushDeferredDidReceiveMouseEventForTesting(InjectedBundle::singleton().pageRef());
+    auto waitForDidReceiveEventBody = adoptWK(WKMutableDictionaryCreate());
+    setValue(waitForDidReceiveEventBody, "SubMessage", "WaitForDeferredMouseEvents");
+    postSynchronousPageMessage("EventSender", waitForDidReceiveEventBody);
+}
+
+void EventSendingController::asyncMouseDown(JSContextRef context, int button, JSValueRef modifierArray, JSStringRef pointerType, JSValueRef completionHandler)
+{
+    postMessageWithAsyncReply(context, "EventSender", createMouseMessageBody(MouseDown, button, parseModifierArray(context, modifierArray), pointerType), completionHandler);
+}
+
+void EventSendingController::asyncMouseUp(JSContextRef context, int button, JSValueRef modifierArray, JSStringRef pointerType, JSValueRef completionHandler)
+{
+    postMessageWithAsyncReply(context, "EventSender", createMouseMessageBody(MouseUp, button, parseModifierArray(context, modifierArray), pointerType), completionHandler);
+}
+
+void EventSendingController::asyncMouseMoveTo(JSContextRef context, int x, int y, JSStringRef pointerType, JSValueRef completionHandler)
+{
+    auto body = adoptWK(WKMutableDictionaryCreate());
+    setValue(body, "SubMessage", "MouseMoveTo");
+    setValue(body, "X", adoptWK(WKDoubleCreate(x)));
+    setValue(body, "Y", adoptWK(WKDoubleCreate(y)));
+    if (pointerType)
+        setValue(body, "PointerType", pointerType);
+    m_position = WKPointMake(x, y);
+    postMessageWithAsyncReply(context, "EventSender", body, completionHandler);
 }
 
 void EventSendingController::mouseForceClick()
@@ -301,9 +323,39 @@ static WKRetainPtr<WKMutableDictionaryRef> createKeyDownMessageBody(JSStringRef 
     return body;
 }
 
-void EventSendingController::keyDown(JSStringRef key, JSValueRef modifierArray, int location)
+static WKRetainPtr<WKMutableDictionaryRef> createRawKeyDownMessageBody(JSStringRef key, WKEventModifiers modifiers, int location)
 {
-    postSynchronousPageMessage("EventSender", createKeyDownMessageBody(key, parseModifierArray(modifierArray), location));
+    auto body = adoptWK(WKMutableDictionaryCreate());
+    setValue(body, "SubMessage", "RawKeyDown");
+    setValue(body, "Key", key);
+    setValue(body, "Modifiers", adoptWK(WKUInt64Create(modifiers)));
+    setValue(body, "Location", adoptWK(WKUInt64Create(location)));
+    return body;
+}
+
+static WKRetainPtr<WKMutableDictionaryRef> createRawKeyUpMessageBody(JSStringRef key, WKEventModifiers modifiers, int location)
+{
+    auto body = adoptWK(WKMutableDictionaryCreate());
+    setValue(body, "SubMessage", "RawKeyUp");
+    setValue(body, "Key", key);
+    setValue(body, "Modifiers", adoptWK(WKUInt64Create(modifiers)));
+    setValue(body, "Location", adoptWK(WKUInt64Create(location)));
+    return body;
+}
+
+void EventSendingController::keyDown(JSContextRef context, JSStringRef key, JSValueRef modifierArray, int location)
+{
+    postSynchronousPageMessage("EventSender", createKeyDownMessageBody(key, parseModifierArray(context, modifierArray), location));
+}
+
+void EventSendingController::rawKeyDown(JSContextRef context, JSStringRef key, JSValueRef modifierArray, int location)
+{
+    postSynchronousPageMessage("EventSender", createRawKeyDownMessageBody(key, parseModifierArray(context, modifierArray), location));
+}
+
+void EventSendingController::rawKeyUp(JSContextRef context, JSStringRef key, JSValueRef modifierArray, int location)
+{
+    postSynchronousPageMessage("EventSender", createRawKeyUpMessageBody(key, parseModifierArray(context, modifierArray), location));
 }
 
 void EventSendingController::scheduleAsynchronousKeyDown(JSStringRef key)
@@ -397,12 +449,10 @@ void EventSendingController::continuousMouseScrollBy(int x, int y, bool paged)
     postSynchronousPageMessage("EventSender", body);
 }
 
-JSValueRef EventSendingController::contextClick()
+JSValueRef EventSendingController::contextClick(JSContextRef context)
 {
-    auto page = InjectedBundle::singleton().page()->page();
-    WKBundleFrameRef mainFrame = WKBundlePageGetMainFrame(page);
-    JSContextRef context = WKBundleFrameGetJavaScriptContext(mainFrame);
 #if ENABLE(CONTEXT_MENUS)
+    auto page = InjectedBundle::singleton().page()->page();
     auto menuEntries = adoptWK(WKBundlePageCopyContextMenuAtPointInWindow(page, m_position));
     auto array = JSObjectMakeArray(context, 0, 0, 0);
     if (!menuEntries)
@@ -426,41 +476,45 @@ JSValueRef EventSendingController::contextClick()
 void EventSendingController::textZoomIn()
 {
     auto& injectedBundle = InjectedBundle::singleton();
-    // Ensure page zoom is reset.
-    WKBundlePageSetPageZoomFactor(injectedBundle.page()->page(), 1);
+    double zoomFactor = WKBundlePageGetTextZoomFactor(injectedBundle.page()->page()) * ZoomMultiplierRatio;
 
-    double zoomFactor = WKBundlePageGetTextZoomFactor(injectedBundle.page()->page());
-    WKBundlePageSetTextZoomFactor(injectedBundle.page()->page(), zoomFactor * ZoomMultiplierRatio);
+    auto body = adoptWK(WKMutableDictionaryCreate());
+    setValue(body, "SubMessage", "SetTextZoom");
+    setValue(body, "ZoomFactor", zoomFactor);
+    postSynchronousPageMessage("EventSender", body);
 }
 
 void EventSendingController::textZoomOut()
 {
     auto& injectedBundle = InjectedBundle::singleton();
-    // Ensure page zoom is reset.
-    WKBundlePageSetPageZoomFactor(injectedBundle.page()->page(), 1);
+    double zoomFactor = WKBundlePageGetTextZoomFactor(injectedBundle.page()->page()) / ZoomMultiplierRatio;
 
-    double zoomFactor = WKBundlePageGetTextZoomFactor(injectedBundle.page()->page());
-    WKBundlePageSetTextZoomFactor(injectedBundle.page()->page(), zoomFactor / ZoomMultiplierRatio);
+    auto body = adoptWK(WKMutableDictionaryCreate());
+    setValue(body, "SubMessage", "SetTextZoom");
+    setValue(body, "ZoomFactor", zoomFactor);
+    postSynchronousPageMessage("EventSender", body);
 }
 
 void EventSendingController::zoomPageIn()
 {
     auto& injectedBundle = InjectedBundle::singleton();
-    // Ensure text zoom is reset.
-    WKBundlePageSetTextZoomFactor(injectedBundle.page()->page(), 1);
+    double zoomFactor = WKBundlePageGetPageZoomFactor(injectedBundle.page()->page()) * ZoomMultiplierRatio;
 
-    double zoomFactor = WKBundlePageGetPageZoomFactor(injectedBundle.page()->page());
-    WKBundlePageSetPageZoomFactor(injectedBundle.page()->page(), zoomFactor * ZoomMultiplierRatio);
+    auto body = adoptWK(WKMutableDictionaryCreate());
+    setValue(body, "SubMessage", "SetPageZoom");
+    setValue(body, "ZoomFactor", zoomFactor);
+    postSynchronousPageMessage("EventSender", body);
 }
 
 void EventSendingController::zoomPageOut()
 {
     auto& injectedBundle = InjectedBundle::singleton();
-    // Ensure text zoom is reset.
-    WKBundlePageSetTextZoomFactor(injectedBundle.page()->page(), 1);
+    double zoomFactor = WKBundlePageGetPageZoomFactor(injectedBundle.page()->page()) / ZoomMultiplierRatio;
 
-    double zoomFactor = WKBundlePageGetPageZoomFactor(injectedBundle.page()->page());
-    WKBundlePageSetPageZoomFactor(injectedBundle.page()->page(), zoomFactor / ZoomMultiplierRatio);
+    auto body = adoptWK(WKMutableDictionaryCreate());
+    setValue(body, "SubMessage", "SetPageZoom");
+    setValue(body, "ZoomFactor", zoomFactor);
+    postSynchronousPageMessage("EventSender", body);
 }
 
 void EventSendingController::scalePageBy(double scale, double x, double y)
@@ -510,14 +564,12 @@ static void executeCallback(void* context)
     JSValueUnprotect(callbackData->m_context, callbackData->m_function);
 }
 
-void EventSendingController::callAfterScrollingCompletes(JSValueRef functionCallback)
+void EventSendingController::callAfterScrollingCompletes(JSContextRef context, JSValueRef functionCallback)
 {
     if (!functionCallback)
         return;
 
     auto page = InjectedBundle::singleton().page()->page();
-    WKBundleFrameRef mainFrame = WKBundlePageGetMainFrame(page);
-    JSContextRef context = WKBundleFrameGetJavaScriptContext(mainFrame);
     
     JSObjectRef functionCallbackObject = JSValueToObject(context, functionCallback, nullptr);
     if (!functionCallbackObject)
@@ -625,6 +677,15 @@ void EventSendingController::cancelTouchPoint(int index)
 }
 
 #endif
+
+void EventSendingController::smartMagnify()
+{
+#if PLATFORM(MAC)
+    auto body = adoptWK(WKMutableDictionaryCreate());
+    setValue(body, "SubMessage", "SmartMagnify");
+    postSynchronousPageMessage("EventSender", body);
+#endif
+}
 
 #if ENABLE(MAC_GESTURE_EVENTS)
 

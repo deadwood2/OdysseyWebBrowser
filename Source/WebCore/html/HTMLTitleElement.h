@@ -28,12 +28,13 @@
 namespace WebCore {
 
 class HTMLTitleElement final : public HTMLElement {
-    WTF_MAKE_ISO_ALLOCATED(HTMLTitleElement);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(HTMLTitleElement);
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(HTMLTitleElement);
 public:
     static Ref<HTMLTitleElement> create(const QualifiedName&, Document&);
 
     WEBCORE_EXPORT String text() const;
-    WEBCORE_EXPORT void setText(const String&);
+    WEBCORE_EXPORT void setText(String&&);
 
     const StringWithDirection& textWithDirection() const { return m_title; }
 

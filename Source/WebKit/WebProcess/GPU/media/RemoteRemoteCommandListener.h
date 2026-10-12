@@ -31,6 +31,8 @@
 #include "MessageReceiver.h"
 #include "RemoteRemoteCommandListenerIdentifier.h"
 #include <WebCore/RemoteCommandListener.h>
+#include <wtf/Identified.h>
+#include <wtf/TZoneMalloc.h>
 
 namespace IPC {
 class Connection;
@@ -43,13 +45,19 @@ class WebProcess;
 
 class RemoteRemoteCommandListener final
     : public WebCore::RemoteCommandListener
+    , private Identified<RemoteRemoteCommandListenerIdentifier>
     , private GPUProcessConnection::Client
-    , private IPC::MessageReceiver {
-    WTF_MAKE_FAST_ALLOCATED;
+    , private IPC::MessageReceiver
+    , public ThreadSafeRefCountedAndCanMakeThreadSafeWeakPtr<RemoteRemoteCommandListener> {
+    WTF_MAKE_TZONE_ALLOCATED(RemoteRemoteCommandListener);
 public:
-    static std::unique_ptr<RemoteRemoteCommandListener> create(WebCore::RemoteCommandListenerClient&, WebProcess&);
-    RemoteRemoteCommandListener(WebCore::RemoteCommandListenerClient&, WebProcess&);
+    static Ref<RemoteRemoteCommandListener> create(WebCore::RemoteCommandListenerClient&);
+    explicit RemoteRemoteCommandListener(WebCore::RemoteCommandListenerClient&);
     ~RemoteRemoteCommandListener();
+
+    void ref() const final { return ThreadSafeRefCountedAndCanMakeThreadSafeWeakPtr<RemoteRemoteCommandListener>::ref(); }
+    void deref() const final { return ThreadSafeRefCountedAndCanMakeThreadSafeWeakPtr<RemoteRemoteCommandListener>::deref(); }
+    ThreadSafeWeakPtrControlBlock& controlBlock() const final { return ThreadSafeRefCountedAndCanMakeThreadSafeWeakPtr<RemoteRemoteCommandListener>::controlBlock(); }
 
 private:
     // IPC::MessageReceiver
@@ -66,11 +74,9 @@ private:
 
     GPUProcessConnection& ensureGPUProcessConnection();
 
-    WebProcess& m_process;
-    RemoteRemoteCommandListenerIdentifier m_identifier;
     WebCore::RemoteCommandListener::RemoteCommandsSet m_currentCommands;
     bool m_currentSupportSeeking { false };
-    WeakPtr<GPUProcessConnection> m_gpuProcessConnection;
+    ThreadSafeWeakPtr<GPUProcessConnection> m_gpuProcessConnection;
 };
 
 }

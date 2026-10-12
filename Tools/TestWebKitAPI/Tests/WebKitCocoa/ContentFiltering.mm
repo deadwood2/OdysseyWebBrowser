@@ -27,16 +27,20 @@
 
 #if ENABLE(CONTENT_FILTERING)
 
+#import "DeprecatedGlobalValues.h"
 #import "ContentFiltering.h"
-#import "MockContentFilterSettings.h"
+#import "HTTPServer.h"
 #import "PlatformUtilities.h"
 #import "TestProtocol.h"
+#import "TestWKWebView.h"
 #import "WKWebViewConfigurationExtras.h"
+#import <WebCore/MockContentFilterSettings.h>
 #import <WebKit/WKErrorRef.h>
 #import <WebKit/WKNavigationDelegatePrivate.h>
 #import <WebKit/WKProcessPoolPrivate.h>
 #import <WebKit/WKWebView.h>
 #import <WebKit/WKWebViewPrivate.h>
+#import <WebKit/WKWebsiteDataStorePrivate.h>
 #import <WebKit/_WKDownloadDelegate.h>
 #import <WebKit/_WKRemoteObjectInterface.h>
 #import <WebKit/_WKRemoteObjectRegistry.h>
@@ -53,8 +57,6 @@ SOFT_LINK_CLASS(WebContentAnalysis, WebFilterEvaluator);
 
 using Decision = WebCore::MockContentFilterSettings::Decision;
 using DecisionPoint = WebCore::MockContentFilterSettings::DecisionPoint;
-
-static bool isDone;
 
 @interface MockContentFilterEnabler : NSObject <NSCopying, NSSecureCoding>
 - (instancetype)initWithDecision:(Decision)decision decisionPoint:(DecisionPoint)decisionPoint;
@@ -77,7 +79,8 @@ static bool isDone;
 
 - (instancetype)initWithCoder:(NSCoder *)decoder
 {
-    return [super init];
+    self = [super init];
+    return self;
 }
 
 - (instancetype)initWithDecision:(Decision)decision decisionPoint:(DecisionPoint)decisionPoint
@@ -288,6 +291,11 @@ TEST(ContentFiltering, BlockDownloadNever)
     }];
 }
 
+- (void)webViewWebContentProcessDidTerminate:(WKWebView *)webView
+{
+    EXPECT_FALSE(true);
+}
+
 @end
 
 static void loadAlternateTest(Decision decision, DecisionPoint decisionPoint)
@@ -333,6 +341,16 @@ TEST(ContentFiltering, LoadAlternateAfterFinishedAddingDataWK2)
     loadAlternateTest(Decision::Block, DecisionPoint::AfterFinishedAddingData);
 }
 
+TEST(ContentFiltering, CookieAccessFromReplacementData)
+{
+    auto networkProcessStarter = adoptNS([WKWebView new]);
+    [networkProcessStarter synchronouslyLoadHTMLString:@"hi"];
+    auto pidBefore = networkProcessStarter.get().configuration.websiteDataStore._networkProcessIdentifier;
+    loadAlternateTest(Decision::Block, DecisionPoint::AfterWillSendRequest);
+    auto pidAfter = networkProcessStarter.get().configuration.websiteDataStore._networkProcessIdentifier;
+    EXPECT_EQ(pidBefore, pidAfter);
+    TestWebKitAPI::Util::runFor(Seconds(0.1));
+}
 
 @interface LazilyLoadPlatformFrameworksController : NSObject <WKNavigationDelegate>
 @property (nonatomic, readonly) WKWebView *webView;
@@ -434,11 +452,7 @@ TEST(ContentFiltering, LazilyLoadPlatformFrameworks)
         [TestProtocol registerWithScheme:@"http"];
         [[controller webView] loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"http://test"]]];
         TestWebKitAPI::Util::run(&isDone);
-#if PLATFORM(MAC)
         [controller expectParentalControlsLoaded:NO];
-#else
-        [controller expectParentalControlsLoaded:YES];
-#endif
         [TestProtocol unregister];
 
 #if PLATFORM(MAC)
@@ -446,10 +460,87 @@ TEST(ContentFiltering, LazilyLoadPlatformFrameworks)
         [TestProtocol registerWithScheme:@"https"];
         [[controller webView] loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"https://test"]]];
         TestWebKitAPI::Util::run(&isDone);
-        [controller expectParentalControlsLoaded:YES];
+        [controller expectParentalControlsLoaded:NO];
         [TestProtocol unregister];
 #endif
     }
 }
+
+TEST(ContentFiltering, URLAfterServerRedirectBlocked)
+{
+    auto mainForFetchTestBytes = "<html>"
+    "<body>"
+    "<script>"
+    "function log(msg)"
+    "{"
+    "    window.webkit.messageHandlers.sw.postMessage(msg);"
+    "}"
+    ""
+    "try {"
+    ""
+    "function addFrame()"
+    "{"
+    "    frame = document.createElement('iframe');"
+    "    frame.src = \"/test.html\";"
+    "    frame.onload = function() { window.webkit.messageHandlers.sw.postMessage(frame.contentDocument.body.innerHTML); }"
+    "    document.body.appendChild(frame);"
+    "}"
+    ""
+    "navigator.serviceWorker.register('/sw.js').then(function(reg) {"
+    "    if (reg.active) {"
+    "        addFrame();"
+    "        return;"
+    "    }"
+    "    worker = reg.installing;"
+    "    worker.addEventListener('statechange', function() {"
+    "        if (worker.state == 'activated')"
+    "            addFrame();"
+    "    });"
+    "}).catch(function(error) {"
+    "    log(\"Registration failed with: \" + error);"
+    "});"
+    "} catch(e) {"
+    "    log(\"Exception: \" + e);"
+    "}"
+    "</script>"
+    "</body>"
+    "</html>"_s;
+
+    auto serviceWorkerJS = "<script>"
+    "self.addEventListener(\"fetch\", (event) => {"
+    "});"
+    "</script>"_s;
+
+    [WKWebsiteDataStore _allowWebsiteDataRecordsForAllOrigins];
+
+    // Start with a clean slate data store
+    [[WKWebsiteDataStore defaultDataStore] removeDataOfTypes:[WKWebsiteDataStore allWebsiteDataTypes] modifiedSince:[NSDate distantPast] completionHandler:^() {
+        done = true;
+    }];
+    TestWebKitAPI::Util::run(&done);
+    done = false;
+
+    @autoreleasepool {
+        [TestProtocol registerWithScheme:@"https"];
+
+        TestWebKitAPI::HTTPServer server({
+            { "/"_s, { mainForFetchTestBytes } },
+            { "/sw.js"_s, { { { "Content-Type"_s, "application/javascript"_s } }, serviceWorkerJS } },
+        });
+
+        auto configuration = configurationWithContentFilterSettings(Decision::Block, DecisionPoint::AfterAddData);
+        auto webView = adoptNS([[WKWebView alloc] initWithFrame:CGRectZero configuration:configuration.get()]);
+        auto navigationDelegate = adoptNS([[LoadAlternateNavigationDelegate alloc] init]);
+        [webView setNavigationDelegate:navigationDelegate.get()];
+        [webView loadRequest:server.request()];
+
+        // LoadAlternateNavigationDelegate checks expectations here
+        TestWebKitAPI::Util::run(&isDone);
+
+        [TestProtocol unregister];
+    }
+}
+
+
 
 #endif // ENABLE(CONTENT_FILTERING)

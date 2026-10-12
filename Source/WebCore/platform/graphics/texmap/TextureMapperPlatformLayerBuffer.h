@@ -27,11 +27,17 @@
 
 #if USE(COORDINATED_GRAPHICS)
 
-#include "BitmapTextureGL.h"
+#include "BitmapTexture.h"
+#include "TextureMapperFlags.h"
 #include "TextureMapperGLHeaders.h"
 #include "TextureMapperPlatformLayer.h"
+#include <variant>
 #include <wtf/MonotonicTime.h>
-#include <wtf/Variant.h>
+#include <wtf/OptionSet.h>
+
+#if PLATFORM(GTK) || PLATFORM(WPE)
+#include "GLFence.h"
+#endif
 
 namespace WebCore {
 
@@ -39,9 +45,9 @@ class TextureMapperPlatformLayerBuffer : public TextureMapperPlatformLayer {
     WTF_MAKE_NONCOPYABLE(TextureMapperPlatformLayerBuffer);
     WTF_MAKE_FAST_ALLOCATED();
 public:
-    TextureMapperPlatformLayerBuffer(RefPtr<BitmapTexture>&&, TextureMapperGL::Flags = 0);
+    TextureMapperPlatformLayerBuffer(RefPtr<BitmapTexture>&&, OptionSet<TextureMapperFlags> = { });
 
-    TextureMapperPlatformLayerBuffer(GLuint textureID, const IntSize&, TextureMapperGL::Flags, GLint internalFormat);
+    TextureMapperPlatformLayerBuffer(GLuint textureID, const IntSize&, OptionSet<TextureMapperFlags>, GLint internalFormat);
 
     struct RGBTexture {
         GLuint id;
@@ -51,21 +57,23 @@ public:
         std::array<GLuint, 4> planes;
         std::array<unsigned, 4> yuvPlane;
         std::array<unsigned, 4> yuvPlaneOffset;
-        std::array<GLfloat, 9> yuvToRgbMatrix;
+        std::array<GLfloat, 16> yuvToRgbMatrix;
     };
     struct ExternalOESTexture {
         GLuint id;
     };
-    using TextureVariant = WTF::Variant<RGBTexture, YUVTexture, ExternalOESTexture>;
+    using TextureVariant = std::variant<RGBTexture, YUVTexture, ExternalOESTexture>;
 
-    TextureMapperPlatformLayerBuffer(TextureVariant&&, const IntSize&, TextureMapperGL::Flags, GLint internalFormat);
+    TextureMapperPlatformLayerBuffer(TextureVariant&&, const IntSize&, OptionSet<TextureMapperFlags>, GLint internalFormat);
 
     virtual ~TextureMapperPlatformLayerBuffer();
 
-    void paintToTextureMapper(TextureMapper&, const FloatRect&, const TransformationMatrix& modelViewMatrix = TransformationMatrix(), float opacity = 1.0) final;
+    void paintToTextureMapper(TextureMapper&, const FloatRect&, const TransformationMatrix& modelViewMatrix = TransformationMatrix(), float opacity = 1.0) override;
+
+    bool isHolePunchBuffer() const override;
 
     bool canReuseWithoutReset(const IntSize&, GLint internalFormat);
-    BitmapTextureGL& textureGL() { return static_cast<BitmapTextureGL&>(*m_texture); }
+    BitmapTexture& texture() { return *m_texture; }
 
     inline void markUsed() { m_timeLastUsed = MonotonicTime::now(); }
     MonotonicTime lastUsedTime() const { return m_timeLastUsed; }
@@ -84,9 +92,9 @@ public:
 
     bool hasManagedTexture() const { return m_hasManagedTexture; }
     void setUnmanagedBufferDataHolder(std::unique_ptr<UnmanagedBufferDataHolder> holder) { m_unmanagedBufferDataHolder = WTFMove(holder); }
-    void setExtraFlags(TextureMapperGL::Flags flags) { m_extraFlags = flags; }
+    void setExtraFlags(OptionSet<TextureMapperFlags> flags) { m_extraFlags = flags; }
 
-    std::unique_ptr<TextureMapperPlatformLayerBuffer> clone();
+    virtual std::unique_ptr<TextureMapperPlatformLayerBuffer> clone();
 
     class HolePunchClient {
         WTF_MAKE_FAST_ALLOCATED();
@@ -97,20 +105,30 @@ public:
 
     void setHolePunchClient(std::unique_ptr<HolePunchClient>&& client) { m_holePunchClient = WTFMove(client); }
 
-    const TextureVariant& textureVariant() { return m_variant; }
+#if PLATFORM(GTK) || PLATFORM(WPE)
+    void setFence(std::unique_ptr<GLFence>&& fence) { m_fence = WTFMove(fence); }
+#endif
+
+    const TextureVariant& textureVariant() const { return m_variant; }
+    IntSize size() const { return m_size; }
+
+protected:
+    TextureVariant m_variant;
 
 private:
-
     RefPtr<BitmapTexture> m_texture;
     MonotonicTime m_timeLastUsed;
 
-    TextureVariant m_variant;
     IntSize m_size;
     GLint m_internalFormat;
-    TextureMapperGL::Flags m_extraFlags;
+    OptionSet<TextureMapperFlags> m_extraFlags;
     bool m_hasManagedTexture;
     std::unique_ptr<UnmanagedBufferDataHolder> m_unmanagedBufferDataHolder;
     std::unique_ptr<HolePunchClient> m_holePunchClient;
+
+#if PLATFORM(GTK) || PLATFORM(WPE)
+    std::unique_ptr<GLFence> m_fence;
+#endif
 };
 
 } // namespace WebCore

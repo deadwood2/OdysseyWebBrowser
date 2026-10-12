@@ -45,24 +45,27 @@ import re
 import shutil
 import sys
 import time
-from collections import defaultdict, OrderedDict
+from collections import OrderedDict, defaultdict
 
 from webkitcorepy.string_utils import pluralize
 
 from webkitpy.common.iteration_compatibility import iteritems, itervalues
-from webkitpy.layout_tests.controllers.layout_test_finder import LayoutTestFinder
+from webkitpy.layout_tests.controllers.layout_test_finder_legacy import LayoutTestFinder
 from webkitpy.layout_tests.controllers.layout_test_runner import LayoutTestRunner
 from webkitpy.layout_tests.controllers.test_result_writer import TestResultWriter
-from webkitpy.layout_tests.layout_package import json_layout_results_generator
 from webkitpy.layout_tests.layout_package import json_results_generator
-from webkitpy.layout_tests.models import test_expectations
-from webkitpy.layout_tests.models import test_failures
-from webkitpy.layout_tests.models import test_results
-from webkitpy.layout_tests.models import test_run_results
+from webkitpy.layout_tests.models import (
+    test_expectations,
+    test_failures,
+    test_results,
+    test_run_results,
+)
 from webkitpy.layout_tests.models.test_input import TestInput
-from webkitpy.layout_tests.models.test_run_results import INTERRUPTED_EXIT_STATUS, TestRunResults
+from webkitpy.layout_tests.models.test_run_results import (
+    INTERRUPTED_EXIT_STATUS,
+    TestRunResults,
+)
 from webkitpy.results.upload import Upload
-from webkitpy.xcode.device_type import DeviceType
 
 _log = logging.getLogger(__name__)
 
@@ -140,6 +143,9 @@ class Manager(object):
         tests_to_skip = expectations.model().get_tests_with_result_type(test_expectations.SKIP)
         if self._options.skip_failing_tests:
             tests_to_skip.update(expectations.model().get_tests_with_result_type(test_expectations.FAIL))
+            tests_to_skip.update(expectations.model().get_tests_with_result_type(test_expectations.FLAKY))
+
+        if self._options.skip_flaky_tests:
             tests_to_skip.update(expectations.model().get_tests_with_result_type(test_expectations.FLAKY))
 
         if self._options.skipped == 'only':
@@ -231,9 +237,6 @@ class Manager(object):
 
     def _test_input_for_file(self, test_file, device_type):
         test_is_slow = self._test_is_slow(test_file.test_path, device_type=device_type)
-        reference_files = self._port.reference_files(
-            test_file.test_path, device_type=device_type
-        )
         timeout = (
             self._options.slow_time_out_ms
             if test_is_slow
@@ -245,7 +248,7 @@ class Manager(object):
             )
         )
 
-        if reference_files:
+        if test_file.reference_files:
             should_run_pixel_test = True
         elif not self._options.pixel_tests:
             should_run_pixel_test = False
@@ -263,7 +266,6 @@ class Manager(object):
             is_slow=test_is_slow,
             needs_servers=test_file.needs_any_server,
             should_dump_jsconsolelog_in_stderr=should_dump_jsconsolelog_in_stderr,
-            reference_files=reference_files,
             should_run_pixel_test=should_run_pixel_test,
         )
 
@@ -313,12 +315,15 @@ class Manager(object):
     def run(self, args):
         num_failed_uploads = 0
 
+        if self._options.test_list:
+            for list_path in self._options.test_list:
+                if not self._port.host.filesystem.isfile(list_path):
+                    _log.critical('')
+                    _log.critical('--test-list file "{}" not found'.format(list_path))
+                    return test_run_results.RunDetails(exit_code=-1)
+
         device_type_list = self._port.supported_device_types()
-        try:
-            tests_to_run_by_device, aggregate_tests_to_skip = self._collect_tests(args, device_type_list)
-        except IOError:
-            # This is raised if --test-list doesn't exist
-            return test_run_results.RunDetails(exit_code=-1)
+        tests_to_run_by_device, aggregate_tests_to_skip = self._collect_tests(args, device_type_list)
 
         aggregate_tests_to_run = set()  # type: Set[Test]
         for v in tests_to_run_by_device.values():
@@ -368,7 +373,7 @@ class Manager(object):
         # Create the output directory if it doesn't already exist.
         self._port.host.filesystem.maybe_make_directory(self._results_directory)
 
-        needs_http = any(test.needs_http_server for tests in itervalues(tests_to_run_by_device) for test in tests)
+        needs_http = (any(test.needs_http_server for tests in itervalues(tests_to_run_by_device) for test in tests) or self._options.load_in_cross_origin_iframe)
         needs_web_platform_test_server = any(test.needs_wpt_server for tests in itervalues(tests_to_run_by_device) for test in tests)
         needs_websockets = any(test.needs_websocket_server for tests in itervalues(tests_to_run_by_device) for test in tests)
         self._runner = LayoutTestRunner(self._options, self._port, self._printer, self._results_directory,
@@ -379,15 +384,47 @@ class Manager(object):
         enabled_pixel_tests_in_retry = False
 
         max_child_processes_for_run = 1
-        child_processes_option_value = self._options.child_processes
+        child_processes_option_value = int(self._options.child_processes or 0)
         uploads = []
 
-        for device_type in device_type_list:
-            self._options.child_processes = min(self._port.max_child_processes(device_type=device_type), int(child_processes_option_value or self._port.default_child_processes(device_type=device_type)))
+        for i, device_type in enumerate(device_type_list):
+            specified_child_processes = (
+                child_processes_option_value
+                or self._port.default_child_processes(device_type=device_type)
+            )
+
+            max_child_processes = self._port.max_child_processes(
+                device_type=device_type
+            )
+
+            if i > 0 and self._port.is_simulator():
+                # Limit the number of simulators we end up booting by only using one for
+                # all devices after the first, assuming we run the vast majority of
+                # tests on the first device.
+                max_child_processes = min(1, max_child_processes)
+
+            self._options.child_processes = min(
+                max_child_processes, specified_child_processes
+            )
 
             _log.info('')
             if not self._options.child_processes:
-                _log.info('Skipping {} because {} is not available'.format(pluralize(len(tests_to_run_by_device[device_type]), 'test'), str(device_type)))
+                skipped_by_default = (
+                    specified_child_processes == 0 and max_child_processes > 0
+                )
+
+                if skipped_by_default:
+                    skip_reason = 'skipped by default'
+                else:
+                    skip_reason = 'not available'
+
+                _log.info(
+                    'Skipping {} because {} is {}'.format(
+                        pluralize(len(tests_to_run_by_device[device_type]), 'test'),
+                        str(device_type),
+                        skip_reason,
+                    )
+                )
                 _log.info('')
                 continue
 
@@ -542,7 +579,11 @@ class Manager(object):
             self._save_json_files(summarized_results, initial_results)
 
             results_path = self._filesystem.join(self._results_directory, "results.html")
-            self._copy_results_html_file(results_path)
+            self._copy_results_html_file("results.html", results_path)
+
+            treemap_path = self._filesystem.join(self._results_directory, "test-duration-treemap.html")
+            self._copy_results_html_file("test-duration-treemap.html", treemap_path)
+
             if initial_results.keyboard_interrupted:
                 exit_code = INTERRUPTED_EXIT_STATUS
             else:
@@ -682,40 +723,17 @@ class Manager(object):
         """
         _log.debug("Writing JSON files in %s." % self._results_directory)
 
-        # FIXME: Upload stats.json to the server and delete times_ms.
-        times_trie = json_results_generator.test_timings_trie(self._port, initial_results.results_by_name.values())
-        times_json_path = self._filesystem.join(self._results_directory, "times_ms.json")
-        json_results_generator.write_json(self._filesystem, times_trie, times_json_path)
-
         stats_trie = self._stats_trie(initial_results)
         stats_path = self._filesystem.join(self._results_directory, "stats.json")
         self._filesystem.write_text_file(stats_path, json.dumps(stats_trie))
 
         full_results_path = self._filesystem.join(self._results_directory, "full_results.json")
-        # We write full_results.json out as jsonp because we need to load it from a file url and Chromium doesn't allow that.
+        # We write full_results.json out as jsonp because we need to load it from a file url and WebKit doesn't allow that.
         json_results_generator.write_json(self._filesystem, summarized_results, full_results_path, callback="ADD_RESULTS")
 
-        generator = json_layout_results_generator.JSONLayoutResultsGenerator(
-            self._port, self._results_directory,
-            self._expectations, initial_results,
-            "layout-tests")
-
-        if generator.generate_json_output():
-            _log.debug("Finished writing JSON file for the test results server.")
-        else:
-            _log.debug("Failed to generate JSON file for the test results server.")
-            return
-
-        incremental_results_path = self._filesystem.join(self._results_directory, "incremental_results.json")
-
-        # Remove these files from the results directory so they don't take up too much space on the buildbot.
-        # The tools use the version we uploaded to the results server anyway.
-        self._filesystem.remove(times_json_path)
-        self._filesystem.remove(incremental_results_path)
-
-    def _copy_results_html_file(self, destination_path):
+    def _copy_results_html_file(self, filename, destination_path):
         base_dir = self._port.path_from_webkit_base('LayoutTests', 'fast', 'harness')
-        results_file = self._filesystem.join(base_dir, 'results.html')
+        results_file = self._filesystem.join(base_dir, filename)
         # Note that the results.html template file won't exist when we're using a MockFileSystem during unit tests,
         # so make sure it exists before we try to copy it.
         if self._filesystem.exists(results_file):
@@ -756,13 +774,16 @@ class Manager(object):
             self._print_expectation_line_for_test(format_string, test, device_type=device_type)
 
     def print_expectations(self, args):
-        device_type_list = self._port.DEFAULT_DEVICE_TYPES or [self._port.DEVICE_TYPE]
+        device_type_list = self._port.supported_device_types()
 
-        try:
-            tests_to_run_by_device, aggregate_tests_to_skip = self._collect_tests(args, device_type_list)
-        except IOError:
-            # This is raised if --test-list doesn't exist
-            return -1
+        if self._options.test_list:
+            for list_path in self._options.test_list:
+                if not self._port.host.filesystem.isfile(list_path):
+                    _log.critical('')
+                    _log.critical('--test-list file "{}" not found'.format(list_path))
+                    return -1
+
+        tests_to_run_by_device, aggregate_tests_to_skip = self._collect_tests(args, device_type_list)
 
         aggregate_tests_to_run = set()
         for v in tests_to_run_by_device.values():
@@ -780,14 +801,17 @@ class Manager(object):
         return 0
 
     def print_summary(self, args):
-        device_type_list = self._port.DEFAULT_DEVICE_TYPES or [self._port.DEVICE_TYPE]
+        device_type_list = self._port.supported_device_types()
         test_stats = {}
 
-        try:
-            self._collect_tests(args, device_type_list)
-        except IOError:
-            # This is raised if --test-list doesn't exist
-            return test_run_results.RunDetails(exit_code=-1)
+        if self._options.test_list:
+            for list_path in self._options.test_list:
+                if not self._port.host.filesystem.isfile(list_path):
+                    _log.critical('')
+                    _log.critical('--test-list file "{}" not found'.format(list_path))
+                    return test_run_results.RunDetails(exit_code=-1)
+
+        self._collect_tests(args, device_type_list)
 
         for device_type, expectations in self._expectations.items():
             test_stats[device_type] = {'__root__': {'count': 0, 'skip': 0, 'pass': 0, 'flaky': 0, 'fail': 0, 'has_tests': False}}
@@ -860,7 +884,7 @@ class Manager(object):
                 if not _should_include_dir_in_report(dirname):
                     continue
 
-                truncated_dirname = re.sub(r'^.*(.{47})$', '...\g<1>', dirname if device_test_stats[dirname]['has_tests'] else '{}*'.format(dirname))
+                truncated_dirname = re.sub(r'^.*(.{47})$', '...\\g<1>', dirname if device_test_stats[dirname]['has_tests'] else '{}*'.format(dirname))
                 count = device_test_stats[dirname]['count']
                 passing = device_test_stats[dirname]['pass']
                 skip = device_test_stats[dirname]['skip']

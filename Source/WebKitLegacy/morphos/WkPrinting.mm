@@ -576,7 +576,7 @@ protected:
 
 @implementation WkPrintingStatePrivate
 
-- (id)initWithWebView:(WkWebView *)view frame:(WebCore::Frame *)frame
+- (id)initWithWebView:(WkWebView *)view frame:(WebCore::LocalFrame *)frame
 {
 	if ((self = [super init]))
 	{

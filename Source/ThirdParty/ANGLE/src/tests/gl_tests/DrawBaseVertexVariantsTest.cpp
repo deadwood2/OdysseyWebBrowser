@@ -94,7 +94,7 @@ std::string DrawBaseVertexVariantsTestPrint(
 
 // These tests check correctness of variants of baseVertex draw calls from different extensions
 
-class DrawBaseVertexVariantsTest : public ANGLETestWithParam<DrawBaseVertexVariantsTestParams>
+class DrawBaseVertexVariantsTest : public ANGLETest<DrawBaseVertexVariantsTestParams>
 {
   protected:
     DrawBaseVertexVariantsTest()
@@ -192,10 +192,10 @@ void main()
         program.makeRaster(vs, fs);
         EXPECT_GL_NO_ERROR();
         ASSERT_TRUE(program.valid());
-        glUseProgram(program.get());
-        mPositionLoc = glGetAttribLocation(program.get(), "vPosition");
+        glUseProgram(program);
+        mPositionLoc = glGetAttribLocation(program, "vPosition");
         ASSERT_NE(-1, mPositionLoc);
-        mColorLoc = glGetAttribLocation(program.get(), "vColor");
+        mColorLoc = glGetAttribLocation(program, "vColor");
         ASSERT_NE(-1, mColorLoc);
     }
 
@@ -339,7 +339,12 @@ void main()
                 return false;
             }
         }
-        return EnsureGLExtensionEnabled("GL_ANGLE_base_vertex_base_instance");
+        if (!EnsureGLExtensionEnabled("GL_ANGLE_base_vertex_base_instance"))
+        {
+            return false;
+        }
+
+        return EnsureGLExtensionEnabled("GL_ANGLE_base_vertex_base_instance_shader_builtin");
     }
 
     bool requestNativeBaseVertexExtensions()
@@ -434,10 +439,12 @@ TEST_P(DrawBaseVertexVariantsTest, DrawElementsInstancedBaseVertexBaseInstance)
     doDrawElementsBaseVertexVariants(DrawCallVariants::DrawElementsInstancedBaseVertexBaseInstance);
 }
 
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(DrawBaseVertexVariantsTest);
 ANGLE_INSTANTIATE_TEST_COMBINE_1(DrawBaseVertexVariantsTest,
                                  DrawBaseVertexVariantsTestPrint,
                                  testing::ValuesIn(kBufferDataUsage),
                                  ES3_D3D11(),
+                                 ES3_METAL(),
                                  ES3_OPENGL(),
                                  ES3_OPENGLES(),
                                  ES3_VULKAN());

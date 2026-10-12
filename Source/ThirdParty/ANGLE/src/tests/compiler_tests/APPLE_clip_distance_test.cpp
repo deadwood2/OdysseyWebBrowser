@@ -42,6 +42,35 @@ const char ESSL100_APPLEClipDistanceShader2[] =
         gl_ClipDistance[gl_MaxClipDistances - int(aPosition.x)] = dot(aPosition, uPlane);
     })";
 
+// ESSL 3.00 Shader using gl_ClipDistance
+const char ESSL300_APPLEClipDistanceShader1[] =
+    R"(
+    uniform vec4 uPlane;
+
+    in vec4 aPosition;
+
+    void main()
+    {
+        gl_Position = aPosition;
+        gl_ClipDistance[1] = dot(aPosition, uPlane);
+    })";
+
+// ESSL 3.00 Shader redeclares gl_ClipDistance
+const char ESSL300_APPLEClipDistanceShader2[] =
+    R"(
+    uniform vec4 uPlane;
+
+    in vec4 aPosition;
+
+    out highp float gl_ClipDistance[4];
+
+    void main()
+    {
+        gl_Position = aPosition;
+        gl_ClipDistance[gl_MaxClipDistances - 6 + 1] = dot(aPosition, uPlane);
+        gl_ClipDistance[gl_MaxClipDistances - int(aPosition.x)] = dot(aPosition, uPlane);
+    })";
+
 class APPLEClipDistanceTest : public sh::ShaderExtensionTest
 {
   public:
@@ -59,7 +88,11 @@ class APPLEClipDistanceTest : public sh::ShaderExtensionTest
     {
         const char *shaderStrings[] = {testing::get<1>(GetParam()), pragma,
                                        testing::get<2>(GetParam())};
-        bool success = sh::Compile(mCompiler, shaderStrings, 3, SH_VARIABLES | SH_OBJECT_CODE);
+
+        ShCompileOptions compileOptions = {};
+        compileOptions.objectCode       = true;
+
+        bool success = sh::Compile(mCompiler, shaderStrings, 3, compileOptions);
         if (success)
         {
             return ::testing::AssertionSuccess() << "Compilation success";
@@ -106,19 +139,51 @@ TEST_P(APPLEClipDistanceTest, CompileSucceedsVulkan)
     mResources.APPLE_clip_distance = 1;
     mResources.MaxClipDistances    = 8;
 
-    InitializeCompiler(SH_GLSL_VULKAN_OUTPUT);
+    InitializeCompiler(SH_SPIRV_VULKAN_OUTPUT);
     EXPECT_TRUE(TestShaderCompile(EXTPragma));
+}
+
+// Test that the SPIR-V gen path can compile a shader when this extension is not supported.
+TEST_P(APPLEClipDistanceTest, CompileSucceedsWithoutExtSupportVulkan)
+{
+    mResources.APPLE_clip_distance = 0;
+    mResources.MaxClipDistances    = 0;
+    mResources.MaxCullDistances    = 0;
+
+    InitializeCompiler(SH_SPIRV_VULKAN_OUTPUT);
+
+    constexpr char kNoClipCull[] = R"(
+    void main()
+    {
+        gl_Position = vec4(0);
+    })";
+    const char *shaderStrings[]  = {kNoClipCull};
+
+    ShCompileOptions compileOptions = {};
+    compileOptions.objectCode       = true;
+
+    bool success = sh::Compile(mCompiler, shaderStrings, 1, compileOptions);
+    if (success)
+    {
+        ::testing::AssertionSuccess() << "Compilation success";
+    }
+    else
+    {
+        ::testing::AssertionFailure() << sh::GetInfoLog(mCompiler);
+    }
+
+    EXPECT_TRUE(success);
 }
 #endif
 
 #if defined(ANGLE_ENABLE_METAL)
-// With extension flag and extension directive, compiling using TranslatorMetal succeeds.
+// With extension flag and extension directive, compiling using TranslatorMSL succeeds.
 TEST_P(APPLEClipDistanceTest, CompileSucceedsMetal)
 {
     mResources.APPLE_clip_distance = 1;
     mResources.MaxClipDistances    = 8;
 
-    InitializeCompiler(SH_GLSL_METAL_OUTPUT);
+    InitializeCompiler(SH_MSL_METAL_OUTPUT);
     EXPECT_TRUE(TestShaderCompile(EXTPragma));
 }
 #endif
@@ -131,5 +196,12 @@ INSTANTIATE_TEST_SUITE_P(CorrectESSL100Shaders,
                                  Values(sh::ESSLVersion100),
                                  Values(ESSL100_APPLEClipDistanceShader1,
                                         ESSL100_APPLEClipDistanceShader2)));
+
+INSTANTIATE_TEST_SUITE_P(CorrectESSL300Shaders,
+                         APPLEClipDistanceTest,
+                         Combine(Values(SH_GLES3_SPEC),
+                                 Values(sh::ESSLVersion300),
+                                 Values(ESSL300_APPLEClipDistanceShader1,
+                                        ESSL300_APPLEClipDistanceShader2)));
 
 }  // anonymous namespace

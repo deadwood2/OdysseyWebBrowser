@@ -25,14 +25,14 @@
 
 #pragma once
 
-#if ENABLE(WIRELESS_PLAYBACK_TARGET)
+#if ENABLE(WIRELESS_PLAYBACK_TARGET_AVAILABILITY_API)
 
 #include "Event.h"
 
 namespace WebCore {
 
 class WebKitPlaybackTargetAvailabilityEvent final : public Event {
-    WTF_MAKE_ISO_ALLOCATED(WebKitPlaybackTargetAvailabilityEvent);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(WebKitPlaybackTargetAvailabilityEvent);
 public:
 
     static Ref<WebKitPlaybackTargetAvailabilityEvent> create(const AtomString& eventType, bool available)
@@ -51,8 +51,6 @@ public:
 
     String availability() const { return m_availability; }
 
-    EventInterface eventInterface() const override { return WebKitPlaybackTargetAvailabilityEventInterfaceType; }
-
 private:
     explicit WebKitPlaybackTargetAvailabilityEvent(const AtomString& eventType, bool available);
     WebKitPlaybackTargetAvailabilityEvent(const AtomString& eventType, const Init&, IsTrusted);
@@ -62,4 +60,4 @@ private:
 
 } // namespace WebCore
 
-#endif // ENABLE(WIRELESS_PLAYBACK_TARGET)
+#endif // ENABLE(WIRELESS_PLAYBACK_TARGET_AVAILABILITY_API)

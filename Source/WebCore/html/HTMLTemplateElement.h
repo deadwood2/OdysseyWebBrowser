@@ -38,13 +38,21 @@ class DocumentFragment;
 class TemplateContentDocumentFragment;
 
 class HTMLTemplateElement final : public HTMLElement {
-    WTF_MAKE_ISO_ALLOCATED(HTMLTemplateElement);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(HTMLTemplateElement);
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(HTMLTemplateElement);
 public:
     static Ref<HTMLTemplateElement> create(const QualifiedName&, Document&);
     virtual ~HTMLTemplateElement();
 
+    DocumentFragment& fragmentForInsertion() const;
     DocumentFragment& content() const;
     DocumentFragment* contentIfAvailable() const;
+
+    const AtomString& shadowRootMode() const;
+    void setShadowRootMode(const AtomString&);
+
+    void setDeclarativeShadowRoot(ShadowRoot&);
+    void attachAsDeclarativeShadowRootIfNeeded(Element&);
 
 private:
     HTMLTemplateElement(const QualifiedName&, Document&);
@@ -53,6 +61,7 @@ private:
     void didMoveToNewDocument(Document& oldDocument, Document& newDocument) final;
 
     mutable RefPtr<TemplateContentDocumentFragment> m_content;
+    WeakPtr<ShadowRoot, WeakPtrImplWithEventTargetData> m_declarativeShadowRoot;
 };
 
 } // namespace WebCore

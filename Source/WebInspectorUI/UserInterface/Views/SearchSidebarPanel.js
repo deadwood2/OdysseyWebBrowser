@@ -42,7 +42,7 @@ WI.SearchSidebarPanel = class SearchSidebarPanel extends WI.NavigationSidebarPan
         this._inputElement = this._inputContainer.appendChild(document.createElement("input"));
         this._inputElement.type = "search";
         this._inputElement.spellcheck = false;
-        this._inputElement.addEventListener("search", this._searchFieldChanged.bind(this));
+        this._inputElement.addEventListener("change", this._searchFieldChanged.bind(this));
         this._inputElement.addEventListener("input", this._searchFieldInput.bind(this));
         this._inputElement.setAttribute("results", 5);
         this._inputElement.setAttribute("autosave", "inspector-search-autosave");
@@ -55,6 +55,8 @@ WI.SearchSidebarPanel = class SearchSidebarPanel extends WI.NavigationSidebarPan
 
         WI.Frame.addEventListener(WI.Frame.Event.MainResourceDidChange, this._mainResourceDidChange, this);
 
+        const treeItemHeight = 20;
+        this.contentTreeOutline.registerScrollVirtualizer(this.contentView.element, treeItemHeight);
         this.contentTreeOutline.addEventListener(WI.TreeOutline.Event.SelectionDidChange, this._treeSelectionDidChange, this);
     }
 
@@ -341,6 +343,8 @@ WI.SearchSidebarPanel = class SearchSidebarPanel extends WI.NavigationSidebarPan
 
         // FIXME: Resource search should work with Local Overrides if enabled.
 
+        // FIXME: Resource search should work with Console Snippets.
+
         // FIXME: Resource search should work in JSContext inspection.
         // <https://webkit.org/b/131252> Web Inspector: JSContext inspection Resource search does not work
     }
@@ -460,7 +464,7 @@ WI.SearchSidebarPanel = class SearchSidebarPanel extends WI.NavigationSidebarPan
         if (!this._changedBanner) {
             this._changedBanner = document.createElement("div");
             this._changedBanner.classList.add("banner");
-            this._changedBanner.append(WI.UIString("The page's content has changed"), document.createElement("br"));
+            this._changedBanner.append(WI.UIString("The page\u2019s content has changed"), document.createElement("br"));
 
             let performSearchLink = this._changedBanner.appendChild(document.createElement("a"));
             performSearchLink.textContent = WI.UIString("Search Again");

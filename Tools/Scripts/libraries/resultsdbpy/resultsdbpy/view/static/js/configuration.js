@@ -22,6 +22,7 @@
 // THE POSSIBILITY OF SUCH DAMAGE.
 
 import {queryToParams, escapeHTML} from '/assets/js/common.js';
+import {DEFAULT_ARCHITECTURE} from '/assets/js/constants.js'
 
 // These are flipped delibrately, it makes the fromQuery function return configurations in an
 // intuitive order.
@@ -105,6 +106,48 @@ class Configuration {
         return combined;
     }
 
+    static releaseForSDK(sdk)
+    {
+        if (!sdk)
+            return '';
+        const match = sdk.match(SDK_REGEX)
+        if (!match)
+            return '';
+        if (['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].includes(match[2]))
+            return match[2];
+        if (['J', 'N', 'R'].includes(match[2])) {
+            const count = parseInt(match[3]);
+            if (count < 500)
+                return 'A';
+            if (count < 700)
+                return 'B';
+            return 'C';
+        }
+        if (['K'].includes(match[2])) {
+            const count = parseInt(match[3]);
+            if (count < 200)
+                return 'B';
+            if (count < 500)
+                return 'C';
+            return 'D';
+        }
+        if (['S'].includes(match[2])) {
+            return 'C';
+        }
+        if (['L', 'O', 'T'].includes(match[2])) {
+            const count = parseInt(match[3]);
+            if (count < 400)
+                return 'E'
+            return 'F';
+        }
+        if (['M'].includes(match[2]) && Number(match[1]) >= 23)
+            return 'A';
+        if (['M', 'U'].includes(match[2]))
+            return 'G';
+
+        return '';
+    }
+
     constructor(json = {}) {
         this.platform = json.platform ? json.platform : null;
         this.version = json.version ? Configuration.versionToInteger(json.version) : null;
@@ -121,17 +164,17 @@ class Configuration {
         this.model = json.model ? json.model : null;
         this.architecture = json.architecture ? json.architecture : null;
 
-        // Mid-year releases really need to be treated with an entirely different version_name. The only way to reliably
-        // identify such a release is with the SDK (version numbers have historically ranged between .2 and .4)
-        // While appending E to all realese with an SDK after a mid-year release isn't entirely correct, it's close enough
-        // that the user can quickly dicern the differences by inspecting the specific SDK differences
+        // It's useful to track versions from different major and minor SDK releases
+        // in seperate timelines. Attempt to embed a release family in the displayed
+        // version name computed from the SDK
         if (this.sdk && this.version_name && !(json instanceof Configuration)) {
-            const match = this.sdk.match(SDK_REGEX);
-            const ending = this.version_name.substring(this.version_name.length - 2)
-            if (match && ending !== ' E' && match[2].localeCompare('E') >= 0)
-                this.version_name = `${this.version_name} E`;
-            else if (!match)
-                console.error(`'${this.sdk}' does not match the SDK regular expression`);
+            const release = Configuration.releaseForSDK(this.sdk)
+            if (release) {
+                const ending = this.version_name ? this.version_name.substring(this.version_name.length - 2) : null;
+                if ([' A', ' B', ' C', ' D', ' E', ' F', ' G', ' H'].includes(ending))
+                    this.version_name = this.version_name.substring(0, this.version_name.length - 2);
+                this.version_name = `${this.version_name} ${release}`;
+            }
         }
     }
     toKey() {
@@ -140,7 +183,7 @@ class Configuration {
             result += ' ' + this.platform
         if (this.version_name != null)
             result += ' ' + this.version_name;
-        else if (this.version != null)
+        if (this.version != null && (this.version_name == null || this.sdk != null))
             result += ' ' + Configuration.integerToVersion(this.version);
         if (this.sdk != null)
             result += ' (' + this.sdk + ')';
@@ -179,7 +222,7 @@ class Configuration {
             result += ' ' + this.style.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join('-');
         } if (this.model != null)
             result += ' on ' + this.model;
-        if (this.architecture != null)
+        if (this.architecture != null && (DEFAULT_ARCHITECTURE == null || this.architecture.search(DEFAULT_ARCHITECTURE) < 0))
             result += ' with ' + this.architecture;
 
         if (this.sdk != null)
@@ -252,17 +295,20 @@ class Configuration {
     toParams() {
         let version_name = this.version_name;
         const ending = this.version_name ? this.version_name.substring(this.version_name.length - 2) : null;
-        if (ending === ' E')
-            version_name = this.version_name.substring(0, this.version_name.length - 2)
+        if ([' A', ' B', ' C', ' D', ' E', ' F', ' G', ' H'].includes(ending))
+            version_name = this.version_name.substring(0, this.version_name.length - 2);
+        let architecture = null;
+        if (this.architecture != null && (DEFAULT_ARCHITECTURE == null || this.architecture.search(DEFAULT_ARCHITECTURE) < 0))
+            architecture = this.architecture;
         return {
             platform: [this.platform],
-            version:[this.version && !this.version_name ? Configuration.integerToVersion(this.version) : null],
+            version:[this.version ? Configuration.integerToVersion(this.version) : null],
             version_name: [version_name],
             is_simulator: [this.is_simulator === null ? null : (this.is_simulator ? 'True' : 'False')],
             style: [this.style],
             flavor: [this.flavor],
             model: [this.model],
-            architecture: [this.architecture],
+            architecture: [architecture],
         };
     }
 }

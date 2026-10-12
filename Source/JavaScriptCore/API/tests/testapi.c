@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2020 Apple Inc.  All rights reserved.
+ * Copyright (C) 2006-2022 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,6 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#undef ASSERT_ENABLED
 #define ASSERT_ENABLED 1
 #include "config.h"
 
@@ -33,6 +34,7 @@
 #endif
 
 #include "JSBasePrivate.h"
+#include "JSContextRefPrivate.h"
 #include "JSHeapFinalizerPrivate.h"
 #include "JSMarkingConstraintPrivate.h"
 #include "JSObjectRefPrivate.h"
@@ -61,6 +63,7 @@
 #include "CustomGlobalObjectClassTest.h"
 #include "ExecutionTimeLimitTest.h"
 #include "FunctionOverridesTest.h"
+#include "FunctionToStringTests.h"
 #include "GlobalContextWithFinalizerTest.h"
 #include "JSONParseTest.h"
 #include "JSObjectGetProxyTargetTest.h"
@@ -70,10 +73,6 @@
 
 #if OS(MORPHOS)
 unsigned long __stack = 2 * 1024 * 1024;
-#endif
-
-#if COMPILER(MSVC)
-#pragma warning(disable:4204)
 #endif
 
 #if JSC_OBJC_API_ENABLED
@@ -157,11 +156,7 @@ static void assertEqualsAsCharactersPtr(JSValueRef value, const char* expectedVa
     }
     
     if (jsLength != (size_t)cfLength) {
-#if OS(WINDOWS)
-        fprintf(stderr, "assertEqualsAsCharactersPtr failed: jsLength(%Iu) != cfLength(%Iu)\n", jsLength, (size_t)cfLength);
-#else
-        fprintf(stderr, "assertEqualsAsCharactersPtr failed: jsLength(%zu) != cfLength(%zu)\n", jsLength, (size_t)cfLength);
-#endif
+        fprintf(stderr, "assertEqualsAsCharactersPtr failed: jsLength(%llu) != cfLength(%llu)\n", (unsigned long long)jsLength, (unsigned long long)cfLength);
         failed = 1;
     }
 
@@ -181,7 +176,7 @@ static void assertEqualsAsCharactersPtr(JSValueRef value, const char* expectedVa
     JSStringRelease(valueAsString);
 }
 
-static bool timeZoneIsPST()
+static bool timeZoneIsPST(void)
 {
     char timeZoneName[70];
     struct tm gtm;
@@ -410,18 +405,18 @@ static bool MyObject_set_nullGetForwardSet(JSContextRef ctx, JSObjectRef object,
     return false; // Forward to parent class.
 }
 
-static JSStaticValue evilStaticValues[] = {
+static const JSStaticValue evilStaticValues[] = {
     { "nullGetSet", 0, 0, kJSPropertyAttributeNone },
     { "nullGetForwardSet", 0, MyObject_set_nullGetForwardSet, kJSPropertyAttributeNone },
     { 0, 0, 0, 0 }
 };
 
-static JSStaticFunction evilStaticFunctions[] = {
+static const JSStaticFunction evilStaticFunctions[] = {
     { "nullCall", 0, kJSPropertyAttributeNone },
     { 0, 0, 0 }
 };
 
-JSClassDefinition MyObject_definition = {
+static const JSClassDefinition MyObject_definition = {
     0,
     kJSClassAttributeNone,
     
@@ -444,7 +439,7 @@ JSClassDefinition MyObject_definition = {
     MyObject_convertToType,
 };
 
-JSClassDefinition MyObject_convertToTypeWrapperDefinition = {
+static const JSClassDefinition MyObject_convertToTypeWrapperDefinition = {
     0,
     kJSClassAttributeNone,
     
@@ -467,7 +462,7 @@ JSClassDefinition MyObject_convertToTypeWrapperDefinition = {
     MyObject_convertToTypeWrapper,
 };
 
-JSClassDefinition MyObject_nullWrapperDefinition = {
+static const JSClassDefinition MyObject_nullWrapperDefinition = {
     0,
     kJSClassAttributeNone,
     
@@ -496,11 +491,13 @@ static JSClassRef MyObject_class(JSContextRef context)
 
     static JSClassRef jsClass;
     if (!jsClass) {
+        JSClassDefinition classDefinition = MyObject_convertToTypeWrapperDefinition;
+        JSClassDefinition nullClassDefinition = MyObject_nullWrapperDefinition;
         JSClassRef baseClass = JSClassCreate(&MyObject_definition);
-        MyObject_convertToTypeWrapperDefinition.parentClass = baseClass;
-        JSClassRef wrapperClass = JSClassCreate(&MyObject_convertToTypeWrapperDefinition);
-        MyObject_nullWrapperDefinition.parentClass = wrapperClass;
-        jsClass = JSClassCreate(&MyObject_nullWrapperDefinition);
+        classDefinition.parentClass = baseClass;
+        JSClassRef wrapperClass = JSClassCreate(&classDefinition);
+        nullClassDefinition.parentClass = wrapperClass;
+        jsClass = JSClassCreate(&nullClassDefinition);
     }
 
     return jsClass;
@@ -553,11 +550,9 @@ static bool PropertyCatchalls_setProperty(JSContextRef context, JSObjectRef obje
 
     if (JSStringIsEqualToUTF8CString(propertyName, "x")) {
         static size_t count;
-        if (count++ < 5)
-            return false;
 
         // Swallow all .x sets after 4.
-        return true;
+        return count++ > 4;
     }
 
     if (JSStringIsEqualToUTF8CString(propertyName, "make_throw") || JSStringIsEqualToUTF8CString(propertyName, "0")) {
@@ -582,7 +577,7 @@ static void PropertyCatchalls_getPropertyNames(JSContextRef context, JSObjectRef
     JSStringRelease(propertyName);
 }
 
-JSClassDefinition PropertyCatchalls_definition = {
+static const JSClassDefinition PropertyCatchalls_definition = {
     0,
     kJSClassAttributeNone,
     
@@ -662,7 +657,7 @@ static JSValueRef EvilExceptionObject_convertToType(JSContextRef context, JSObje
     return value;
 }
 
-JSClassDefinition EvilExceptionObject_definition = {
+static const JSClassDefinition EvilExceptionObject_definition = {
     0,
     kJSClassAttributeNone,
 
@@ -696,7 +691,7 @@ static JSClassRef EvilExceptionObject_class(JSContextRef context)
     return jsClass;
 }
 
-JSClassDefinition EmptyObject_definition = {
+static const JSClassDefinition EmptyObject_definition = {
     0,
     kJSClassAttributeNone,
     
@@ -773,14 +768,14 @@ static JSValueRef Base_returnHardNull(JSContextRef ctx, JSObjectRef function, JS
     return 0; // should convert to undefined!
 }
 
-static JSStaticFunction Base_staticFunctions[] = {
+static const JSStaticFunction Base_staticFunctions[] = {
     { "baseProtoDup", NULL, kJSPropertyAttributeNone },
     { "baseProto", Base_callAsFunction, kJSPropertyAttributeNone },
     { "baseHardNull", Base_returnHardNull, kJSPropertyAttributeNone },
     { 0, 0, 0 }
 };
 
-static JSStaticValue Base_staticValues[] = {
+static const JSStaticValue Base_staticValues[] = {
     { "baseDup", Base_get, Base_set, kJSPropertyAttributeNone },
     { "baseOnly", Base_get, Base_set, kJSPropertyAttributeNone },
     { 0, 0, 0, 0 }
@@ -854,14 +849,14 @@ static JSValueRef Derived_callAsFunction(JSContextRef ctx, JSObjectRef function,
     return JSValueMakeNumber(ctx, 2); // distinguish base call from derived call
 }
 
-static JSStaticFunction Derived_staticFunctions[] = {
+static const JSStaticFunction Derived_staticFunctions[] = {
     { "protoOnly", Derived_callAsFunction, kJSPropertyAttributeNone },
     { "protoDup", NULL, kJSPropertyAttributeNone },
     { "baseProtoDup", Derived_callAsFunction, kJSPropertyAttributeNone },
     { 0, 0, 0 }
 };
 
-static JSStaticValue Derived_staticValues[] = {
+static const JSStaticValue Derived_staticValues[] = {
     { "derivedOnly", Derived_get, Derived_set, kJSPropertyAttributeNone },
     { "protoDup", Derived_get, Derived_set, kJSPropertyAttributeNone },
     { "baseDup", Derived_get, Derived_set, kJSPropertyAttributeNone },
@@ -1019,13 +1014,13 @@ static JSValueRef functionGC(JSContextRef context, JSObjectRef function, JSObjec
     return JSValueMakeUndefined(context);
 }
 
-static JSStaticValue globalObject_staticValues[] = {
+static const JSStaticValue globalObject_staticValues[] = {
     { "globalStaticValue", globalObject_get, globalObject_set, kJSPropertyAttributeNone },
     { "globalStaticValue2", globalObject_get, 0, kJSPropertyAttributeReadOnly | kJSPropertyAttributeDontEnum },
     { 0, 0, 0, 0 }
 };
 
-static JSStaticFunction globalObject_staticFunctions[] = {
+static const JSStaticFunction globalObject_staticFunctions[] = {
     { "globalStaticFunction", globalObject_call, kJSPropertyAttributeNone },
     { "globalStaticFunction2", globalObject_call, kJSPropertyAttributeNone },
     { "globalStaticFunction3", globalObject_call, kJSPropertyAttributeReadOnly | kJSPropertyAttributeDontEnum },
@@ -1035,7 +1030,7 @@ static JSStaticFunction globalObject_staticFunctions[] = {
 
 static char* createStringWithContentsOfFile(const char* fileName);
 
-static void testInitializeFinalize()
+static void testInitializeFinalize(void)
 {
     JSObjectRef o = JSObjectMake(context, Derived_class(context), (void*)1);
     UNUSED_PARAM(o);
@@ -1065,7 +1060,7 @@ bool assertTrue(bool value, const char* message)
     return value;
 }
 
-static bool checkForCycleInPrototypeChain()
+static bool checkForCycleInPrototypeChain(void)
 {
     bool result = true;
     JSGlobalContextRef context = JSGlobalContextCreate(0);
@@ -1117,7 +1112,7 @@ static JSValueRef valueToObjectExceptionCallAsFunction(JSContextRef ctx, JSObjec
     
     return JSValueMakeUndefined(ctx);
 }
-static bool valueToObjectExceptionTest()
+static bool valueToObjectExceptionTest(void)
 {
     JSGlobalContextRef testContext;
     JSClassDefinition globalObjectClassDefinition = kJSClassDefinitionEmpty;
@@ -1144,7 +1139,7 @@ static bool valueToObjectExceptionTest()
     return true;
 }
 
-static bool globalContextNameTest()
+static bool globalContextNameTest(void)
 {
     bool result = true;
     JSGlobalContextRef context = JSGlobalContextCreate(0);
@@ -1178,7 +1173,7 @@ static bool globalContextNameTest()
 }
 
 IGNORE_GCC_WARNINGS_BEGIN("unused-but-set-variable")
-static void checkConstnessInJSObjectNames()
+static void checkConstnessInJSObjectNames(void)
 {
     JSStaticFunction fun;
     fun.name = "something";
@@ -1194,6 +1189,123 @@ void JSSynchronousGarbageCollectForDebugging(JSContextRef);
 #ifdef __cplusplus
 }
 #endif
+
+static void checkJSStringOOBUTF8(void)
+{
+    const size_t sourceCStringSize = 200;
+    const size_t outCStringSize = 10;
+
+    char* sourceCString = (char*)malloc(sourceCStringSize);
+    memset(sourceCString, 0, sourceCStringSize);
+    for (size_t i = 0; i < sourceCStringSize - 1; ++i)
+        sourceCString[i] = '0' + (i%10);
+
+    char* outCString = (char*)malloc(outCStringSize + sourceCStringSize);
+    memset(outCString, 0x13, outCStringSize + sourceCStringSize);
+
+    JSStringRef str = JSStringCreateWithUTF8CString(sourceCString);
+    size_t bytesWritten = JSStringGetUTF8CString(str, outCString, outCStringSize);
+
+    assertTrue(bytesWritten == 10, "we report 10 bytes written precisely");
+
+    for (size_t i = 0; i < sizeof(outCString); ++i) {
+        if (i == outCStringSize - 1)
+            assertTrue(outCString[i] == '\0', "string terminated");
+        else if (i < outCStringSize - 1)
+            assertTrue(outCString[i] == sourceCString[i], "string copied");
+        else
+            assertTrue(outCString[i] == 0x13, "did not write past the end");
+    }
+
+    JSStringRelease(str);
+    free(outCString);
+    free(sourceCString);
+}
+
+static void checkJSStringOOBUTF16(void)
+{
+    const size_t sourceCStringSize = 22;
+    const size_t outCStringSize = 20;
+
+    char* sourceCString = (char*)malloc(sourceCStringSize);
+    memset(sourceCString, 0, sourceCStringSize);
+    for (size_t i = 0; i < sourceCStringSize - 1; ++i)
+        sourceCString[i] = '0' + (i%10);
+
+    sourceCString[3] = '\xF0';
+    sourceCString[4] = '\x9F';
+    sourceCString[5] = '\x98';
+    sourceCString[6] = '\x81';
+
+    char* outCString = (char*)malloc(outCStringSize + sourceCStringSize);
+    memset(outCString, 0x13, outCStringSize + sourceCStringSize);
+
+    JSStringRef str = JSStringCreateWithUTF8CString(sourceCString);
+    size_t bytesWritten = JSStringGetUTF8CString(str, outCString, outCStringSize);
+
+    assertTrue(bytesWritten == 20, "we report 20 bytes written precisely");
+
+    for (size_t i = 0; i < sizeof(outCString); ++i) {
+        if (i == outCStringSize - 1)
+            assertTrue(outCString[i] == '\0', "string terminated");
+        else if (i < outCStringSize - 1)
+            assertTrue(outCString[i] == sourceCString[i], "string copied");
+        else
+            assertTrue(outCString[i] == 0x13, "did not write past the end");
+    }
+
+    JSStringRelease(str);
+    free(outCString);
+    free(sourceCString);
+}
+
+static void checkJSStringOOBUTF16AtEnd(void)
+{
+    const size_t sourceCStringSize = 22;
+    const size_t outCStringSize = 20;
+
+    char* sourceCString = (char*)malloc(sourceCStringSize);
+    memset(sourceCString, 0, sourceCStringSize);
+    for (size_t i = 0; i < sourceCStringSize - 1; ++i)
+        sourceCString[i] = '0' + (i%10);
+
+    sourceCString[17] = '\xF0';
+    sourceCString[18] = '\x9F';
+    sourceCString[19] = '\x98';
+    sourceCString[20] = '\x81';
+
+    char* outCString = (char*)malloc(outCStringSize + sourceCStringSize);
+    memset(outCString, 0x13, outCStringSize + sourceCStringSize);
+
+    JSStringRef str = JSStringCreateWithUTF8CString(sourceCString);
+    size_t bytesWritten = JSStringGetUTF8CString(str, outCString, outCStringSize);
+
+    assertTrue(bytesWritten == 18, "we report 18 bytes written precisely");
+
+    for (size_t i = 0; i < sizeof(outCString); ++i) {
+        if (i == 17)
+            assertTrue(outCString[i] == '\0', "string terminated");
+        else if (i < 17)
+            assertTrue(outCString[i] == sourceCString[i], "string copied");
+        else
+            assertTrue(outCString[i] == 0x13, "did not write past the end");
+    }
+
+    JSStringRelease(str);
+    free(outCString);
+    free(sourceCString);
+}
+
+static void checkJSStringOOB(void)
+{
+    printf("Test: checkJSStringOOB\n");
+    checkJSStringOOBUTF8();
+    printf(".\n");
+    checkJSStringOOBUTF16();
+    printf(".\n");
+    checkJSStringOOBUTF16AtEnd();
+    printf("PASS: checkJSStringOOB\n");
+}
 
 static const unsigned numWeakRefs = 10000;
 
@@ -1295,7 +1407,7 @@ static void testCFStrings(void)
     JSStringRef jsCFIString = JSStringCreateWithCFString(cfString);
     JSValueRef jsCFString = JSValueMakeString(context, jsCFIString);
 
-    CFStringRef cfEmptyString = CFStringCreateWithCString(kCFAllocatorDefault, "", kCFStringEncodingUTF8);
+    CFStringRef cfEmptyString = CFSTR("");
 
     JSStringRef jsCFEmptyIString = JSStringCreateWithCFString(cfEmptyString);
     JSValueRef jsCFEmptyString = JSValueMakeString(context, jsCFEmptyIString);
@@ -1377,12 +1489,59 @@ static void testCFStrings(void)
     JSStringRelease(jsCFIStringWithCharacters);
     JSStringRelease(jsCFEmptyIStringWithCharacters);
     CFRelease(cfString);
-    CFRelease(cfEmptyString);
 
     JSGlobalContextRelease(context);
     context = oldContext;
 }
 #endif
+
+static bool samplingProfilerTest(void)
+{
+#if ENABLE(SAMPLING_PROFILER)
+    JSContextGroupRef contextGroup = JSContextGroupCreate();
+    JSGlobalContextRef context = JSGlobalContextCreateInGroup(contextGroup, NULL);
+    {
+        bool result = JSContextGroupEnableSamplingProfiler(contextGroup);
+        if (result)
+            printf("PASS: Enabled sampling profiler.\n");
+        else {
+            printf("FAIL: Failed to enable sampling profiler.\n");
+            return true;
+        }
+        JSStringRef script = JSStringCreateWithUTF8CString("var start = Date.now(); while ((start + 200) > Date.now()) { new Error().stack; }");
+        JSEvaluateScript(context, script, NULL, NULL, 1, NULL);
+        JSStringRelease(script);
+        JSContextGroupDisableSamplingProfiler(contextGroup);
+    }
+
+    {
+        JSStringRef json = JSContextGroupTakeSamplesFromSamplingProfiler(contextGroup);
+        if (json)
+            printf("PASS: Taking JSON from sampling profiler.\n");
+        else {
+            printf("FAIL: Failed to enable sampling profiler.\n");
+            return true;
+        }
+
+        size_t sizeUTF8 = JSStringGetMaximumUTF8CStringSize(json);
+        char* stringUTF8 = (char*)malloc(sizeUTF8);
+        JSStringGetUTF8CString(json, stringUTF8, sizeUTF8);
+        if (sizeUTF8)
+            printf("PASS: Some JSON data is generated.\n");
+        else {
+            printf("FAIL: Failed to take JSON data.\n");
+            return true;
+        }
+        free(stringUTF8);
+
+        JSStringRelease(json);
+    }
+
+    JSGlobalContextRelease(context);
+    JSContextGroupRelease(contextGroup);
+#endif
+    return false;
+}
 
 int main(int argc, char* argv[])
 {
@@ -1629,7 +1788,7 @@ int main(int argc, char* argv[])
         failed = 1;
     } else
         printf("PASS: Correctly returned null for invalid JSON data.\n");
-    JSValueRef exception;
+    JSValueRef exception = NULL;
     JSStringRef str = JSValueCreateJSONString(context, jsonObject, 0, 0);
     if (!JSStringIsEqualToUTF8CString(str, "{\"aProperty\":true}")) {
         printf("FAIL: Did not correctly serialise with indent of 0.\n");
@@ -1725,7 +1884,7 @@ int main(int argc, char* argv[])
     assertEqualsAsCharactersPtr(jsOneThird, "0.3333333333333333");
     assertEqualsAsCharactersPtr(jsEmptyString, "");
     assertEqualsAsCharactersPtr(jsOneString, "1");
-    
+
     assertEqualsAsUTF8String(jsUndefined, "undefined");
     assertEqualsAsUTF8String(jsNull, "null");
     assertEqualsAsUTF8String(jsTrue, "true");
@@ -1735,9 +1894,11 @@ int main(int argc, char* argv[])
     assertEqualsAsUTF8String(jsOneThird, "0.3333333333333333");
     assertEqualsAsUTF8String(jsEmptyString, "");
     assertEqualsAsUTF8String(jsOneString, "1");
-    
+
+    checkJSStringOOB();
+
     checkConstnessInJSObjectNames();
-    
+
     ASSERT(JSValueIsStrictEqual(context, jsTrue, jsTrue));
     ASSERT(!JSValueIsStrictEqual(context, jsOne, jsOneString));
 
@@ -1804,7 +1965,7 @@ int main(int argc, char* argv[])
     ASSERT(!JSObjectMakeFunction(context, NULL, 0, NULL, functionBody, NULL, 1, &exception));
     ASSERT(JSValueIsObject(context, exception));
     v = JSObjectGetProperty(context, JSValueToObject(context, exception, NULL), line, NULL);
-    assertEqualsAsNumber(v, 2);
+    assertEqualsAsNumber(v, 3);
     JSStringRelease(functionBody);
     JSStringRelease(line);
 
@@ -1814,7 +1975,7 @@ int main(int argc, char* argv[])
     ASSERT(!JSObjectMakeFunction(context, NULL, 0, NULL, functionBody, NULL, -42, &exception));
     ASSERT(JSValueIsObject(context, exception));
     v = JSObjectGetProperty(context, JSValueToObject(context, exception, NULL), line, NULL);
-    assertEqualsAsNumber(v, 2);
+    assertEqualsAsNumber(v, 3);
     JSStringRelease(functionBody);
     JSStringRelease(line);
 
@@ -1824,7 +1985,7 @@ int main(int argc, char* argv[])
     ASSERT(!JSObjectMakeFunction(context, NULL, 0, NULL, functionBody, NULL, 1, &exception));
     ASSERT(JSValueIsObject(context, exception));
     v = JSObjectGetProperty(context, JSValueToObject(context, exception, NULL), line, NULL);
-    assertEqualsAsNumber(v, 3);
+    assertEqualsAsNumber(v, 4);
     JSStringRelease(functionBody);
     JSStringRelease(line);
 
@@ -1858,7 +2019,7 @@ int main(int argc, char* argv[])
     JSStringRelease(functionBody);
     
     string = JSValueToStringCopy(context, function, NULL);
-    assertEqualsAsUTF8String(JSValueMakeString(context, string), "function foo(foo) {\nreturn foo;\n}");
+    assertEqualsAsUTF8String(JSValueMakeString(context, string), "function foo(foo\n) {\nreturn foo;\n}");
     JSStringRelease(string);
 
     JSStringRef print = JSStringCreateWithUTF8CString("print");
@@ -1915,7 +2076,7 @@ int main(int argc, char* argv[])
     JSValueRef argumentsDateValues[] = { JSValueMakeNumber(context, 0) };
     o = JSObjectMakeDate(context, 1, argumentsDateValues, NULL);
     if (timeZoneIsPST())
-        assertEqualsAsUTF8String(o, "Wed Dec 31 1969 16:00:00 GMT-0800 (PST)");
+        assertEqualsAsUTF8String(o, "Wed Dec 31 1969 16:00:00 GMT-0800 (Pacific Standard Time)");
 
     string = JSStringCreateWithUTF8CString("an error message");
     JSValueRef argumentsErrorValues[] = { JSValueMakeString(context, string) };
@@ -1999,6 +2160,19 @@ int main(int argc, char* argv[])
     JSStringRelease(script);
     JSStringRelease(sourceURL);
     JSStringRelease(sourceURLKey);
+
+    JSGlobalContextSetEvalEnabled(context, false, jsOneIString);
+    exception = NULL;
+    script = JSStringCreateWithUTF8CString("eval(\"3\");");
+    JSEvaluateScript(context, script, NULL, NULL, 1, &exception);
+    ASSERT(exception);
+    JSStringRelease(script);
+    exception = NULL;
+    script = JSStringCreateWithUTF8CString("Function(\"return 3;\");");
+    JSEvaluateScript(context, script, NULL, NULL, 1, &exception);
+    ASSERT(exception);
+    JSStringRelease(script);
+    JSGlobalContextSetEvalEnabled(context, true, NULL);
 
     // Verify that creating a constructor for a class with no static functions does not trigger
     // an assert inside putDirect or lead to a crash during GC. <https://bugs.webkit.org/show_bug.cgi?id=25785>
@@ -2116,8 +2290,8 @@ int main(int argc, char* argv[])
     }
     failed |= testTypedArrayCAPI();
     failed |= testFunctionOverrides();
+    failed |= testFunctionToString();
     failed |= testGlobalContextWithFinalizer();
-    failed |= testPingPongStackOverflow();
     failed |= testJSONParse();
     failed |= testJSObjectGetProxyTarget();
 
@@ -2167,15 +2341,20 @@ int main(int argc, char* argv[])
     customGlobalObjectClassTest();
     globalObjectSetPrototypeTest();
     globalObjectPrivatePropertyTest();
+    failed |= samplingProfilerTest();
 
-    failed = finalizeMultithreadedMultiVMExecutionTest() || failed;
+    failed |= finalizeMultithreadedMultiVMExecutionTest();
 
-    // Don't run this till after the MultithreadedMultiVMExecutionTest has finished.
-    // This is because testExecutionTimeLimit() modifies JIT options at runtime
+    // Don't run these tests till after the MultithreadedMultiVMExecutionTest has finished.
+    // 1. testPingPongStackOverflow() changes stack size per thread configuration at runtime to very small value,
+    // which can cause stack-overflow on MultithreadedMultiVMExecutionTest test.
+    // 2. testExecutionTimeLimit() modifies JIT options at runtime
     // as part of its testing. This can wreak havoc on the rest of the system that
     // expects the options to be frozen. Ideally, we'll find a way for testExecutionTimeLimit()
     // to do its work without changing JIT options, but that is not easy to do.
-    // For now, we'll just run it here at the end as a workaround.
+    //
+    // For now, we'll just run them here at the end as a workaround.
+    failed |= testPingPongStackOverflow();
     failed |= testExecutionTimeLimit();
 
     if (failed) {

@@ -24,14 +24,13 @@
  */
 
 #import "config.h"
-#import "Test.h"
 
+#import "Test.h"
 #import <WebKit/WKBrowsingContextController.h>
-#import <WebKit/WKBrowsingContextGroup.h>
 #import <WebKit/WKBrowsingContextLoadDelegate.h>
 #import <WebKit/WKProcessGroup.h>
 #import <WebKit/WKRetainPtr.h>
-#import <WebKit/WKView.h>
+#import <WebKit/WKWebView.h>
 #import <wtf/RetainPtr.h>
 
 #import "PlatformUtilities.h"
@@ -42,30 +41,24 @@ namespace {
 
 class WKBrowsingContextLoadDelegateTest : public ::testing::Test { 
 public:
-    RetainPtr<WKProcessGroup> processGroup;
-    RetainPtr<WKBrowsingContextGroup> browsingContextGroup;
-    RetainPtr<WKView> view;
+    RetainPtr<WKWebView> view;
 
     WKBrowsingContextLoadDelegateTest() = default;
 
     virtual void SetUp()
     {
-        processGroup = adoptNS([[WKProcessGroup alloc] init]);
-        browsingContextGroup = adoptNS([[WKBrowsingContextGroup alloc] initWithIdentifier:@"TestIdentifier"]);
-        view = adoptNS([[WKView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) processGroup:processGroup.get() browsingContextGroup:browsingContextGroup.get()]);
+        view = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600)]);
     }
 
     virtual void TearDown()
     {
         view = nullptr;
-        browsingContextGroup = nullptr;
-        processGroup = nullptr;
     }
 };
 
 } // namespace
 
-@interface SimpleLoadDelegate : NSObject <WKBrowsingContextLoadDelegate>
+@interface SimpleLoadDelegate : NSObject <WKNavigationDelegate>
 {
     bool* _simpleLoadDone;
 }
@@ -86,7 +79,7 @@ public:
     return self;
 }
 
-- (void)browsingContextControllerDidFinishLoad:(WKBrowsingContextController *)sender
+- (void)webView:(WKWebView *)webView didFinishNavigation:(null_unspecified WKNavigation *)navigation
 {
     *_simpleLoadDone = true;
 }
@@ -104,17 +97,17 @@ TEST_F(WKBrowsingContextLoadDelegateTest, SimpleLoad)
 
     // Add the load delegate.
     auto loadDelegate = adoptNS([[SimpleLoadDelegate alloc] initWithFlag:&simpleLoadDone]);
-    view.get().browsingContextController.loadDelegate = loadDelegate.get();
+    view.get().navigationDelegate = loadDelegate.get();
 
     // Load the file.
     NSURL *nsURL = [[NSBundle mainBundle] URLForResource:@"simple" withExtension:@"html" subdirectory:@"TestWebKitAPI.resources"];
-    [view.get().browsingContextController loadFileURL:nsURL restrictToFilesWithin:nil];
+    [view.get() loadFileURL:nsURL allowingReadAccessToURL:nsURL];
 
     // Wait for the load to finish.
     TestWebKitAPI::Util::run(&simpleLoadDone);
 
     // Tear down the delegate.
-    view.get().browsingContextController.loadDelegate = nil;
+    view.get().navigationDelegate = nil;
 }
 
 TEST_F(WKBrowsingContextLoadDelegateTest, SimpleLoadOfHTMLString)
@@ -123,16 +116,16 @@ TEST_F(WKBrowsingContextLoadDelegateTest, SimpleLoadOfHTMLString)
 
     // Add the load delegate.
     auto loadDelegate = adoptNS([[SimpleLoadDelegate alloc] initWithFlag:&simpleLoadDone]);
-    view.get().browsingContextController.loadDelegate = loadDelegate.get();
+    view.get().navigationDelegate = loadDelegate.get();
 
     // Load the HTML string.
-    [view.get().browsingContextController loadHTMLString:@"<html><body>Simple HTML String</body></html>" baseURL:[NSURL URLWithString:@"about:blank"]];
+    [view.get() loadHTMLString:@"<html><body>Simple HTML String</body></html>" baseURL:[NSURL URLWithString:@"about:blank"]];
 
     // Wait for the load to finish.
     TestWebKitAPI::Util::run(&simpleLoadDone);
 
     // Tear down the delegate.
-    view.get().browsingContextController.loadDelegate = nil;
+    view.get().navigationDelegate = nil;
 }
 
 TEST_F(WKBrowsingContextLoadDelegateTest, SimpleLoadOfHTMLString_NilBaseURL)
@@ -141,16 +134,16 @@ TEST_F(WKBrowsingContextLoadDelegateTest, SimpleLoadOfHTMLString_NilBaseURL)
 
     // Add the load delegate.
     auto loadDelegate = adoptNS([[SimpleLoadDelegate alloc] initWithFlag:&simpleLoadDone]);
-    view.get().browsingContextController.loadDelegate = loadDelegate.get();
+    view.get().navigationDelegate = loadDelegate.get();
 
     // Load the HTML string, pass nil as the baseURL.
-    [view.get().browsingContextController loadHTMLString:@"<html><body>Simple HTML String</body></html>" baseURL:nil];
+    [view.get() loadHTMLString:@"<html><body>Simple HTML String</body></html>" baseURL:nil];
 
     // Wait for the load to finish.
     TestWebKitAPI::Util::run(&simpleLoadDone);
 
     // Tear down the delegate.
-    view.get().browsingContextController.loadDelegate = nil;
+    view.get().navigationDelegate = nil;
 }
 
 TEST_F(WKBrowsingContextLoadDelegateTest, SimpleLoadOfHTMLString_NilHTMLStringAndBaseURL)
@@ -159,19 +152,20 @@ TEST_F(WKBrowsingContextLoadDelegateTest, SimpleLoadOfHTMLString_NilHTMLStringAn
 
     // Add the load delegate.
     auto loadDelegate = adoptNS([[SimpleLoadDelegate alloc] initWithFlag:&simpleLoadDone]);
-    view.get().browsingContextController.loadDelegate = loadDelegate.get();
+    view.get().navigationDelegate = loadDelegate.get();
 
     // Load the HTML string (as nil).
-    [view.get().browsingContextController loadHTMLString:nil baseURL:nil];
+    NSString *string = nil;
+    [view.get() loadHTMLString:string baseURL:nil];
 
     // Wait for the load to finish.
     TestWebKitAPI::Util::run(&simpleLoadDone);
 
     // Tear down the delegate.
-    view.get().browsingContextController.loadDelegate = nil;
+    view.get().navigationDelegate = nil;
 }
 
-@interface SimpleLoadFailDelegate : NSObject <WKBrowsingContextLoadDelegate>
+@interface SimpleLoadFailDelegate : NSObject <WKNavigationDelegate>
 {
     bool* _simpleLoadFailDone;
 }
@@ -192,7 +186,7 @@ TEST_F(WKBrowsingContextLoadDelegateTest, SimpleLoadOfHTMLString_NilHTMLStringAn
     return self;
 }
 
-- (void)browsingContextController:(WKBrowsingContextController *)sender didFailProvisionalLoadWithError:(NSError *)error
+- (void)webView:(WKWebView *)webView didFailProvisionalNavigation:(null_unspecified WKNavigation *)navigation withError:(NSError *)error
 {
     EXPECT_EQ(-1100, error.code);
     EXPECT_WK_STREQ(NSURLErrorDomain, error.domain);
@@ -208,17 +202,17 @@ TEST_F(WKBrowsingContextLoadDelegateTest, SimpleLoadFail)
 
     // Add the load delegate.
     auto loadDelegate = adoptNS([[SimpleLoadFailDelegate alloc] initWithFlag:&simpleLoadFailDone]);
-    view.get().browsingContextController.loadDelegate = loadDelegate.get();
+    view.get().navigationDelegate = loadDelegate.get();
 
     // Load a non-existent file.
     NSURL *nsURL = [NSURL URLWithString:@"file:///does-not-exist.html"];
-    [view.get().browsingContextController loadFileURL:nsURL restrictToFilesWithin:nil];
+    [view.get() loadFileURL:nsURL allowingReadAccessToURL:nsURL];
 
     // Wait for the load to fail.
     TestWebKitAPI::Util::run(&simpleLoadFailDone);
 
     // Tear down the delegate.
-    view.get().browsingContextController.loadDelegate = nil;
+    view.get().navigationDelegate = nil;
 }
 
 #endif // PLATFORM(MAC)

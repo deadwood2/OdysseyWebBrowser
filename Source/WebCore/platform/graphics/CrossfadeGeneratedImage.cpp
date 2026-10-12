@@ -87,7 +87,7 @@ void CrossfadeGeneratedImage::drawCrossfade(GraphicsContext& context)
     context.endTransparencyLayer();
 }
 
-ImageDrawResult CrossfadeGeneratedImage::draw(GraphicsContext& context, const FloatRect& dstRect, const FloatRect& srcRect, const ImagePaintingOptions& options)
+ImageDrawResult CrossfadeGeneratedImage::draw(GraphicsContext& context, const FloatRect& dstRect, const FloatRect& srcRect, ImagePaintingOptions options)
 {
     GraphicsContextStateSaver stateSaver(context);
     context.setCompositeOperation(options.compositeOperator(), options.blendMode());
@@ -101,9 +101,9 @@ ImageDrawResult CrossfadeGeneratedImage::draw(GraphicsContext& context, const Fl
     return ImageDrawResult::DidDraw;
 }
 
-void CrossfadeGeneratedImage::drawPattern(GraphicsContext& context, const FloatRect& dstRect, const FloatRect& srcRect, const AffineTransform& patternTransform, const FloatPoint& phase, const FloatSize& spacing, const ImagePaintingOptions& options)
+void CrossfadeGeneratedImage::drawPattern(GraphicsContext& context, const FloatRect& dstRect, const FloatRect& srcRect, const AffineTransform& patternTransform, const FloatPoint& phase, const FloatSize& spacing, ImagePaintingOptions options)
 {
-    auto imageBuffer = ImageBuffer::create(size(), context.renderingMode(), 1, DestinationColorSpace::SRGB(), PixelFormat::BGRA8);
+    auto imageBuffer = context.createImageBuffer(size());
     if (!imageBuffer)
         return;
 
@@ -112,7 +112,7 @@ void CrossfadeGeneratedImage::drawPattern(GraphicsContext& context, const FloatR
     drawCrossfade(graphicsContext);
 
     // Tile the image buffer into the context.
-    imageBuffer->drawPattern(context, dstRect, srcRect, patternTransform, phase, spacing, options);
+    context.drawPattern(*imageBuffer, dstRect, srcRect, patternTransform, phase, spacing, options);
 }
 
 void CrossfadeGeneratedImage::dump(TextStream& ts) const

@@ -1,12 +1,7 @@
-find_library(TOOLKIT_LIBRARY ToolKitten)
-
-PLAYSTATION_COPY_REQUIREMENTS(MiniBrowser_CopySharedLibs
-    FILES ${TOOLKIT_LIBRARY}
-)
+set(MiniBrowser_DEPENDENCIES Cairo_CopyModule ToolKitten_CopyModule)
 
 set(MiniBrowser_PRIVATE_INCLUDE_DIRECTORIES
     ${CMAKE_BINARY_DIR}
-    "${TOOLS_DIR}/playstation/"
 )
 
 set(MiniBrowser_SOURCES
@@ -22,34 +17,28 @@ set(MiniBrowser_SOURCES
 set(MiniBrowser_LIBRARIES
     ${C_STD_LIBRARY}
     ${KERNEL_LIBRARY}
-
     ${TOOLKIT_LIBRARY}
-
-    WebKit::WebKit
 )
+set(MiniBrowser_FRAMEWORKS WebKit)
 
-set(PLAYSTATION_MiniBrowser_REQUIRED_SHARED_LIBRARIES
-    libToolKitten
-    libcairo
-    libfontconfig
-    libfreetype
-    libharfbuzz
-    libicu
-    libpng16
-)
+# Currently Cairo is required for MiniBrowser on PlayStation
+list(APPEND MiniBrowser_DEFINITIONS USE_CAIRO=1)
+list(APPEND MiniBrowser_LIBRARIES Cairo::Cairo)
 
-link_directories(${WEBKIT_LIBRARIES_DIR}/lib)
+if (USE_WPE_BACKEND_PLAYSTATION)
+    list(APPEND MiniBrowser_DEFINITIONS USE_WPE_BACKEND_PLAYSTATION)
+    list(APPEND MiniBrowser_LIBRARIES WebKit::WPEToolingBackends)
+endif ()
+
 WEBKIT_EXECUTABLE_DECLARE(MiniBrowser)
 WEBKIT_EXECUTABLE(MiniBrowser)
 
-# MiniBrowser won't work without these processes
-add_dependencies(MiniBrowser WebProcess NetworkProcess)
-
 target_link_options(MiniBrowser PRIVATE -Wl,--no-demangle)
 
-#
-# Set the debugger working directory for Visual Studio
-#
 if (${CMAKE_GENERATOR} MATCHES "Visual Studio")
+    # Set the debugger working directory for Visual Studio
     set_target_properties(MiniBrowser PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
+
+    # Set the startup target to MiniBrowser
+    set_property(DIRECTORY ${PROJECT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT MiniBrowser)
 endif ()

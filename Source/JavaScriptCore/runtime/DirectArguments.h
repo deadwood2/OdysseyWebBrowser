@@ -49,8 +49,8 @@ public:
     template<typename CellType, SubspaceAccess>
     static CompleteSubspace* subspaceFor(VM& vm)
     {
-        static_assert(!CellType::needsDestruction, "");
-        return &vm.variableSizedCellSpace;
+        static_assert(!CellType::needsDestruction);
+        return &vm.variableSizedCellSpace();
     }
 
     // Creates an arguments object but leaves it uninitialized. This is dangerous if we GC right
@@ -74,11 +74,11 @@ public:
     
     uint32_t length(JSGlobalObject* globalObject) const
     {
+        VM& vm = getVM(globalObject);
+        auto scope = DECLARE_THROW_SCOPE(vm);
         if (UNLIKELY(m_mappedArguments)) {
-            VM& vm = getVM(globalObject);
-            auto scope = DECLARE_THROW_SCOPE(vm);
             JSValue value = get(globalObject, vm.propertyNames->length);
-            RETURN_IF_EXCEPTION(scope, 0);
+            RETURN_IF_EXCEPTION(scope, { });
             RELEASE_AND_RETURN(scope, value.toUInt32(globalObject));
         }
         return m_length;
@@ -86,7 +86,7 @@ public:
     
     bool isMappedArgument(uint32_t i) const
     {
-        return i < m_length && (!m_mappedArguments || !m_mappedArguments.at(i, m_length));
+        return i < m_length && (!m_mappedArguments || !m_mappedArguments.at(i));
     }
 
     bool isMappedArgumentInDFG(uint32_t i) const
@@ -146,15 +146,19 @@ public:
 
     void copyToArguments(JSGlobalObject*, JSValue* firstElementDest, unsigned offset, unsigned length);
 
+    static JSArray* fastSlice(JSGlobalObject*, DirectArguments*, uint64_t startIndex, uint64_t count);
+
+    JS_EXPORT_PRIVATE bool isIteratorProtocolFastAndNonObservable();
+
     DECLARE_INFO;
     
     static Structure* createStructure(VM&, JSGlobalObject*, JSValue prototype);
     
-    static ptrdiff_t offsetOfCallee() { return OBJECT_OFFSETOF(DirectArguments, m_callee); }
-    static ptrdiff_t offsetOfLength() { return OBJECT_OFFSETOF(DirectArguments, m_length); }
-    static ptrdiff_t offsetOfMinCapacity() { return OBJECT_OFFSETOF(DirectArguments, m_minCapacity); }
-    static ptrdiff_t offsetOfMappedArguments() { return OBJECT_OFFSETOF(DirectArguments, m_mappedArguments); }
-    static ptrdiff_t offsetOfModifiedArgumentsDescriptor() { return OBJECT_OFFSETOF(DirectArguments, m_modifiedArgumentsDescriptor); }
+    static constexpr ptrdiff_t offsetOfCallee() { return OBJECT_OFFSETOF(DirectArguments, m_callee); }
+    static constexpr ptrdiff_t offsetOfLength() { return OBJECT_OFFSETOF(DirectArguments, m_length); }
+    static constexpr ptrdiff_t offsetOfMinCapacity() { return OBJECT_OFFSETOF(DirectArguments, m_minCapacity); }
+    static constexpr ptrdiff_t offsetOfMappedArguments() { return OBJECT_OFFSETOF(DirectArguments, m_mappedArguments); }
+    static constexpr ptrdiff_t offsetOfModifiedArgumentsDescriptor() { return OBJECT_OFFSETOF(DirectArguments, m_modifiedArgumentsDescriptor); }
     
     static size_t storageOffset()
     {
@@ -185,7 +189,7 @@ private:
     using MappedArguments = CagedBarrierPtr<Gigacage::Primitive, bool>;
     MappedArguments m_mappedArguments; // If non-null, it means that length, callee, and caller are fully materialized properties.
 
-    friend size_t cellSize(VM&, JSCell*);
+    friend size_t cellSize(JSCell*);
 };
 
 } // namespace JSC

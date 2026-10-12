@@ -26,20 +26,21 @@
 #include "config.h"
 #include "MediaRecorderPrivate.h"
 
-#if PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(MEDIA_STREAM) && HAVE(AVASSETWRITERDELEGATE)
+#if PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(MEDIA_RECORDER)
 
-#include "DataReference.h"
 #include "GPUProcessConnection.h"
 #include "RemoteMediaRecorderManagerMessages.h"
 #include "RemoteMediaRecorderMessages.h"
+#include "RemoteVideoFrameProxy.h"
 #include "WebProcess.h"
 #include <WebCore/CARingBuffer.h>
+#include <WebCore/CVUtilities.h>
 #include <WebCore/MediaStreamPrivate.h>
 #include <WebCore/MediaStreamTrackPrivate.h>
 #include <WebCore/RealtimeIncomingVideoSourceCocoa.h>
-#include <WebCore/RemoteVideoSample.h>
 #include <WebCore/SharedBuffer.h>
 #include <WebCore/WebAudioBufferList.h>
+#include <wtf/TZoneMallocInlines.h>
 
 #include <pal/cf/CoreMediaSoftLink.h>
 
@@ -47,13 +48,44 @@ namespace WebKit {
 using namespace PAL;
 using namespace WebCore;
 
+class MediaRecorderPrivateGPUProcessDidCloseObserver final
+    : public GPUProcessConnection::Client
+    , public ThreadSafeRefCountedAndCanMakeThreadSafeWeakPtr<MediaRecorderPrivateGPUProcessDidCloseObserver> {
+public:
+    static Ref<MediaRecorderPrivateGPUProcessDidCloseObserver> create(MediaRecorderPrivate& recorder) { return adoptRef(*new MediaRecorderPrivateGPUProcessDidCloseObserver(recorder)); }
+
+    // GPUProcessConnection::Client
+    void ref() const final { return ThreadSafeRefCountedAndCanMakeThreadSafeWeakPtr::ref(); }
+    void deref() const final { return ThreadSafeRefCountedAndCanMakeThreadSafeWeakPtr::deref(); }
+    ThreadSafeWeakPtrControlBlock& controlBlock() const final { return ThreadSafeRefCountedAndCanMakeThreadSafeWeakPtr::controlBlock(); }
+
+private:
+    explicit MediaRecorderPrivateGPUProcessDidCloseObserver(MediaRecorderPrivate& recorder)
+        : m_recorder(recorder)
+    {
+    }
+
+    void gpuProcessConnectionDidClose(GPUProcessConnection&) final
+    {
+        callOnMainRunLoop([recorder = m_recorder] {
+            if (recorder)
+                recorder->gpuProcessConnectionDidClose();
+        });
+    }
+
+    WeakPtr<MediaRecorderPrivate> m_recorder;
+};
+
+WTF_MAKE_TZONE_ALLOCATED_IMPL(MediaRecorderPrivate);
+
 MediaRecorderPrivate::MediaRecorderPrivate(MediaStreamPrivate& stream, const MediaRecorderPrivateOptions& options)
-    : m_identifier(MediaRecorderIdentifier::generate())
-    , m_stream(makeRef(stream))
+    : m_stream(stream)
     , m_connection(WebProcess::singleton().ensureGPUProcessConnection().connection())
     , m_options(options)
     , m_hasVideo(stream.hasVideo())
+    , m_gpuProcessDidCloseObserver(MediaRecorderPrivateGPUProcessDidCloseObserver::create(*this))
 {
+    WebProcess::singleton().ensureGPUProcessConnection().addClient(m_gpuProcessDidCloseObserver.get());
 }
 
 void MediaRecorderPrivate::startRecording(StartRecordingCallback&& callback)
@@ -62,23 +94,20 @@ void MediaRecorderPrivate::startRecording(StartRecordingCallback&& callback)
     // Currently we only choose the first track as the recorded track.
 
     auto selectedTracks = MediaRecorderPrivate::selectTracks(m_stream);
-    if (selectedTracks.audioTrack)
-        m_ringBuffer = makeUnique<CARingBuffer>(makeUniqueRef<SharedRingBufferStorage>(std::bind(&MediaRecorderPrivate::storageChanged, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3)));
-
-    m_connection->sendWithAsyncReply(Messages::RemoteMediaRecorderManager::CreateRecorder { m_identifier, !!selectedTracks.audioTrack, !!selectedTracks.videoTrack, m_options }, [this, weakThis = makeWeakPtr(this), audioTrack = makeRefPtr(selectedTracks.audioTrack), videoTrack = makeRefPtr(selectedTracks.videoTrack), callback = WTFMove(callback)](auto&& exception, String&& mimeType, unsigned audioBitRate, unsigned videoBitRate) mutable {
+    m_connection->sendWithAsyncReply(Messages::RemoteMediaRecorderManager::CreateRecorder { identifier(), !!selectedTracks.audioTrack, !!selectedTracks.videoTrack, m_options }, [weakThis = WeakPtr { *this }, audioTrack = RefPtr { selectedTracks.audioTrack }, videoTrack = RefPtr { selectedTracks.videoTrack }, callback = WTFMove(callback)](auto&& exception, String&& mimeType, unsigned audioBitRate, unsigned videoBitRate) mutable {
         if (!weakThis) {
-            callback(Exception { InvalidStateError }, 0, 0);
+            callback(Exception { ExceptionCode::InvalidStateError }, 0, 0);
             return;
         }
         if (exception) {
             callback(Exception { exception->code, WTFMove(exception->message) }, 0, 0);
             return;
         }
-        if (!m_isStopped) {
+        if (!weakThis->m_isStopped) {
             if (audioTrack)
-                setAudioSource(&audioTrack->source());
+                weakThis->setAudioSource(&audioTrack->source());
             if (videoTrack)
-                setVideoSource(&videoTrack->source());
+                weakThis->setVideoSource(&videoTrack->source());
         }
         callback(WTFMove(mimeType), audioBitRate, videoBitRate);
     }, 0);
@@ -86,34 +115,28 @@ void MediaRecorderPrivate::startRecording(StartRecordingCallback&& callback)
 
 MediaRecorderPrivate::~MediaRecorderPrivate()
 {
-    m_connection->send(Messages::RemoteMediaRecorderManager::ReleaseRecorder { m_identifier }, 0);
+    m_connection->send(Messages::RemoteMediaRecorderManager::ReleaseRecorder { identifier() }, 0);
 }
 
-void MediaRecorderPrivate::videoSampleAvailable(MediaSample& sample)
+void MediaRecorderPrivate::videoFrameAvailable(WebCore::VideoFrame& videoFrame, VideoFrameTimeMetadata)
 {
-    std::unique_ptr<RemoteVideoSample> remoteSample;
     if (shouldMuteVideo()) {
-        if (!m_blackFrame) {
-            auto blackFrameDescription = CMSampleBufferGetFormatDescription(sample.platformSample().sample.cmSampleBuffer);
-            auto dimensions = CMVideoFormatDescriptionGetDimensions(blackFrameDescription);
-            auto blackFrame = createBlackPixelBuffer(dimensions.width, dimensions.height);
-            // FIXME: We convert to get an IOSurface. We could optimize this.
-            m_blackFrame = convertToBGRA(blackFrame.get());
+        if (!m_blackFrameSize) {
+            auto size = videoFrame.presentationSize();
+            m_blackFrameSize = WebCore::IntSize { static_cast<int>(size.width()), static_cast<int>(size.height()) };
         }
-        remoteSample = RemoteVideoSample::create(m_blackFrame.get(), sample.presentationTime(), sample.videoRotation());
-    } else {
-        m_blackFrame = nullptr;
-        remoteSample = RemoteVideoSample::create(sample);
-        if (!remoteSample) {
-            // FIXME: Optimize this code path.
-            auto pixelBuffer = static_cast<CVPixelBufferRef>(CMSampleBufferGetImageBuffer(sample.platformSample().sample.cmSampleBuffer));
-            auto newPixelBuffer = convertToBGRA(pixelBuffer);
-            remoteSample = RemoteVideoSample::create(newPixelBuffer.get(), sample.presentationTime(), sample.videoRotation());
-        }
+        SharedVideoFrame sharedVideoFrame { videoFrame.presentationTime(), videoFrame.isMirrored(), videoFrame.rotation(), *m_blackFrameSize };
+        m_connection->send(Messages::RemoteMediaRecorder::VideoFrameAvailable { WTFMove(sharedVideoFrame) }, identifier());
+        return;
     }
 
-    if (remoteSample)
-        m_connection->send(Messages::RemoteMediaRecorder::VideoSampleAvailable { WTFMove(*remoteSample) }, m_identifier);
+    m_blackFrameSize = { };
+    auto sharedVideoFrame = m_sharedVideoFrameWriter.write(videoFrame,
+        [this](auto& semaphore) { m_connection->send(Messages::RemoteMediaRecorder::SetSharedVideoFrameSemaphore { semaphore }, identifier()); },
+        [this](SharedMemory::Handle&& handle) { m_connection->send(Messages::RemoteMediaRecorder::SetSharedVideoFrameMemory { WTFMove(handle) }, identifier()); }
+    );
+    if (sharedVideoFrame)
+        m_connection->send(Messages::RemoteMediaRecorder::VideoFrameAvailable { WTFMove(*sharedVideoFrame) }, identifier());
 }
 
 void MediaRecorderPrivate::audioSamplesAvailable(const MediaTime& time, const PlatformAudioData& audioData, const AudioStreamDescription& description, size_t numberOfFrames)
@@ -124,11 +147,16 @@ void MediaRecorderPrivate::audioSamplesAvailable(const MediaTime& time, const Pl
 
     if (m_description != description) {
         ASSERT(description.platformDescription().type == PlatformDescription::CAAudioStreamBasicType);
-        m_description = *WTF::get<const AudioStreamBasicDescription*>(description.platformDescription().description);
+        m_description = *std::get<const AudioStreamBasicDescription*>(description.platformDescription().description);
 
         // Allocate a ring buffer large enough to contain 2 seconds of audio.
-        m_numberOfFrames = m_description.sampleRate() * 2;
-        m_ringBuffer->allocate(m_description.streamDescription(), m_numberOfFrames);
+        m_numberOfFrames = m_description->sampleRate() * 2;
+        auto& format = m_description->streamDescription();
+        auto result = ProducerSharedCARingBuffer::allocate(format, m_numberOfFrames);
+        RELEASE_ASSERT(result); // FIXME(https://bugs.webkit.org/show_bug.cgi?id=262690): Handle allocation failure.
+        auto [ringBuffer, handle] = WTFMove(*result);
+        m_ringBuffer = WTFMove(ringBuffer);
+        m_connection->send(Messages::RemoteMediaRecorder::AudioSamplesStorageChanged { WTFMove(handle), format }, identifier());
         m_silenceAudioBuffer = nullptr;
     }
 
@@ -136,59 +164,41 @@ void MediaRecorderPrivate::audioSamplesAvailable(const MediaTime& time, const Pl
 
     if (shouldMuteAudio()) {
         if (!m_silenceAudioBuffer)
-            m_silenceAudioBuffer = makeUnique<WebAudioBufferList>(m_description, numberOfFrames);
+            m_silenceAudioBuffer = makeUnique<WebAudioBufferList>(*m_description, numberOfFrames);
         else
             m_silenceAudioBuffer->setSampleCount(numberOfFrames);
         m_silenceAudioBuffer->zeroFlatBuffer();
         m_ringBuffer->store(m_silenceAudioBuffer->list(), numberOfFrames, time.timeValue());
     } else
         m_ringBuffer->store(downcast<WebAudioBufferList>(audioData).list(), numberOfFrames, time.timeValue());
-    m_connection->send(Messages::RemoteMediaRecorder::AudioSamplesAvailable { time, numberOfFrames }, m_identifier);
+    m_connection->send(Messages::RemoteMediaRecorder::AudioSamplesAvailable { time, numberOfFrames }, identifier());
 }
 
-void MediaRecorderPrivate::storageChanged(SharedMemory* storage, const WebCore::CAAudioStreamDescription& format, size_t frameCount)
-{
-    // Heap allocations are forbidden on the audio thread for performance reasons so we need to
-    // explicitly allow the following allocation(s).
-    DisableMallocRestrictionsForCurrentThreadScope disableMallocRestrictions;
-
-    SharedMemory::Handle handle;
-    if (storage)
-        storage->createHandle(handle, SharedMemory::Protection::ReadOnly);
-
-    // FIXME: Send the actual data size with IPCHandle.
-#if OS(DARWIN) || OS(WINDOWS)
-    uint64_t dataSize = handle.size();
-#else
-    uint64_t dataSize = 0;
-#endif
-    m_connection->send(Messages::RemoteMediaRecorder::AudioSamplesStorageChanged { SharedMemory::IPCHandle { WTFMove(handle), dataSize }, format, frameCount }, m_identifier);
-}
-
-void MediaRecorderPrivate::fetchData(CompletionHandler<void(RefPtr<WebCore::SharedBuffer>&&, const String& mimeType, double)>&& completionHandler)
+void MediaRecorderPrivate::fetchData(CompletionHandler<void(RefPtr<WebCore::FragmentedSharedBuffer>&&, const String& mimeType, double)>&& completionHandler)
 {
     m_connection->sendWithAsyncReply(Messages::RemoteMediaRecorder::FetchData { }, [completionHandler = WTFMove(completionHandler), mimeType = mimeType()](auto&& data, double timeCode) mutable {
-        RefPtr<SharedBuffer> buffer;
+        // FIXME: If completion handler is called following a GPUProcess connection being closed, we should fail the MediaRecorder.
+        RefPtr<FragmentedSharedBuffer> buffer;
         if (data.size())
-            buffer = SharedBuffer::create(data.data(), data.size());
+            buffer = SharedBuffer::create(data);
         completionHandler(WTFMove(buffer), mimeType, timeCode);
-    }, m_identifier);
+    }, identifier());
 }
 
 void MediaRecorderPrivate::stopRecording(CompletionHandler<void()>&& completionHandler)
 {
     m_isStopped = true;
-    m_connection->sendWithAsyncReply(Messages::RemoteMediaRecorder::StopRecording { }, WTFMove(completionHandler), m_identifier);
+    m_connection->sendWithAsyncReply(Messages::RemoteMediaRecorder::StopRecording { }, WTFMove(completionHandler), identifier());
 }
 
 void MediaRecorderPrivate::pauseRecording(CompletionHandler<void()>&& completionHandler)
 {
-    m_connection->sendWithAsyncReply(Messages::RemoteMediaRecorder::Pause { }, WTFMove(completionHandler), m_identifier);
+    m_connection->sendWithAsyncReply(Messages::RemoteMediaRecorder::Pause { }, WTFMove(completionHandler), identifier());
 }
 
 void MediaRecorderPrivate::resumeRecording(CompletionHandler<void()>&& completionHandler)
 {
-    m_connection->sendWithAsyncReply(Messages::RemoteMediaRecorder::Resume { }, WTFMove(completionHandler), m_identifier);
+    m_connection->sendWithAsyncReply(Messages::RemoteMediaRecorder::Resume { }, WTFMove(completionHandler), identifier());
 }
 
 const String& MediaRecorderPrivate::mimeType() const
@@ -198,6 +208,11 @@ const String& MediaRecorderPrivate::mimeType() const
     return m_hasVideo ? videoMP4 : audioMP4;
 }
 
+void MediaRecorderPrivate::gpuProcessConnectionDidClose()
+{
+    m_sharedVideoFrameWriter.disable();
 }
 
-#endif // PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(MEDIA_STREAM) && HAVE(AVASSETWRITERDELEGATE)
+}
+
+#endif // PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(MEDIA_RECORDER)

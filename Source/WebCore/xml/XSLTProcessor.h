@@ -33,9 +33,9 @@
 
 namespace WebCore {
 
-class Frame;
 class Document;
 class DocumentFragment;
+class LocalFrame;
 
 class XSLTProcessor : public RefCounted<XSLTProcessor> {
 public:
@@ -44,16 +44,15 @@ public:
 
     void setXSLStyleSheet(RefPtr<XSLStyleSheet>&& styleSheet) { m_stylesheet = WTFMove(styleSheet); }
     bool transformToString(Node& source, String& resultMIMEType, String& resultString, String& resultEncoding);
-    Ref<Document> createDocumentFromSource(const String& source, const String& sourceEncoding, const String& sourceMIMEType, Node* sourceNode, Frame* frame);
+    Ref<Document> createDocumentFromSource(const String& source, const String& sourceEncoding, const String& sourceMIMEType, Node* sourceNode, LocalFrame*);
     
     // DOM methods
-    void importStylesheet(RefPtr<Node>&& style)
+    void importStylesheet(Ref<Node>&& style)
     {
-        if (style)
-            m_stylesheetRootNode = WTFMove(style);
+        m_stylesheetRootNode = WTFMove(style);
     }
-    RefPtr<DocumentFragment> transformToFragment(Node* source, Document* ouputDoc);
-    RefPtr<Document> transformToDocument(Node* source);
+    RefPtr<DocumentFragment> transformToFragment(Node& source, Document& ouputDocument);
+    RefPtr<Document> transformToDocument(Node& source);
     
     void setParameter(const String& namespaceURI, const String& localName, const String& value);
     String getParameter(const String& namespaceURI, const String& localName) const;
@@ -62,13 +61,17 @@ public:
 
     void reset();
 
+#if LIBXML_VERSION >= 21200
+    static void parseErrorFunc(void* userData, const xmlError*);
+#else
     static void parseErrorFunc(void* userData, xmlError*);
+#endif
     static void genericErrorFunc(void* userData, const char* msg, ...);
     
     // Only for libXSLT callbacks
     XSLStyleSheet* xslStylesheet() const { return m_stylesheet.get(); }
 
-    typedef HashMap<String, String> ParameterMap;
+    using ParameterMap = HashMap<String, String>;
 
 private:
     XSLTProcessor() = default;

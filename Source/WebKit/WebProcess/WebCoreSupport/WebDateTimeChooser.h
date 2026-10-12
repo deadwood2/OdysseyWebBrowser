@@ -28,6 +28,16 @@
 #if ENABLE(DATE_AND_TIME_INPUT_TYPES)
 
 #include <WebCore/DateTimeChooser.h>
+#include <wtf/WeakRef.h>
+
+namespace WebKit {
+class WebDateTimeChooser;
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebKit::WebDateTimeChooser> : std::true_type { };
+}
 
 namespace WebCore {
 class DateTimeChooserClient;
@@ -50,7 +60,7 @@ private:
     void showChooser(const WebCore::DateTimeChooserParameters&) final;
 
     WebCore::DateTimeChooserClient& m_client;
-    WebPage& m_page;
+    WeakRef<WebPage> m_page;
 };
 
 } // namespace WebKit

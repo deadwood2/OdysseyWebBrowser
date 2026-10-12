@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019-2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2019-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -50,7 +50,6 @@
 #include "B3MoveConstants.h"
 #include "B3NativeTraits.h"
 #include "B3Procedure.h"
-#include "B3ReduceLoopStrength.h"
 #include "B3ReduceStrength.h"
 #include "B3SlotBaseValue.h"
 #include "B3StackmapGenerationParams.h"
@@ -69,6 +68,7 @@
 #include "JITCompilation.h"
 #include "JSCInlines.h"
 #include "LinkBuffer.h"
+#include "OperationResult.h"
 #include "PureNaN.h"
 #include <cmath>
 #include <regex>
@@ -80,6 +80,7 @@
 #include <wtf/NumberOfCores.h>
 #include <wtf/StdList.h>
 #include <wtf/Threading.h>
+#include <wtf/WTFProcess.h>
 #include <wtf/text/StringCommon.h>
 
 // We don't have a NO_RETURN_DUE_TO_EXIT, nor should we. That's ridiculous.
@@ -89,17 +90,17 @@ inline void usage()
 {
     dataLog("Usage: testb3 [<filter>]\n");
     if (hiddenTruthBecauseNoReturnIsStupid())
-        exit(1);
+        exitProcess(1);
 }
 
-#if ENABLE(B3_JIT)
+#if ENABLE(B3_JIT) && !CPU(ARM)
 
 using namespace JSC;
 using namespace JSC::B3;
 
-inline bool shouldBeVerbose()
+inline bool shouldBeVerbose(Procedure& procedure)
 {
-    return shouldDumpIR(B3Mode);
+    return shouldDumpIR(procedure, B3Mode);
 }
 
 extern Lock crashLock;
@@ -125,22 +126,24 @@ extern Lock crashLock;
 
 #define PREFIX "O", Options::defaultB3OptLevel(), ": "
 
-#define RUN(test) do {                             \
-    if (!shouldRun(filter, #test))                 \
-        break;                                     \
-    tasks.append(                                  \
-        createSharedTask<void()>(                  \
-            [&] () {                               \
-                dataLog(PREFIX #test "...\n");     \
-                test;                              \
-                dataLog(PREFIX #test ": OK!\n");   \
-            }));                                   \
+#define RUN(test)                                           \
+    do {                                                    \
+        CString testStr = toCString(PREFIX #test);          \
+        if (!shouldRun(config, testStr.data()))             \
+            break;                                          \
+        tasks.append(                                       \
+            createSharedTask<void()>(                       \
+                [=]() {                                     \
+                    dataLog(toCString(testStr, "...\n"));   \
+                    test;                                   \
+                    dataLog(toCString(testStr, ": OK!\n")); \
+                }));                                        \
     } while (false);
 
 #define RUN_UNARY(test, values) \
     for (auto a : values) {                             \
         CString testStr = toCString(PREFIX #test, "(", a.name, ")"); \
-        if (!shouldRun(filter, testStr.data()))         \
+        if (!shouldRun(config, testStr.data()))         \
             continue;                                   \
         tasks.append(createSharedTask<void()>(          \
             [=] () {                                    \
@@ -151,7 +154,7 @@ extern Lock crashLock;
     }
 
 #define RUN_NOW(test) do {                      \
-        if (!shouldRun(filter, #test))          \
+        if (!shouldRun(config, #test))          \
             break;                              \
         dataLog(PREFIX #test "...\n");          \
         test;                                   \
@@ -162,7 +165,7 @@ extern Lock crashLock;
     for (auto a : valuesA) {                                \
         for (auto b : valuesB) {                            \
             CString testStr = toCString(PREFIX #test, "(", a.name, ", ", b.name, ")"); \
-            if (!shouldRun(filter, testStr.data()))         \
+            if (!shouldRun(config, testStr.data()))         \
                 continue;                                   \
             tasks.append(createSharedTask<void()>(          \
                 [=] () {                                    \
@@ -176,8 +179,8 @@ extern Lock crashLock;
     for (auto a : valuesA) {                                    \
         for (auto b : valuesB) {                                \
             for (auto c : valuesC) {                            \
-                CString testStr = toCString(#test, "(", a.name, ", ", b.name, ",", c.name, ")"); \
-                if (!shouldRun(filter, testStr.data()))         \
+                CString testStr = toCString(PREFIX #test, "(", a.name, ", ", b.name, ",", c.name, ")"); \
+                if (!shouldRun(config, testStr.data()))         \
                     continue;                                   \
                 tasks.append(createSharedTask<void()>(          \
                     [=] () {                                    \
@@ -197,10 +200,10 @@ inline std::unique_ptr<Compilation> compileProc(Procedure& procedure, unsigned o
 }
 
 template<typename T, typename... Arguments>
-T invoke(MacroAssemblerCodePtr<JITCompilationPtrTag> ptr, Arguments... arguments)
+T invoke(CodePtr<JITCompilationPtrTag> ptr, Arguments... arguments)
 {
-    void* executableAddress = untagCFunctionPtr<JITCompilationPtrTag>(ptr.executableAddress());
-    T (*function)(Arguments...) = bitwise_cast<T(*)(Arguments...)>(executableAddress);
+    void* executableAddress = untagCFunctionPtr<JITCompilationPtrTag>(ptr.taggedPtr());
+    T (SYSV_ABI *function)(Arguments...) = bitwise_cast<T(SYSV_ABI *)(Arguments...)>(executableAddress);
     return function(arguments...);
 }
 
@@ -220,13 +223,13 @@ inline void lowerToAirForTesting(Procedure& proc)
 {
     proc.resetReachability();
     
-    if (shouldBeVerbose())
+    if (shouldBeVerbose(proc))
         dataLog("B3 before lowering:\n", proc);
     
     validate(proc);
     lowerToAir(proc);
     
-    if (shouldBeVerbose())
+    if (shouldBeVerbose(proc))
         dataLog("Air after lowering:\n", proc.code());
     
     Air::validate(proc.code());
@@ -273,12 +276,17 @@ struct B3Operand {
     Type value;
 };
 
+typedef B3Operand<v128_t> V128Operand;
 typedef B3Operand<int64_t> Int64Operand;
 typedef B3Operand<int32_t> Int32Operand;
 typedef B3Operand<int16_t> Int16Operand;
 typedef B3Operand<int8_t> Int8Operand;
 
 #define MAKE_OPERAND(value) B3Operand<decltype(value)> { #value, value }
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846264338327950288
+#endif
 
 template<typename FloatType>
 void populateWithInterestingValues(Vector<B3Operand<FloatType>>& operands)
@@ -315,6 +323,30 @@ Vector<B3Operand<FloatType>> floatingPointOperands()
     populateWithInterestingValues(operands);
     return operands;
 };
+
+inline Vector<V128Operand> v128Operands()
+{
+    Vector<V128Operand> operands;
+    operands.append({ "0,0", v128_t { 0, 0 } });
+    operands.append({ "1,0", v128_t { 1, 0 } });
+    operands.append({ "0,1", v128_t { 0, 1 } });
+    operands.append({ "42,0", v128_t { 42, 0 } });
+    operands.append({ "0,42", v128_t { 0, 42 } });
+    operands.append({ "42,42", v128_t { 42, 42 } });
+    operands.append({ "-42,-42", v128_t { static_cast<uint64_t>(-42), static_cast<uint64_t>(-42) } });
+    operands.append({ "0,-42", v128_t { 0, static_cast<uint64_t>(-42) } });
+    operands.append({ "-42,0", v128_t { static_cast<uint64_t>(-42), 0 } });
+    operands.append({ "int64-max,int64-max", v128_t { static_cast<uint64_t>(std::numeric_limits<int64_t>::max()), static_cast<uint64_t>(std::numeric_limits<int64_t>::max()) } });
+    operands.append({ "int64-min,int64-min", v128_t { static_cast<uint64_t>(std::numeric_limits<int64_t>::min()), static_cast<uint64_t>(std::numeric_limits<int64_t>::min()) } });
+    operands.append({ "int32-max,int32-max", v128_t { static_cast<uint64_t>(std::numeric_limits<int32_t>::max()), static_cast<uint64_t>(std::numeric_limits<int32_t>::max()) } });
+    operands.append({ "int32-min,int32-min", v128_t { static_cast<uint64_t>(std::numeric_limits<int32_t>::min()), static_cast<uint64_t>(std::numeric_limits<int32_t>::min()) } });
+    operands.append({ "uint64-max,uint64-max", v128_t { static_cast<uint64_t>(std::numeric_limits<uint64_t>::max()), static_cast<uint64_t>(std::numeric_limits<uint64_t>::max()) } });
+    operands.append({ "uint64-min,uint64-min", v128_t { static_cast<uint64_t>(std::numeric_limits<uint64_t>::min()), static_cast<uint64_t>(std::numeric_limits<uint64_t>::min()) } });
+    operands.append({ "uint32-max,uint32-max", v128_t { static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()), static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()) } });
+    operands.append({ "uint32-min,uint32-min", v128_t { static_cast<uint64_t>(std::numeric_limits<uint32_t>::min()), static_cast<uint64_t>(std::numeric_limits<uint32_t>::min()) } });
+
+    return operands;
+}
 
 inline Vector<Int64Operand> int64Operands()
 {
@@ -417,7 +449,16 @@ inline float modelLoad<float, float>(float value) { return value; }
 template<>
 inline double modelLoad<double, double>(double value) { return value; }
 
-void run(const char* filter);
+struct TestConfig {
+    enum class Mode {
+        ListTests,
+        RunTests,
+    } mode { Mode::RunTests };
+    char* filter { nullptr };
+    unsigned workerThreadCount { 1 };
+};
+
+void run(const TestConfig* filter);
 void testBitAndSExt32(int32_t value, int64_t mask);
 void testUbfx32ShiftAnd();
 void testUbfx32AndShift();
@@ -532,7 +573,7 @@ void testPatchpointDoubleRegs();
 void testSpillDefSmallerThanUse();
 void testSpillUseLargerThanDef();
 void testLateRegister();
-void interpreterPrint(Vector<intptr_t>* stream, intptr_t value);
+extern "C" void SYSV_ABI interpreterPrint(Vector<intptr_t>* stream, intptr_t value);
 void testInterpreter();
 void testReduceStrengthCheckBottomUseInAnotherBlock();
 void testResetReachabilityDanglingReference();
@@ -555,6 +596,8 @@ void testTrappingLoadAddStore();
 void testTrappingLoadDCE();
 void testTrappingStoreElimination();
 void testMoveConstants();
+void testMoveConstantsWithLargeOffsets();
+void testMoveConstantsSIMD();
 void testPCOriginMapDoesntInsertNops();
 void testBitOrBitOrArgImmImm32(int, int, int c);
 void testBitOrImmBitOrArgImm32(int, int, int c);
@@ -763,7 +806,10 @@ void testOverrideFramePointer();
 void testStackSlot();
 void testLoadFromFramePointer();
 void testStoreLoadStackSlot(int value);
+void testStoreDouble(double input);
+void testStoreDoubleConstant(double input);
 void testStoreFloat(double input);
+void testStoreFloatConstant(double input);
 void testStoreDoubleConstantAsFloat(double input);
 void testSpillGP();
 void testSpillFP();
@@ -838,6 +884,7 @@ void testCheckAddImmCommute();
 void testCheckAddImmSomeRegister();
 void testCheckAdd();
 void testCheckAdd64();
+void testCheckAdd64Range();
 void testCheckAddFold(int, int);
 void testCheckAddFoldFail(int, int);
 void test42();
@@ -933,6 +980,8 @@ void testCallSimplePure(int, int);
 void testCallFunctionWithHellaArguments();
 void testCallFunctionWithHellaArguments2();
 void testCallFunctionWithHellaArguments3();
+void testCallPairResult(int, int);
+void testCallPairResultRare(int, int);
 void testReturnDouble(double value);
 void testReturnFloat(float value);
 void testMulNegArgArg(int, int);
@@ -1028,6 +1077,8 @@ void testAddShl32();
 void testAddShl64();
 void testAddShl65();
 void testReduceStrengthReassociation(bool flip);
+void testReduceStrengthTruncInt64Constant(int64_t filler, int32_t value);
+void testReduceStrengthTruncDoubleConstant(double filler, float value);
 void testLoadBaseIndexShift2();
 void testLoadBaseIndexShift32();
 void testOptimizeMaterialization();
@@ -1144,33 +1195,60 @@ void testNegDouble(double);
 void testNegFloat(float);
 void testNegFloatWithUselessDoubleConversion(float);
 
-void addArgTests(const char* filter, Deque<RefPtr<SharedTask<void()>>>&);
-void addBitTests(const char* filter, Deque<RefPtr<SharedTask<void()>>>&);
-void addCallTests(const char* filter, Deque<RefPtr<SharedTask<void()>>>&);
-void addSExtTests(const char* filter, Deque<RefPtr<SharedTask<void()>>>&);
-void addSShrShTests(const char* filter, Deque<RefPtr<SharedTask<void()>>>&);
-void addShrTests(const char* filter, Deque<RefPtr<SharedTask<void()>>>&);
-void addAtomicTests(const char* filter, Deque<RefPtr<SharedTask<void()>>>&);
-void addLoadTests(const char* filter, Deque<RefPtr<SharedTask<void()>>>&);
-void addTupleTests(const char* filter, Deque<RefPtr<SharedTask<void()>>>&);
+void addArgTests(const TestConfig*, Deque<RefPtr<SharedTask<void()>>>&);
+void addBitTests(const TestConfig*, Deque<RefPtr<SharedTask<void()>>>&);
+void addCallTests(const TestConfig*, Deque<RefPtr<SharedTask<void()>>>&);
+void addSExtTests(const TestConfig*, Deque<RefPtr<SharedTask<void()>>>&);
+void addSShrShTests(const TestConfig*, Deque<RefPtr<SharedTask<void()>>>&);
+void addShrTests(const TestConfig*, Deque<RefPtr<SharedTask<void()>>>&);
+void addAtomicTests(const TestConfig*, Deque<RefPtr<SharedTask<void()>>>&);
+void addLoadTests(const TestConfig*, Deque<RefPtr<SharedTask<void()>>>&);
+void addTupleTests(const TestConfig*, Deque<RefPtr<SharedTask<void()>>>&);
 
-void testFastForwardCopy32();
-void testByteCopyLoop();
-void testByteCopyLoopStartIsLoopDependent();
-void testByteCopyLoopBoundIsLoopDependent();
+bool shouldRun(const TestConfig*, const char* testName);
 
-void addCopyTests(const char* filter, Deque<RefPtr<SharedTask<void()>>>&);
-
-bool shouldRun(const char* filter, const char* testName);
+void testCSEStoreWithLoop();
 
 void testLoadPreIndex32();
 void testLoadPreIndex64();
 void testLoadPostIndex32();
 void testLoadPostIndex64();
+void testLoadPreIndex32WithStore();
 
 void testStorePreIndex32();
 void testStorePreIndex64();
 void testStorePostIndex32();
 void testStorePostIndex64();
+
+void testFloatMaxMin();
+void testDoubleMaxMin();
+
+void testWasmAddressDoesNotCSE();
+void testWasmAddressWithOffset();
+void testStoreAfterClobberExitsSideways();
+void testStoreAfterClobberDifferentWidth();
+void testStoreAfterClobberDifferentWidthSuccessor();
+void testStoreAfterClobberExitsSidewaysSuccessor();
+void testNarrowLoad();
+void testNarrowLoadClobber();
+void testNarrowLoadClobberNarrow();
+void testNarrowLoadNotClobber();
+void testNarrowLoadUpper();
+
+void testVectorOrConstants(v128_t, v128_t);
+void testVectorAndConstants(v128_t, v128_t);
+void testVectorXorConstants(v128_t, v128_t);
+void testVectorOrSelf();
+void testVectorAndSelf();
+void testVectorXorSelf();
+void testVectorXorOrAllOnesToVectorAndXor();
+void testVectorXorAndAllOnesToVectorOrXor();
+void testVectorXorOrAllOnesConstantToVectorAndXor(v128_t);
+void testVectorXorAndAllOnesConstantToVectorOrXor(v128_t);
+void testVectorAndConstantConstant(v128_t, v128_t);
+void testVectorFmulByElementFloat();
+void testVectorFmulByElementDouble();
+void testVectorExtractLane0Float();
+void testVectorExtractLane0Double();
 
 #endif // ENABLE(B3_JIT)

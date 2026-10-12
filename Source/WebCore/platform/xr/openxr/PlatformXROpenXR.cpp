@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2020 Igalia, S.L.
+ * Copyright (C) 2020-2023 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -22,10 +23,10 @@
 
 #if ENABLE(WEBXR) && USE(OPENXR)
 
+#include "GraphicsContextGL.h"
 #include "OpenXRExtensions.h"
 #include "OpenXRInput.h"
 #include "OpenXRInputSource.h"
-
 #include <wtf/NeverDestroyed.h>
 #include <wtf/threads/BinarySemaphore.h>
 
@@ -56,7 +57,7 @@ OpenXRDevice::OpenXRDevice(XrInstance instance, XrSystemId system, Ref<WorkQueue
 void OpenXRDevice::initialize(CompletionHandler<void()>&& callback)
 {
     ASSERT(isMainThread());
-    m_queue.dispatch([this, protectedThis = makeRef(*this), callback = WTFMove(callback)]() mutable {
+    m_queue.dispatch([this, protectedThis = Ref { *this }, callback = WTFMove(callback)]() mutable {
         auto systemProperties = createStructure<XrSystemProperties, XR_TYPE_SYSTEM_PROPERTIES>();
         auto result = xrGetSystemProperties(m_instance, m_systemId, &systemProperties);
         if (XR_SUCCEEDED(result))
@@ -83,9 +84,9 @@ WebCore::IntSize OpenXRDevice::recommendedResolution(SessionMode mode)
     return Device::recommendedResolution(mode);
 }
 
-void OpenXRDevice::initializeTrackingAndRendering(SessionMode mode)
+void OpenXRDevice::initializeTrackingAndRendering(const WebCore::SecurityOriginData&, SessionMode mode, const Device::FeatureList&)
 {
-    m_queue.dispatch([this, protectedThis = makeRef(*this), mode]() {
+    m_queue.dispatch([this, protectedThis = Ref { *this }, mode]() {
         ASSERT(m_instance != XR_NULL_HANDLE);
         ASSERT(m_session == XR_NULL_HANDLE);
         ASSERT(m_extensions.methods().xrGetOpenGLGraphicsRequirementsKHR);
@@ -100,28 +101,27 @@ void OpenXRDevice::initializeTrackingAndRendering(SessionMode mode)
         RETURN_IF_FAILED(result, "xrGetOpenGLGraphicsRequirementsKHR", m_instance);
 
         m_graphicsBinding = createStructure<XrGraphicsBindingEGLMNDX, XR_TYPE_GRAPHICS_BINDING_EGL_MNDX>();
-        m_egl = GLContextEGL::createSharingContext(PlatformDisplay::sharedDisplay());
+        m_egl = GLContext::createSharing(PlatformDisplay::sharedDisplay());
         if (!m_egl) {
             LOG(XR, "Failed to create EGL context");
             return;
         }
 
-        auto& context = static_cast<GLContext&>(*m_egl);
-        context.makeContextCurrent();
+        m_egl->makeContextCurrent();
 
         GraphicsContextGLAttributes attributes;
         attributes.depth = false;
         attributes.stencil = false;
         attributes.antialias = false;
 
-        m_gl = GraphicsContextGL::create(attributes, nullptr);
+        m_gl = createWebProcessGraphicsContextGL(attributes);
         if (!m_gl) {
             LOG(XR, "Failed to create a valid GraphicsContextGL");
             return;
         }
 
         m_graphicsBinding.display = PlatformDisplay::sharedDisplay().eglDisplay();
-        m_graphicsBinding.context = context.platformContext();
+        m_graphicsBinding.context = m_egl->platformContext();
         m_graphicsBinding.config = m_egl->config();
         m_graphicsBinding.getProcAddress = m_extensions.methods().getProcAddressFunc;
 
@@ -144,7 +144,7 @@ void OpenXRDevice::initializeTrackingAndRendering(SessionMode mode)
 
 void OpenXRDevice::shutDownTrackingAndRendering()
 {
-    m_queue.dispatch([this, protectedThis = makeRef(*this)]() {
+    m_queue.dispatch([this, protectedThis = Ref { *this }]() {
         if (m_session == XR_NULL_HANDLE)
             return;
 
@@ -170,7 +170,7 @@ void OpenXRDevice::initializeReferenceSpace(PlatformXR::ReferenceSpaceType space
 
 void OpenXRDevice::requestFrame(RequestFrameCallback&& callback)
 {
-    m_queue.dispatch([this, protectedThis = makeRef(*this), callback = WTFMove(callback)]() mutable {
+    m_queue.dispatch([this, protectedThis = Ref { *this }, callback = WTFMove(callback)]() mutable {
         pollEvents();
         if (!isSessionReady(m_sessionState)) {
             callOnMainThread([callback = WTFMove(callback)]() mutable {
@@ -189,7 +189,7 @@ void OpenXRDevice::requestFrame(RequestFrameCallback&& callback)
         result = xrBeginFrame(m_session, &frameBeginInfo);
         RETURN_IF_FAILED(result, "xrBeginFrame", m_instance);
 
-        Device::FrameData frameData;
+        FrameData frameData;
         frameData.predictedDisplayTime = m_frameState.predictedDisplayTime;
         frameData.shouldRender = m_frameState.shouldRender;
         frameData.stageParameters = m_stageParameters;
@@ -232,8 +232,10 @@ void OpenXRDevice::requestFrame(RequestFrameCallback&& callback)
 
             for (auto& layer : m_layers) {
                 auto layerData = layer.value->startFrame();
-                if (layerData)
-                    frameData.layers.add(layer.key, *layerData);
+                if (layerData) {
+                    auto layerDataRef = makeUniqueRef<PlatformXR::FrameData::LayerData>(*layerData);
+                    frameData.layers.add(layer.key, WTFMove(layerDataRef));
+                }
             }
 
             if (m_input)
@@ -260,7 +262,7 @@ void OpenXRDevice::requestFrame(RequestFrameCallback&& callback)
 
 void OpenXRDevice::submitFrame(Vector<Device::Layer>&& layers)
 {   
-    m_queue.dispatch([this, protectedThis = makeRef(*this), layers = WTFMove(layers)]() mutable {
+    m_queue.dispatch([this, protectedThis = Ref { *this }, layers = WTFMove(layers)]() mutable {
         ASSERT(m_frameState.shouldRender);
         Vector<const XrCompositionLayerBaseHeader*> frameEndLayers;
         if (m_frameState.shouldRender) {
@@ -342,19 +344,19 @@ Device::FeatureList OpenXRDevice::collectSupportedFeatures() const
 
     // https://www.khronos.org/registry/OpenXR/specs/1.0/man/html/XrReferenceSpaceType.html
     // OpenXR runtimes must support Viewer and Local spaces.
-    features.append(ReferenceSpaceType::Viewer);
-    features.append(ReferenceSpaceType::Local);
+    features.append(PlatformXR::SessionFeature::ReferenceSpaceTypeViewer);
+    features.append(PlatformXR::SessionFeature::ReferenceSpaceTypeLocal);
 
     // Mark LocalFloor as supported regardless if XR_REFERENCE_SPACE_TYPE_STAGE is available.
     // The spec uses a estimated height if we don't provide a floor transform in frameData.
-    features.append(ReferenceSpaceType::LocalFloor);
+    features.append(PlatformXR::SessionFeature::ReferenceSpaceTypeLocalFloor);
 
     // Mark BoundedFloor as supported regardless if XR_REFERENCE_SPACE_TYPE_STAGE is available.
     // The spec allows reporting an empty array if xrGetReferenceSpaceBoundsRect fails.
-    features.append(ReferenceSpaceType::BoundedFloor);
+    features.append(PlatformXR::SessionFeature::ReferenceSpaceTypeBoundedFloor);
 
     if (m_extensions.isExtensionSupported(XR_MSFT_UNBOUNDED_REFERENCE_SPACE_EXTENSION_NAME))
-        features.append(ReferenceSpaceType::Unbounded);
+        features.append(PlatformXR::SessionFeature::ReferenceSpaceTypeUnbounded);
 
     return features;
 }
@@ -366,14 +368,14 @@ void OpenXRDevice::collectSupportedSessionModes()
     auto result = xrEnumerateViewConfigurations(m_instance, m_systemId, 0, &viewConfigurationCount, nullptr);
     RETURN_IF_FAILED(result, "xrEnumerateViewConfigurations", m_instance);
 
-    XrViewConfigurationType viewConfigurations[viewConfigurationCount];
-    result = xrEnumerateViewConfigurations(m_instance, m_systemId, viewConfigurationCount, &viewConfigurationCount, viewConfigurations);
+    Vector<XrViewConfigurationType> viewConfigurations(viewConfigurationCount);
+    result = xrEnumerateViewConfigurations(m_instance, m_systemId, viewConfigurationCount, &viewConfigurationCount, viewConfigurations.data());
     RETURN_IF_FAILED(result, "xrEnumerateViewConfigurations", m_instance);
 
     FeatureList features = collectSupportedFeatures();
-    for (uint32_t i = 0; i < viewConfigurationCount; ++i) {
+    for (auto& viewConfiguration : viewConfigurations) {
         auto viewConfigurationProperties = createStructure<XrViewConfigurationProperties, XR_TYPE_VIEW_CONFIGURATION_PROPERTIES>();
-        result = xrGetViewConfigurationProperties(m_instance, m_systemId, viewConfigurations[i], &viewConfigurationProperties);
+        result = xrGetViewConfigurationProperties(m_instance, m_systemId, viewConfiguration, &viewConfigurationProperties);
         if (result != XR_SUCCESS) {
             LOG(XR, "xrGetViewConfigurationProperties(): error %s\n", resultToString(result, m_instance).utf8().data());
             continue;
@@ -498,8 +500,9 @@ void OpenXRDevice::endSession()
         return;
 
     // Notify did end event
-    callOnMainThread([this, weakThis = makeWeakPtr(*this)]() {
-        if (!weakThis)
+    callOnMainThread([this, weakThis = ThreadSafeWeakPtr { *this }]() {
+        auto protectedThis = weakThis.get();
+        if (!protectedThis)
             return;
         if (m_trackingAndRenderingClient)
             m_trackingAndRenderingClient->sessionDidEnd();
@@ -544,7 +547,7 @@ void OpenXRDevice::waitUntilStopping()
     pollEvents();
     if (m_sessionState >= XR_SESSION_STATE_STOPPING)
         return;
-    m_queue.dispatch([this, protectedThis = makeRef(*this)]() {
+    m_queue.dispatch([this, protectedThis = Ref { *this }]() {
         waitUntilStopping();
     });
 }
@@ -587,8 +590,9 @@ void OpenXRDevice::updateInteractionProfile()
 
     didNotifyInputInitialization = true;
     auto inputSources = m_input->collectInputSources(m_frameState);
-    callOnMainThread([this, weakThis = makeWeakPtr(*this), inputSources = WTFMove(inputSources)]() mutable {
-        if (!weakThis)
+    callOnMainThread([this, weakThis = ThreadSafeWeakPtr { *this }, inputSources = WTFMove(inputSources)]() mutable {
+        auto protectedThis = weakThis.get();
+        if (!protectedThis)
             return;
         if (m_trackingAndRenderingClient)
             m_trackingAndRenderingClient->sessionDidInitializeInputSources(WTFMove(inputSources));

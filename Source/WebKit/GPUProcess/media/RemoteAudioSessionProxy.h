@@ -31,7 +31,19 @@
 #include "RemoteAudioSessionConfiguration.h"
 #include <WebCore/AudioSession.h>
 #include <WebCore/ProcessIdentifier.h>
+#include <wtf/TZoneMalloc.h>
+#include <wtf/ThreadSafeWeakPtr.h>
 #include <wtf/WeakPtr.h>
+#include <wtf/WeakRef.h>
+
+namespace WebKit {
+class RemoteAudioSessionProxy;
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebKit::RemoteAudioSessionProxy> : std::true_type { };
+}
 
 namespace IPC {
 class Connection;
@@ -44,7 +56,7 @@ class RemoteAudioSessionProxyManager;
 
 class RemoteAudioSessionProxy
     : public IPC::MessageReceiver {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED(RemoteAudioSessionProxy);
 public:
     static UniqueRef<RemoteAudioSessionProxy> create(GPUConnectionToWebProcess&);
     virtual ~RemoteAudioSessionProxy();
@@ -53,37 +65,58 @@ public:
     RemoteAudioSessionConfiguration configuration();
 
     WebCore::AudioSession::CategoryType category() const { return m_category; };
+    WebCore::AudioSession::Mode mode() const { return m_mode; };
     WebCore::RouteSharingPolicy routeSharingPolicy() const { return m_routeSharingPolicy; }
     size_t preferredBufferSize() const { return m_preferredBufferSize; }
     bool isActive() const { return m_active; }
+    bool isInterrupted() const { return m_isInterrupted; }
 
     void configurationChanged();
     void beginInterruption();
     void endInterruption(WebCore::AudioSession::MayResume);
 
+    const String& sceneIdentifier() const { return m_sceneIdentifier; }
+    void setSceneIdentifier(const String&);
+
+    WebCore::AudioSession::SoundStageSize soundStageSize() const { return m_soundStageSize; }
+    void setSoundStageSize(WebCore::AudioSession::SoundStageSize);
+
     // IPC::MessageReceiver
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) final;
     bool didReceiveSyncMessage(IPC::Connection&, IPC::Decoder&, UniqueRef<IPC::Encoder>&) final;
+
+    RefPtr<GPUConnectionToWebProcess> gpuConnectionToWebProcess() const;
 
 private:
     friend UniqueRef<RemoteAudioSessionProxy> WTF::makeUniqueRefWithoutFastMallocCheck<RemoteAudioSessionProxy>(GPUConnectionToWebProcess&);
     explicit RemoteAudioSessionProxy(GPUConnectionToWebProcess&);
 
     // Messages
-    void setCategory(WebCore::AudioSession::CategoryType, WebCore::RouteSharingPolicy);
+    void setCategory(WebCore::AudioSession::CategoryType, WebCore::AudioSession::Mode, WebCore::RouteSharingPolicy);
     void setPreferredBufferSize(uint64_t);
     using SetActiveCompletion = CompletionHandler<void(bool)>;
     void tryToSetActive(bool, SetActiveCompletion&&);
     void setIsPlayingToBluetoothOverride(std::optional<bool>&& value);
+    void triggerBeginInterruptionForTesting();
+    void triggerEndInterruptionForTesting();
+
+    void beginInterruptionRemote();
+    void endInterruptionRemote(WebCore::AudioSession::MayResume);
+
+    bool allowTestOnlyIPC();
 
     RemoteAudioSessionProxyManager& audioSessionManager();
     IPC::Connection& connection();
 
-    GPUConnectionToWebProcess& m_gpuConnection;
+    ThreadSafeWeakPtr<GPUConnectionToWebProcess> m_gpuConnection;
     WebCore::AudioSession::CategoryType m_category { WebCore::AudioSession::CategoryType::None };
+    WebCore::AudioSession::Mode m_mode { WebCore::AudioSession::Mode::Default };
     WebCore::RouteSharingPolicy m_routeSharingPolicy { WebCore::RouteSharingPolicy::Default };
+    WebCore::AudioSession::SoundStageSize m_soundStageSize { WebCore::AudioSession::SoundStageSize::Automatic };
+    String m_sceneIdentifier;
     size_t m_preferredBufferSize { 0 };
     bool m_active { false };
+    bool m_isInterrupted { false };
     bool m_isPlayingToBluetoothOverrideChanged { false };
 };
 

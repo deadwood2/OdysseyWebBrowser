@@ -26,7 +26,8 @@
 #include "config.h"
 #include "IDBIndexInfo.h"
 
-#include <wtf/text/StringConcatenateNumbers.h>
+#include <wtf/CrossThreadCopier.h>
+#include <wtf/text/MakeString.h>
 
 namespace WebCore {
 
@@ -44,24 +45,29 @@ IDBIndexInfo::IDBIndexInfo(uint64_t identifier, uint64_t objectStoreIdentifier, 
 {
 }
 
-IDBIndexInfo IDBIndexInfo::isolatedCopy() const
+IDBIndexInfo IDBIndexInfo::isolatedCopy() const &
 {
-    return { m_identifier, m_objectStoreIdentifier, m_name.isolatedCopy(), WebCore::isolatedCopy(m_keyPath), m_unique, m_multiEntry };
+    return { m_identifier, m_objectStoreIdentifier, m_name.isolatedCopy(), crossThreadCopy(m_keyPath), m_unique, m_multiEntry };
+}
+
+IDBIndexInfo IDBIndexInfo::isolatedCopy() &&
+{
+    return { m_identifier, m_objectStoreIdentifier, WTFMove(m_name).isolatedCopy(), crossThreadCopy(WTFMove(m_keyPath)), m_unique, m_multiEntry };
 }
 
 #if !LOG_DISABLED
 
 String IDBIndexInfo::loggingString(int indent) const
 {
-    String indentString;
+    StringBuilder indentString;
     for (int i = 0; i < indent; ++i)
-        indentString.append(" ");
-    return makeString(indentString, "Index: ", m_name, " (", m_identifier, ") keyPath: ", WebCore::loggingString(m_keyPath), '\n');
+        indentString.append(' ');
+    return makeString(indentString.toString(), "Index: "_s, m_name, " ("_s, m_identifier, ") keyPath: "_s, WebCore::loggingString(m_keyPath), '\n');
 }
 
 String IDBIndexInfo::condensedLoggingString() const
 {
-    return makeString("<Idx: ", m_name, " (", m_identifier, "), OS (", m_objectStoreIdentifier, ")>");
+    return makeString("<Idx: "_s, m_name, " ("_s, m_identifier, "), OS ("_s, m_objectStoreIdentifier, ")>"_s);
 }
 
 #endif

@@ -41,8 +41,7 @@ ClipboardItem::~ClipboardItem() = default;
 
 Ref<Blob> ClipboardItem::blobFromString(ScriptExecutionContext* context, const String& stringData, const String& type)
 {
-    auto utf8 = stringData.utf8();
-    return Blob::create(context, Vector { utf8.dataAsUInt8Ptr(), utf8.length() }, Blob::normalizedContentType(type));
+    return Blob::create(context, Vector(stringData.utf8().span()), Blob::normalizedContentType(type));
 }
 
 static ClipboardItem::PresentationStyle clipboardItemPresentationStyle(const PasteboardItemInfo& info)
@@ -59,21 +58,21 @@ static ClipboardItem::PresentationStyle clipboardItemPresentationStyle(const Pas
     return ClipboardItem::PresentationStyle::Unspecified;
 }
 
-ClipboardItem::ClipboardItem(Vector<KeyValuePair<String, RefPtr<DOMPromise>>>&& items, const Options& options)
+ClipboardItem::ClipboardItem(Vector<KeyValuePair<String, Ref<DOMPromise>>>&& items, const Options& options)
     : m_dataSource(makeUnique<ClipboardItemBindingsDataSource>(*this, WTFMove(items)))
     , m_presentationStyle(options.presentationStyle)
 {
 }
 
 ClipboardItem::ClipboardItem(Clipboard& clipboard, const PasteboardItemInfo& info)
-    : m_clipboard(makeWeakPtr(clipboard))
-    , m_navigator(makeWeakPtr(clipboard.navigator()))
+    : m_clipboard(clipboard)
+    , m_navigator(clipboard.navigator())
     , m_dataSource(makeUnique<ClipboardItemPasteboardDataSource>(*this, info))
     , m_presentationStyle(clipboardItemPresentationStyle(info))
 {
 }
 
-Ref<ClipboardItem> ClipboardItem::create(Vector<KeyValuePair<String, RefPtr<DOMPromise>>>&& data, const Options& options)
+Ref<ClipboardItem> ClipboardItem::create(Vector<KeyValuePair<String, Ref<DOMPromise>>>&& data, const Options& options)
 {
     return adoptRef(*new ClipboardItem(WTFMove(data), options));
 }

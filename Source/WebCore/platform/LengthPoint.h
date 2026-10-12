@@ -43,21 +43,15 @@ public:
     {
     }
 
-    bool operator==(const LengthPoint& o) const
-    {
-        return m_x == o.m_x && m_y == o.m_y;
-    }
-
-    bool operator!=(const LengthPoint& o) const
-    {
-        return !(*this == o);
-    }
+    friend bool operator==(const LengthPoint&, const LengthPoint&) = default;
 
     void setX(Length x) { m_x = WTFMove(x); }
     const Length& x() const { return m_x; }
 
     void setY(Length y) { m_y = WTFMove(y); }
     const Length& y() const { return m_y; }
+
+    bool isZero() const { return m_x.isZero() && m_y.isZero(); }
 
 private:
     // FIXME: it would be nice to pack the two Lengths together better somehow (to avoid padding between them).

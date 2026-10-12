@@ -33,8 +33,20 @@
 #include "RemoteCDMIdentifier.h"
 #include "RemoteCDMInstanceIdentifier.h"
 #include "RemoteCDMInstanceSessionIdentifier.h"
+#include <WebCore/CDMPrivate.h>
+#include <wtf/TZoneMalloc.h>
+#include <wtf/ThreadSafeWeakPtr.h>
 #include <wtf/UniqueRef.h>
 #include <wtf/WeakPtr.h>
+
+namespace WebKit {
+class RemoteCDMFactoryProxy;
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebKit::RemoteCDMFactoryProxy> : std::true_type { };
+}
 
 namespace WebKit {
 
@@ -43,11 +55,13 @@ class RemoteCDMInstanceSessionProxy;
 class RemoteCDMProxy;
 struct RemoteCDMConfiguration;
 
-class RemoteCDMFactoryProxy final : public IPC::MessageReceiver {
-    WTF_MAKE_FAST_ALLOCATED;
+class RemoteCDMFactoryProxy final : public IPC::MessageReceiver, WebCore::CDMPrivateClient {
+    WTF_MAKE_TZONE_ALLOCATED(RemoteCDMFactoryProxy);
 public:
     RemoteCDMFactoryProxy(GPUConnectionToWebProcess&);
     virtual ~RemoteCDMFactoryProxy();
+
+    void clear();
 
     void didReceiveMessageFromWebProcess(IPC::Connection& connection, IPC::Decoder& decoder) { didReceiveMessage(connection, decoder); }
     bool didReceiveSyncMessageFromWebProcess(IPC::Connection& connection, IPC::Decoder& decoder, UniqueRef<IPC::Encoder>& encoder) { return didReceiveSyncMessage(connection, decoder, encoder); }
@@ -68,24 +82,34 @@ public:
     void addSession(const RemoteCDMInstanceSessionIdentifier&, std::unique_ptr<RemoteCDMInstanceSessionProxy>&&);
     void removeSession(const RemoteCDMInstanceSessionIdentifier&);
 
-    GPUConnectionToWebProcess* gpuConnectionToWebProcess() { return m_gpuConnectionToWebProcess.get(); }
+    RefPtr<GPUConnectionToWebProcess> gpuConnectionToWebProcess() { return m_gpuConnectionToWebProcess.get(); }
 
     bool allowsExitUnderMemoryPressure() const;
+
+    const String& mediaKeysStorageDirectory() const;
+
+#if !RELEASE_LOG_DISABLED
+    const Logger& logger() const;
+#endif
 
 private:
     friend class GPUProcessConnection;
     // IPC::MessageReceiver
-    void didReceiveMessage(IPC::Connection&, IPC::Decoder&) final { }
+    void didReceiveMessage(IPC::Connection&, IPC::Decoder&) final;
     bool didReceiveSyncMessage(IPC::Connection&, IPC::Decoder&, UniqueRef<IPC::Encoder>&) final;
 
     // Messages
     void createCDM(const String& keySystem, CompletionHandler<void(RemoteCDMIdentifier&&, RemoteCDMConfiguration&&)>&&);
     void supportsKeySystem(const String& keySystem, CompletionHandler<void(bool)>&&);
 
-    WeakPtr<GPUConnectionToWebProcess> m_gpuConnectionToWebProcess;
+    ThreadSafeWeakPtr<GPUConnectionToWebProcess> m_gpuConnectionToWebProcess;
     HashMap<RemoteCDMIdentifier, std::unique_ptr<RemoteCDMProxy>> m_proxies;
     HashMap<RemoteCDMInstanceIdentifier, std::unique_ptr<RemoteCDMInstanceProxy>> m_instances;
     HashMap<RemoteCDMInstanceSessionIdentifier, std::unique_ptr<RemoteCDMInstanceSessionProxy>> m_sessions;
+
+#if !RELEASE_LOG_DISABLED
+    mutable RefPtr<Logger> m_logger;
+#endif
 };
 
 }

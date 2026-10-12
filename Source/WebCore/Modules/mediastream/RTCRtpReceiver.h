@@ -32,7 +32,7 @@
 
 #if ENABLE(WEB_RTC)
 
-#include "MediaStreamTrack.h"
+#include "MediaStream.h"
 #include "RTCDtlsTransport.h"
 #include "RTCRtpReceiverBackend.h"
 #include "RTCRtpSynchronizationSource.h"
@@ -51,7 +51,7 @@ class RTCRtpReceiver final : public RefCounted<RTCRtpReceiver>
     , private LoggerHelper
 #endif
     {
-    WTF_MAKE_ISO_ALLOCATED(RTCRtpReceiver);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(RTCRtpReceiver);
 public:
     static Ref<RTCRtpReceiver> create(PeerConnectionBackend& connection, Ref<MediaStreamTrack>&& track, std::unique_ptr<RTCRtpReceiverBackend>&& backend)
     {
@@ -79,13 +79,15 @@ public:
     std::optional<RTCRtpTransform::Internal> transform();
     ExceptionOr<void> setTransform(std::unique_ptr<RTCRtpTransform>&&);
 
+    const Vector<WeakPtr<MediaStream>>& associatedStreams() const { return m_associatedStreams; }
+    void setAssociatedStreams(Vector<WeakPtr<MediaStream>>&& streams) { m_associatedStreams = WTFMove(streams); }
 private:
     RTCRtpReceiver(PeerConnectionBackend&, Ref<MediaStreamTrack>&&, std::unique_ptr<RTCRtpReceiverBackend>&&);
 
 #if !RELEASE_LOG_DISABLED
     const Logger& logger() const final { return m_logger.get(); }
     const void* logIdentifier() const final { return m_logIdentifier; }
-    const char* logClassName() const final { return "RTCRtpReceiver"; }
+    ASCIILiteral logClassName() const final { return "RTCRtpReceiver"_s; }
     WTFLogChannel& logChannel() const final;
 #endif
 
@@ -94,6 +96,7 @@ private:
     std::unique_ptr<RTCRtpReceiverBackend> m_backend;
     WeakPtr<PeerConnectionBackend> m_connection;
     std::unique_ptr<RTCRtpTransform> m_transform;
+    Vector<WeakPtr<MediaStream>> m_associatedStreams;
 #if !RELEASE_LOG_DISABLED
     Ref<const Logger> m_logger;
     const void* m_logIdentifier { nullptr };

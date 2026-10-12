@@ -26,10 +26,14 @@
 #include "config.h"
 #include "WebPageInspectorTargetFrontendChannel.h"
 
+#include "MessageSenderInlines.h"
 #include "WebPage.h"
 #include "WebPageProxyMessages.h"
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebKit {
+
+WTF_MAKE_TZONE_ALLOCATED_IMPL(WebPageInspectorTargetFrontendChannel);
 
 WebPageInspectorTargetFrontendChannel::WebPageInspectorTargetFrontendChannel(WebPage& page, const String& targetId, Inspector::FrontendChannel::ConnectionType connectionType)
     : m_page(page)

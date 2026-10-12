@@ -5,6 +5,7 @@
 #import <WebCore/ResourceHandle.h>
 #import <WebCore/ResourceHandleClient.h>
 #import <WebCore/SharedBuffer.h>
+#import <WebCore/SecurityOrigin.h>
 #import <wtf/URL.h>
 #define __OBJC__
 #import "WkNetworkRequestMutable.h"

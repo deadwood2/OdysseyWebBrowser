@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # Copyright (C) 2010 Apple Inc. All rights reserved.
 #
@@ -72,9 +72,6 @@ def main(argv):
         receiver_header_files.append(receiver_message_header)
         with open(receiver_message_header, "w+") as header_output:
             header_output.write(webkit.messages.generate_messages_header(receiver))
-
-        with open('%sMessagesReplies.h' % receiver.name, "w+") as reply_header_output:
-            reply_header_output.write(webkit.messages.generate_messages_reply_header(receiver))
 
     with open('MessageNames.h', "w+") as message_names_header_output:
         message_names_header_output.write(webkit.messages.generate_message_names_header(receivers))

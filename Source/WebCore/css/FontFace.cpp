@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,39 +26,33 @@
 #include "config.h"
 #include "FontFace.h"
 
-#include "CSSComputedStyleDeclaration.h"
 #include "CSSFontFaceSource.h"
-#include "CSSFontFeatureValue.h"
 #include "CSSFontSelector.h"
-#include "CSSFontStyleValue.h"
-#include "CSSParser.h"
 #include "CSSPrimitiveValueMappings.h"
 #include "CSSPropertyParserWorkerSafe.h"
-#include "CSSUnicodeRangeValue.h"
 #include "CSSValueList.h"
 #include "CSSValuePool.h"
 #include "DOMPromiseProxy.h"
 #include "Document.h"
+#include "DocumentInlines.h"
 #include "JSFontFace.h"
-#include "Quirks.h"
-#include "StyleProperties.h"
+#include "TrustedFonts.h"
 #include <JavaScriptCore/ArrayBuffer.h>
 #include <JavaScriptCore/ArrayBufferView.h>
 #include <JavaScriptCore/JSCInlines.h>
-#include <wtf/text/StringBuilder.h>
 
 namespace WebCore {
 
 static bool populateFontFaceWithArrayBuffer(CSSFontFace& fontFace, Ref<JSC::ArrayBufferView>&& arrayBufferView)
 {
-    auto source = makeUnique<CSSFontFaceSource>(fontFace, String(), WTFMove(arrayBufferView));
+    auto source = makeUnique<CSSFontFaceSource>(fontFace, WTFMove(arrayBufferView));
     fontFace.adoptSource(WTFMove(source));
     return false;
 }
 
 void FontFace::setErrorState()
 {
-    m_loadedPromise->reject(Exception { SyntaxError });
+    m_loadedPromise->reject(Exception { ExceptionCode::SyntaxError });
     m_backing->setErrorState();
 }
 
@@ -68,6 +62,11 @@ Ref<FontFace> FontFace::create(ScriptExecutionContext& context, const String& fa
     auto result = adoptRef(*new FontFace(*context.cssFontSelector()));
     result->suspendIfNeeded();
 
+#if COMPILER(GCC) && (CPU(ARM) || CPU(ARM64))
+    // FIXME: Workaround for GCC bug https://gcc.gnu.org/bugzilla/show_bug.cgi?id=115033
+    // that is related to https://gcc.gnu.org/bugzilla/show_bug.cgi?id=115135 as well.
+    volatile
+#endif
     bool dataRequiresAsynchronousLoading = true;
 
     auto setFamilyResult = result->setFamily(context, family);
@@ -76,19 +75,27 @@ Ref<FontFace> FontFace::create(ScriptExecutionContext& context, const String& fa
         return result;
     }
 
+    auto fontTrustedTypes = context.settingsValues().downloadableBinaryFontTrustedTypes;
     auto sourceConversionResult = WTF::switchOn(source,
         [&] (String& string) -> ExceptionOr<void> {
-            auto value = CSSPropertyParserWorkerSafe::parseFontFaceSrc(string, is<Document>(context) ? CSSParserContext(downcast<Document>(context)) : HTMLStandardMode);
+            auto* document = dynamicDowncast<Document>(context);
+            auto value = CSSPropertyParserWorkerSafe::parseFontFaceSrc(string, document ? CSSParserContext(*document) : HTMLStandardMode);
             if (!value)
-                return Exception { SyntaxError };
+                return Exception { ExceptionCode::SyntaxError };
             CSSFontFace::appendSources(result->backing(), *value, &context, false);
             return { };
         },
-        [&] (RefPtr<ArrayBufferView>& arrayBufferView) -> ExceptionOr<void> {
+        [&, fontTrustedTypes] (RefPtr<ArrayBufferView>& arrayBufferView) -> ExceptionOr<void> {
+            if (!arrayBufferView || fontBinaryParsingPolicy(arrayBufferView->span(), fontTrustedTypes) == FontParsingPolicy::Deny)
+                return { };
+
             dataRequiresAsynchronousLoading = populateFontFaceWithArrayBuffer(result->backing(), arrayBufferView.releaseNonNull());
             return { };
         },
-        [&] (RefPtr<ArrayBuffer>& arrayBuffer) -> ExceptionOr<void> {
+        [&, fontTrustedTypes] (RefPtr<ArrayBuffer>& arrayBuffer) -> ExceptionOr<void> {
+            if (!arrayBuffer || fontBinaryParsingPolicy(arrayBuffer->span(), fontTrustedTypes) == FontParsingPolicy::Deny)
+                return { };
+
             unsigned byteLength = arrayBuffer->byteLength();
             auto arrayBufferView = JSC::Uint8Array::create(WTFMove(arrayBuffer), 0, byteLength);
             dataRequiresAsynchronousLoading = populateFontFaceWithArrayBuffer(result->backing(), WTFMove(arrayBufferView));
@@ -132,6 +139,11 @@ Ref<FontFace> FontFace::create(ScriptExecutionContext& context, const String& fa
         result->setErrorState();
         return result;
     }
+    auto setSizeAdjustResult = result->setSizeAdjust(context, descriptors.sizeAdjust.isEmpty() ? "100%"_s : descriptors.sizeAdjust);
+    if (setSizeAdjustResult.hasException()) {
+        result->setErrorState();
+        return result;
+    }
 
     if (!dataRequiresAsynchronousLoading) {
         result->backing().load();
@@ -172,241 +184,130 @@ FontFace::~FontFace()
 
 ExceptionOr<void> FontFace::setFamily(ScriptExecutionContext& context, const String& family)
 {
-    if (family.isEmpty())
-        return Exception { SyntaxError };
-
-    String familyNameToUse = family;
-    // FIXME: Quirks currently aren't present on Workers, but should likely be inherited
-    //        from the parent Document where applicable.
-    if (familyNameToUse.contains('\'') && is<Document>(context) && downcast<Document>(context).quirks().shouldStripQuotationMarkInFontFaceSetFamily())
-        familyNameToUse = family.removeCharacters([](auto character) { return character == '\''; });
-
-    // FIXME: https://bugs.webkit.org/show_bug.cgi?id=196381 Don't use a list here.
-    // See consumeFontFamilyDescriptor() in CSSPropertyParser.cpp for why we're using it.
-    auto list = CSSValueList::createCommaSeparated();
-    list->append(context.cssValuePool().createFontFamilyValue(familyNameToUse));
-    bool success = m_backing->setFamilies(list);
-    if (!success)
-        return Exception { SyntaxError };
+    if (family.isNull())
+        return Exception { ExceptionCode::SyntaxError };
+    // FIXME: Don't use a list here. https://bugs.webkit.org/show_bug.cgi?id=196381
+    m_backing->setFamilies(CSSValueList::createCommaSeparated(context.cssValuePool().createFontFamilyValue(AtomString { family })));
     return { };
 }
 
 ExceptionOr<void> FontFace::setStyle(ScriptExecutionContext& context, const String& style)
 {
-    if (style.isEmpty())
-        return Exception { SyntaxError };
-
     if (auto value = CSSPropertyParserWorkerSafe::parseFontFaceStyle(style, context)) {
         m_backing->setStyle(*value);
         return { };
     }
-    return Exception { SyntaxError };
+    return Exception { ExceptionCode::SyntaxError };
 }
 
 ExceptionOr<void> FontFace::setWeight(ScriptExecutionContext& context, const String& weight)
 {
-    if (weight.isEmpty())
-        return Exception { SyntaxError };
-
     if (auto value = CSSPropertyParserWorkerSafe::parseFontFaceWeight(weight, context)) {
         m_backing->setWeight(*value);
         return { };
     }
-    return Exception { SyntaxError };
+    return Exception { ExceptionCode::SyntaxError };
 }
 
 ExceptionOr<void> FontFace::setStretch(ScriptExecutionContext& context, const String& stretch)
 {
-    if (stretch.isEmpty())
-        return Exception { SyntaxError };
-
     if (auto value = CSSPropertyParserWorkerSafe::parseFontFaceStretch(stretch, context)) {
         m_backing->setStretch(*value);
         return { };
     }
-    return Exception { SyntaxError };
+    return Exception { ExceptionCode::SyntaxError };
 }
 
 ExceptionOr<void> FontFace::setUnicodeRange(ScriptExecutionContext& context, const String& unicodeRange)
 {
-    if (unicodeRange.isEmpty())
-        return Exception { SyntaxError };
-
-    bool success = false;
-    if (auto value = CSSPropertyParserWorkerSafe::parseFontFaceUnicodeRange(unicodeRange, context))
-        success = m_backing->setUnicodeRange(*value);
-    if (!success)
-        return Exception { SyntaxError };
-    return { };
+    if (auto value = CSSPropertyParserWorkerSafe::parseFontFaceUnicodeRange(unicodeRange, context)) {
+        m_backing->setUnicodeRange(*value);
+        return { };
+    }
+    return Exception { ExceptionCode::SyntaxError };
 }
 
 ExceptionOr<void> FontFace::setFeatureSettings(ScriptExecutionContext& context, const String& featureSettings)
 {
-    if (featureSettings.isEmpty())
-        return Exception { SyntaxError };
-
-    auto value = CSSPropertyParserWorkerSafe::parseFontFaceFeatureSettings(featureSettings, context);
-    if (!value)
-        return Exception { SyntaxError };
-    m_backing->setFeatureSettings(*value);
-    return { };
+    if (auto value = CSSPropertyParserWorkerSafe::parseFontFaceFeatureSettings(featureSettings, context)) {
+        m_backing->setFeatureSettings(*value);
+        return { };
+    }
+    return Exception { ExceptionCode::SyntaxError };
 }
 
 ExceptionOr<void> FontFace::setDisplay(ScriptExecutionContext& context, const String& display)
 {
-    if (display.isEmpty())
-        return Exception { SyntaxError };
-
     if (auto value = CSSPropertyParserWorkerSafe::parseFontFaceDisplay(display, context)) {
-        m_backing->setLoadingBehavior(*value);
+        m_backing->setDisplay(*value);
         return { };
     }
+    return Exception { ExceptionCode::SyntaxError };
+}
 
-    return Exception { SyntaxError };
+ExceptionOr<void> FontFace::setSizeAdjust(ScriptExecutionContext& context, const String& sizeAdjust)
+{
+    if (auto value = CSSPropertyParserWorkerSafe::parseFontFaceSizeAdjust(sizeAdjust, context)) {
+        m_backing->setSizeAdjust(*value);
+        return { };
+    }
+    return Exception { ExceptionCode::SyntaxError };
 }
 
 String FontFace::family() const
 {
-    m_backing->updateStyleIfNeeded();
-
-    const auto& families = m_backing->families();
-    if (!families)
-        return "normal"_s;
-    auto familiesUnrwapped = families.value();
-    // FIXME: https://bugs.webkit.org/show_bug.cgi?id=196381 This is only here because CSSFontFace erroneously uses a list of values instead of a single value.
-    // See consumeFontFamilyDescriptor() in CSSPropertyParser.cpp.
-    if (familiesUnrwapped->length() == 1) {
-        if (familiesUnrwapped->item(0)) {
-            auto& item = *familiesUnrwapped->item(0);
-            if (item.isPrimitiveValue()) {
-                auto& primitiveValue = downcast<CSSPrimitiveValue>(item);
-                if (primitiveValue.isFontFamily()) {
-                    auto& fontFamily = primitiveValue.fontFamily();
-                    return fontFamily.familyName;
-                }
-            }
-        }
-    }
-    return familiesUnrwapped->cssText();
+    if (auto value = m_backing->family(); !value.isNull())
+        return value;
+    return "normal"_s;
 }
 
 String FontFace::style() const
 {
-    m_backing->updateStyleIfNeeded();
-    const auto& styleWrapped = m_backing->italic();
-    
-    if (!styleWrapped)
-        return "normal"_s;
-    auto style = styleWrapped.value();
-    auto minimum = ComputedStyleExtractor::fontStyleFromStyleValue(style.minimum, FontStyleAxis::ital);
-    auto maximum = ComputedStyleExtractor::fontStyleFromStyleValue(style.maximum, FontStyleAxis::ital);
-
-    if (minimum.get().equals(maximum.get()))
-        return minimum->cssText();
-
-    auto minimumNonKeyword = ComputedStyleExtractor::fontNonKeywordStyleFromStyleValue(style.minimum);
-    auto maximumNonKeyword = ComputedStyleExtractor::fontNonKeywordStyleFromStyleValue(style.maximum);
-
-    ASSERT(minimumNonKeyword->fontStyleValue->valueID() == CSSValueOblique);
-    ASSERT(maximumNonKeyword->fontStyleValue->valueID() == CSSValueOblique);
-
-    StringBuilder builder;
-    builder.append(minimumNonKeyword->fontStyleValue->cssText());
-    builder.append(' ');
-    if (minimum->obliqueValue.get() == maximum->obliqueValue.get())
-        builder.append(minimumNonKeyword->obliqueValue->cssText());
-    else {
-        builder.append(minimumNonKeyword->obliqueValue->cssText());
-        builder.append(' ');
-        builder.append(maximumNonKeyword->obliqueValue->cssText());
-    }
-    return builder.toString();
-    
+    if (auto value = m_backing->style(); !value.isNull())
+        return value;
+    return "normal"_s;
 }
 
 String FontFace::weight() const
 {
-    m_backing->updateStyleIfNeeded();
-    const auto& weightWrapped = m_backing->weight();
-    if (!weightWrapped)
-        return "normal"_s;
-    auto weight = weightWrapped.value();
-    auto minimum = ComputedStyleExtractor::fontWeightFromStyleValue(weight.minimum);
-    auto maximum = ComputedStyleExtractor::fontWeightFromStyleValue(weight.maximum);
-
-    if (minimum.get().equals(maximum.get()))
-        return minimum->cssText();
-
-    auto minimumNonKeyword = ComputedStyleExtractor::fontNonKeywordWeightFromStyleValue(weight.minimum);
-    auto maximumNonKeyword = ComputedStyleExtractor::fontNonKeywordWeightFromStyleValue(weight.maximum);
-
-    StringBuilder builder;
-    builder.append(minimumNonKeyword->cssText());
-    builder.append(' ');
-    builder.append(maximumNonKeyword->cssText());
-    return builder.toString();
+    if (auto value = m_backing->weight(); !value.isNull())
+        return value;
+    return "normal"_s;
 }
 
 String FontFace::stretch() const
 {
-    m_backing->updateStyleIfNeeded();
-    const auto& stretchWrapped = m_backing->stretch();
-    if (!stretchWrapped)
-        return "normal"_s;
-    auto stretch = stretchWrapped.value();
-    auto minimum = ComputedStyleExtractor::fontStretchFromStyleValue(stretch.minimum);
-    auto maximum = ComputedStyleExtractor::fontStretchFromStyleValue(stretch.maximum);
-
-    if (minimum.get().equals(maximum.get()))
-        return minimum->cssText();
-
-    auto minimumNonKeyword = ComputedStyleExtractor::fontNonKeywordStretchFromStyleValue(stretch.minimum);
-    auto maximumNonKeyword = ComputedStyleExtractor::fontNonKeywordStretchFromStyleValue(stretch.maximum);
-
-    StringBuilder builder;
-    builder.append(minimumNonKeyword->cssText());
-    builder.append(' ');
-    builder.append(maximumNonKeyword->cssText());
-    return builder.toString();
+    if (auto value = m_backing->stretch(); !value.isNull())
+        return value;
+    return "normal"_s;
 }
 
 String FontFace::unicodeRange() const
 {
-    m_backing->updateStyleIfNeeded();
-    const auto& rangesWrapped = m_backing->ranges();
-    if (!rangesWrapped)
-        return "U+0-10FFFF";
-    auto ranges = rangesWrapped.value();
-    if (!ranges.size())
-        return "U+0-10FFFF"_s;
-    auto values = CSSValueList::createCommaSeparated();
-    for (auto& range : ranges)
-        values->append(CSSUnicodeRangeValue::create(range.from, range.to));
-    return values->cssText();
+    if (auto value = m_backing->unicodeRange(); !value.isNull())
+        return value;
+    return "U+0-10FFFF"_s;
 }
 
 String FontFace::featureSettings() const
 {
-    m_backing->updateStyleIfNeeded();
-    const auto& featureSettingsWrapped = m_backing->featureSettings();
-    if (!featureSettingsWrapped)
-        return "normal"_s;
-    auto featureSettings = featureSettingsWrapped.value();
-    if (!featureSettings.size())
-        return "normal"_s;
-    auto list = CSSValueList::createCommaSeparated();
-    for (auto& feature : featureSettings)
-        list->append(CSSFontFeatureValue::create(FontTag(feature.tag()), feature.value()));
-    return list->cssText();
+    if (auto value = m_backing->featureSettings(); !value.isNull())
+        return value;
+    return "normal"_s;
 }
 
-String FontFace::display(ScriptExecutionContext& context) const
+String FontFace::sizeAdjust() const
 {
-    m_backing->updateStyleIfNeeded();
-    const auto& loadingBehaviorWrapped = m_backing->loadingBehavior();
-    if (!loadingBehaviorWrapped)
-        return "auto"_s;
-    return context.cssValuePool().createValue(loadingBehaviorWrapped.value())->cssText();
+    if (auto value = m_backing->sizeAdjust(); !value.isNull())
+        return value;
+    return "100%"_s;
+}
+
+String FontFace::display() const
+{
+    if (auto value = m_backing->display(); !value.isNull())
+        return value;
+    return autoAtom();
 }
 
 auto FontFace::status() const -> LoadStatus
@@ -453,7 +354,7 @@ void FontFace::fontStateChanged(CSSFontFace& face, CSSFontFace::Status, CSSFontF
         // FIXME: This check should not be needed, but because FontFace's are sometimes adopted after they have already
         // gone through a load cycle, we can sometimes come back through here and try to resolve the promise again.
         if (!m_loadedPromise->isFulfilled())
-            m_loadedPromise->reject(Exception { NetworkError });
+            m_loadedPromise->reject(Exception { ExceptionCode::NetworkError });
         return;
     case CSSFontFace::Status::Pending:
         ASSERT_NOT_REACHED();
@@ -477,11 +378,6 @@ auto FontFace::loadedForBindings() -> LoadedPromise&
 FontFace& FontFace::loadedPromiseResolve()
 {
     return *this;
-}
-
-const char* FontFace::activeDOMObjectName() const
-{
-    return "FontFace";
 }
 
 bool FontFace::virtualHasPendingActivity() const

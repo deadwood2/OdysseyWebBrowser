@@ -1,4 +1,4 @@
-# Copyright (C) 2020, 2021 Apple Inc. All rights reserved.
+# Copyright (C) 2020-2024 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -20,26 +20,20 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-
+import json
 import os
 import re
-import six
+import shutil
 
-from webkitcorepy import run
-from webkitscmpy import ScmBase
+from webkitbugspy import Tracker, bugzilla, github, radar
+from webkitcorepy import decorators, string_utils
+from webkitscmpy import ScmBase, Contributor, CommitClassifier
 
 
 class Scm(ScmBase):
-    # Projects can define for themselves what constitutes a development vs a production branch,
-    # the following idioms seem common enough to be shared.
-    DEV_BRANCHES = re.compile(r'.*[(eng)(dev)(bug)]/.+')
-    PROD_BRANCHES = re.compile(r'\S+-[\d+\.]+-branch')
-
     @classmethod
     def executable(cls, program):
-        # TODO: Use shutil directly when Python 2.7 is removed
-        from whichcraft import which
-        path = which(program)
+        path = shutil.which(program)
         if path is None:
             raise OSError("Cannot find '{}' program".format(program))
         return os.path.realpath(path)
@@ -54,15 +48,73 @@ class Scm(ScmBase):
             return local.Svn(path, contributors=contributors, **kwargs)
         raise OSError("'{}' is not a known SCM type".format(path))
 
-    def __init__(self, path, dev_branches=None, prod_branches=None, contributors=None, id=None):
-        super(Scm, self).__init__(dev_branches=dev_branches, prod_branches=prod_branches, contributors=contributors, id=id)
-
-        if not isinstance(path, six.string_types):
+    def __init__(self, path, dev_branches=None, prod_branches=None, contributors=None, id=None, classifier=None):
+        if not isinstance(path, string_utils.basestring):
             raise ValueError("Expected 'path' to be a string type, not '{}'".format(type(path)))
         self.path = path
 
+        if not contributors and self.metadata:
+            for candidate in [
+                os.path.join(self.metadata, 'contributors.json'),
+            ]:
+                if not os.path.isfile(candidate):
+                    continue
+                with open(candidate, 'r') as file:
+                    contributors = Contributor.Mapping.load(file)
+
+        if not classifier and self.metadata:
+            for candidate in [
+                os.path.join(self.metadata, 'commit_classes.json'),
+            ]:
+                if not os.path.isfile(candidate):
+                    continue
+                with open(candidate, 'r') as file:
+                    classifier = CommitClassifier.load(file)
+
+        super(Scm, self).__init__(
+            dev_branches=dev_branches,
+            prod_branches=prod_branches,
+            contributors=contributors,
+            classifier=classifier,
+            id=id,
+        )
+
+        trackers = []
+        if self.metadata:
+            path = os.path.join(self.metadata, 'trackers.json')
+            if os.path.isfile(path):
+                with open(path, 'r') as file:
+                    trackers = Tracker.from_json(json.load(file))
+        for tracker in trackers:
+            if isinstance(tracker, radar.Tracker) and (not tracker.radarclient() or not tracker.client):
+                continue
+            for contributor in self.contributors:
+                if contributor.name and contributor.emails:
+                    username = None
+                    if isinstance(tracker, bugzilla.Tracker):
+                        username = contributor.emails[0]
+                    if isinstance(tracker, github.Tracker):
+                        username = contributor.github
+                    tracker.users.create(name=contributor.name, username=username, emails=contributor.emails)
+            Tracker.register(tracker)
+
+    @property
+    @decorators.Memoize()
+    def metadata(self):
+        if not self.root_path:
+            return None
+        for name in ('metadata', '.repo-metadata'):
+            candidate = os.path.join(self.root_path, name)
+            if os.path.isdir(candidate):
+                return candidate
+        return None
+
     @property
     def root_path(self):
+        raise NotImplementedError()
+
+    @property
+    def common_directory(self):
         raise NotImplementedError()
 
     @property
@@ -76,4 +128,7 @@ class Scm(ScmBase):
         raise NotImplementedError()
 
     def pull(self):
+        raise NotImplementedError()
+
+    def diff(self, head='HEAD', base=None, include_log=False):
         raise NotImplementedError()

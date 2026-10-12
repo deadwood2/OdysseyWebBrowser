@@ -31,8 +31,8 @@
 
 namespace WebKit {
 
-enum RemoteAudioDestinationIdentifierType { };
-using RemoteAudioDestinationIdentifier = ObjectIdentifier<RemoteAudioDestinationIdentifierType>;
+struct RemoteAudioDestinationIdentifierType;
+using RemoteAudioDestinationIdentifier = LegacyNullableObjectIdentifier<RemoteAudioDestinationIdentifierType>;
 
 } // namespace WebKit
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2007-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,6 +31,10 @@
 
 #import <wtf/SoftLinking.h>
 #import <sys/resource.h>
+
+#if HAVE(APFS_CACHEDELETE_PURGEABLE)
+#import <apfs/apfs_fsctl.h>
+#endif
 
 typedef struct _BOMCopier* BOMCopier;
 
@@ -82,44 +86,39 @@ String createTemporaryZipArchive(const String& path)
         
         BOMCopier copier = BOMCopierNew();
         if (!BOMCopierCopyWithOptions(copier, newURL.path.fileSystemRepresentation, archivePath.data(), (__bridge CFDictionaryRef)options))
-            temporaryFile = String::fromUTF8(archivePath);
+            temporaryFile = String::fromUTF8(archivePath.span());
         BOMCopierFree(copier);
     }];
     
     return temporaryFile;
 }
 
-String openTemporaryFile(const String& prefix, PlatformFileHandle& platformFileHandle, const String& suffix)
+std::pair<String, PlatformFileHandle> openTemporaryFile(StringView prefix, StringView suffix)
 {
-    platformFileHandle = invalidPlatformFileHandle;
+    PlatformFileHandle platformFileHandle = invalidPlatformFileHandle;
 
     Vector<char> temporaryFilePath(PATH_MAX);
     if (!confstr(_CS_DARWIN_USER_TEMP_DIR, temporaryFilePath.data(), temporaryFilePath.size()))
-        return String();
+        return { String(), invalidPlatformFileHandle };
 
     // Shrink the vector.
     temporaryFilePath.shrink(strlen(temporaryFilePath.data()));
 
-    // FIXME: Change to a runtime assertion that the path ends with a slash once <rdar://problem/23579077> is
-    // fixed in all iOS Simulator versions that we use.
-    if (temporaryFilePath.last() != '/')
-        temporaryFilePath.append('/');
+    ASSERT(temporaryFilePath.last() == '/');
 
     // Append the file name.
-    CString prefixUTF8 = prefix.utf8();
-    temporaryFilePath.append(prefixUTF8.data(), prefixUTF8.length());
-    temporaryFilePath.append("XXXXXX", 6);
+    temporaryFilePath.append(prefix.utf8().span());
+    temporaryFilePath.append("XXXXXX"_span);
     
     // Append the file name suffix.
     CString suffixUTF8 = suffix.utf8();
-    temporaryFilePath.append(suffixUTF8.data(), suffixUTF8.length());
-    temporaryFilePath.append('\0');
+    temporaryFilePath.append(suffixUTF8.spanIncludingNullTerminator());
 
     platformFileHandle = mkstemps(temporaryFilePath.data(), suffixUTF8.length());
     if (platformFileHandle == invalidPlatformFileHandle)
-        return String();
+        return { nullString(), invalidPlatformFileHandle };
 
-    return String::fromUTF8(temporaryFilePath.data());
+    return { String::fromUTF8(temporaryFilePath.data()), platformFileHandle };
 }
 
 NSString *createTemporaryDirectory(NSString *directoryPrefix)
@@ -210,17 +209,62 @@ bool isSafeToUseMemoryMapForPath(const String& path)
     return true;
 }
 
-void makeSafeToUseMemoryMapForPath(const String& path)
+bool makeSafeToUseMemoryMapForPath(const String& path)
 {
     if (isSafeToUseMemoryMapForPath(path))
-        return;
+        return true;
     
     NSError *error = nil;
     BOOL success = [[NSFileManager defaultManager] setAttributes:@{ NSFileProtectionKey: NSFileProtectionCompleteUnlessOpen } ofItemAtPath:path error:&error];
-    ASSERT(!error);
-    ASSERT_UNUSED(success, success);
+    if (error || !success) {
+        WTFLogAlways("makeSafeToUseMemoryMapForPath(%s) failed with error %@", path.utf8().data(), error);
+        return false;
+    }
+    return true;
 }
 #endif
+
+bool setExcludedFromBackup(const String& path, bool excluded)
+{
+    if (path.isEmpty())
+        return false;
+
+    NSError *error;
+    if (![[NSURL fileURLWithPath:(NSString *)path isDirectory:YES] setResourceValue:[NSNumber numberWithBool:excluded] forKey:NSURLIsExcludedFromBackupKey error:&error]) {
+        LOG_ERROR("Cannot exclude path '%s' from backup with error '%@'", path.utf8().data(), error.localizedDescription);
+        return false;
+    }
+
+    return true;
+}
+
+bool markPurgeable(const String& path)
+{
+    CString fileSystemPath = fileSystemRepresentation(path);
+    if (fileSystemPath.isNull())
+        return false;
+
+#if HAVE(APFS_CACHEDELETE_PURGEABLE)
+    uint64_t flags = APFS_MARK_PURGEABLE | APFS_PURGEABLE_DATA_TYPE | APFS_PURGEABLE_MARK_CHILDREN;
+    return !fsctl(fileSystemPath.data(), APFSIOC_MARK_PURGEABLE, &flags, 0);
+#else
+    return false;
+#endif
+}
+
+NSString *systemDirectoryPath()
+{
+    static NeverDestroyed<RetainPtr<NSString>> path = ^{
+#if PLATFORM(IOS_FAMILY_SIMULATOR)
+        char *simulatorRoot = getenv("SIMULATOR_ROOT");
+        return simulatorRoot ? [NSString stringWithFormat:@"%s/System/", simulatorRoot] : @"/System/";
+#else
+        return @"/System/";
+#endif
+    }();
+
+    return path.get().get();
+}
 
 } // namespace FileSystemImpl
 } // namespace WTF

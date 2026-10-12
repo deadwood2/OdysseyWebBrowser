@@ -38,7 +38,12 @@
 
 namespace WebCore {
 
-void adjustMIMETypeIfNecessary(CFURLResponseRef response, bool isMainResourceLoad)
+static inline bool shouldPreferTextPlainMIMEType(const String& mimeType, const String& proposedMIMEType)
+{
+    return ("text/plain"_s == mimeType) && ((proposedMIMEType == "text/xml"_s) || (proposedMIMEType == "application/xhtml+xml"_s) || (proposedMIMEType == "application/xml"_s) || (proposedMIMEType == "image/svg+xml"_s));
+}
+
+void adjustMIMETypeIfNecessary(CFURLResponseRef response, IsMainResourceLoad isMainResourceLoad, IsNoSniffSet isNoSniffSet)
 {
     auto type = CFURLResponseGetMIMEType(response);
     if (!type) {
@@ -49,26 +54,29 @@ void adjustMIMETypeIfNecessary(CFURLResponseRef response, bool isMainResourceLoa
                 return;
             }
         }
-        CFURLResponseSetMIMEType(response, CFSTR("application/octet-stream"));
-        return;
     }
 
 #if !USE(QUICK_LOOK)
     UNUSED_PARAM(isMainResourceLoad);
+    UNUSED_PARAM(isNoSniffSet);
 #else
     // Ensure that the MIME type is correct so that QuickLook's web plug-in is called when needed.
     // The shouldUseQuickLookForMIMEType function filters out the common MIME types so we don't do unnecessary work in those cases.
-    if (isMainResourceLoad && shouldUseQuickLookForMIMEType((__bridge NSString *)type)) {
+    if (isMainResourceLoad == IsMainResourceLoad::Yes && isNoSniffSet == IsNoSniffSet::No && shouldUseQuickLookForMIMEType((__bridge NSString *)type)) {
         RetainPtr<CFStringRef> updatedType;
         auto suggestedFilename = adoptCF(CFURLResponseCopySuggestedFilename(response));
         if (auto quickLookType = adoptNS(PAL::softLink_QuickLook_QLTypeCopyBestMimeTypeForFileNameAndMimeType((__bridge NSString *)suggestedFilename.get(), (__bridge NSString *)type)))
             updatedType = (__bridge CFStringRef)quickLookType.get();
         else if (auto extension = filePathExtension(response))
             updatedType = preferredMIMETypeForFileExtensionFromUTType(extension.get());
-        if (updatedType && (!type || CFStringCompare(type, updatedType.get(), kCFCompareCaseInsensitive) != kCFCompareEqualTo))
+        if (updatedType && !shouldPreferTextPlainMIMEType(type, updatedType.get()) && (!type || CFStringCompare(type, updatedType.get(), kCFCompareCaseInsensitive) != kCFCompareEqualTo)) {
             CFURLResponseSetMIMEType(response, updatedType.get());
+            return;
+        }
     }
 #endif // USE(QUICK_LOOK)
+    if (!type)
+        CFURLResponseSetMIMEType(response, CFSTR("application/octet-stream"));
 }
 
 } // namespace WebCore

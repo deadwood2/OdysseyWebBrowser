@@ -28,7 +28,7 @@
 #import "ClassMethodSwizzler.h"
 #import "InstanceMethodSwizzler.h"
 #import "PlatformUtilities.h"
-#import "Test.h"
+#import "TestCocoa.h"
 #import "TestNavigationDelegate.h"
 #import "TestUIDelegate.h"
 #import "TestURLSchemeHandler.h"
@@ -36,6 +36,7 @@
 #import <WebKit/WKProcessPoolPrivate.h>
 #import <WebKit/WKWebView.h>
 #import <WebKit/WKWebViewConfigurationPrivate.h>
+#import <WebKit/WKWebViewPrivate.h>
 #import <WebKit/WKWebViewPrivateForTesting.h>
 #import <wtf/RetainPtr.h>
 
@@ -43,14 +44,14 @@
 #import <Carbon/Carbon.h>
 #endif
 
-#if PLATFORM(IOS) || ENABLE(UI_PROCESS_PDF_HUD) || PLATFORM(MAC)
+#if PLATFORM(IOS) || PLATFORM(MAC) || PLATFORM(VISION)
 static NSData *pdfData()
 {
     return [NSData dataWithContentsOfURL:[[NSBundle mainBundle] URLForResource:@"test" withExtension:@"pdf" subdirectory:@"TestWebKitAPI.resources"]];
 }
 #endif
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS) || PLATFORM(VISION)
 
 @interface PDFHostViewController : UIViewController
 + (void)createHostView:(void(^)(id hostViewController))callback forExtensionIdentifier:(NSString *)extensionIdentifier;
@@ -147,9 +148,67 @@ TEST(WebKit, WKPDFViewLosesApplicationForegroundNotification)
     TestWebKitAPI::Util::run(&finished);
 }
 
+#if HAVE(UIFINDINTERACTION)
+
+TEST(WebKit, WKPDFViewFindActions)
+{
+    auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600)]);
+
+    NSURLRequest *request = [NSURLRequest requestWithURL:[[NSBundle mainBundle] URLForResource:@"test" withExtension:@"pdf" subdirectory:@"TestWebKitAPI.resources"]];
+    [webView loadRequest:request];
+    [webView _test_waitForDidFinishNavigation];
+
+    EXPECT_FALSE([webView canPerformAction:@selector(find:) withSender:nil]);
+    EXPECT_FALSE([webView canPerformAction:@selector(findNext:) withSender:nil]);
+    EXPECT_FALSE([webView canPerformAction:@selector(findPrevious:) withSender:nil]);
+    EXPECT_FALSE([webView canPerformAction:@selector(findAndReplace:) withSender:nil]);
+
+    [webView setFindInteractionEnabled:YES];
+
+    EXPECT_TRUE([webView canPerformAction:@selector(find:) withSender:nil]);
+    EXPECT_TRUE([webView canPerformAction:@selector(findNext:) withSender:nil]);
+    EXPECT_TRUE([webView canPerformAction:@selector(findPrevious:) withSender:nil]);
+    EXPECT_FALSE([webView canPerformAction:@selector(findAndReplace:) withSender:nil]);
+}
+
 #endif
 
-#if ENABLE(UI_PROCESS_PDF_HUD)
+TEST(WKPDFView, BackgroundColor)
+{
+    auto sRGBColorSpace = adoptCF(CGColorSpaceCreateWithName(kCGColorSpaceSRGB));
+    auto redColor = adoptCF(CGColorCreate(sRGBColorSpace.get(), redColorComponents));
+
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600)]);
+
+    [webView synchronouslyLoadRequest:[NSURLRequest requestWithURL:[[NSBundle mainBundle] URLForResource:@"red" withExtension:@"html" subdirectory:@"TestWebKitAPI.resources"]]];
+    EXPECT_TRUE(CGColorEqualToColor([webView scrollView].backgroundColor.CGColor, redColor.get()));
+
+    [webView synchronouslyLoadRequest:[NSURLRequest requestWithURL:[[NSBundle mainBundle] URLForResource:@"test" withExtension:@"pdf" subdirectory:@"TestWebKitAPI.resources"]]];
+    EXPECT_FALSE(CGColorEqualToColor([webView scrollView].backgroundColor.CGColor, redColor.get()));
+
+    [webView synchronouslyGoBack];
+    EXPECT_TRUE(CGColorEqualToColor([webView scrollView].backgroundColor.CGColor, redColor.get()));
+}
+
+#endif
+
+#if PLATFORM(IOS) || PLATFORM(MAC) || PLATFORM(VISION)
+
+TEST(WKWebView, IsDisplayingPDF)
+{
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:adoptNS([WKWebViewConfiguration new]).get()]);
+    [webView loadData:pdfData() MIMEType:@"application/pdf" characterEncodingName:@"" baseURL:[NSURL URLWithString:@"https://www.apple.com/testPath"]];
+    [webView _test_waitForDidFinishNavigation];
+    EXPECT_TRUE([webView _isDisplayingPDF]);
+
+    [webView loadHTMLString:@"<meta name='viewport' content='width=device-width'><h1>hello world</h1>" baseURL:[NSURL URLWithString:@"https://www.apple.com/1"]];
+    [webView _test_waitForDidFinishNavigationWithoutPresentationUpdate];
+    EXPECT_FALSE([webView _isDisplayingPDF]);
+}
+
+#endif
+
+#if ENABLE(LEGACY_PDFKIT_PLUGIN)
 
 static void checkFrame(NSRect frame, CGFloat x, CGFloat y, CGFloat width, CGFloat height)
 {
@@ -372,18 +431,18 @@ TEST(PDFHUD, LoadPDFTypeWithPluginsBlocked)
     checkFrame([webView _pdfHUDs].anyObject.frame, 0, 0, 800, 600);
 }
 
-#endif // ENABLE(UI_PROCESS_PDF_HUD)
+#endif // ENABLE(LEGACY_PDFKIT_PLUGIN)
 
 #if PLATFORM(MAC)
 
-@interface PrintUIDelegate : NSObject <WKUIDelegate>
+@interface PDFPrintUIDelegate : NSObject <WKUIDelegate>
 
 - (NSSize)waitForPageSize;
 - (_WKFrameHandle *)lastPrintedFrame;
 
 @end
 
-@implementation PrintUIDelegate {
+@implementation PDFPrintUIDelegate {
     NSSize _pageSize;
     bool _receivedSize;
     RetainPtr<_WKFrameHandle> _lastPrintedFrame;
@@ -418,7 +477,7 @@ TEST(PDF, PrintSize)
     auto schemeHandler = adoptNS([TestURLSchemeHandler new]);
     [configuration setURLSchemeHandler:schemeHandler.get() forURLScheme:@"test"];
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
-    auto delegate = adoptNS([PrintUIDelegate new]);
+    auto delegate = adoptNS([PDFPrintUIDelegate new]);
     [webView setUIDelegate:delegate.get()];
 
     schemeHandler.get().startURLSchemeTaskHandler = ^(WKWebView *, id<WKURLSchemeTask> task) {
@@ -483,6 +542,29 @@ TEST(PDF, PrintSize)
         receivedSize = true;
     }];
     TestWebKitAPI::Util::run(&receivedSize);
+}
+
+TEST(PDF, SetPageZoomFactorDoesNotBailIncorrectly)
+{
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:adoptNS([WKWebViewConfiguration new]).get()]);
+    [webView loadData:pdfData() MIMEType:@"application/pdf" characterEncodingName:@"" baseURL:[NSURL URLWithString:@"https://www.apple.com/testPath"]];
+    [webView _test_waitForDidFinishNavigation];
+
+    double scaleBeforeZooming = [webView _pageZoomFactor];
+
+    EXPECT_EQ([webView _pdfHUDs].count, 1u);
+    [[webView _pdfHUDs].anyObject performSelector:NSSelectorFromString(@"_performActionForControl:") withObject:@"plus.magnifyingglass"];
+    [webView waitForNextPresentationUpdate];
+
+    double scaleAfterZooming = [webView _pageZoomFactor];
+    EXPECT_GT(scaleAfterZooming, scaleBeforeZooming);
+
+    [webView _setPageZoomFactor:1];
+    [webView waitForNextPresentationUpdate];
+
+    double scaleAfterResetting = [webView _pageZoomFactor];
+    EXPECT_LT(scaleAfterResetting, scaleAfterZooming);
+    EXPECT_EQ(scaleAfterResetting, 1.0);
 }
 
 #endif

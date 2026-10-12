@@ -38,6 +38,8 @@
 
 namespace Inspector {
 
+CString RemoteInspector::s_inspectorServerAddress;
+
 RemoteInspector& RemoteInspector::singleton()
 {
     static LazyNeverDestroyed<RemoteInspector> shared;
@@ -50,7 +52,7 @@ RemoteInspector& RemoteInspector::singleton()
 
 RemoteInspector::RemoteInspector()
 {
-    if (g_getenv("WEBKIT_INSPECTOR_SERVER"))
+    if (!s_inspectorServerAddress.isNull())
         start();
 }
 
@@ -65,14 +67,14 @@ void RemoteInspector::start()
     m_cancellable = adoptGRef(g_cancellable_new());
 
     GRefPtr<GSocketClient> socketClient = adoptGRef(g_socket_client_new());
-    g_socket_client_connect_to_host_async(socketClient.get(), g_getenv("WEBKIT_INSPECTOR_SERVER"), 0, m_cancellable.get(),
+    g_socket_client_connect_to_host_async(socketClient.get(), s_inspectorServerAddress.data(), 0, m_cancellable.get(),
         [](GObject* client, GAsyncResult* result, gpointer userData) {
             RemoteInspector* inspector = static_cast<RemoteInspector*>(userData);
             GUniqueOutPtr<GError> error;
             if (GRefPtr<GSocketConnection> connection = adoptGRef(g_socket_client_connect_to_host_finish(G_SOCKET_CLIENT(client), result, &error.outPtr())))
                 inspector->setupConnection(SocketConnection::create(WTFMove(connection), messageHandlers(), inspector));
             else if (!g_error_matches(error.get(), G_IO_ERROR, G_IO_ERROR_CANCELLED))
-                g_warning("RemoteInspector failed to connect to inspector server at: %s: %s", g_getenv("WEBKIT_INSPECTOR_SERVER"), error->message);
+                g_warning("RemoteInspector failed to connect to inspector server at: %s: %s", s_inspectorServerAddress.data(), error->message);
         }, this);
 }
 
@@ -92,7 +94,7 @@ void RemoteInspector::stopInternal(StopSource)
 
     updateHasActiveDebugSession();
 
-    m_automaticInspectionPaused = false;
+    m_pausedAutomaticInspectionCandidates.clear();
     m_socketConnection = nullptr;
 }
 
@@ -168,7 +170,7 @@ static const char* targetDebuggableType(RemoteInspectionTarget::Type type)
 
 TargetListing RemoteInspector::listingForInspectionTarget(const RemoteInspectionTarget& target) const
 {
-    if (!target.remoteDebuggingAllowed())
+    if (!target.allowsInspectionByPolicy())
         return nullptr;
 
     return g_variant_new("(tsssb)", static_cast<guint64>(target.targetIdentifier()),
@@ -217,12 +219,10 @@ void RemoteInspector::pushListingsSoon()
     });
 }
 
-void RemoteInspector::sendAutomaticInspectionCandidateMessage()
+void RemoteInspector::sendAutomaticInspectionCandidateMessage(TargetID)
 {
     ASSERT(m_enabled);
     ASSERT(m_automaticInspectionEnabled);
-    ASSERT(m_automaticInspectionPaused);
-    ASSERT(m_automaticInspectionCandidateTargetIdentifier);
     ASSERT(m_socketConnection);
     // FIXME: Implement automatic inspection.
 }
@@ -301,7 +301,7 @@ void RemoteInspector::setup(TargetID targetIdentifier)
 
 void RemoteInspector::sendMessageToTarget(TargetID targetIdentifier, const char* message)
 {
-    if (auto connectionToTarget = m_targetConnectionMap.get(targetIdentifier))
+    if (RefPtr connectionToTarget = m_targetConnectionMap.get(targetIdentifier))
         connectionToTarget->sendMessageToTarget(String::fromUTF8(message));
 }
 

@@ -1,12 +1,12 @@
 #pragma once
 
-#include "config.h"
-
 #if ENABLE(VIDEO) && ENABLE(MEDIA_SOURCE)
 
 #include "MediaSourcePrivate.h"
 #include "MediaSourceBufferPrivateMorphOS.h"
 #include <wtf/MediaTime.h>
+#include <wtf/Ref.h>
+#include <wtf/RefPtr.h>
 #include <wtf/RunLoop.h>
 
 struct Window;
@@ -31,14 +31,15 @@ public:
     void durationChanged(const MediaTime&) override;
     void markEndOfStream(EndOfStreamStatus) override;
     void unmarkEndOfStream() override;
-    MediaPlayer::ReadyState readyState() const override;
-    void setReadyState(MediaPlayer::ReadyState) override;
+    MediaPlayer::ReadyState mediaPlayerReadyState() const override;
+    void setMediaPlayerReadyState(MediaPlayer::ReadyState) override;
+    RefPtr<MediaPlayerPrivateInterface> player() const override;
 
     bool isLiveStream() const;
 
-    MediaTime duration();
-    MediaTime currentMediaTime();
-    std::unique_ptr<PlatformTimeRanges> buffered();
+//    MediaTime duration();
+    MediaTime currentMediaTime() const;
+//    const PlatformTimeRanges& buffered();
 
 	const WebCore::MediaPlayerMorphOSStreamSettings& streamSettings();
 	void onSourceBufferInitialized(RefPtr<MediaSourceBufferPrivateMorphOS>&);
@@ -52,9 +53,13 @@ public:
 	void onSourceBufferEnded(RefPtr<MediaSourceBufferPrivateMorphOS>&);
 	void onSourceBufferLoadingProgressed();
 
+    constexpr MediaPlatformType platformType() const { return MediaPlatformType::MorphOS; }
+
+    void notifyActiveSourceBuffersChanged() { } // todo?
+
 	bool paused() const { return m_paused; }
 	bool ended() const { return m_ended; }
-    bool isEnded() const override { return m_ended; };
+//    bool isEnded() const override { return m_ended; };
 
     enum SeekState {
 		Pending,
@@ -64,20 +69,14 @@ public:
     };
 	
 	bool isSeeking() const;
-    void waitForSeekCompleted() override;
-    void seekCompleted() override;
-	void seek(double time);
-
-#if 0 // might be needed?
-    std::unique_ptr<PlatformTimeRanges> seekable() const override;
-    MediaTime maxMediaTimeSeekable() const override;
-    MediaTime minMediaTimeSeekable() const override;
-    std::unique_ptr<PlatformTimeRanges> buffered() const override;
-#endif
+//    void waitForSeekCompleted() override;
+//    void seekCompleted() override;
+//	void seek(double time);
+    void seekToTarget(const SeekTarget&);
 
     void orphan();
-    WeakPtr<MediaPlayerPrivateMorphOS> &player() { return m_player; }
-    WeakPtr<MediaPlayerPrivateMorphOS> const &player() const { return m_player; }
+    WeakPtr<MediaPlayerPrivateMorphOS> &mediaPlayer() { return m_player; }
+    WeakPtr<MediaPlayerPrivateMorphOS> const &mediaPlayer() const { return m_player; }
     void warmUp();
     void coolDown();
 
@@ -102,20 +101,18 @@ protected:
 	bool areDecodersInitialized();
 	
 	void watchdogTimerFired();
-	void seekInternal();
-	void seekControl();
+    void seekingWatchdogTimerFired();
+    void maybeCompleteSeek();
 
 private:
 	WeakPtr<MediaPlayerPrivateMorphOS>               m_player;
-    Ref<MediaSourcePrivateClient>                    m_client;
     String                                           m_url;
 	HashSet<RefPtr<MediaSourceBufferPrivateMorphOS>> m_sourceBuffers;
 	HashSet<RefPtr<MediaSourceBufferPrivateMorphOS>> m_activeSourceBuffers;
 	RefPtr<MediaSourceBufferPrivateMorphOS>          m_paintingBuffer;
 	MediaPlayer::ReadyState                          m_readyState = MediaPlayer::ReadyState::HaveNothing;
-	RunLoop::Timer<MediaSourcePrivateMorphOS>        m_watchdogTimer;
-	RunLoop::Timer<MediaSourcePrivateMorphOS>        m_seekTimer;
-	RunLoop::Timer<MediaSourcePrivateMorphOS>        m_seekControlTimer;
+	RunLoop::Timer                                   m_watchdogTimer;
+	RunLoop::Timer                                   m_seekingWatchdogTimer;
     bool                                             m_orphaned = false;
 	bool                                             m_paused = true;
 	bool                                             m_ended = false;
@@ -127,11 +124,16 @@ private:
 	bool                                             m_muted = false;
 
 	double                                           m_position = 0;
-	double                                           m_seekingPos;
+	SeekTarget                                       m_seekTarget;
+	MediaTime                                        m_lastSeekTime;
 	bool                                             m_seeking = false;
 	SeekState                                        m_seekCompleted { SeekCompleted };
 };
 
 }
+
+SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::MediaSourcePrivateMorphOS)
+static bool isType(const WebCore::MediaSourcePrivate& mediaSource) { return mediaSource.platformType() == WebCore::MediaPlatformType::MorphOS; }
+SPECIALIZE_TYPE_TRAITS_END()
 
 #endif

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,68 +23,79 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef PageLoadState_h
-#define PageLoadState_h
+#pragma once
 
-#include "WebCertificateInfo.h"
+#include <WebCore/CertificateInfo.h>
+#include <WebCore/NavigationIdentifier.h>
+#include <WebCore/SecurityOriginData.h>
 #include <wtf/URL.h>
+#include <wtf/WeakHashSet.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebKit {
+class PageLoadStateObserverBase;
+}
 
-class WebCertificateInfo;
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebKit::PageLoadStateObserverBase> : std::true_type { };
+}
+
+namespace WebKit {
+
 class WebPageProxy;
+
+class PageLoadStateObserverBase : public CanMakeWeakPtr<PageLoadStateObserverBase> {
+public:
+    virtual ~PageLoadStateObserverBase() = default;
+
+    virtual void willChangeIsLoading() = 0;
+    virtual void didChangeIsLoading() = 0;
+
+    virtual void willChangeTitle() = 0;
+    virtual void didChangeTitle() = 0;
+
+    virtual void willChangeActiveURL() = 0;
+    virtual void didChangeActiveURL() = 0;
+
+    virtual void willChangeHasOnlySecureContent() = 0;
+    virtual void didChangeHasOnlySecureContent() = 0;
+
+    virtual void willChangeNegotiatedLegacyTLS() { }
+    virtual void didChangeNegotiatedLegacyTLS() { }
+
+    virtual void willChangeWasPrivateRelayed() { }
+    virtual void didChangeWasPrivateRelayed() { }
+
+    virtual void willChangeEstimatedProgress() = 0;
+    virtual void didChangeEstimatedProgress() = 0;
+
+    virtual void willChangeCanGoBack() = 0;
+    virtual void didChangeCanGoBack() = 0;
+
+    virtual void willChangeCanGoForward() = 0;
+    virtual void didChangeCanGoForward() = 0;
+
+    virtual void willChangeNetworkRequestsInProgress() = 0;
+    virtual void didChangeNetworkRequestsInProgress() = 0;
+
+    virtual void willChangeCertificateInfo() = 0;
+    virtual void didChangeCertificateInfo() = 0;
+
+    virtual void willChangeWebProcessIsResponsive() = 0;
+    virtual void didChangeWebProcessIsResponsive() = 0;
+
+    virtual void didSwapWebProcesses() = 0;
+};
 
 class PageLoadState {
 public:
     explicit PageLoadState(WebPageProxy&);
     ~PageLoadState();
 
-    enum class State {
-        Provisional,
-        Committed,
-        Finished
-    };
+    enum class State : uint8_t { Provisional, Committed, Finished };
 
-    class Observer {
-    public:
-        virtual ~Observer() { }
-
-        virtual void willChangeIsLoading() = 0;
-        virtual void didChangeIsLoading() = 0;
-
-        virtual void willChangeTitle() = 0;
-        virtual void didChangeTitle() = 0;
-
-        virtual void willChangeActiveURL() = 0;
-        virtual void didChangeActiveURL() = 0;
-
-        virtual void willChangeHasOnlySecureContent() = 0;
-        virtual void didChangeHasOnlySecureContent() = 0;
-
-        virtual void willChangeNegotiatedLegacyTLS() { };
-        virtual void didChangeNegotiatedLegacyTLS() { };
-
-        virtual void willChangeEstimatedProgress() = 0;
-        virtual void didChangeEstimatedProgress() = 0;
-
-        virtual void willChangeCanGoBack() = 0;
-        virtual void didChangeCanGoBack() = 0;
-
-        virtual void willChangeCanGoForward() = 0;
-        virtual void didChangeCanGoForward() = 0;
-
-        virtual void willChangeNetworkRequestsInProgress() = 0;
-        virtual void didChangeNetworkRequestsInProgress() = 0;
-
-        virtual void willChangeCertificateInfo() = 0;
-        virtual void didChangeCertificateInfo() = 0;
-
-        virtual void willChangeWebProcessIsResponsive() = 0;
-        virtual void didChangeWebProcessIsResponsive() = 0;
-        
-        virtual void didSwapWebProcesses() = 0;
-    };
+    using Observer = PageLoadStateObserverBase;
 
     class Transaction {
         WTF_MAKE_NONCOPYABLE(Transaction);
@@ -117,7 +128,7 @@ public:
     };
 
     struct PendingAPIRequest {
-        uint64_t navigationID { 0 };
+        Markable<WebCore::NavigationIdentifier> navigationID;
         String url;
     };
 
@@ -138,6 +149,7 @@ public:
 
     const String& provisionalURL() const { return m_committedState.provisionalURL; }
     const String& url() const { return m_committedState.url; }
+    const WebCore::SecurityOriginData& origin() const { return m_committedState.origin; }
     const String& unreachableURL() const { return m_committedState.unreachableURL; }
 
     String activeURL() const;
@@ -145,11 +157,12 @@ public:
     bool hasOnlySecureContent() const;
     bool hasNegotiatedLegacyTLS() const;
     void negotiatedLegacyTLS(const Transaction::Token&);
+    bool wasPrivateRelayed() const;
 
     double estimatedProgress() const;
     bool networkRequestsInProgress() const { return m_committedState.networkRequestsInProgress; }
 
-    WebCertificateInfo* certificateInfo() const { return m_committedState.certificateInfo.get(); }
+    const WebCore::CertificateInfo& certificateInfo() const { return m_committedState.certificateInfo; }
 
     const URL& resourceDirectoryURL() const;
 
@@ -163,7 +176,7 @@ public:
     void didReceiveServerRedirectForProvisionalLoad(const Transaction::Token&, const String& url);
     void didFailProvisionalLoad(const Transaction::Token&);
 
-    void didCommitLoad(const Transaction::Token&, WebCertificateInfo&, bool hasInsecureContent, bool usedLegacyTLS);
+    void didCommitLoad(const Transaction::Token&, const WebCore::CertificateInfo&, bool hasInsecureContent, bool usedLegacyTLS, bool privateRelayed, const WebCore::SecurityOriginData&);
     void didFinishLoad(const Transaction::Token&);
     void didFailLoad(const Transaction::Token&);
 
@@ -175,7 +188,7 @@ public:
 
     const String& title() const;
     void setTitle(const Transaction::Token&, const String&);
-    void setTitleFromSafeBrowsingWarning(const Transaction::Token&, const String&);
+    void setTitleFromBrowsingWarning(const Transaction::Token&, const String&);
 
     bool canGoBack() const;
     void setCanGoBack(const Transaction::Token&, bool);
@@ -203,22 +216,24 @@ private:
 
     void callObserverCallback(void (Observer::*)());
 
-    Vector<Observer*> m_observers;
+    WeakHashSet<Observer> m_observers;
 
     struct Data {
         State state { State::Finished };
         bool hasInsecureContent { false };
         bool negotiatedLegacyTLS { false };
+        bool wasPrivateRelayed { false };
 
         PendingAPIRequest pendingAPIRequest;
 
         String provisionalURL;
         String url;
+        WebCore::SecurityOriginData origin;
 
         String unreachableURL;
 
         String title;
-        String titleFromSafeBrowsingWarning;
+        String titleFromBrowsingWarning;
 
         URL resourceDirectoryURL;
 
@@ -228,7 +243,7 @@ private:
         double estimatedProgress { 0 };
         bool networkRequestsInProgress { false };
 
-        RefPtr<WebCertificateInfo> certificateInfo;
+        WebCore::CertificateInfo certificateInfo;
     };
 
     static bool isLoading(const Data&);
@@ -248,5 +263,3 @@ private:
 };
 
 } // namespace WebKit
-
-#endif // PageLoadState_h

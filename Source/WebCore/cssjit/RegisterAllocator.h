@@ -55,24 +55,6 @@ static const JSC::MacroAssembler::RegisterID calleeSavedRegisters[] = {
     JSC::ARM64Registers::x19
 };
 static const JSC::MacroAssembler::RegisterID tempRegister = JSC::ARM64Registers::x15;
-#elif CPU(ARM_THUMB2)
-static const JSC::MacroAssembler::RegisterID callerSavedRegisters[] {
-    JSC::ARMRegisters::r0,
-    JSC::ARMRegisters::r1,
-    JSC::ARMRegisters::r2,
-    JSC::ARMRegisters::r3,
-    JSC::ARMRegisters::r9,
-};
-static const JSC::MacroAssembler::RegisterID calleeSavedRegisters[] = {
-    JSC::ARMRegisters::r4,
-    JSC::ARMRegisters::r5,
-    JSC::ARMRegisters::r7,
-    JSC::ARMRegisters::r8,
-    JSC::ARMRegisters::r10,
-    JSC::ARMRegisters::r11,
-};
-// r6 is also used as addressTempRegister in the macro assembler. It is saved in the prologue and restored in the epilogue.
-static const JSC::MacroAssembler::RegisterID tempRegister = JSC::ARMRegisters::r6;
 #elif CPU(X86_64)
 static const JSC::MacroAssembler::RegisterID callerSavedRegisters[] = {
     JSC::X86Registers::eax,
@@ -83,7 +65,6 @@ static const JSC::MacroAssembler::RegisterID callerSavedRegisters[] = {
     JSC::X86Registers::r8,
     JSC::X86Registers::r9,
     JSC::X86Registers::r10,
-    JSC::X86Registers::r11
 };
 static const JSC::MacroAssembler::RegisterID calleeSavedRegisters[] = {
     JSC::X86Registers::r12,
@@ -94,8 +75,8 @@ static const JSC::MacroAssembler::RegisterID calleeSavedRegisters[] = {
 #else
 #error RegisterAllocator has no defined registers for the architecture.
 #endif
-static const unsigned calleeSavedRegisterCount = WTF_ARRAY_LENGTH(calleeSavedRegisters);
-static const unsigned maximumRegisterCount = calleeSavedRegisterCount + WTF_ARRAY_LENGTH(callerSavedRegisters);
+static const unsigned calleeSavedRegisterCount = std::size(calleeSavedRegisters);
+static const unsigned maximumRegisterCount = calleeSavedRegisterCount + std::size(callerSavedRegisters);
 
 typedef Vector<JSC::MacroAssembler::RegisterID, maximumRegisterCount> RegisterVector;
 
@@ -157,9 +138,9 @@ public:
     {
 #ifdef NDEBUG
         UNUSED_PARAM(count);
-        unsigned numberToAllocate = WTF_ARRAY_LENGTH(callerSavedRegisters);
+        unsigned numberToAllocate = std::size(callerSavedRegisters);
 #else
-        unsigned numberToAllocate = std::min<unsigned>(WTF_ARRAY_LENGTH(callerSavedRegisters), count);
+        unsigned numberToAllocate = std::min<unsigned>(std::size(callerSavedRegisters), count);
 #endif
         for (unsigned i = 0; i < numberToAllocate; ++i)
             m_registers.append(callerSavedRegisters[i]);
@@ -168,7 +149,7 @@ public:
 
     const Vector<JSC::MacroAssembler::RegisterID, calleeSavedRegisterCount>& reserveCalleeSavedRegisters(unsigned count)
     {
-        RELEASE_ASSERT(count <= WTF_ARRAY_LENGTH(calleeSavedRegisters));
+        RELEASE_ASSERT(count <= std::size(calleeSavedRegisters));
         RELEASE_ASSERT(!m_reservedCalleeSavedRegisters.size());
         for (unsigned i = 0; i < count; ++i) {
             JSC::MacroAssembler::RegisterID registerId = calleeSavedRegisters[i];
@@ -192,11 +173,10 @@ public:
 #if CPU(ARM64)
         return (registerID >= JSC::ARM64Registers::x0 && registerID <= JSC::ARM64Registers::x14)
             || registerID == JSC::ARM64Registers::x19;
-#elif CPU(ARM_THUMB2)
-        return registerID >= JSC::ARMRegisters::r0 && registerID <= JSC::ARMRegisters::r11 && registerID != JSC::ARMRegisters::r6;
 #elif CPU(X86_64)
         return (registerID >= JSC::X86Registers::eax && registerID <= JSC::X86Registers::edx)
-            || (registerID >= JSC::X86Registers::esi && registerID <= JSC::X86Registers::r15);
+            || (registerID >= JSC::X86Registers::esi && registerID <= JSC::X86Registers::r10)
+            || (registerID >= JSC::X86Registers::r12 && registerID <= JSC::X86Registers::r15);
 #else
 #error RegisterAllocator does not define the valid register range for the current architecture.
 #endif
@@ -207,12 +187,9 @@ public:
         ASSERT(isValidRegister(registerID));
 #if CPU(ARM64)
         return registerID >= JSC::ARM64Registers::x0 && registerID <= JSC::ARM64Registers::x14;
-#elif CPU(ARM_THUMB2)
-        return (registerID >= JSC::ARMRegisters::r0 && registerID <= JSC::ARMRegisters::r3)
-            || registerID == JSC::ARMRegisters::r9;
 #elif CPU(X86_64)
         return (registerID >= JSC::X86Registers::eax && registerID <= JSC::X86Registers::edx)
-            || (registerID >= JSC::X86Registers::esi && registerID <= JSC::X86Registers::r11);
+            || (registerID >= JSC::X86Registers::esi && registerID <= JSC::X86Registers::r10);
 #else
 #error RegisterAllocator does not define the valid caller saved register range for the current architecture.
 #endif

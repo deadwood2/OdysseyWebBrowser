@@ -27,9 +27,9 @@
 // FIXME: The current standard says this should be annotated with 'SecureContext'.
 [
     Conditional=GEOLOCATION,
-    ImplementationLacksVTable,
     Exposed=Window
 ] interface GeolocationPosition {
     readonly attribute GeolocationCoordinates coords;
-    readonly attribute DOMTimeStamp timestamp;
+    readonly attribute EpochTimeStamp timestamp;
+    [Default] object toJSON();
 };

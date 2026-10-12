@@ -33,19 +33,27 @@
 
 #if ENABLE(MEDIA_SOURCE)
 
+#include "ContextDestructionObserverInlines.h"
 #include "Event.h"
 #include "EventNames.h"
 #include "SourceBuffer.h"
-#include <wtf/IsoMallocInlines.h>
+#include "WebCoreOpaqueRoot.h"
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(SourceBufferList);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(SourceBufferList);
+
+Ref<SourceBufferList> SourceBufferList::create(ScriptExecutionContext* context)
+{
+    auto result = adoptRef(*new SourceBufferList(context));
+    result->suspendIfNeeded();
+    return result;
+}
 
 SourceBufferList::SourceBufferList(ScriptExecutionContext* context)
     : ActiveDOMObject(context)
 {
-    suspendIfNeeded();
 }
 
 SourceBufferList::~SourceBufferList()
@@ -97,9 +105,9 @@ void SourceBufferList::scheduleEvent(const AtomString& eventName)
     queueTaskToDispatchEvent(*this, TaskSource::MediaElement, Event::create(eventName, Event::CanBubble::No, Event::IsCancelable::No));
 }
 
-const char* SourceBufferList::activeDOMObjectName() const
+WebCoreOpaqueRoot root(SourceBufferList* list)
 {
-    return "SourceBufferList";
+    return WebCoreOpaqueRoot { list };
 }
 
 } // namespace WebCore

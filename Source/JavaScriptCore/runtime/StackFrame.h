@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2024 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,7 +25,9 @@
 
 #pragma once
 
+#include "BytecodeIndex.h"
 #include "Heap.h"
+#include "LineColumn.h"
 #include "SlotVisitorMacros.h"
 #include "VM.h"
 #include "WasmIndexOrName.h"
@@ -41,14 +43,18 @@ class StackFrame {
 public:
     StackFrame(VM&, JSCell* owner, JSCell* callee);
     StackFrame(VM&, JSCell* owner, JSCell* callee, CodeBlock*, BytecodeIndex);
+    StackFrame(VM&, JSCell* owner, CodeBlock*, BytecodeIndex);
     StackFrame(Wasm::IndexOrName);
+    StackFrame() = default;
 
     bool hasLineAndColumnInfo() const { return !!m_codeBlock; }
-    
-    void computeLineAndColumn(unsigned& line, unsigned& column) const;
+    CodeBlock* codeBlock() const { return m_codeBlock.get(); }
+
+    LineColumn computeLineAndColumn() const;
     String functionName(VM&) const;
-    intptr_t sourceID() const;
-    String sourceURL() const;
+    SourceID sourceID() const;
+    String sourceURL(VM&) const;
+    String sourceURLStripped(VM&) const;
     String toString(VM&) const;
 
     bool hasBytecodeIndex() const { return m_bytecodeIndex && !m_isWasmFrame; }

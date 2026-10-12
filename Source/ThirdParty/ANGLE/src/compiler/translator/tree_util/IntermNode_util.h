@@ -23,12 +23,22 @@ TIntermFunctionDefinition *CreateInternalFunctionDefinitionNode(const TFunction 
                                                                 TIntermBlock *functionBody);
 
 TIntermTyped *CreateZeroNode(const TType &type);
-TIntermConstantUnion *CreateFloatNode(float value);
+TIntermConstantUnion *CreateFloatNode(float value, TPrecision precision);
+TIntermConstantUnion *CreateVecNode(const float values[],
+                                    unsigned int vecSize,
+                                    TPrecision precision);
+TIntermConstantUnion *CreateUVecNode(const unsigned int values[],
+                                     unsigned int vecSize,
+                                     TPrecision precision);
 TIntermConstantUnion *CreateIndexNode(int index);
 TIntermConstantUnion *CreateUIntNode(unsigned int value);
 TIntermConstantUnion *CreateBoolNode(bool value);
 
+// Create temporary variable of known type |type|.
 TVariable *CreateTempVariable(TSymbolTable *symbolTable, const TType *type);
+
+// Create temporary variable compatible with user-provide type |type|.
+// Possibly creates a new type. The qualifer of the new type of the new variable is |qualifier|.
 TVariable *CreateTempVariable(TSymbolTable *symbolTable, const TType *type, TQualifier qualifier);
 
 TIntermSymbol *CreateTempSymbolNode(const TVariable *tempVariable);
@@ -58,6 +68,7 @@ const TVariable *DeclareInterfaceBlock(TIntermBlock *root,
                                        TSymbolTable *symbolTable,
                                        TFieldList *fieldList,
                                        TQualifier qualifier,
+                                       const TLayoutQualifier &layoutQualifier,
                                        const TMemoryQualifier &memoryQualifier,
                                        uint32_t arraySize,
                                        const ImmutableString &blockTypeName,
@@ -67,6 +78,11 @@ const TVariable *DeclareInterfaceBlock(TIntermBlock *root,
 // If the input node is a block node, return it.
 // If the input node is not a block node, put it inside a block node and return that.
 TIntermBlock *EnsureBlock(TIntermNode *node);
+
+// If the input node is nullptr, return a new block.
+// If the input node is a block node, return it.
+// If the input node is not a block node, put it inside a block node and return that.
+TIntermBlock *EnsureLoopBodyBlock(TIntermNode *node);
 
 // Should be called from inside Compiler::compileTreeImpl() where the global level is in scope.
 TIntermSymbol *ReferenceGlobalVariable(const ImmutableString &name,
@@ -82,6 +98,16 @@ TIntermTyped *CreateBuiltInFunctionCallNode(const char *name,
                                             TIntermSequence *arguments,
                                             const TSymbolTable &symbolTable,
                                             int shaderVersion);
+TIntermTyped *CreateBuiltInFunctionCallNode(const char *name,
+                                            const std::initializer_list<TIntermNode *> &arguments,
+                                            const TSymbolTable &symbolTable,
+                                            int shaderVersion);
+TIntermTyped *CreateBuiltInUnaryFunctionCallNode(const char *name,
+                                                 TIntermTyped *argument,
+                                                 const TSymbolTable &symbolTable,
+                                                 int shaderVersion);
+
+int GetESSLOrGLSLVersion(ShShaderSpec spec, int esslVersion, int glslVersion);
 
 inline void GetSwizzleIndex(TVector<int> *indexOut) {}
 
@@ -99,6 +125,12 @@ TIntermSwizzle *CreateSwizzle(TIntermTyped *reference, ArgsT... args)
     GetSwizzleIndex(&swizzleIndex, args...);
     return new TIntermSwizzle(reference, swizzleIndex);
 }
+
+// Returns true if a block ends in a branch (break, continue, return, etc).  This is only correct
+// after PruneNoOps, because it expects empty blocks after a branch to have been already pruned,
+// i.e. a block can only end in a branch if its last statement is a branch or is a block ending in
+// branch.
+bool EndsInBranch(TIntermBlock *block);
 
 }  // namespace sh
 

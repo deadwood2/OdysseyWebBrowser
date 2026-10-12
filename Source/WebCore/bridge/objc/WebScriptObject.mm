@@ -27,13 +27,13 @@
 #import "WebScriptObjectPrivate.h"
 
 #import "BridgeJSC.h"
-#import "Frame.h"
 #import "JSDOMBindingSecurity.h"
 #import "JSDOMWindow.h"
 #import "JSDOMWindowCustom.h"
 #import "JSExecState.h"
 #import "JSHTMLElement.h"
 #import "JSPluginElementFunctions.h"
+#import "LocalFrame.h"
 #import "ObjCRuntimeObject.h"
 #import "WebCoreJITOperations.h"
 #import "WebCoreObjCExtras.h"
@@ -122,7 +122,7 @@ id createJSWrapper(JSC::JSObject* object, RefPtr<JSC::Bindings::RootObject>&& or
 static void addExceptionToConsole(JSC::JSGlobalObject* lexicalGlobalObject, JSC::Exception* exception)
 {
     JSC::VM& vm = lexicalGlobalObject->vm();
-    JSDOMWindow* window = asJSDOMWindow(vm.deprecatedVMEntryGlobalObject(lexicalGlobalObject));
+    auto* window = asJSDOMWindow(vm.deprecatedVMEntryGlobalObject(lexicalGlobalObject));
     if (!window || !exception)
         return;
     reportException(lexicalGlobalObject, exception);
@@ -281,7 +281,7 @@ void disconnectWindowWrapper(WebScriptObject *windowWrapper)
     JSC::VM& vm = globalObject->vm();
     auto scope = DECLARE_CATCH_SCOPE(vm);
 
-    auto* target = JSC::jsDynamicCast<JSDOMWindowBase*>(vm, globalObject);
+    auto* target = JSC::jsDynamicCast<JSDOMWindowBase*>(globalObject);
     if (!target)
         return false;
     
@@ -333,12 +333,8 @@ void disconnectWindowWrapper(WebScriptObject *windowWrapper)
 
 static void getListFromNSArray(JSC::JSGlobalObject* lexicalGlobalObject, NSArray *array, RootObject* rootObject, MarkedArgumentBuffer& aList)
 {
-    int i, numObjects = array ? [array count] : 0;
-    
-    for (i = 0; i < numObjects; i++) {
-        id anObject = [array objectAtIndex:i];
+    for (id anObject in array)
         aList.append(convertObjcValueToValue(lexicalGlobalObject, &anObject, ObjcObjectType, rootObject));
-    }
 }
 
 - (id)callWebScriptMethod:(NSString *)name withArguments:(NSArray *)args
@@ -355,7 +351,7 @@ static void getListFromNSArray(JSC::JSGlobalObject* lexicalGlobalObject, NSArray
     UNUSED_PARAM(scope);
 
     JSC::JSValue function = [self _imp]->get(lexicalGlobalObject, Identifier::fromString(vm, String(name)));
-    auto callData = getCallData(vm, function);
+    auto callData = JSC::getCallData(function);
     if (callData.type == CallData::Type::None)
         return nil;
 
@@ -390,8 +386,8 @@ static void getListFromNSArray(JSC::JSGlobalObject* lexicalGlobalObject, NSArray
     JSLockHolder lock(vm);
     auto scope = DECLARE_CATCH_SCOPE(vm);
     UNUSED_PARAM(scope);
-    
-    JSC::JSValue returnValue = JSExecState::profiledEvaluate(globalObject, JSC::ProfilingReason::Other, makeSource(String(script), { }), JSC::JSValue());
+
+    JSC::JSValue returnValue = JSExecState::profiledEvaluate(globalObject, JSC::ProfilingReason::Other, makeSource(String(script), { }, JSC::SourceTaintedOrigin::Untainted), JSC::JSValue());
 
     id resultObj = [WebScriptObject _convertValueToObjcValue:returnValue originRootObject:[self _originRootObject] rootObject:[self _rootObject]];
     
@@ -409,9 +405,9 @@ static void getListFromNSArray(JSC::JSGlobalObject* lexicalGlobalObject, NSArray
     auto scope = DECLARE_CATCH_SCOPE(vm);
     JSC::JSGlobalObject* lexicalGlobalObject = globalObject;
 
-    JSObject* object = JSC::jsDynamicCast<JSObject*>(vm, [self _imp]);
+    JSObject* object = JSC::jsDynamicCast<JSObject*>([self _imp]);
     PutPropertySlot slot(object);
-    object->methodTable(vm)->put(object, lexicalGlobalObject, Identifier::fromString(vm, String(key)), convertObjcValueToValue(lexicalGlobalObject, &value, ObjcObjectType, [self _rootObject]), slot);
+    object->methodTable()->put(object, lexicalGlobalObject, Identifier::fromString(vm, String(key)), convertObjcValueToValue(lexicalGlobalObject, &value, ObjcObjectType, [self _rootObject]), slot);
 
     if (UNLIKELY(scope.exception())) {
         addExceptionToConsole(lexicalGlobalObject);
@@ -496,10 +492,8 @@ static void getListFromNSArray(JSC::JSGlobalObject* lexicalGlobalObject, NSArray
 
 - (NSString *)stringRepresentation
 {
-    if (![self _isSafeScript]) {
-        // This is a workaround for a gcc 3.3 internal compiler error.
-        return @"Undefined";
-    }
+    if (![self _isSafeScript])
+        return nil;
 
     JSC::JSGlobalObject* lexicalGlobalObject = [self _rootObject]->globalObject();
     JSLockHolder lock(lexicalGlobalObject);
@@ -542,7 +536,7 @@ static void getListFromNSArray(JSC::JSGlobalObject* lexicalGlobalObject, NSArray
     auto scope = DECLARE_CATCH_SCOPE(vm);
     JSC::JSGlobalObject* lexicalGlobalObject = globalObject;
 
-    [self _imp]->methodTable(vm)->putByIndex([self _imp], lexicalGlobalObject, index, convertObjcValueToValue(lexicalGlobalObject, &value, ObjcObjectType, [self _rootObject]), false);
+    [self _imp]->methodTable()->putByIndex([self _imp], lexicalGlobalObject, index, convertObjcValueToValue(lexicalGlobalObject, &value, ObjcObjectType, [self _rootObject]), false);
 
     if (UNLIKELY(scope.exception())) {
         addExceptionToConsole(lexicalGlobalObject);
@@ -574,11 +568,11 @@ static void getListFromNSArray(JSC::JSGlobalObject* lexicalGlobalObject, NSArray
         JSC::VM& vm = rootObject->globalObject()->vm();
         JSLockHolder lock(vm);
 
-        if (object->inherits<JSHTMLElement>(vm)) {
+        if (object->inherits<JSHTMLElement>()) {
             // Plugin elements cache the instance internally.
             if (ObjcInstance* instance = static_cast<ObjcInstance*>(pluginInstance(jsCast<JSHTMLElement*>(object)->wrapped())))
                 return instance->getObject();
-        } else if (object->inherits<ObjCRuntimeObject>(vm)) {
+        } else if (object->inherits<ObjCRuntimeObject>()) {
             ObjCRuntimeObject* runtimeObject = static_cast<ObjCRuntimeObject*>(object);
             ObjcInstance* instance = runtimeObject->getInternalObjCInstance();
             if (instance)
@@ -590,7 +584,7 @@ static void getListFromNSArray(JSC::JSGlobalObject* lexicalGlobalObject, NSArray
     }
 
     if (value.isString())
-        return asString(value)->value(rootObject->globalObject());
+        return asString(value)->value(rootObject->globalObject()).data;
 
     if (value.isNumber())
         return @(value.asNumber());

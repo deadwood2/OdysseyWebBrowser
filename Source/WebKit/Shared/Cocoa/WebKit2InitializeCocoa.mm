@@ -27,26 +27,33 @@
 #import "WebKit2Initialize.h"
 
 #import <JavaScriptCore/InitializeThreading.h>
-#import <WebCore/VersionChecks.h>
+#import <WebCore/CommonAtomStrings.h>
 #import <WebCore/WebCoreJITOperations.h>
 #import <mutex>
 #import <wtf/MainThread.h>
 #import <wtf/RefCounted.h>
 #import <wtf/WorkQueue.h>
+#import <wtf/cocoa/RuntimeApplicationChecksCocoa.h>
 
 #if PLATFORM(IOS_FAMILY)
 #import <WebCore/WebCoreThreadSystemInterface.h>
+#endif
+
+#if ENABLE(LLVM_PROFILE_GENERATION)
+extern "C" char __llvm_profile_filename[] = "/private/tmp/WebKitPGO/WebKit_%m_pid%p%c.profraw";
 #endif
 
 namespace WebKit {
 
 static std::once_flag flag;
 
+enum class WebKitProfileTag { };
+
 static void runInitializationCode(void* = nullptr)
 {
     RELEASE_ASSERT_WITH_MESSAGE([NSThread isMainThread], "InitializeWebKit2 should be called on the main thread");
 
-    AtomString::init();
+    WebCore::initializeCommonAtomStrings();
 #if PLATFORM(IOS_FAMILY)
     InitWebCoreThreadSystemInterface();
 #endif
@@ -64,7 +71,7 @@ void InitializeWebKit2()
     // Make sure the initialization code is run only once and on the main thread since things like initializeMainThread()
     // are only safe to call on the main thread.
     std::call_once(flag, [] {
-        if ([NSThread isMainThread] || linkedOnOrAfter(WebCore::SDKVersion::FirstWithInitializeWebKit2MainThreadAssertion))
+        if ([NSThread isMainThread] || linkedOnOrAfterSDKWithBehavior(SDKAlignedBehavior::InitializeWebKit2MainThreadAssertion))
             runInitializationCode();
         else
             WorkQueue::main().dispatchSync([] { runInitializationCode(); });

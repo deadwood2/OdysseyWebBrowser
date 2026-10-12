@@ -31,11 +31,11 @@ namespace WebCore {
 static NSURLCredentialPersistence toNSURLCredentialPersistence(CredentialPersistence persistence)
 {
     switch (persistence) {
-    case CredentialPersistenceNone:
+    case CredentialPersistence::None:
         return NSURLCredentialPersistenceNone;
-    case CredentialPersistenceForSession:
+    case CredentialPersistence::ForSession:
         return NSURLCredentialPersistenceForSession;
-    case CredentialPersistencePermanent:
+    case CredentialPersistence::Permanent:
         return NSURLCredentialPersistencePermanent;
     }
 
@@ -47,16 +47,16 @@ static CredentialPersistence toCredentialPersistence(NSURLCredentialPersistence 
 {
     switch (persistence) {
     case NSURLCredentialPersistenceNone:
-        return CredentialPersistenceNone;
+        return CredentialPersistence::None;
     case NSURLCredentialPersistenceForSession:
-        return CredentialPersistenceForSession;
+        return CredentialPersistence::ForSession;
     case NSURLCredentialPersistencePermanent:
     case NSURLCredentialPersistenceSynchronizable:
-        return CredentialPersistencePermanent;
+        return CredentialPersistence::Permanent;
     }
 
     ASSERT_NOT_REACHED();
-    return CredentialPersistenceNone;
+    return CredentialPersistence::None;
 }
 
 Credential::Credential(const Credential& original, CredentialPersistence persistence)
@@ -115,6 +115,22 @@ bool Credential::platformCompare(const Credential& a, const Credential& b)
 bool Credential::encodingRequiresPlatformData(NSURLCredential *credential)
 {
     return !credential.user;
+}
+
+Credential Credential::fromIPCData(IPCData&& ipcData)
+{
+    return WTF::switchOn(WTFMove(ipcData), [](NonPlatformData&& data) {
+        return Credential { data.user, data.password, data.persistence };
+    }, [](RetainPtr<NSURLCredential>&& credential) {
+        return Credential { credential.get() };
+    });
+}
+
+auto Credential::ipcData() const -> IPCData
+{
+    if (encodingRequiresPlatformData())
+        return m_nsCredential;
+    return nonPlatformData();
 }
 
 } // namespace WebCore

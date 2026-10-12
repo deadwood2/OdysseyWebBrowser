@@ -57,4 +57,8 @@ WEBCORE_EXPORT GdkDragAction dragOperationToSingleGdkDragAction(OptionSet<DragOp
 
 void monitorWorkArea(GdkMonitor*, GdkRectangle*);
 
+bool shouldUseOverlayScrollbars();
+
+WEBCORE_EXPORT bool eventModifiersContainCapsLock(GdkEvent*);
+
 } // namespace WebCore

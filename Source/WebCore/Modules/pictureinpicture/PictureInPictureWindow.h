@@ -28,6 +28,7 @@
 
 #if ENABLE(PICTURE_IN_PICTURE_API)
 
+#include "ActiveDOMObject.h"
 #include "EventTarget.h"
 #include "IntSize.h"
 #include <wtf/RefCounted.h>
@@ -35,11 +36,12 @@
 namespace WebCore {
 
 class PictureInPictureWindow final
-    : public RefCounted<PictureInPictureWindow>
-    , public EventTargetWithInlineData {
-    WTF_MAKE_ISO_ALLOCATED(PictureInPictureWindow);
+    : public ActiveDOMObject
+    , public EventTarget
+    , public RefCounted<PictureInPictureWindow> {
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(PictureInPictureWindow);
 public:
-    static Ref<PictureInPictureWindow> create(ScriptExecutionContext&);
+    static Ref<PictureInPictureWindow> create(Document&);
     virtual ~PictureInPictureWindow();
 
     int width() const { return m_size.width(); }
@@ -47,19 +49,19 @@ public:
     void setSize(const IntSize&);
     void close();
 
-    using RefCounted<PictureInPictureWindow>::ref;
-    using RefCounted<PictureInPictureWindow>::deref;
+    // ActiveDOMObject.
+    void ref() const final { RefCounted::ref(); }
+    void deref() const final { RefCounted::deref(); }
 
 private:
-    PictureInPictureWindow(ScriptExecutionContext&);
+    PictureInPictureWindow(Document&);
 
-    // EventTarget
+    // EventTarget.
     void refEventTarget() final { ref(); }
     void derefEventTarget() final { deref(); }
-    EventTargetInterface eventTargetInterface() const override { return PictureInPictureWindowEventTargetInterfaceType; };
-    ScriptExecutionContext* scriptExecutionContext() const override { return &m_scriptExecutionContext; };
+    enum EventTargetInterfaceType eventTargetInterface() const override { return EventTargetInterfaceType::PictureInPictureWindow; };
+    ScriptExecutionContext* scriptExecutionContext() const override { return ActiveDOMObject::scriptExecutionContext(); };
 
-    ScriptExecutionContext& m_scriptExecutionContext;
     IntSize m_size;
 };
 

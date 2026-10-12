@@ -42,7 +42,8 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
         this._showingRepresentedObjectCookie = null;
 
         this._table = null;
-        this._nameColumnWidthSetting = new WI.Setting("network-table-content-view-name-column-width", 250);
+        this._hoveredRowIndex = null;
+        this._nameColumnWidthSetting = new WI.Setting("network-table-content-view-name-column-width", WI.Sidebar.AbsoluteMinimumWidth);
 
         this._selectedObject = null;
         this._detailView = null;
@@ -60,7 +61,7 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
 
         this.element.classList.add("network-table");
 
-        this._typeFilterScopeBarItemAll = new WI.ScopeBarItem("network-type-filter-all", WI.UIString("All"), {exclusive: true});
+        this._typeFilterScopeBarItemAll = new WI.ScopeBarItem("network-type-filter-all", WI.UIString("All"));
         let typeFilterScopeBarItems = [this._typeFilterScopeBarItemAll];
 
         function addScopeBarItem(id, label, checker) {
@@ -84,16 +85,17 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
                 && type !== WI.Resource.Type.Fetch;
         });
 
-        this._typeFilterScopeBar = new WI.ScopeBar("network-type-filter-scope-bar", typeFilterScopeBarItems, typeFilterScopeBarItems[0]);
+        const shouldGroupNonExclusiveItems = true;
+        this._typeFilterScopeBar = new WI.ScopeBar("network-type-filter-scope-bar", typeFilterScopeBarItems, typeFilterScopeBarItems[0], shouldGroupNonExclusiveItems);
         this._typeFilterScopeBar.visibilityPriority = WI.NavigationItem.VisibilityPriority.High;
         this._typeFilterScopeBar.addEventListener(WI.ScopeBar.Event.SelectionChanged, this._typeFilterScopeBarSelectionChanged, this);
 
-        if (WI.MediaInstrument.supported()) {
-            this._groupMediaRequestsByDOMNodeNavigationItem = new WI.CheckboxNavigationItem("group-media-requests", WI.UIString("Group Media Requests"), WI.settings.groupMediaRequestsByDOMNode.value);
-            this._groupMediaRequestsByDOMNodeNavigationItem.visibilityPriority = WI.NavigationItem.VisibilityPriority.Low;
-            this._groupMediaRequestsByDOMNodeNavigationItem.addEventListener(WI.CheckboxNavigationItem.Event.CheckedDidChange, this._handleGroupMediaRequestsByDOMNodeCheckedDidChange, this);
-        } else
-            WI.settings.groupMediaRequestsByDOMNode.value = false;
+        this._otherFiltersNavigationItem = new WI.NavigationItem("network-other-filters-button", "button");
+        this._otherFiltersNavigationItem.tooltip = WI.UIString("Other filter options\u2026");
+        this._otherFiltersNavigationItem.visibilityPriority = WI.NavigationItem.VisibilityPriority.High;
+        WI.addMouseDownContextMenuHandlers(this._otherFiltersNavigationItem.element, this._handleOtherFiltersNavigationItemContextMenu.bind(this));
+        this._updateOtherFiltersNavigationItemState();
+        this._otherFiltersNavigationItem.element.appendChild(WI.ImageUtilities.useSVGSymbol("Images/Filter.svg", "glyph"));
 
         this._urlFilterSearchText = null;
         this._urlFilterSearchRegex = null;
@@ -109,13 +111,6 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
 
         this._emptyFilterResultsMessageElement = null;
 
-        this._clearOnLoadNavigationItem = new WI.CheckboxNavigationItem("preserve-log", WI.UIString("Preserve Log"), !WI.settings.clearNetworkOnNavigate.value);
-        this._clearOnLoadNavigationItem.tooltip = WI.UIString("Do not clear network items on new page loads");
-        this._clearOnLoadNavigationItem.addEventListener(WI.CheckboxNavigationItem.Event.CheckedDidChange, function(event) {
-            WI.settings.clearNetworkOnNavigate.value = !WI.settings.clearNetworkOnNavigate.value;
-        }, this);
-        WI.settings.clearNetworkOnNavigate.addEventListener(WI.Setting.Event.Changed, this._clearNetworkOnNavigateSettingChanged, this);
-
         this._harImportNavigationItem = new WI.ButtonNavigationItem("har-import", WI.UIString("Import"), "Images/Import.svg", 15, 15);
         this._harImportNavigationItem.buttonStyle = WI.ButtonNavigationItem.Style.ImageAndText;
         this._harImportNavigationItem.tooltip = WI.UIString("HAR Import");
@@ -126,6 +121,7 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
         this._harExportNavigationItem = new WI.ButtonNavigationItem("har-export", WI.UIString("Export"), "Images/Export.svg", 15, 15);
         this._harExportNavigationItem.buttonStyle = WI.ButtonNavigationItem.Style.ImageAndText;
         this._harExportNavigationItem.tooltip = WI.UIString("HAR Export (%s)").format(WI.saveKeyboardShortcut.displayName);
+        this._harExportNavigationItem.enabled = false;
         this._harExportNavigationItem.addEventListener(WI.ButtonNavigationItem.Event.Clicked, function(event) {
             this._exportHAR();
         }, this);
@@ -138,8 +134,6 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
         let pathComponent = this._addCollectionPathComponent(this._mainCollection, WI.UIString("Live Activity"), "network-overview-icon");
         this._collectionsPathNavigationItem.components = [pathComponent];
 
-        this._checkboxesNavigationItemGroup = new WI.GroupNavigationItem([this._clearOnLoadNavigationItem, new WI.DividerNavigationItem]);
-
         this._pathComponentsNavigationItemGroup = new WI.GroupNavigationItem([this._collectionsPathNavigationItem, new WI.DividerNavigationItem]);
         this._pathComponentsNavigationItemGroup.visibilityPriority = WI.NavigationItem.VisibilityPriority.High;
         this._pathComponentsNavigationItemGroup.hidden = true;
@@ -147,16 +141,23 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
         this._buttonsNavigationItemGroup = new WI.GroupNavigationItem([this._harImportNavigationItem, this._harExportNavigationItem, new WI.DividerNavigationItem]);
         this._buttonsNavigationItemGroup.visibilityPriority = WI.NavigationItem.VisibilityPriority.Low;
 
-        // COMPATIBILITY (iOS 10.3): Network.setDisableResourceCaching did not exist.
-        if (InspectorBackend.hasCommand("Network.setResourceCachingDisabled")) {
-            let toolTipForDisableResourceCache = WI.UIString("Ignore the resource cache when loading resources");
-            let activatedToolTipForDisableResourceCache = WI.UIString("Use the resource cache when loading resources");
-            this._disableResourceCacheNavigationItem = new WI.ActivateButtonNavigationItem("disable-resource-cache", toolTipForDisableResourceCache, activatedToolTipForDisableResourceCache, "Images/IgnoreCaches.svg", 16, 16);
-            this._disableResourceCacheNavigationItem.activated = WI.settings.resourceCachingDisabled.value;
-            this._disableResourceCacheNavigationItem.visibilityPriority = WI.NavigationItem.VisibilityPriority.High;
-            this._disableResourceCacheNavigationItem.addEventListener(WI.ButtonNavigationItem.Event.Clicked, this._toggleDisableResourceCache, this);
+        this._disableResourceCacheNavigationItem = new WI.CheckboxNavigationItem("network-disable-resource-cache", WI.UIString("Disable Caches"), WI.settings.resourceCachingDisabled.value);
+        this._disableResourceCacheNavigationItem.visibilityPriority = WI.NavigationItem.VisibilityPriority.High;
+        this._disableResourceCacheNavigationItem.addEventListener(WI.CheckboxNavigationItem.Event.CheckedDidChange, this._toggleDisableResourceCache, this);
 
-            WI.settings.resourceCachingDisabled.addEventListener(WI.Setting.Event.Changed, this._resourceCachingDisabledSettingChanged, this);
+        // COMPATIBILITY (macOS 13.0, iOS 16.0): Network.setEmulatedConditions did not exist.
+        if (WI.settings.experimentalEnableNetworkEmulatedCondition.value && InspectorBackend.hasCommand("Network.setEmulatedConditions")) {
+            let networkConditionScopeBarItems = [];
+            for (let networkCondition of Object.values(WI.NetworkManager.EmulatedCondition)) {
+                let scopeBarItem = new WI.ScopeBarItem("network-condition-" + networkCondition.id, networkCondition.displayName);
+                scopeBarItem.__networkCondition = networkCondition;
+                networkConditionScopeBarItems.push(scopeBarItem);
+            }
+            const shouldGroupNonExclusiveItems = true;
+            this._networkConditionScopeBar = new WI.ScopeBar("network-condition-scope-bar", networkConditionScopeBarItems, networkConditionScopeBarItems[0], shouldGroupNonExclusiveItems);
+            this._networkConditionScopeBar.visibilityPriority = WI.NavigationItem.VisibilityPriority.High;
+            this._networkConditionScopeBar.addEventListener(WI.ScopeBar.Event.SelectionChanged, this._handleNetworkConditionSelectionChanged, this);
+            this._handleNetworkConditionSelectionChanged();
         }
 
         this._clearNetworkItemsNavigationItem = new WI.ButtonNavigationItem("clear-network-items", WI.UIString("Clear Network Items (%s)").format(WI.clearKeyboardShortcut.displayName), "Images/NavigationItemTrash.svg", 15, 15);
@@ -173,6 +174,11 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
         WI.Resource.addEventListener(WI.Resource.Event.SizeDidChange, this._handleResourceSizeDidChange, this);
         WI.Resource.addEventListener(WI.Resource.Event.TransferSizeDidChange, this._resourceTransferSizeDidChange, this);
         WI.networkManager.addEventListener(WI.NetworkManager.Event.MainFrameDidChange, this._mainFrameDidChange, this);
+
+        WI.settings.clearNetworkOnNavigate.addEventListener(WI.Setting.Event.Changed, this._handleClearNetworkOnNavigateChanged, this);
+        WI.settings.resourceCachingDisabled.addEventListener(WI.Setting.Event.Changed, this._resourceCachingDisabledSettingChanged, this);
+        if (WI.MediaInstrument.supported())
+            WI.settings.groupMediaRequestsByDOMNode.addEventListener(WI.Setting.Event.Changed, this._handleGroupMediaRequestsByDOMNodeChanged, this);
 
         this._needsInitialPopulate = true;
 
@@ -229,6 +235,9 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
         case WI.Resource.Type.WebSocket:
             return WI.UIString("socket", "socket @ Network Tab Resource Type Column Value", "Shown in the 'Type' column of the Network Table for WebSocket resources.");
 
+        case WI.Resource.Type.EventSource:
+            return WI.UIString("eventsource", "eventsource @ Network Tab Resource Type Column Value", "Shown in the 'Type' column of the Network Table for resources loaded via the EventSource API.");
+
         case WI.Resource.Type.Other:
             return WI.UIString("other", "other @ Network Tab Resource Type Column Value", "Shown in the 'Type' column of the Network Table for resources that don't fall into any of the other known types/categories.");
         }
@@ -248,19 +257,20 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
 
     get navigationItems()
     {
-        let items = [this._checkboxesNavigationItemGroup, this._pathComponentsNavigationItemGroup, this._buttonsNavigationItemGroup];
+        let items = [];
         if (this._disableResourceCacheNavigationItem)
             items.push(this._disableResourceCacheNavigationItem);
-        items.push(this._clearNetworkItemsNavigationItem);
+        if (this._networkConditionScopeBar)
+            items.push(this._networkConditionScopeBar);
+        if (items.length)
+            items.push(new WI.DividerNavigationItem);
+        items.push(this._pathComponentsNavigationItemGroup, this._buttonsNavigationItemGroup, this._clearNetworkItemsNavigationItem);
         return items;
     }
 
     get filterNavigationItems()
     {
-        let navigationItems = [this._urlFilterNavigationItem, this._typeFilterScopeBar];
-        if (WI.MediaInstrument.supported())
-            navigationItems.push(this._groupMediaRequestsByDOMNodeNavigationItem);
-        return navigationItems;
+        return [this._urlFilterNavigationItem, this._typeFilterScopeBar, this._otherFiltersNavigationItem];
     }
 
     get supportsSave()
@@ -268,13 +278,27 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
         return this._canExportHAR();
     }
 
+    get saveMode()
+    {
+        return WI.FileUtilities.SaveMode.SingleFile;
+    }
+
     get saveData()
     {
         return {customSaveHandler: () => { this._exportHAR(); }};
     }
 
+    attached()
+    {
+        super.attached();
+
+        WI.notifications.addEventListener(WI.Notification.GlobalModifierKeysDidChange, this._handleGlobalModifierKeysDidChange, this);
+    }
+
     detached()
     {
+        WI.notifications.removeEventListener(WI.Notification.GlobalModifierKeysDidChange, this._handleGlobalModifierKeysDidChange, this);
+
         this._hidePopover();
 
         super.detached();
@@ -291,9 +315,7 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
         this._hidePopover();
         this._hideDetailView();
 
-        WI.settings.clearNetworkOnNavigate.removeEventListener(WI.Setting.Event.Changed, this._clearNetworkOnNavigateSettingChanged, this);
-
-        // COMPATIBILITY (iOS 10.3): Network.setDisableResourceCaching did not exist.
+        // COMPATIBILITY (iOS 10.3): Network.setResourceCachingDisabled did not exist.
         if (InspectorBackend.hasCommand("Network.setResourceCachingDisabled"))
             WI.settings.resourceCachingDisabled.removeEventListener(WI.Setting.Event.Changed, this._resourceCachingDisabledSettingChanged, this);
 
@@ -306,6 +328,9 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
         WI.Resource.removeEventListener(WI.Resource.Event.SizeDidChange, this._handleResourceSizeDidChange, this);
         WI.Resource.removeEventListener(WI.Resource.Event.TransferSizeDidChange, this._resourceTransferSizeDidChange, this);
         WI.networkManager.removeEventListener(WI.NetworkManager.Event.MainFrameDidChange, this._mainFrameDidChange, this);
+
+        if (WI.MediaInstrument.supported())
+            WI.settings.groupMediaRequestsByDOMNode.removeEventListener(WI.Setting.Event.Changed, this._handleGroupMediaRequestsByDOMNodeChanged, this);
 
         super.closed();
     }
@@ -424,6 +449,13 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
         contextMenu.appendItem(WI.UIString("Export HAR"), () => { this._exportHAR(); }, !this._canExportHAR());
     }
 
+    tableRowHovered(table, rowIndex)
+    {
+        this._hoveredRowIndex = rowIndex;
+
+        this._highlightRelatedResourcesForHoveredResource();
+    }
+
     tableShouldSelectRow(table, cell, column, rowIndex)
     {
         return column === this._nameColumn;
@@ -447,6 +479,12 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
             this._showDetailView(this._selectedObject);
         else
             this._hideDetailView();
+    }
+
+    tableRowClassNames(table, rowIndex)
+    {
+        let entry = this._activeCollection.filteredEntries[rowIndex];
+        return entry.rowClassNames;
     }
 
     tablePopulateCell(table, cell, column, rowIndex)
@@ -480,6 +518,9 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
             break;
         case "domain":
             this._populateDomainCell(cell, entry);
+            break;
+        case "path":
+            setTextContent((resourceEntry) => resourceEntry.path);
             break;
         case "type":
             setTextContent((resourceEntry) => resourceEntry.displayType);
@@ -604,8 +645,6 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
         this._setActiveCollection(collection);
 
         let isMain = collection === this._mainCollection;
-        this._checkboxesNavigationItemGroup.hidden = !isMain;
-        this._groupMediaRequestsByDOMNodeNavigationItem.hidden = !isMain;
         this._clearNetworkItemsNavigationItem.enabled = isMain;
         this._collectionsPathNavigationItem.components = [this._pathComponentsMap.get(collection)];
 
@@ -1017,6 +1056,7 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
         switch (sortColumnIdentifier) {
         case "name":
         case "domain":
+        case "path":
         case "mimeType":
         case "method":
         case "scheme":
@@ -1136,7 +1176,7 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
         this._waterfallTimelineRuler.allowsClippedLabels = true;
 
         this._nameColumn = new WI.TableColumn("name", WI.UIString("Name"), {
-            minWidth: WI.Sidebar.AbsoluteMinimumWidth,
+            minWidth: this._nameColumnWidthSetting.defaultValue,
             maxWidth: 500,
             initialWidth: this._nameColumnWidthSetting.value,
             resizeType: WI.TableColumn.ResizeType.Locked,
@@ -1148,17 +1188,24 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
             initialWidth: 150,
         });
 
+        this._pathColumn = new WI.TableColumn("path", WI.UIString("Path"), {
+            hidden: true,
+            minWidth: 120,
+            maxWidth: 400,
+            initialWidth: 150,
+        });
+
         this._typeColumn = new WI.TableColumn("type", WI.UIString("Type"), {
             minWidth: 70,
             maxWidth: 120,
-            initialWidth: 90,
+            initialWidth: 70,
         });
 
         this._mimeTypeColumn = new WI.TableColumn("mimeType", WI.UIString("MIME Type"), {
             hidden: true,
-            minWidth: 100,
+            minWidth: 50,
             maxWidth: 150,
-            initialWidth: 120,
+            initialWidth: 100,
         });
 
         this._methodColumn = new WI.TableColumn("method", WI.UIString("Method"), {
@@ -1190,10 +1237,9 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
         });
 
         this._initiatorColumn = new WI.TableColumn("initiator", WI.UIString("Initiator"), {
-            hidden: true,
             minWidth: 75,
             maxWidth: 175,
-            initialWidth: 125,
+            initialWidth: 100,
         });
 
         this._priorityColumn = new WI.TableColumn("priority", WI.UIString("Priority"), {
@@ -1225,9 +1271,9 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
         });
 
         this._transferSizeColumn = new WI.TableColumn("transferSize", WI.UIString("Transfer Size", "Amount of data sent over the network for a single resource"), {
-            minWidth: 100,
+            minWidth: 50,
             maxWidth: 150,
-            initialWidth: 100,
+            initialWidth: 50,
             align: "right",
         });
 
@@ -1251,6 +1297,7 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
 
         this._table.addColumn(this._nameColumn);
         this._table.addColumn(this._domainColumn);
+        this._table.addColumn(this._pathColumn);
         this._table.addColumn(this._typeColumn);
         this._table.addColumn(this._mimeTypeColumn);
         this._table.addColumn(this._methodColumn);
@@ -1275,6 +1322,9 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
 
         let statisticsContainer = this.element.appendChild(document.createElement("div"));
         statisticsContainer.className = "statistics";
+
+        this._referencePageLinkElement = statisticsContainer.appendChild(document.createElement("div"));
+        this._handleCurrentResourceDetailViewDidChange();
 
         let createStatisticElement = (name, image) => {
             let statistic = this._statistics[name];
@@ -1382,6 +1432,9 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
 
     _canExportHAR()
     {
+        if (!WI.FileUtilities.canSave(WI.FileUtilities.SaveMode.SingleFile))
+            return false;
+
         if (!this._isShowingMainCollection())
             return false;
 
@@ -1442,7 +1495,7 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
         this._updateStatistics();
     }
 
-    _populateWithInitialResourcesIfNeeded(collection)
+    _populateWithInitialResourcesIfNeeded(mainFrame, collection)
     {
         if (!this._needsInitialPopulate)
             return;
@@ -1471,7 +1524,7 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
 
         for (let target of WI.targets) {
             if (target === WI.pageTarget)
-                populateResourcesForFrame(WI.networkManager.mainFrame);
+                populateResourcesForFrame(mainFrame);
             else
                 populateResourcesForTarget(target);
         }
@@ -1531,6 +1584,45 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
         this._updateStatistics();
     }
 
+    _highlightRelatedResourcesForHoveredResource()
+    {
+        let highlightInitiated = !isNaN(this._hoveredRowIndex) && WI.modifierKeys.shiftKey;
+        this.element.classList.toggle("highlight-initiated", highlightInitiated);
+
+        let needsRestyle = false;
+
+        if (!highlightInitiated) {
+            for (let entry of this._activeCollection.entries) {
+                if (entry.rowClassNames.length)
+                    needsRestyle = true;
+                entry.rowClassNames = [];
+            }
+        } else {
+            let hoveredEntry = this._activeCollection.filteredEntries[this._hoveredRowIndex];
+            let hoveredResource = hoveredEntry?.resource;
+            if (!hoveredResource)
+                return;
+
+            for (let entry of this._activeCollection.entries) {
+                if (!hoveredResource.initiatedResources.includes(entry.resource))
+                    continue;
+
+                if (entry.rowClassNames.includes("initiated"))
+                    continue;
+
+                entry.rowClassNames.push("initiated");
+
+                needsRestyle = true;
+            }
+        }
+
+        if (!needsRestyle)
+            return;
+
+        for (let i = 0; i < this._activeCollection.filteredEntries.length; ++i)
+            this._table.restyleRow(i);
+    }
+
     _hidePopover()
     {
         if (this._waterfallPopover)
@@ -1547,6 +1639,7 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
 
         this.removeSubview(this._detailView);
         this._detailView = null;
+        this._handleCurrentResourceDetailViewDidChange();
 
         this._table.updateLayout(WI.View.LayoutReason.Resize);
         this._table.reloadVisibleColumnCells(this._waterfallColumn);
@@ -1561,9 +1654,10 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
             return;
 
         if (!this._detailView) {
-            if (object instanceof WI.Resource)
+            if (object instanceof WI.Resource) {
                 this._detailView = new WI.NetworkResourceDetailView(object, this);
-            else if (object instanceof WI.DOMNode) {
+                this._detailView.addEventListener(WI.ContentBrowser.Event.CurrentContentViewDidChange, this._handleCurrentResourceDetailViewDidChange, this);
+            } else if (object instanceof WI.DOMNode) {
                 this._detailView = new WI.NetworkDOMNodeDetailView(object, this);
             }
 
@@ -1585,6 +1679,9 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
         // Currently the ResourceDetailView is in the heirarchy but has not yet done a layout so we
         // end up seeing the table behind it. This forces us to layout now instead of after a beat.
         this.updateLayout();
+
+        if (!oldDetailView)
+            this._handleCurrentResourceDetailViewDidChange();
     }
 
     _positionDetailView()
@@ -1627,14 +1724,23 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
         this._emptyFilterResultsMessageElement.remove();
     }
 
-    _clearNetworkOnNavigateSettingChanged()
+    _handleClearNetworkOnNavigateChanged(event)
     {
-        this._clearOnLoadNavigationItem.checked = !WI.settings.clearNetworkOnNavigate.value;
+        this._updateOtherFiltersNavigationItemState();
+    }
+
+    _handleNetworkConditionSelectionChanged(event)
+    {
+        let selectedItems = this._networkConditionScopeBar.selectedItems;
+        if (!selectedItems.length)
+            return;
+
+        WI.networkManager.emulatedCondition = selectedItems[0].__networkCondition;
     }
 
     _resourceCachingDisabledSettingChanged()
     {
-        this._disableResourceCacheNavigationItem.activated = WI.settings.resourceCachingDisabled.value;
+        this._disableResourceCacheNavigationItem.checked = WI.settings.resourceCachingDisabled.value;
     }
 
     _toggleDisableResourceCache()
@@ -1659,13 +1765,16 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
                 } else {
                     for (let entry of collection.entries)
                         entry.currentSession = false;
+
+                    for (let resource of collection.pendingInsertions)
+                        resource[WI.NetworkTableContentView._currentSessionSymbol] = false;
                 }
             }
 
             if (this._transitioningPageTarget) {
                 this._transitioningPageTarget = false;
                 this._needsInitialPopulate = true;
-                this._populateWithInitialResourcesIfNeeded(collection);
+                this._populateWithInitialResourcesIfNeeded(frame, collection);
             } else
                 this._insertResourceAndReloadTable(frame.mainResource);
 
@@ -1677,7 +1786,7 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
     _mainFrameDidChange()
     {
         this._runForMainCollection((collection) => {
-            this._populateWithInitialResourcesIfNeeded(collection);
+            this._populateWithInitialResourcesIfNeeded(WI.networkManager.mainFrame, collection);
         });
     }
 
@@ -1890,10 +1999,23 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
         // FIXME: <https://webkit.org/b/143632> Web Inspector: Resources with the same name in different folders aren't distinguished
         // FIXME: <https://webkit.org/b/176765> Web Inspector: Resource names should be less ambiguous
 
+        let rowClassNames = [];
+
+        if (!isNaN(this._hoveredRowIndex) && WI.modifierKeys.shiftKey) {
+            let hoveredEntry = this._activeCollection.filteredEntries[this._hoveredRowIndex];
+            if (hoveredEntry?.resource?.initiatedResources.includes(resource))
+                rowClassNames.push("initiated");
+        }
+
+        let subpath = resource.urlComponents.path;
+        if (subpath && resource.urlComponents.lastPathComponent)
+            subpath = subpath.substring(0, subpath.length - resource.urlComponents.lastPathComponent.length);
+
         return {
             resource,
             name: WI.displayNameForURL(resource.url, resource.urlComponents),
             domain: WI.displayNameForHost(resource.urlComponents.host),
+            path: subpath || "",
             scheme: resource.urlComponents.scheme ? resource.urlComponents.scheme.toLowerCase() : "",
             method: resource.requestMethod,
             type: resource.type,
@@ -1907,10 +2029,11 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
             protocol: resource.protocol,
             initiator: resource.initiatorSourceCodeLocation ? resource.initiatorSourceCodeLocation.displayLocationString() : "",
             priority: resource.priority,
-            remoteAddress: resource.remoteAddress,
+            remoteAddress: resource.displayRemoteAddress,
             connectionIdentifier: resource.connectionIdentifier,
             startTime: resource.firstTimestamp,
-            currentSession: true,
+            currentSession: resource[WI.NetworkTableContentView._currentSessionSymbol] ?? true,
+            rowClassNames,
         };
     }
 
@@ -1921,6 +2044,7 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
             initiatedResourceEntries: [],
             domEventElements: new Map,
             expanded: true,
+            rowClassNames: [],
         };
     }
 
@@ -2258,6 +2382,16 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
         return false;
     }
 
+    _updateOtherFiltersNavigationItemState()
+    {
+        let active = false;
+        if (!WI.settings.clearNetworkOnNavigate.value)
+            active = true;
+        else if (WI.MediaInstrument.supported() && WI.settings.groupMediaRequestsByDOMNode.value)
+            active = true;
+        this._otherFiltersNavigationItem.element.classList.toggle("active", active);
+    }
+
     _typeFilterScopeBarSelectionChanged(event)
     {
         // FIXME: <https://webkit.org/b/176763> Web Inspector: ScopeBar SelectionChanged event may dispatch multiple times for a single logical change
@@ -2275,10 +2409,23 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
         this._reloadTable();
     }
 
-    _handleGroupMediaRequestsByDOMNodeCheckedDidChange(event)
+    _handleOtherFiltersNavigationItemContextMenu(contextMenu)
     {
-        WI.settings.groupMediaRequestsByDOMNode.value = this._groupMediaRequestsByDOMNodeNavigationItem.checked;
+        contextMenu.appendCheckboxItem(WI.UIString("Preserve Log"), () => {
+            WI.settings.clearNetworkOnNavigate.value = !WI.settings.clearNetworkOnNavigate.value;
+        }, !WI.settings.clearNetworkOnNavigate.value);
 
+        if (WI.MediaInstrument.supported()) {
+            contextMenu.appendSeparator();
+
+            contextMenu.appendCheckboxItem(WI.UIString("Group Media Requests"), () => {
+                WI.settings.groupMediaRequestsByDOMNode.value = !WI.settings.groupMediaRequestsByDOMNode.value;
+            }, !!WI.settings.groupMediaRequestsByDOMNode.value);
+        }
+    }
+
+    _handleGroupMediaRequestsByDOMNodeChanged(event)
+    {
         if (!WI.settings.groupMediaRequestsByDOMNode.value) {
             this._table.element.classList.remove("grouped");
 
@@ -2288,6 +2435,7 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
             }
         }
 
+        this._updateOtherFiltersNavigationItemState();
         this._updateSort();
         this._updateFilteredEntries();
         this._reloadTable();
@@ -2383,11 +2531,12 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
         WI.HARBuilder.buildArchive(resources).then((har) => {
             let mainFrame = WI.networkManager.mainFrame;
             let archiveName = mainFrame.mainResource.urlComponents.host || mainFrame.mainResource.displayName || "Archive";
-            WI.FileUtilities.save({
+
+            const forceSaveAs = true;
+            WI.FileUtilities.save(WI.FileUtilities.SaveMode.SingleFile, {
                 content: JSON.stringify(har, null, 2),
                 suggestedName: archiveName + ".har",
-                forceSaveAs: true,
-            });
+            }, forceSaveAs);
         });
     }
 
@@ -2514,4 +2663,21 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
     {
         this._transitioningPageTarget = true;
     }
+
+    _handleGlobalModifierKeysDidChange(event)
+    {
+        this._highlightRelatedResourcesForHoveredResource();
+    }
+
+    _handleCurrentResourceDetailViewDidChange(event)
+    {
+        let oldReferencePageLinkElement = this._referencePageLinkElement;
+
+        let referencePage = this._detailView?.referencePage ?? WI.ReferencePage.NetworkTab;
+        this._referencePageLinkElement = referencePage.createLinkElement();
+
+        oldReferencePageLinkElement.parentNode.replaceChild(this._referencePageLinkElement, oldReferencePageLinkElement);
+    }
 };
+
+WI.NetworkTableContentView._currentSessionSymbol = Symbol("current-session");

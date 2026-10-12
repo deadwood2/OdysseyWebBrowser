@@ -60,7 +60,24 @@ WI.SourceCodeLocation = class SourceCodeLocation extends WI.Object
     {
         if (!other)
             return false;
-        return this._sourceCode === other._sourceCode && this._lineNumber === other._lineNumber && this._columnNumber === other._columnNumber;
+
+        if (this.lineNumber !== other.lineNumber)
+            return false;
+
+        if (this.columnNumber !== other.columnNumber)
+            return false;
+
+        function resolveSourceCode(sourceCode) {
+            if (sourceCode instanceof WI.Script)
+                return sourceCode.resource;
+            return sourceCode;
+        }
+        let thisSourceCode = resolveSourceCode(this.sourceCode);
+        let otherSourceCode = resolveSourceCode(other.sourceCode);
+        if (thisSourceCode !== otherSourceCode)
+            return false;
+
+        return true;
     }
 
     get sourceCode()
@@ -259,10 +276,10 @@ WI.SourceCodeLocation = class SourceCodeLocation extends WI.Object
 
     setSourceCode(sourceCode)
     {
-        console.assert((this._sourceCode === null && sourceCode instanceof WI.SourceCode) || (this._sourceCode instanceof WI.SourceCode && sourceCode === null));
-
         if (sourceCode === this._sourceCode)
             return;
+
+        console.assert((this._sourceCode === null && sourceCode instanceof WI.SourceCode) || (this._sourceCode instanceof WI.SourceCode && sourceCode === null) || this._sourceCode?.contentIdentifier === sourceCode?.contentIdentifier);
 
         this._makeChangeAndDispatchChangeEventIfNeeded(function() {
             if (this._sourceCode) {

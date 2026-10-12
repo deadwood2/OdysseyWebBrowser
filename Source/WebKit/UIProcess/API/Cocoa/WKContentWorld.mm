@@ -31,6 +31,8 @@
 
 @implementation WKContentWorld
 
+WK_OBJECT_DISABLE_DISABLE_KVC_IVAR_ACCESS;
+
 + (WKContentWorld *)pageWorld
 {
     return wrapper(API::ContentWorld::pageContentWorld());
@@ -43,7 +45,7 @@
 
 + (WKContentWorld *)worldWithName:(NSString *)name
 {
-    return wrapper(API::ContentWorld::sharedWorldWithName(name));
+    return wrapper(API::ContentWorld::sharedWorldWithName(name)).autorelease();
 }
 
 - (void)dealloc

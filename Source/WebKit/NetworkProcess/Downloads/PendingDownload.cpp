@@ -26,19 +26,27 @@
 #include "config.h"
 #include "PendingDownload.h"
 
-#include "DataReference.h"
 #include "Download.h"
 #include "DownloadProxyMessages.h"
+#include "MessageSenderInlines.h"
+#include "NetworkConnectionToWebProcess.h"
 #include "NetworkLoad.h"
 #include "NetworkProcess.h"
+#include "NetworkSession.h"
 #include "WebCoreArgumentCoders.h"
+#include <WebCore/LocalFrameLoaderClient.h>
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebKit {
 using namespace WebCore;
 
-PendingDownload::PendingDownload(IPC::Connection* parentProcessConnection, NetworkLoadParameters&& parameters, DownloadID downloadID, NetworkSession& networkSession, WebCore::BlobRegistryImpl* blobRegistry, const String& suggestedName)
-    : m_networkLoad(makeUnique<NetworkLoad>(*this, blobRegistry, WTFMove(parameters), networkSession))
+WTF_MAKE_TZONE_ALLOCATED_IMPL(PendingDownload);
+
+PendingDownload::PendingDownload(IPC::Connection* parentProcessConnection, NetworkLoadParameters&& parameters, DownloadID downloadID, NetworkSession& networkSession, const String& suggestedName, FromDownloadAttribute fromDownloadAttribute, std::optional<WebCore::ProcessIdentifier> webProcessID)
+    : m_networkLoad(makeUnique<NetworkLoad>(*this, WTFMove(parameters), networkSession))
     , m_parentProcessConnection(parentProcessConnection)
+    , m_fromDownloadAttribute(fromDownloadAttribute)
+    , m_webProcessID(webProcessID)
 {
     m_networkLoad->start();
     m_isAllowedToAskUserForCredentials = parameters.clientCredentialPolicy == ClientCredentialPolicy::MayAskClientForCredentials;
@@ -62,17 +70,31 @@ PendingDownload::PendingDownload(IPC::Connection* parentProcessConnection, std::
     m_networkLoad->convertTaskToDownload(*this, request, response, WTFMove(completionHandler));
 }
 
-void PendingDownload::willSendRedirectedRequest(WebCore::ResourceRequest&&, WebCore::ResourceRequest&& redirectRequest, WebCore::ResourceResponse&& redirectResponse)
+PendingDownload::~PendingDownload() = default;
+
+bool PendingDownload::isDownloadTriggeredWithDownloadAttribute() const
 {
-    send(Messages::DownloadProxy::WillSendRequest(WTFMove(redirectRequest), WTFMove(redirectResponse)));
-};
-    
-void PendingDownload::continueWillSendRequest(WebCore::ResourceRequest&& newRequest)
-{
-    m_networkLoad->continueWillSendRequest(WTFMove(newRequest));
+    return m_fromDownloadAttribute == FromDownloadAttribute::Yes;
 }
 
-void PendingDownload::cancel(CompletionHandler<void(const IPC::DataReference&)>&& completionHandler)
+inline static bool isRedirectCrossOrigin(const WebCore::ResourceRequest& redirectRequest, const WebCore::ResourceResponse& redirectResponse)
+{
+    return !SecurityOrigin::create(redirectResponse.url())->isSameOriginAs(SecurityOrigin::create(redirectRequest.url()));
+}
+
+void PendingDownload::willSendRedirectedRequest(WebCore::ResourceRequest&&, WebCore::ResourceRequest&& redirectRequest, WebCore::ResourceResponse&& redirectResponse, CompletionHandler<void(WebCore::ResourceRequest&&)>&& completionHandler)
+{
+    if (isDownloadTriggeredWithDownloadAttribute() && isRedirectCrossOrigin(redirectRequest, redirectResponse)) {
+        completionHandler(WebCore::ResourceRequest());
+        m_networkLoad->cancel();
+        if (m_webProcessID && !redirectRequest.url().protocolIsJavaScript() && m_networkLoad->webFrameID() && m_networkLoad->webPageID())
+            m_networkLoad->networkProcess()->webProcessConnection(*m_webProcessID)->loadCancelledDownloadRedirectRequestInFrame(redirectRequest, *m_networkLoad->webFrameID(), *m_networkLoad->webPageID());
+        return;
+    }
+    sendWithAsyncReply(Messages::DownloadProxy::WillSendRequest(WTFMove(redirectRequest), WTFMove(redirectResponse)), WTFMove(completionHandler));
+};
+
+void PendingDownload::cancel(CompletionHandler<void(std::span<const uint8_t>)>&& completionHandler)
 {
     ASSERT(m_networkLoad);
     m_networkLoad->cancel();
@@ -80,23 +102,41 @@ void PendingDownload::cancel(CompletionHandler<void(const IPC::DataReference&)>&
 }
 
 #if PLATFORM(COCOA)
+#if HAVE(MODERN_DOWNLOADPROGRESS)
+void PendingDownload::publishProgress(const URL& url, std::span<const uint8_t> bookmarkData)
+{
+    ASSERT(!m_progressURL.isValid());
+    m_progressURL = url;
+    m_bookmarkData = bookmarkData;
+}
+#else
 void PendingDownload::publishProgress(const URL& url, SandboxExtension::Handle&& sandboxExtension)
 {
     ASSERT(!m_progressURL.isValid());
     m_progressURL = url;
     m_progressSandboxExtension = WTFMove(sandboxExtension);
 }
+#endif
 
 void PendingDownload::didBecomeDownload(const std::unique_ptr<Download>& download)
 {
-    if (m_progressURL.isValid())
-        download->publishProgress(m_progressURL, WTFMove(m_progressSandboxExtension));
+    if (!m_progressURL.isValid())
+        return;
+#if HAVE(MODERN_DOWNLOADPROGRESS)
+    download->publishProgress(m_progressURL, m_bookmarkData);
+#else
+    download->publishProgress(m_progressURL, WTFMove(m_progressSandboxExtension));
+#endif
 }
 #endif // PLATFORM(COCOA)
 
 void PendingDownload::didFailLoading(const WebCore::ResourceError& error)
 {
-    send(Messages::DownloadProxy::DidFail(error, { }));
+    // FIXME: For Cross Origin redirects Cancellation happens early. So avoid repeating. Maybe there is a better way ?
+    if (!m_isDownloadCancelled) {
+        m_isDownloadCancelled = true;
+        send(Messages::DownloadProxy::DidFail(error, { }));
+    }
 }
     
 IPC::Connection* PendingDownload::messageSenderConnection() const
@@ -104,7 +144,7 @@ IPC::Connection* PendingDownload::messageSenderConnection() const
     return m_parentProcessConnection.get();
 }
 
-void PendingDownload::didReceiveResponse(WebCore::ResourceResponse&& response, ResponseCompletionHandler&& completionHandler)
+void PendingDownload::didReceiveResponse(WebCore::ResourceResponse&& response, PrivateRelayed, ResponseCompletionHandler&& completionHandler)
 {
     completionHandler(WebCore::PolicyAction::Download);
 }

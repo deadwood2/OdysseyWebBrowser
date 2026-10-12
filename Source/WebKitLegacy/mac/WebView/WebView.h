@@ -126,7 +126,11 @@ extern NSString *WebViewProgressFinishedNotification WEBKIT_DEPRECATED_MAC(10_3,
     content should be handled, based on the resource's URL and MIME type.
 */
 WEBKIT_CLASS_DEPRECATED_MAC(10_3, 10_14, "No longer supported; please adopt WKWebView.")
+#if TARGET_OS_IPHONE
+@interface WebView : WAKView
+#else
 @interface WebView : NSView
+#endif
 {
 @private
     WebViewPrivate *_private;
@@ -407,7 +411,11 @@ WEBKIT_CLASS_DEPRECATED_MAC(10_3, 10_14, "No longer supported; please adopt WKWe
     properly. Set a host window so these parts continue to function even when the web view is
     not in an actual window.
 */
+#if TARGET_OS_IPHONE
+@property (nonatomic, strong) WAKWindow *hostWindow;
+#else
 @property (nonatomic, strong) NSWindow *hostWindow;
+#endif
 
 /*!
     @method searchFor:direction:caseSensitive:
@@ -592,11 +600,11 @@ WEBKIT_CLASS_DEPRECATED_MAC(10_3, 10_14, "No longer supported; please adopt WKWe
 
 // WebView editing support
 
-extern NSString * const WebViewDidBeginEditingNotification;
-extern NSString * const WebViewDidChangeNotification;
-extern NSString * const WebViewDidEndEditingNotification;
-extern NSString * const WebViewDidChangeTypingStyleNotification;
-extern NSString * const WebViewDidChangeSelectionNotification;
+extern NSString * const WebViewDidBeginEditingNotification WEBKIT_DEPRECATED_MAC(10_3, 10_14);
+extern NSString * const WebViewDidChangeNotification WEBKIT_DEPRECATED_MAC(10_3, 10_14);
+extern NSString * const WebViewDidEndEditingNotification WEBKIT_DEPRECATED_MAC(10_3, 10_14);
+extern NSString * const WebViewDidChangeTypingStyleNotification WEBKIT_DEPRECATED_MAC(10_3, 10_14);
+extern NSString * const WebViewDidChangeSelectionNotification WEBKIT_DEPRECATED_MAC(10_3, 10_14);
 
 @interface WebView (WebViewCSS)
 - (DOMCSSStyleDeclaration *)computedStyleForElement:(DOMElement *)element pseudoElement:(NSString *)pseudoElement;

@@ -32,31 +32,34 @@
 #include "GPUProcessProxy.h"
 #include "RemoteAudioHardwareListenerMessages.h"
 #include "WebProcess.h"
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebKit {
 
 using namespace WebCore;
 
-Ref<RemoteAudioHardwareListener> RemoteAudioHardwareListener::create(AudioHardwareListener::Client& client, WebProcess& webProcess)
+WTF_MAKE_TZONE_ALLOCATED_IMPL(RemoteAudioHardwareListener);
+
+Ref<RemoteAudioHardwareListener> RemoteAudioHardwareListener::create(AudioHardwareListener::Client& client)
 {
-    return adoptRef(*new RemoteAudioHardwareListener(client, webProcess));
+    return adoptRef(*new RemoteAudioHardwareListener(client));
 }
 
-RemoteAudioHardwareListener::RemoteAudioHardwareListener(AudioHardwareListener::Client& client, WebProcess& webProcess)
+RemoteAudioHardwareListener::RemoteAudioHardwareListener(AudioHardwareListener::Client& client)
     : AudioHardwareListener(client)
-    , m_identifier(RemoteAudioHardwareListenerIdentifier::generate())
-    , m_gpuProcessConnection(makeWeakPtr(WebProcess::singleton().ensureGPUProcessConnection()))
+    , m_gpuProcessConnection(WebProcess::singleton().ensureGPUProcessConnection())
 {
-    m_gpuProcessConnection->addClient(*this);
-    m_gpuProcessConnection->messageReceiverMap().addMessageReceiver(Messages::RemoteAudioHardwareListener::messageReceiverName(), m_identifier.toUInt64(), *this);
-    m_gpuProcessConnection->connection().send(Messages::GPUConnectionToWebProcess::CreateAudioHardwareListener(m_identifier), { });
+    auto gpuProcessConnection = m_gpuProcessConnection.get();
+    gpuProcessConnection->addClient(*this);
+    gpuProcessConnection->messageReceiverMap().addMessageReceiver(Messages::RemoteAudioHardwareListener::messageReceiverName(), identifier().toUInt64(), *this);
+    gpuProcessConnection->connection().send(Messages::GPUConnectionToWebProcess::CreateAudioHardwareListener(identifier()), { });
 }
 
 RemoteAudioHardwareListener::~RemoteAudioHardwareListener()
 {
-    if (m_gpuProcessConnection) {
-        m_gpuProcessConnection->messageReceiverMap().removeMessageReceiver(*this);
-        m_gpuProcessConnection->connection().send(Messages::GPUConnectionToWebProcess::ReleaseAudioHardwareListener(m_identifier), 0);
+    if (auto gpuProcessConnection = m_gpuProcessConnection.get()) {
+        gpuProcessConnection->messageReceiverMap().removeMessageReceiver(*this);
+        gpuProcessConnection->connection().send(Messages::GPUConnectionToWebProcess::ReleaseAudioHardwareListener(identifier()), 0);
     }
 }
 
@@ -64,9 +67,9 @@ void RemoteAudioHardwareListener::gpuProcessConnectionDidClose(GPUProcessConnect
 {
     audioHardwareDidBecomeInactive();
 
-    ASSERT_UNUSED(connection, &connection == m_gpuProcessConnection);
-    if (m_gpuProcessConnection) {
-        m_gpuProcessConnection->messageReceiverMap().removeMessageReceiver(*this);
+    ASSERT_UNUSED(connection, &connection == m_gpuProcessConnection.get());
+    if (auto gpuProcessConnection = m_gpuProcessConnection.get()) {
+        gpuProcessConnection->messageReceiverMap().removeMessageReceiver(*this);
         m_gpuProcessConnection = nullptr;
     }
 }

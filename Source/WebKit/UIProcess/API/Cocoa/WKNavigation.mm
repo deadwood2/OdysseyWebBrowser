@@ -34,6 +34,8 @@
     API::ObjectStorage<API::Navigation> _navigation;
 }
 
+WK_OBJECT_DISABLE_DISABLE_KVC_IVAR_ACCESS;
+
 - (void)dealloc
 {
     if (WebCoreObjCScheduleDeallocateOnMainRunLoop(WKNavigation.class, self))
@@ -47,6 +49,11 @@
 - (NSURLRequest *)_request
 {
     return _navigation->originalRequest().nsURLRequest(WebCore::HTTPBodyUpdatePolicy::DoNotUpdateHTTPBody);
+}
+
+- (BOOL)_isUserInitiated
+{
+    return _navigation->wasUserInitiated();
 }
 
 #if PLATFORM(IOS_FAMILY)

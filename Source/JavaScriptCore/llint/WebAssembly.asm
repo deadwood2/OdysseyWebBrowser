@@ -1,4 +1,4 @@
-# Copyright (C) 2019-2020 Apple Inc. All rights reserved.
+# Copyright (C) 2019-2024 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -22,65 +22,99 @@
 # THE POSSIBILITY OF SUCH DAMAGE.
 
 # Calling conventions
-const CalleeSaveSpaceAsVirtualRegisters = constexpr Wasm::numberOfLLIntCalleeSaveRegisters
+const CalleeSaveSpaceAsVirtualRegisters = constexpr Wasm::numberOfLLIntCalleeSaveRegisters + constexpr Wasm::numberOfLLIntInternalRegisters
 const CalleeSaveSpaceStackAligned = (CalleeSaveSpaceAsVirtualRegisters * SlotSize + StackAlignment - 1) & ~StackAlignmentMask
 const WasmEntryPtrTag = constexpr WasmEntryPtrTag
+const UnboxedWasmCalleeStackSlot = CallerFrame - constexpr Wasm::numberOfLLIntCalleeSaveRegisters * SlotSize - MachineRegisterSize
 
 if HAVE_FAST_TLS
     const WTF_WASM_CONTEXT_KEY = constexpr WTF_WASM_CONTEXT_KEY
 end
 
+# Must match GPRInfo.h
 if X86_64
-    const NumberOfWasmArgumentGPRs = 6
-elsif ARM64 or ARM64E
-    const NumberOfWasmArgumentGPRs = 8
+    const NumberOfWasmArgumentJSRs = 6
+elsif ARM64 or ARM64E or RISCV64
+    const NumberOfWasmArgumentJSRs = 8
+elsif ARMv7
+    const NumberOfWasmArgumentJSRs = 2
 else
     error
 end
+
 const NumberOfWasmArgumentFPRs = 8
-const NumberOfWasmArguments = NumberOfWasmArgumentGPRs + NumberOfWasmArgumentFPRs
+
+const NumberOfWasmArguments = NumberOfWasmArgumentJSRs + NumberOfWasmArgumentFPRs
 
 # All callee saves must match the definition in WasmCallee.cpp
 
-# These must match the definition in WasmMemoryInformation.cpp
-const wasmInstance = csr0
-const memoryBase = csr3
-const boundsCheckingSize = csr4
+# These must match the definition in GPRInfo.h
+if X86_64 or ARM64 or ARM64E or RISCV64
+    const wasmInstance = csr0
+    const memoryBase = csr3
+    const boundsCheckingSize = csr4
+elsif ARMv7
+    const wasmInstance = csr0
+    const memoryBase = invalidGPR
+    const boundsCheckingSize = invalidGPR
+else
+    error
+end
 
 # This must match the definition in LowLevelInterpreter.asm
 if X86_64
     const PB = csr2
-elsif ARM64 or ARM64E
+elsif ARM64 or ARM64E or RISCV64
     const PB = csr7
+elsif ARMv7
+    const PB = csr1
 else
     error
 end
 
-macro forEachArgumentGPR(fn)
-    fn(0 * 8, wa0)
-    fn(1 * 8, wa1)
-    fn(2 * 8, wa2)
-    fn(3 * 8, wa3)
-    fn(4 * 8, wa4)
-    fn(5 * 8, wa5)
+# Helper macros
+
+# On JSVALUE64, each 64-bit argument GPR holds one whole Wasm value.
+# On JSVALUE32_64, a consecutive pair of even/odd numbered GPRs hold a single
+# Wasm value (even if that value is i32/f32, the odd numbered GPR holds the
+# more significant word).
+macro forEachArgumentJSR(fn)
     if ARM64 or ARM64E
-        fn(6 * 8, wa6)
-        fn(7 * 8, wa7)
+        fn(0 * 8, wa0, wa1)
+        fn(2 * 8, wa2, wa3)
+        fn(4 * 8, wa4, wa5)
+        fn(6 * 8, wa6, wa7)
+    elsif JSVALUE64
+        fn(0 * 8, wa0)
+        fn(1 * 8, wa1)
+        fn(2 * 8, wa2)
+        fn(3 * 8, wa3)
+        fn(4 * 8, wa4)
+        fn(5 * 8, wa5)
+    else
+        fn(0 * 8, wa1, wa0)
+        fn(1 * 8, wa3, wa2)
     end
 end
 
 macro forEachArgumentFPR(fn)
-    fn((NumberOfWasmArgumentGPRs + 0) * 8, wfa0)
-    fn((NumberOfWasmArgumentGPRs + 1) * 8, wfa1)
-    fn((NumberOfWasmArgumentGPRs + 2) * 8, wfa2)
-    fn((NumberOfWasmArgumentGPRs + 3) * 8, wfa3)
-    fn((NumberOfWasmArgumentGPRs + 4) * 8, wfa4)
-    fn((NumberOfWasmArgumentGPRs + 5) * 8, wfa5)
-    fn((NumberOfWasmArgumentGPRs + 6) * 8, wfa6)
-    fn((NumberOfWasmArgumentGPRs + 7) * 8, wfa7)
+    if ARM64 or ARM64E
+        fn((NumberOfWasmArgumentJSRs + 0) * 8, wfa0, wfa1)
+        fn((NumberOfWasmArgumentJSRs + 2) * 8, wfa2, wfa3)
+        fn((NumberOfWasmArgumentJSRs + 4) * 8, wfa4, wfa5)
+        fn((NumberOfWasmArgumentJSRs + 6) * 8, wfa6, wfa7)
+    else
+        fn((NumberOfWasmArgumentJSRs + 0) * 8, wfa0)
+        fn((NumberOfWasmArgumentJSRs + 1) * 8, wfa1)
+        fn((NumberOfWasmArgumentJSRs + 2) * 8, wfa2)
+        fn((NumberOfWasmArgumentJSRs + 3) * 8, wfa3)
+        fn((NumberOfWasmArgumentJSRs + 4) * 8, wfa4)
+        fn((NumberOfWasmArgumentJSRs + 5) * 8, wfa5)
+        fn((NumberOfWasmArgumentJSRs + 6) * 8, wfa6)
+        fn((NumberOfWasmArgumentJSRs + 7) * 8, wfa7)
+    end
 end
 
-# Helper macros
 # FIXME: Eventually this should be unified with the JS versions
 # https://bugs.webkit.org/show_bug.cgi?id=203656
 
@@ -112,14 +146,14 @@ macro wasmNextInstructionWide32()
 end
 
 macro checkSwitchToJIT(increment, action)
-    loadp CodeBlock[cfr], ws0
-    baddis increment, Wasm::FunctionCodeBlock::m_tierUpCounter + Wasm::LLIntTierUpCounter::m_counter[ws0], .continue
+    loadp UnboxedWasmCalleeStackSlot[cfr], ws0
+    baddis increment, Wasm::LLIntCallee::m_tierUpCounter + Wasm::LLIntTierUpCounter::m_counter[ws0], .continue
     action()
     .continue:
 end
 
 macro checkSwitchToJITForPrologue(codeBlockRegister)
-    if WEBASSEMBLY_B3JIT
+    if WEBASSEMBLY_BBQJIT or WEBASSEMBLY_OMGJIT
     checkSwitchToJIT(
         5,
         macro()
@@ -130,34 +164,49 @@ macro checkSwitchToJITForPrologue(codeBlockRegister)
             btpz r0, .recover
             move r0, ws0
 
-            forEachArgumentGPR(macro (offset, gpr)
+if ARM64 or ARM64E
+            forEachArgumentJSR(macro (offset, gpr1, gpr2)
+                loadpairq -offset - 16 - CalleeSaveSpaceAsVirtualRegisters * 8[cfr], gpr2, gpr1
+            end)
+elsif JSVALUE64
+            forEachArgumentJSR(macro (offset, gpr)
                 loadq -offset - 8 - CalleeSaveSpaceAsVirtualRegisters * 8[cfr], gpr
             end)
-
+else
+            forEachArgumentJSR(macro (offset, gprMsw, gpLsw)
+                load2ia -offset - 8 - CalleeSaveSpaceAsVirtualRegisters * 8[cfr], gpLsw, gprMsw
+            end)
+end
+if ARM64 or ARM64E
+            forEachArgumentFPR(macro (offset, fpr1, fpr2)
+                loadpaird -offset - 16 - CalleeSaveSpaceAsVirtualRegisters * 8[cfr], fpr2, fpr1
+            end)
+else
             forEachArgumentFPR(macro (offset, fpr)
                 loadd -offset - 8 - CalleeSaveSpaceAsVirtualRegisters * 8[cfr], fpr
             end)
+end
 
             restoreCalleeSavesUsedByWasm()
             restoreCallerPCAndCFR()
             if ARM64E
-                leap JSCConfig + constexpr JSC::offsetOfJSCConfigGateMap + (constexpr Gate::wasmOSREntry) * PtrSize, ws1
-                jmp [ws1], NativeToJITGatePtrTag # WasmEntryPtrTag
+                leap _g_config, ws1
+                jmp JSCConfigGateMapOffset + (constexpr Gate::wasmOSREntry) * PtrSize[ws1], NativeToJITGatePtrTag # WasmEntryPtrTag
             else
                 jmp ws0, WasmEntryPtrTag
             end
         .recover:
-            notFunctionCodeBlockGetter(codeBlockRegister)
+            loadp UnboxedWasmCalleeStackSlot[cfr], codeBlockRegister
         end)
     end
 end
 
 macro checkSwitchToJITForLoop()
-    if WEBASSEMBLY_B3JIT
+    if WEBASSEMBLY_BBQJIT or WEBASSEMBLY_OMGJIT
     checkSwitchToJIT(
         1,
         macro()
-            storei PC, ArgumentCountIncludingThis + TagOffset[cfr]
+            storei PC, CallSiteIndex[cfr]
             prepareStateForCCall()
             move cfr, a0
             move PC, a1
@@ -169,19 +218,19 @@ macro checkSwitchToJITForLoop()
             move r0, a0
             if ARM64E
                 move r1, ws0
-                leap JSCConfig + constexpr JSC::offsetOfJSCConfigGateMap + (constexpr Gate::wasmOSREntry) * PtrSize, ws1
-                jmp [ws1], NativeToJITGatePtrTag # WasmEntryPtrTag
+                leap _g_config, ws1
+                jmp JSCConfigGateMapOffset + (constexpr Gate::wasmOSREntry) * PtrSize[ws1], NativeToJITGatePtrTag # WasmEntryPtrTag
             else
                 jmp r1, WasmEntryPtrTag
             end
         .recover:
-            loadi ArgumentCountIncludingThis + TagOffset[cfr], PC
+            loadi CallSiteIndex[cfr], PC
         end)
     end
 end
 
 macro checkSwitchToJITForEpilogue()
-    if WEBASSEMBLY_B3JIT
+    if WEBASSEMBLY_BBQJIT or WEBASSEMBLY_OMGJIT
     checkSwitchToJIT(
         10,
         macro ()
@@ -197,10 +246,13 @@ macro preserveCalleeSavesUsedByWasm()
     # in restoreCalleeSavesUsedByWasm() below for why.
     subp CalleeSaveSpaceStackAligned, sp
     if ARM64 or ARM64E
-        emit "stp x19, x26, [x29, #-16]"
-    elsif X86_64
+        storepairq wasmInstance, PB, -16[cfr]
+    elsif X86_64 or RISCV64
         storep PB, -0x8[cfr]
         storep wasmInstance, -0x10[cfr]
+    elsif ARMv7
+        storep PB, -4[cfr]
+        storep wasmInstance, -8[cfr]
     else
         error
     end
@@ -211,43 +263,54 @@ macro restoreCalleeSavesUsedByWasm()
     # and restored when entering Wasm by the JSToWasm wrapper and changes to them are meant
     # to be observable within the same Wasm module.
     if ARM64 or ARM64E
-        emit "ldp x19, x26, [x29, #-16]"
-    elsif X86_64
+        loadpairq -16[cfr], wasmInstance, PB
+    elsif X86_64 or RISCV64
         loadp -0x8[cfr], PB
         loadp -0x10[cfr], wasmInstance
+    elsif ARMv7
+        loadp -4[cfr], PB
+        loadp -8[cfr], wasmInstance
     else
         error
     end
 end
 
-macro loadWasmInstanceFromTLSTo(reg)
-if  HAVE_FAST_TLS
-    tls_loadp WTF_WASM_CONTEXT_KEY, reg
-else
-    crash()
+macro preserveGPRsUsedByTailCall(gpr0, gpr1)
+    storep gpr0, CodeBlock[sp]
+    storep gpr1, ArgumentCountIncludingThis[sp]
+end
+
+macro restoreGPRsUsedByTailCall(gpr0, gpr1)
+    loadp CodeBlock[sp], gpr0
+    loadp ArgumentCountIncludingThis[sp], gpr1
+end
+
+macro preserveReturnAddress(scratch)
+if X86_64
+    loadp ReturnPC[cfr], scratch
+    storep scratch, ReturnPC[sp]
+elsif ARM64 or ARM64E or ARMv7 or RISCV64
+    loadp ReturnPC[cfr], lr
 end
 end
 
-macro loadWasmInstanceFromTLS()
-if  HAVE_FAST_TLS
-    loadWasmInstanceFromTLSTo(wasmInstance)
-else
-    crash()
-end
-end
-
-macro storeWasmInstanceToTLS(instance)
-if  HAVE_FAST_TLS
-    tls_storep instance, WTF_WASM_CONTEXT_KEY
-else
-    crash()
-end
+macro usePreviousFrame()
+    if ARM64 or ARM64E
+        loadpairq -PtrSize[cfr], PB, cfr
+    elsif ARMv7 or X86_64 or RISCV64
+        loadp -PtrSize[cfr], PB
+        loadp [cfr], cfr
+    else
+        error
+    end
 end
 
-macro reloadMemoryRegistersFromInstance(instance, scratch1, scratch2)
-    loadp Wasm::Instance::m_cachedMemory[instance], memoryBase
-    loadp Wasm::Instance::m_cachedBoundsCheckingSize[instance], boundsCheckingSize
-    cagedPrimitiveMayBeNull(memoryBase, boundsCheckingSize, scratch1, scratch2) # If boundsCheckingSize is 0, pointer can be a nullptr.
+macro reloadMemoryRegistersFromInstance(instance, scratch1)
+if not ARMv7
+    loadp JSWebAssemblyInstance::m_cachedMemory[instance], memoryBase
+    loadp JSWebAssemblyInstance::m_cachedBoundsCheckingSize[instance], boundsCheckingSize
+    cagedPrimitiveMayBeNull(memoryBase, scratch1) # If boundsCheckingSize is 0, pointer can be a nullptr.
+end
 end
 
 macro throwException(exception)
@@ -256,42 +319,76 @@ macro throwException(exception)
 end
 
 macro callWasmSlowPath(slowPath)
+    storei PC, CallSiteIndex[cfr]
     prepareStateForCCall()
     move cfr, a0
     move PC, a1
     move wasmInstance, a2
-    cCall4(slowPath)
+    cCall3(slowPath)
     restoreStateAfterCCall()
 end
 
 macro callWasmCallSlowPath(slowPath, action)
-    storei PC, ArgumentCountIncludingThis + TagOffset[cfr]
+    storei PC, CallSiteIndex[cfr]
     prepareStateForCCall()
     move cfr, a0
     move PC, a1
     move wasmInstance, a2
-    cCall4(slowPath)
+    cCall3(slowPath)
     action(r0, r1)
 end
 
-macro wasmPrologue(codeBlockGetter, codeBlockSetter, loadWasmInstance)
+macro restoreStackPointerAfterCall()
+    loadp UnboxedWasmCalleeStackSlot[cfr], ws1
+    loadi Wasm::LLIntCallee::m_numCalleeLocals[ws1], ws1
+    lshiftp 3, ws1
+    addp maxFrameExtentForSlowPathCall, ws1
+if ARMv7
+    subp cfr, ws1, ws1
+    move ws1, sp
+else
+    subp cfr, ws1, sp
+end
+end
+
+macro wasmPrologue()
     # Set up the call frame and check if we should OSR.
     preserveCallerPCAndCFR()
     preserveCalleeSavesUsedByWasm()
-    loadWasmInstance()
-    reloadMemoryRegistersFromInstance(wasmInstance, ws0, ws1)
+    reloadMemoryRegistersFromInstance(wasmInstance, ws0)
 
-    codeBlockGetter(ws0)
-    codeBlockSetter(ws0)
+    storep wasmInstance, CodeBlock[cfr]
+    loadp Callee[cfr], ws0
+if JSVALUE64
+    andp ~(constexpr JSValue::NativeCalleeTag), ws0
+end
+    leap WTFConfig + constexpr WTF::offsetOfWTFConfigLowestAccessibleAddress, ws1
+    loadp [ws1], ws1
+    addp ws1, ws0
+    storep ws0, UnboxedWasmCalleeStackSlot[cfr]
 
     # Get new sp in ws1 and check stack height.
-    loadi Wasm::FunctionCodeBlock::m_numCalleeLocals[ws0], ws1
+    loadi Wasm::LLIntCallee::m_numCalleeLocals[ws0], ws1
     lshiftp 3, ws1
     addp maxFrameExtentForSlowPathCall, ws1
     subp cfr, ws1, ws1
 
+if not JSVALUE64
+    subp 8, ws1 # align stack pointer
+end
+
+if TRACING
+    probe(
+         macro()
+             move cfr, a1
+             move ws1, a2
+             call _logWasmPrologue
+         end
+     )
+end
+
     bpa ws1, cfr, .stackOverflow
-    bpbeq Wasm::Instance::m_cachedStackLimit[wasmInstance], ws1, .stackHeightOK
+    bpbeq JSWebAssemblyInstance::m_softStackLimit[wasmInstance], ws1, .stackHeightOK
 
 .stackOverflow:
     throwException(StackOverflow)
@@ -299,33 +396,725 @@ macro wasmPrologue(codeBlockGetter, codeBlockSetter, loadWasmInstance)
 .stackHeightOK:
     move ws1, sp
 
-    forEachArgumentGPR(macro (offset, gpr)
+if ARM64 or ARM64E
+    forEachArgumentJSR(macro (offset, gpr1, gpr2)
+        storepairq gpr2, gpr1, -offset - 16 - CalleeSaveSpaceAsVirtualRegisters * 8[cfr]
+    end)
+elsif JSVALUE64
+    forEachArgumentJSR(macro (offset, gpr)
         storeq gpr, -offset - 8 - CalleeSaveSpaceAsVirtualRegisters * 8[cfr]
     end)
-
+else
+    forEachArgumentJSR(macro (offset, gprMsw, gpLsw)
+        store2ia gpLsw, gprMsw, -offset - 8 - CalleeSaveSpaceAsVirtualRegisters * 8[cfr]
+    end)
+end
+if ARM64 or ARM64E
+    forEachArgumentFPR(macro (offset, fpr1, fpr2)
+        storepaird fpr2, fpr1, -offset - 16 - CalleeSaveSpaceAsVirtualRegisters * 8[cfr]
+    end)
+else
     forEachArgumentFPR(macro (offset, fpr)
         stored fpr, -offset - 8 - CalleeSaveSpaceAsVirtualRegisters * 8[cfr]
     end)
+end
 
+    loadp UnboxedWasmCalleeStackSlot[cfr], ws0
     checkSwitchToJITForPrologue(ws0)
 
     # Set up the PC.
-    loadp Wasm::FunctionCodeBlock::m_instructionsRawPointer[ws0], PB
+    loadp Wasm::LLIntCallee::m_instructionsRawPointer[ws0], PB
     move 0, PC
 
-    loadi Wasm::FunctionCodeBlock::m_numVars[ws0], ws1
+    loadi Wasm::LLIntCallee::m_numVars[ws0], ws1
     subi NumberOfWasmArguments + CalleeSaveSpaceAsVirtualRegisters, ws1
     btiz ws1, .zeroInitializeLocalsDone
+
+    lshifti 3, ws1
     negi ws1
+
+if JSVALUE64
     sxi2q ws1, ws1
+end
     leap (NumberOfWasmArguments + CalleeSaveSpaceAsVirtualRegisters + 1) * -8[cfr], ws0
 .zeroInitializeLocalsLoop:
-    addq 1, ws1
-    storeq 0, [ws0, ws1, 8]
-    btqz ws1, .zeroInitializeLocalsDone
-    jmp .zeroInitializeLocalsLoop
+    addp PtrSize, ws1
+    storep 0, [ws0, ws1]
+    btpnz ws1, .zeroInitializeLocalsLoop
 .zeroInitializeLocalsDone:
 end
+
+macro forEachVectorArgument(fn)
+     const base = NumberOfWasmArgumentJSRs * 8
+     fn(base + 0 * 16, -(base + 0 * 16 + 8), wfa0)
+     fn(base + 1 * 16, -(base + 1 * 16 + 8), wfa1)
+     fn(base + 2 * 16, -(base + 2 * 16 + 8), wfa2)
+     fn(base + 3 * 16, -(base + 3 * 16 + 8), wfa3)
+     fn(base + 4 * 16, -(base + 4 * 16 + 8), wfa4)
+     fn(base + 5 * 16, -(base + 5 * 16 + 8), wfa5)
+     fn(base + 6 * 16, -(base + 6 * 16 + 8), wfa6)
+     fn(base + 7 * 16, -(base + 7 * 16 + 8), wfa7)
+end
+
+# Tier up immediately, while saving full vectors in argument FPRs
+macro wasmPrologueSIMD()
+if (WEBASSEMBLY_BBQJIT or WEBASSEMBLY_OMGJIT) and not ARMv7
+    preserveCallerPCAndCFR()
+    preserveCalleeSavesUsedByWasm()
+    reloadMemoryRegistersFromInstance(wasmInstance, ws0)
+
+    storep wasmInstance, CodeBlock[cfr]
+    loadp Callee[cfr], ws0
+if JSVALUE64
+    andp ~(constexpr JSValue::NativeCalleeTag), ws0
+end
+    leap WTFConfig + constexpr WTF::offsetOfWTFConfigLowestAccessibleAddress, ws1
+    loadp [ws1], ws1
+    addp ws1, ws0
+    storep ws0, UnboxedWasmCalleeStackSlot[cfr]
+
+    # Get new sp in ws1 and check stack height.
+    # This should match the calculation of m_stackSize, but with double the size for fpr arg storage and no locals.
+    move 8 + 8 * 2 + constexpr CallFrame::headerSizeInRegisters + 1, ws1
+    lshiftp 3, ws1
+    addp maxFrameExtentForSlowPathCall, ws1
+    subp cfr, ws1, ws1
+
+if not JSVALUE64
+    subp 8, ws1 # align stack pointer
+end
+
+    bpa ws1, cfr, .stackOverflow
+    bpbeq JSWebAssemblyInstance::m_softStackLimit[wasmInstance], ws1, .stackHeightOK
+
+.stackOverflow:
+    throwException(StackOverflow)
+
+.stackHeightOK:
+    move ws1, sp
+
+if ARM64 or ARM64E
+    forEachArgumentJSR(macro (offset, gpr1, gpr2)
+        storepairq gpr2, gpr1, -offset - 16 - CalleeSaveSpaceAsVirtualRegisters * 8[cfr]
+    end)
+elsif JSVALUE64
+    forEachArgumentJSR(macro (offset, gpr)
+        storeq gpr, -offset - 8 - CalleeSaveSpaceAsVirtualRegisters * 8[cfr]
+    end)
+else
+    forEachArgumentJSR(macro (offset, gprMsw, gpLsw)
+        store2ia gpLsw, gprMsw, -offset - 8 - CalleeSaveSpaceAsVirtualRegisters * 8[cfr]
+    end)
+end
+
+    forEachVectorArgument(macro (offset, negOffset, fpr)
+        storev fpr, negOffset - 8 - CalleeSaveSpaceAsVirtualRegisters * 8[cfr]
+    end)
+
+    move cfr, a0
+    move PC, a1
+    move wasmInstance, a2
+    cCall4(_slow_path_wasm_simd_go_straight_to_bbq_osr)
+    move r0, ws0
+
+if ARM64 or ARM64E
+    forEachArgumentJSR(macro (offset, gpr1, gpr2)
+        loadpairq -offset - 16 - CalleeSaveSpaceAsVirtualRegisters * 8[cfr], gpr2, gpr1
+    end)
+elsif JSVALUE64
+    forEachArgumentJSR(macro (offset, gpr)
+        loadq -offset - 8 - CalleeSaveSpaceAsVirtualRegisters * 8[cfr], gpr
+    end)
+else
+    forEachArgumentJSR(macro (offset, gprMsw, gpLsw)
+        load2ia -offset - 8 - CalleeSaveSpaceAsVirtualRegisters * 8[cfr], gpLsw, gprMsw
+    end)
+end
+
+    forEachVectorArgument(macro (offset, negOffset, fpr)
+        loadv negOffset - 8 - CalleeSaveSpaceAsVirtualRegisters * 8[cfr], fpr
+    end)
+
+    restoreCalleeSavesUsedByWasm()
+    restoreCallerPCAndCFR()
+    if ARM64E
+        leap _g_config, ws1
+        jmp JSCConfigGateMapOffset + (constexpr Gate::wasmOSREntry) * PtrSize[ws1], NativeToJITGatePtrTag # WasmEntryPtrTag
+    else
+        jmp ws0, WasmEntryPtrTag
+    end
+end
+    break
+end
+
+macro zeroExtend32ToWord(r)
+    if JSVALUE64
+        andq 0xffffffff, r
+    end
+end
+
+macro boxInt32(r, rTag)
+    if JSVALUE64
+        orq constexpr JSValue::NumberTag, r
+    else
+        move constexpr JSValue::Int32Tag, rTag
+    end
+end
+
+// This is the interpreted analogue to createJSToWasmJITInterpreterCrashForSIMDParameters
+op(js_to_wasm_wrapper_entry_crash_for_simd_parameters, macro()
+    if not WEBASSEMBLY or C_LOOP
+        error
+    end
+    tagReturnAddress sp
+    preserveCallerPCAndCFR()
+
+    loadp JSWebAssemblyInstance::m_vm[wasmInstance], a2
+    // copyCalleeSavesToVMEntryFrameCalleeSavesBuffer
+    move wasmInstance, a0
+    move constexpr Wasm::ExceptionType::TypeErrorInvalidV128Use, a1
+    cCall3(_operationWasmToJSException)
+    jumpToException()
+end)
+
+// This is the interpreted analogue to createJSToWasmWrapper
+// If you change this, make sure to modify JSToWasm.cpp:createJSToWasmJITInterpreter
+op(js_to_wasm_wrapper_entry, macro ()
+    if not WEBASSEMBLY or C_LOOP
+        error
+    end
+
+    macro clobberVolatileRegisters()
+        if ARM64 or ARM64E
+            emit "movz  x9, #0xBAD"
+            emit "movz x10, #0xBAD"
+            emit "movz x11, #0xBAD"
+            emit "movz x12, #0xBAD"
+            emit "movz x13, #0xBAD"
+            emit "movz x14, #0xBAD"
+            emit "movz x15, #0xBAD"
+            emit "movz x16, #0xBAD"
+            emit "movz x17, #0xBAD"
+            emit "movz x18, #0xBAD"
+        end
+    end
+
+    macro clobberArgumentOnlyRegisters()
+        if ARM64 or ARM64E
+            emit "movz x2, #0xBAD"
+            emit "movz x3, #0xBAD"
+            emit "movz x4, #0xBAD"
+            emit "movz x5, #0xBAD"
+            emit "movz x6, #0xBAD"
+            emit "movz x7, #0xBAD"
+        end
+    end
+
+    macro repeat(f)
+        move 0xBEEF, ws0
+        f(0)
+        f(1)
+        f(2)
+        f(3)
+        f(4)
+        f(5)
+        f(6)
+        f(7)
+        f(8)
+        f(9)
+        f(10)
+        f(11)
+        f(12)
+        f(13)
+        f(14)
+        f(15)
+        f(16)
+        f(17)
+        f(18)
+        f(19)
+        f(20)
+        f(21)
+        f(22)
+        f(23)
+        f(24)
+        f(25)
+        f(26)
+        f(27)
+        f(28)
+        f(29)
+    end
+
+if ASSERT_ENABLED
+    clobberVolatileRegisters()
+end
+
+    macro saveJSEntrypointInterpreterRegisters()
+        subp constexpr Wasm::JITLessJSEntrypointCallee::SpillStackSpaceAligned, sp
+        if ARM64 or ARM64E
+            storepairq memoryBase, boundsCheckingSize, -2 * SlotSize[cfr]
+            storep wasmInstance, -3 * SlotSize[cfr]
+        elsif X86_64
+            # These must match the wasmToJS thunk, since the unwinder won't be able to tell who made this frame.
+            storep boundsCheckingSize, -1 * SlotSize[cfr]
+            storep memoryBase, -2 * SlotSize[cfr]
+            storep wasmInstance, -3 * SlotSize[cfr]
+        else
+            storei wasmInstance, -1 * SlotSize[cfr]
+        end
+    end
+
+    macro restoreJSEntrypointInterpreterRegisters()
+        if ARM64 or ARM64E
+            loadpairq -2 * SlotSize[cfr], memoryBase, boundsCheckingSize
+            loadp -3 * SlotSize[cfr], wasmInstance
+        elsif X86_64
+            loadp -1 * SlotSize[cfr], boundsCheckingSize
+            loadp -2 * SlotSize[cfr], memoryBase
+            loadp -3 * SlotSize[cfr], wasmInstance
+        else
+            loadi -1 * SlotSize[cfr], wasmInstance
+        end
+        addp constexpr Wasm::JITLessJSEntrypointCallee::SpillStackSpaceAligned, sp
+    end
+
+    tagReturnAddress sp
+    preserveCallerPCAndCFR()
+    saveJSEntrypointInterpreterRegisters()
+
+    # Load data from the entry callee
+    # This was written by doVMEntry
+    loadp Callee[cfr], ws0 # WebAssemblyFunction*
+    loadp WebAssemblyFunction::m_jsToWasmCallee[ws0], ws0 # JITLessJSEntrypointCallee*
+
+if ASSERT_ENABLED
+    # Check to confirm we have the right kind of callee
+    loadi Wasm::JITLessJSEntrypointCallee::ident[ws0], ws1
+    move 0xBF, wa0
+    bpeq wa0, ws1, .ident_ok
+    break
+.ident_ok:
+end
+
+    # Allocate stack space (no stack check)
+    loadi Wasm::JITLessJSEntrypointCallee::frameSize[ws0], ws1
+    subp ws1, sp
+
+if ASSERT_ENABLED
+    repeat(macro (i)
+        storep ws0, -i * SlotSize + constexpr Wasm::JITLessJSEntrypointCallee::RegisterStackSpaceAligned[sp]
+    end)
+end
+
+    # Prepare frame
+    move sp, a0
+    move cfr, a1
+    cCall2(_operationJSToWasmEntryWrapperBuildFrame)
+
+    # Instance
+    loadp constexpr CallFrameSlot::codeBlock * 8[cfr], wasmInstance
+
+    # Memory
+    if ARM64 or ARM64E
+        loadpairq JSWebAssemblyInstance::m_cachedMemory[wasmInstance], memoryBase, boundsCheckingSize
+    elsif X86_64
+        loadp JSWebAssemblyInstance::m_cachedMemory[wasmInstance], memoryBase
+        loadp JSWebAssemblyInstance::m_cachedBoundsCheckingSize[wasmInstance], boundsCheckingSize
+    end
+    if not ARMv7
+        cagedPrimitiveMayBeNull(memoryBase, ws0)
+    end
+
+    # Arguments
+
+if ARM64 or ARM64E
+    forEachArgumentJSR(macro (offset, gpr1, gpr2)
+        loadpairq offset[sp], gpr1, gpr2
+    end)
+elsif JSVALUE64
+    forEachArgumentJSR(macro (offset, gpr)
+        loadq offset[sp], gpr
+    end)
+else
+    forEachArgumentJSR(macro (offset, gprMsw, gpLsw)
+        load2ia offset[sp], gpLsw, gprMsw
+    end)
+end
+
+if ARM64 or ARM64E
+    forEachArgumentFPR(macro (offset, fpr1, fpr2)
+        loadpaird offset[sp], fpr1, fpr2
+    end)
+else
+    forEachArgumentFPR(macro (offset, fpr)
+        loadd offset[sp], fpr
+    end)
+end
+
+    # Pop argument space values
+    addp constexpr Wasm::JITLessJSEntrypointCallee::RegisterStackSpaceAligned, sp
+
+if ASSERT_ENABLED
+    repeat(macro (i)
+        storep ws0, -i * SlotSize[sp]
+    end)
+end
+
+    loadp Callee[cfr], ws0 # CalleeBits(JITLessJSEntrypointCallee*)
+if JSVALUE64
+    andp ~(constexpr JSValue::NativeCalleeTag), ws0
+end
+    leap WTFConfig + constexpr WTF::offsetOfWTFConfigLowestAccessibleAddress, ws1
+    loadp [ws1], ws1
+    addp ws1, ws0
+
+    # Store Callee's wasm callee
+if JSVALUE64
+    loadp Wasm::JITLessJSEntrypointCallee::wasmCallee[ws0], ws1
+    storep ws1, constexpr (CallFrameSlot::callee - CallerFrameAndPC::sizeInRegisters) * 8[sp]
+else
+    loadp Wasm::JITLessJSEntrypointCallee::wasmCallee + PayloadOffset[ws0], ws1
+    storep ws1, constexpr (CallFrameSlot::callee - CallerFrameAndPC::sizeInRegisters) * 8 + PayloadOffset[sp]
+    loadp Wasm::JITLessJSEntrypointCallee::wasmCallee + TagOffset[ws0], ws1
+    storep ws1, constexpr (CallFrameSlot::callee - CallerFrameAndPC::sizeInRegisters) * 8 + TagOffset[sp]
+end
+
+    loadp Wasm::JITLessJSEntrypointCallee::wasmFunctionPrologue[ws0], ws0
+    call ws0, WasmEntryPtrTag
+
+    clobberVolatileRegisters()
+
+    # Restore SP
+    loadp Callee[cfr], ws0 # CalleeBits(JITLessJSEntrypointCallee*)
+if JSVALUE64
+    andp ~(constexpr JSValue::NativeCalleeTag), ws0
+end
+    leap WTFConfig + constexpr WTF::offsetOfWTFConfigLowestAccessibleAddress, ws1
+    loadp [ws1], ws1
+    addp ws1, ws0
+    loadi Wasm::JITLessJSEntrypointCallee::frameSize[ws0], ws1
+    subp cfr, ws1, ws1
+    move ws1, sp
+    subp constexpr Wasm::JITLessJSEntrypointCallee::SpillStackSpaceAligned, sp
+
+if ASSERT_ENABLED
+    repeat(macro (i)
+        storep ws0, -i * SlotSize + constexpr Wasm::JITLessJSEntrypointCallee::RegisterStackSpaceAligned[sp]
+    end)
+end
+
+    # Save return registers
+    macro forEachReturnWasmJSR(fn)
+        if ARM64 or ARM64E
+            fn(0 * 8, wa0, wa1)
+            fn(2 * 8, wa2, wa3)
+            fn(4 * 8, wa4, wa5)
+            fn(6 * 8, wa6, wa7)
+        elsif X86_64
+            fn(0 * 8, wa0)
+            fn(1 * 8, wa1)
+            fn(2 * 8, wa2)
+            fn(3 * 8, wa3)
+            fn(4 * 8, wa4)
+            fn(5 * 8, wa5)
+        elsif JSVALUE64
+            fn(0 * 8, wa0)
+            fn(1 * 8, wa1)
+            fn(2 * 8, wa2)
+            fn(3 * 8, wa3)
+            fn(4 * 8, wa4)
+            fn(5 * 8, wa5)
+        else
+            fn(0 * 8, wa1, wa0)
+            fn(1 * 8, wa3, wa2)
+        end
+    end
+    macro forEachReturnJSJSR(fn)
+        if ARM64 or ARM64E
+            fn(0 * 8, r0, r1)
+        elsif X86_64
+            fn(0 * 8, r0)
+            fn(1 * 8, r1)
+        elsif JSVALUE64
+            fn(0 * 8, r0)
+            fn(1 * 8, r1)
+        else
+            fn(0 * 8, r1, r0)
+        end
+    end
+
+if ARM64 or ARM64E
+    forEachReturnWasmJSR(macro (offset, gpr1, gpr2)
+        storepairq gpr1, gpr2, offset[sp]
+    end)
+elsif JSVALUE64
+    forEachReturnWasmJSR(macro (offset, gpr)
+        storeq gpr, offset[sp]
+    end)
+else
+    forEachReturnWasmJSR(macro (offset, gprMsw, gpLsw)
+        store2ia gpLsw, gprMsw, offset[sp]
+    end)
+end
+
+if ARM64 or ARM64E
+    forEachArgumentFPR(macro (offset, fpr1, fpr2)
+        storepaird fpr1, fpr2, offset[sp]
+    end)
+else
+    forEachArgumentFPR(macro (offset, fpr)
+        stored fpr, offset[sp]
+    end)
+end
+
+    # Prepare frame
+    move sp, a0
+    move cfr, a1
+    cCall2(_operationJSToWasmEntryWrapperBuildReturnFrame)
+
+    btpnz r1, .handleException
+
+    # Clean up and return
+    restoreJSEntrypointInterpreterRegisters()
+    clobberVolatileRegisters()
+    restoreCallerPCAndCFR()
+    ret
+
+.handleException:
+    throwException(OutOfMemory)
+    break
+end)
+
+# This is the interpreted analogue to WasmBinding.cpp:wasmToWasm
+op(wasm_to_wasm_wrapper_entry, macro()
+    loadp (Callee - PrologueStackPointerDelta)[sp], ws0
+
+    loadi Wasm::Callee::m_index[ws0], ws1
+
+    const ImportFunctionInfoSize = constexpr (sizeof(JSWebAssemblyInstance::ImportFunctionInfo))
+    muli ImportFunctionInfoSize, ws1
+
+    # Store Callee's wasm callee for import function
+    const ImportFunctionInfoBase = constexpr (sizeof(JSWebAssemblyInstance) + 7) & (~7)
+    leap ImportFunctionInfoBase[wasmInstance], ws0
+    addp ws0, ws1
+    # offsetOfBoxedTargetCalleeLoadLocation
+    loadp JSWebAssemblyInstance::ImportFunctionInfo::boxedTargetCalleeLoadLocation[ws1], ws0
+    loadp [ws0], ws0
+
+    const addressOfCalleeCalleeFromCallerPerspectiveBase = constexpr CallFrameSlot::callee * SlotSize + PayloadOffset
+if JSVALUE64
+    storep ws0, addressOfCalleeCalleeFromCallerPerspectiveBase - PrologueStackPointerDelta[sp]
+else
+    storei ws0, addressOfCalleeCalleeFromCallerPerspectiveBase - PrologueStackPointerDelta + PayloadOffset[sp]
+    storei constexpr JSValue::NativeCalleeTag, addressOfCalleeCalleeFromCallerPerspectiveBase - PrologueStackPointerDelta + TagOffset[sp]
+end
+
+    loadp JSWebAssemblyInstance::ImportFunctionInfo::wasmEntrypointLoadLocation[ws1], ws0
+    loadp JSWebAssemblyInstance::ImportFunctionInfo::targetInstance[ws1], wasmInstance
+
+    # Memory
+    if ARM64 or ARM64E
+        loadpairq JSWebAssemblyInstance::m_cachedMemory[wasmInstance], memoryBase, boundsCheckingSize
+    elsif X86_64
+        loadp JSWebAssemblyInstance::m_cachedMemory[wasmInstance], memoryBase
+        loadp JSWebAssemblyInstance::m_cachedBoundsCheckingSize[wasmInstance], boundsCheckingSize
+    end
+    if not ARMv7
+        cagedPrimitiveMayBeNull(memoryBase, ws1)
+    end
+
+    loadp [ws0], ws0
+    jmp ws0, WasmEntryPtrTag
+end)
+
+# This is the interpreted analogue to WasmBinding.cpp:wasmToJS
+op(wasm_to_js_wrapper_entry, macro()
+    # Load this before we create the stack frame, since we lose old cfr, which we wrote Callee to
+    loadp (Callee - PrologueStackPointerDelta)[sp], ws1
+
+    tagReturnAddress sp
+    preserveCallerPCAndCFR()
+
+    subp 0x10, sp
+if ARM64 or ARM64E
+    storepairq ws1, wasmInstance, -0x10[cfr]
+elsif JSVALUE64
+    storeq ws1, -0x10[cfr]
+    storeq wasmInstance, -8[cfr]
+else
+    storep ws1, -0x10[cfr]
+    storep wasmInstance, -8[cfr]
+end
+
+    subp 0x80, sp
+
+    # Store all the registers here
+
+if ARM64 or ARM64E
+    forEachArgumentJSR(macro (offset, gpr1, gpr2)
+        storepairq gpr1, gpr2, offset[sp]
+    end)
+elsif JSVALUE64
+    forEachArgumentJSR(macro (offset, gpr)
+        storeq gpr, offset[sp]
+    end)
+else
+    forEachArgumentJSR(macro (offset, gprMsw, gpLsw)
+        store2ia gpLsw, gprMsw, offset[sp]
+    end)
+end
+
+if ARM64 or ARM64E
+    forEachArgumentFPR(macro (offset, fpr1, fpr2)
+        storepaird fpr1, fpr2, offset[sp]
+    end)
+else
+    forEachArgumentFPR(macro (offset, fpr)
+        stored fpr, offset[sp]
+    end)
+end
+
+    move wasmInstance, a0
+    move ws1, a1
+    cCall2(_operationGetWasmCalleeStackSize)
+
+    move sp, a2
+    subp r0, sp
+    move sp, a0
+    move cfr, a1
+    move wasmInstance, a3
+    cCall4(_operationWasmToJSExitMarshalArguments)
+    btpnz r1, .oom
+
+    bineq r0, 0, .safe
+    move wasmInstance, r0
+    move (constexpr Wasm::ExceptionType::TypeErrorInvalidV128Use), r1
+    cCall2(_operationWasmToJSException)
+    jmp r0, ExceptionHandlerPtrTag
+    break
+
+.safe:
+
+    move r0, t2
+    loadp JSWebAssemblyInstance::ImportFunctionInfo::importFunction[t2], t0
+if not JSVALUE64
+    move (constexpr JSValue::CellTag), t1
+end
+
+    leap JSWebAssemblyInstance::ImportFunctionInfo::callLinkInfo[t2], t2
+    # emitDataICFastPath
+    #   emitFastPathImpl(nullptr, jit, false, nullptr)
+
+if not JSVALUE64
+    # branchIfNotCell(t0)
+    bineq t0, constexpr(JSValue::CellTag), .notacell
+end
+
+    # calleeGPR = t0
+    # callLinkInfoGPR = t2
+    # callTargetGPR = t5
+    loadp CallLinkInfo::m_monomorphicCallDestination[t2], t5
+
+if RISCV64
+    bpeq CallLinkInfo::m_callee[t2], t0, .found
+    btpnz CallLinkInfo::m_callee[t2], (constexpr CallLinkInfo::polymorphicCalleeMask), .found
+else
+    # scratch = t3
+    loadp CallLinkInfo::m_callee[t2], t3
+    bpeq t3, t0, .found
+    btpnz t3, (constexpr CallLinkInfo::polymorphicCalleeMask), .found
+end
+
+if not JSVALUE64
+.notacell:
+end
+
+.found:
+if ARM64 or ARM64E
+    pcrtoaddr _llint_default_call_trampoline, t5
+else
+    leap (_llint_default_call_trampoline), t5
+end
+    # not a tail call
+    # jit.transferPtr (constexpr CallLinkInfo::offsetOfCodeBlock())[t2], CodeBlock[cfr]
+    loadp CallLinkInfo::m_codeBlock[t2], t3
+    const offset = constexpr (CallerFrameAndPC::sizeInRegisters*sizeof(Register))
+    storep t3, (CodeBlock - offset)[sp]
+    call t5
+    
+    subp 0x80, sp
+    storep r0, [sp]
+    move sp, a0
+    move cfr, a1
+    move wasmInstance, a2
+    cCall3(_operationWasmToJSExitMarshalReturnValues)
+    btpnz r1, .handleException
+
+    macro forEachReturnWasmJSR(fn)
+        if ARM64 or ARM64E
+            fn(0 * 8, wa0, wa1)
+            fn(2 * 8, wa2, wa3)
+            fn(4 * 8, wa4, wa5)
+            fn(6 * 8, wa6, wa7)
+        elsif X86_64
+            fn(0 * 8, wa0)
+            fn(1 * 8, wa1)
+            fn(2 * 8, wa2)
+            fn(3 * 8, wa3)
+            fn(4 * 8, wa4)
+            fn(5 * 8, wa5)
+        elsif JSVALUE64
+            fn(0 * 8, wa0)
+            fn(1 * 8, wa1)
+            fn(2 * 8, wa2)
+            fn(3 * 8, wa3)
+            fn(4 * 8, wa4)
+            fn(5 * 8, wa5)
+        else
+            fn(0 * 8, wa1, wa0)
+            fn(1 * 8, wa3, wa2)
+        end
+    end
+
+if ARM64 or ARM64E
+    forEachReturnWasmJSR(macro (offset, gpr1, gpr2)
+        loadpairq offset[sp], gpr1, gpr2
+    end)
+elsif JSVALUE64
+    forEachReturnWasmJSR(macro (offset, gpr)
+        loadq offset[sp], gpr
+    end)
+else
+    forEachReturnWasmJSR(macro (offset, gprMsw, gprLsw)
+        load2ia offset[sp], gprLsw, gprMsw
+    end)
+end
+
+if ARM64 or ARM64E
+    forEachArgumentFPR(macro (offset, fpr1, fpr2)
+        loadpaird offset[sp], fpr1, fpr2
+    end)
+else
+    forEachArgumentFPR(macro (offset, fpr)
+        loadd offset[sp], fpr
+    end)
+end
+
+    loadp -8[cfr], wasmInstance
+    addp 0x10, sp
+
+    restoreCallerPCAndCFR()
+    ret
+
+.handleException:
+    move wasmInstance, a0
+    call _operationWasmUnwind
+    jmp r0, ExceptionHandlerPtrTag
+
+.oom:
+    throwException(OutOfMemory)
+
+end)
 
 macro traceExecution()
     if TRACING
@@ -333,13 +1122,17 @@ macro traceExecution()
     end
 end
 
-# Less convenient, but required for opcodes that collide with reserved instructions (e.g. wasm_nop)
-macro unprefixedWasmOp(opcodeName, opcodeStruct, fn)
-    commonOp(opcodeName, traceExecution, macro(size)
+macro commonWasmOp(opcodeName, opcodeStruct, prologue, fn)
+    commonOp(opcodeName, prologue, macro(size)
         fn(macro(fn2)
             fn2(opcodeName, opcodeStruct, size)
         end)
     end)
+end
+
+# Less convenient, but required for opcodes that collide with reserved instructions (e.g. wasm_nop)
+macro unprefixedWasmOp(opcodeName, opcodeStruct, fn)
+    commonWasmOp(opcodeName, opcodeStruct, traceExecution, fn)
 end
 
 macro wasmOp(opcodeName, opcodeStruct, fn)
@@ -358,6 +1151,24 @@ macro slowWasmOp(opcodeName)
     unprefixedSlowWasmOp(wasm_%opcodeName%)
 end
 
+# Float to float rounding ops
+macro wasmRoundingOp(opcodeName, opcodeStruct, fn)
+if JSVALUE64 # All current 64-bit platforms have instructions for these
+    wasmOp(opcodeName, opcodeStruct, fn)
+else
+    slowWasmOp(opcodeName)
+end
+end
+
+# i64 (signed/unsigned) to f32 or f64
+macro wasmI64ToFOp(opcodeName, opcodeStruct, fn)
+if JSVALUE64 # All current 64-bit platforms have instructions for these
+    wasmOp(opcodeName, opcodeStruct, fn)
+else
+    slowWasmOp(opcodeName)
+end
+end
+
 # Macro version of load operations: mload[suffix]
 # loads field from the instruction stream and performs load[suffix] to dst
 macro firstConstantRegisterIndex(ctx, fn)
@@ -372,19 +1183,28 @@ macro loadConstantOrVariable(ctx, index, loader)
         loader([cfr, index, 8])
         jmp .done
     .constant:
-        loadp CodeBlock[cfr], t6
-        loadp Wasm::FunctionCodeBlock::m_constants + VectorBufferOffset[t6], t6
+        loadp UnboxedWasmCalleeStackSlot[cfr], t6
+        loadp Wasm::LLIntCallee::m_constants[t6], t6
         subp firstConstantIndex, index
-        loader([t6, index, 8])
+        loader((constexpr (Int64FixedVector::Storage::offsetOfData()))[t6, index, 8])
     .done:
     end)
 end
 
+if JSVALUE64
 macro mloadq(ctx, field, dst)
     wgets(ctx, field, dst)
     loadConstantOrVariable(ctx, dst, macro (from)
         loadq from, dst
     end)
+end
+else
+macro mload2i(ctx, field, dstMsw, dstLsw)
+    wgets(ctx, field, dstLsw)
+    loadConstantOrVariable(ctx, dstLsw, macro (from)
+        load2ia from, dstLsw, dstMsw
+    end)
+end
 end
 
 macro mloadi(ctx, field, dst)
@@ -417,10 +1237,18 @@ end
 
 # Typed returns
 
+if JSVALUE64
 macro returnq(ctx, value)
     wgets(ctx, m_dst, t5)
     storeq value, [cfr, t5, 8]
     dispatch(ctx)
+end
+else
+macro return2i(ctx, msw, lsw)
+    wgets(ctx, m_dst, t5)
+    store2ia lsw, msw, [cfr, t5, 8]
+    dispatch(ctx)
+end
 end
 
 macro returni(ctx, value)
@@ -444,7 +1272,7 @@ end
 # Wasm wrapper of get/getu that operate on ctx
 macro wgets(ctx, field, dst)
     ctx(macro(opcodeName, opcodeStruct, size)
-        size(getOperandNarrow, getOperandWide16, getOperandWide32, macro (get)
+        size(getOperandNarrow, getOperandWide16Wasm, getOperandWide32Wasm, macro (get)
             get(opcodeStruct, field, dst)
         end)
     end)
@@ -452,7 +1280,7 @@ end
 
 macro wgetu(ctx, field, dst)
     ctx(macro(opcodeName, opcodeStruct, size)
-        size(getuOperandNarrow, getuOperandWide16, getuOperandWide32, macro (getu)
+        size(getuOperandNarrow, getuOperandWide16Wasm, getuOperandWide32Wasm, macro (getu)
             getu(opcodeStruct, field, dst)
         end)
     end)
@@ -462,7 +1290,7 @@ end
 
 macro dispatch(ctx)
     ctx(macro(opcodeName, opcodeStruct, size)
-        genericDispatchOp(wasmDispatch, size, opcodeName)
+        genericDispatchOpWasm(wasmDispatch, size, opcodeName)
     end)
 end
 
@@ -479,8 +1307,8 @@ macro doReturn()
     restoreCalleeSavesUsedByWasm()
     restoreCallerPCAndCFR()
     if ARM64E
-        leap JSCConfig + constexpr JSC::offsetOfJSCConfigGateMap + (constexpr Gate::returnFromLLInt) * PtrSize, ws0
-        jmp [ws0], NativeToJITGatePtrTag
+        leap _g_config, ws0
+        jmp JSCConfigGateMapOffset + (constexpr Gate::returnFromLLInt) * PtrSize[ws0], NativeToJITGatePtrTag
     else
         ret
     end
@@ -488,75 +1316,72 @@ end
 
 # Entry point
 
-macro wasmCodeBlockGetter(targetRegister)
-    loadp Callee[cfr], targetRegister
-    andp ~3, targetRegister
-    loadp Wasm::LLIntCallee::m_codeBlock[targetRegister], targetRegister
-end
+op(wasm_function_prologue_trampoline, macro ()
+    tagReturnAddress sp
+    jmp _wasm_function_prologue
+end)
 
 op(wasm_function_prologue, macro ()
-    if not WEBASSEMBLY or not JSVALUE64 or C_LOOP or C_LOOP_WIN
+    if not WEBASSEMBLY or C_LOOP
         error
     end
 
-    wasmPrologue(wasmCodeBlockGetter, functionCodeBlockSetter, loadWasmInstanceFromTLS)
+    wasmPrologue()
     wasmNextInstruction()
 end)
 
-op(wasm_function_prologue_no_tls, macro ()
-    if not WEBASSEMBLY or not JSVALUE64 or C_LOOP or C_LOOP_WIN
+op(wasm_function_prologue_simd_trampoline, macro ()
+    tagReturnAddress sp
+    jmp _wasm_function_prologue_simd
+end)
+
+op(wasm_function_prologue_simd, macro ()
+    if not WEBASSEMBLY or C_LOOP
         error
     end
 
-    wasmPrologue(wasmCodeBlockGetter, functionCodeBlockSetter, macro () end)
-    wasmNextInstruction()
+    wasmPrologueSIMD()
+    break
 end)
 
-op(wasm_throw_from_slow_path_trampoline, macro ()
-    loadp Wasm::Instance::m_pointerToTopEntryFrame[wasmInstance], t5
-    loadp [t5], t5
-    copyCalleeSavesToEntryFrameCalleeSavesBuffer(t5)
-
-    move cfr, a0
-    addp PB, PC, a1
-    move wasmInstance, a2
-    # Slow paths and the throwException macro store the exception code in the ArgumentCountIncludingThis slot
-    loadi ArgumentCountIncludingThis + PayloadOffset[cfr], a3
-    cCall4(_slow_path_wasm_throw_exception)
-
+macro jumpToException()
     if ARM64E
         move r0, a0
-        leap JSCConfig + constexpr JSC::offsetOfJSCConfigGateMap + (constexpr Gate::exceptionHandler) * PtrSize, a1
-        jmp [a1], NativeToJITGatePtrTag # ExceptionHandlerPtrTag
+        leap _g_config, a1
+        jmp JSCConfigGateMapOffset + (constexpr Gate::exceptionHandler) * PtrSize[a1], NativeToJITGatePtrTag # ExceptionHandlerPtrTag
     else
         jmp r0, ExceptionHandlerPtrTag
     end
+end
+
+op(wasm_throw_from_slow_path_trampoline, macro ()
+    loadp JSWebAssemblyInstance::m_vm[wasmInstance], t5
+    loadp VM::topEntryFrame[t5], t5
+    copyCalleeSavesToEntryFrameCalleeSavesBuffer(t5)
+
+    move cfr, a0
+    move wasmInstance, a1
+    # Slow paths and the throwException macro store the exception code in the ArgumentCountIncludingThis slot
+    loadi ArgumentCountIncludingThis + PayloadOffset[cfr], a2
+    storei 0, CallSiteIndex[cfr]
+    cCall3(_slow_path_wasm_throw_exception)
+    jumpToException()
 end)
 
 macro wasm_throw_from_fault_handler(instance)
     # instance should be in a2 when we get here
-    loadp Wasm::Instance::m_pointerToTopEntryFrame[instance], a0
-    loadp [a0], a0
+    loadp JSWebAssemblyInstance::m_vm[instance], a0
+    loadp VM::topEntryFrame[a0], a0
     copyCalleeSavesToEntryFrameCalleeSavesBuffer(a0)
 
-    move constexpr Wasm::ExceptionType::OutOfBoundsMemoryAccess, a3
-    move 0, a1
     move cfr, a0
-    cCall4(_slow_path_wasm_throw_exception)
+    move a2, a1
+    move constexpr Wasm::ExceptionType::OutOfBoundsMemoryAccess, a2
 
-    if ARM64E
-        move r0, a0
-        leap JSCConfig + constexpr JSC::offsetOfJSCConfigGateMap + (constexpr Gate::exceptionHandler) * PtrSize, a1
-        jmp [a1], NativeToJITGatePtrTag # ExceptionHandlerPtrTag
-    else
-        jmp r0, ExceptionHandlerPtrTag
-    end
+    storei 0, CallSiteIndex[cfr]
+    cCall3(_slow_path_wasm_throw_exception)
+    jumpToException()
 end
-
-op(wasm_throw_from_fault_handler_trampoline_fastTLS, macro ()
-    loadWasmInstanceFromTLSTo(a2)
-    wasm_throw_from_fault_handler(a2)
-end)
 
 op(wasm_throw_from_fault_handler_trampoline_reg_instance, macro ()
     move wasmInstance, a2
@@ -574,24 +1399,24 @@ slowWasmOp(ref_func)
 slowWasmOp(table_get)
 slowWasmOp(table_set)
 slowWasmOp(table_init)
-slowWasmOp(elem_drop)
-slowWasmOp(table_size)
 slowWasmOp(table_fill)
-slowWasmOp(table_copy)
 slowWasmOp(table_grow)
-slowWasmOp(memory_fill)
-slowWasmOp(memory_copy)
-slowWasmOp(memory_init)
-slowWasmOp(data_drop)
 slowWasmOp(set_global_ref)
 slowWasmOp(set_global_ref_portable_binding)
 slowWasmOp(memory_atomic_wait32)
 slowWasmOp(memory_atomic_wait64)
 slowWasmOp(memory_atomic_notify)
+slowWasmOp(array_new)
+slowWasmOp(array_get)
+slowWasmOp(array_set)
+slowWasmOp(array_fill)
+slowWasmOp(struct_new)
+slowWasmOp(struct_get)
+slowWasmOp(struct_set)
 
 wasmOp(grow_memory, WasmGrowMemory, macro(ctx)
     callWasmSlowPath(_slow_path_wasm_grow_memory)
-    reloadMemoryRegistersFromInstance(wasmInstance, ws0, ws1)
+    reloadMemoryRegistersFromInstance(wasmInstance, ws0)
     dispatch(ctx)
 end)
 
@@ -606,18 +1431,25 @@ _wasm_wide32:
 _wasm_enter:
     traceExecution()
     checkStackPointerAlignment(t2, 0xdead00e1)
-    loadp CodeBlock[cfr], t2                // t2<CodeBlock> = cfr.CodeBlock
-    loadi Wasm::FunctionCodeBlock::m_numVars[t2], t2      // t2<size_t> = t2<CodeBlock>.m_numVars
-    subq CalleeSaveSpaceAsVirtualRegisters + NumberOfWasmArguments, t2
+    loadp UnboxedWasmCalleeStackSlot[cfr], t2 // t2<UnboxedWasmCalleeStackSlot> = cfr.UnboxedWasmCalleeStackSlot
+    loadi Wasm::LLIntCallee::m_numVars[t2], t2 // t2<size_t> = t2<UnboxedWasmCalleeStackSlot>.m_numVars
+    subi CalleeSaveSpaceAsVirtualRegisters + NumberOfWasmArguments, t2
     btiz t2, .opEnterDone
-    move cfr, t1
-    subq CalleeSaveSpaceAsVirtualRegisters * 8 + NumberOfWasmArguments * 8, t1
+    subp cfr, (CalleeSaveSpaceAsVirtualRegisters + NumberOfWasmArguments) * SlotSize, t1
+    lshifti 3, t2
     negi t2
+if JSVALUE64
     sxi2q t2, t2
+end
+    move 0, t6
 .opEnterLoop:
-    storeq 0, [t1, t2, 8]
-    addq 1, t2
-    btqnz t2, .opEnterLoop
+if JSVALUE64
+    storeq t6, [t1, t2]
+else
+    store2ia t6, t6, [t1, t2]
+end
+    addp 8, t2
+    btpnz t2, .opEnterLoop
 .opEnterDone:
     wasmDispatchIndirect(1)
 
@@ -628,11 +1460,6 @@ end)
 wasmOp(loop_hint, WasmLoopHint, macro(ctx)
     checkSwitchToJITForLoop()
     dispatch(ctx)
-end)
-
-wasmOp(mov, WasmMov, macro(ctx)
-    mloadq(ctx, m_src, t0)
-    returnq(ctx, t0)
 end)
 
 wasmOp(jtrue, WasmJtrue, macro(ctx)
@@ -655,27 +1482,27 @@ wasmOp(switch, WasmSwitch, macro(ctx)
     mloadi(ctx, m_scrutinee, t0)
     wgetu(ctx, m_tableIndex, t1)
 
-    loadp CodeBlock[cfr], t2
-    loadp Wasm::FunctionCodeBlock::m_jumpTables + VectorBufferOffset[t2], t2
-    muli sizeof Wasm::FunctionCodeBlock::JumpTable, t1
+    loadp UnboxedWasmCalleeStackSlot[cfr], t2
+    loadp Wasm::LLIntCallee::m_jumpTables[t2], t2
+    muli sizeof Wasm::JumpTable, t1
     addp t1, t2
 
-    loadi VectorSizeOffset[t2], t3
+    loadp (constexpr (WasmJumpTableFixedVector::Storage::offsetOfData()))[t2], t2
+    loadi Wasm::JumpTable::Storage::m_size[t2], t3
     bib t0, t3, .inBounds
 
 .outOfBounds:
     subi t3, 1, t0
 
 .inBounds:
-    loadp VectorBufferOffset[t2], t2
-    muli sizeof Wasm::FunctionCodeBlock::JumpTableEntry, t0
+    muli sizeof Wasm::JumpTableEntry, t0
 
-    loadi Wasm::FunctionCodeBlock::JumpTableEntry::startOffset[t2, t0], t1
-    loadi Wasm::FunctionCodeBlock::JumpTableEntry::dropCount[t2, t0], t3
-    loadi Wasm::FunctionCodeBlock::JumpTableEntry::keepCount[t2, t0], t5
+    loadi (constexpr (Wasm::JumpTable::Storage::offsetOfData())) + Wasm::JumpTableEntry::startOffset[t2, t0], t1
+    loadi (constexpr (Wasm::JumpTable::Storage::offsetOfData())) + Wasm::JumpTableEntry::dropCount[t2, t0], t3
+    loadi (constexpr (Wasm::JumpTable::Storage::offsetOfData())) + Wasm::JumpTableEntry::keepCount[t2, t0], t5
     dropKeep(t1, t3, t5)
 
-    loadis Wasm::FunctionCodeBlock::JumpTableEntry::target[t2, t0], t3
+    loadis (constexpr (Wasm::JumpTable::Storage::offsetOfData())) + Wasm::JumpTableEntry::target[t2, t0], t3
     assert(macro(ok) btinz t3, .ok end)
     wasmDispatchIndirect(t3)
 end)
@@ -686,12 +1513,28 @@ end)
 
 unprefixedWasmOp(wasm_ret, WasmRet, macro(ctx)
     checkSwitchToJITForEpilogue()
-    forEachArgumentGPR(macro (offset, gpr)
+if ARM64 or ARM64E
+    forEachArgumentJSR(macro (offset, gpr1, gpr2)
+        loadpairq -offset - 16 - CalleeSaveSpaceAsVirtualRegisters * 8[cfr], gpr2, gpr1
+    end)
+elsif JSVALUE64
+    forEachArgumentJSR(macro (offset, gpr)
         loadq -offset - 8 - CalleeSaveSpaceAsVirtualRegisters * 8[cfr], gpr
     end)
+else
+    forEachArgumentJSR(macro (offset, gprMsw, gpLsw)
+        load2ia -offset - 8 - CalleeSaveSpaceAsVirtualRegisters * 8[cfr], gpLsw, gprMsw
+    end)
+end
+if ARM64 or ARM64E
+    forEachArgumentFPR(macro (offset, fpr1, fpr2)
+        loadpaird -offset - 16 - CalleeSaveSpaceAsVirtualRegisters * 8[cfr], fpr2, fpr1
+    end)
+else
     forEachArgumentFPR(macro (offset, fpr)
         loadd -offset - 8 - CalleeSaveSpaceAsVirtualRegisters * 8[cfr], fpr
     end)
+end
     doReturn()
 end)
 
@@ -706,59 +1549,40 @@ wasmOp(ret_void, WasmRetVoid, macro(ctx)
     doReturn()
 end)
 
-wasmOp(ref_is_null, WasmRefIsNull, macro(ctx)
-    mloadp(ctx, m_ref, t0)
-    cqeq t0, ValueNull, t0
-    returni(ctx, t0)
-end)
-
-wasmOp(get_global, WasmGetGlobal, macro(ctx)
-    loadp Wasm::Instance::m_globals[wasmInstance], t0
-    wgetu(ctx, m_globalIndex, t1)
-    loadq [t0, t1, 8], t0
-    returnq(ctx, t0)
-end)
-
-wasmOp(set_global, WasmSetGlobal, macro(ctx)
-    loadp Wasm::Instance::m_globals[wasmInstance], t0
-    wgetu(ctx, m_globalIndex, t1)
-    mloadq(ctx, m_value, t2)
-    storeq t2, [t0, t1, 8]
-    dispatch(ctx)
-end)
-
-wasmOp(get_global_portable_binding, WasmGetGlobalPortableBinding, macro(ctx)
-    loadp Wasm::Instance::m_globals[wasmInstance], t0
-    wgetu(ctx, m_globalIndex, t1)
-    loadq [t0, t1, 8], t0
-    loadq [t0], t0
-    returnq(ctx, t0)
-end)
-
-wasmOp(set_global_portable_binding, WasmSetGlobalPortableBinding, macro(ctx)
-    loadp Wasm::Instance::m_globals[wasmInstance], t0
-    wgetu(ctx, m_globalIndex, t1)
-    mloadq(ctx, m_value, t2)
-    loadq [t0, t1, 8], t0
-    storeq t2, [t0]
-    dispatch(ctx)
-end)
-
 macro slowPathForWasmCall(ctx, slowPath, storeWasmInstance)
+    # First, prepare the new stack frame
+    # We do this before the CCall so it can write stuff into the new frame from CPP
+    wgetu(ctx, m_stackOffset, ws1)
+    muli SlotSize, ws1
+if ARMv7
+    subp cfr, ws1, ws1
+    move ws1, sp
+else
+    subp cfr, ws1, sp
+end
+
+if ASSERT_ENABLED
+    if ARMv7
+        move 0xBEEF, a0
+        storep a0, PayloadOffset + Callee[sp]
+        move 0, a0
+        storep a0, TagOffset + Callee[sp]
+    else
+        move 0xBEEF, a0
+        storep a0, Callee[sp]
+    end
+end
+
     callWasmCallSlowPath(
         slowPath,
         # callee is r0 and targetWasmInstance is r1
-        macro (callee, targetWasmInstance)
-            move callee, ws0
+        macro (calleeEntryPoint, targetWasmInstance)
+            loadi CallSiteIndex[cfr], PC
 
-            loadi ArgumentCountIncludingThis + TagOffset[cfr], PC
+            move calleeEntryPoint, ws0
 
             # the call might throw (e.g. indirect call with bad signature)
             btpz targetWasmInstance, .throw
-
-            wgetu(ctx, m_stackOffset, ws1)
-            lshifti 3, ws1
-            subp cfr, ws1, sp
 
             wgetu(ctx, m_numberOfStackArgs, ws1)
 
@@ -766,24 +1590,39 @@ macro slowPathForWasmCall(ctx, slowPath, storeWasmInstance)
             move wasmInstance, PB
 
             storeWasmInstance(targetWasmInstance)
-            reloadMemoryRegistersFromInstance(targetWasmInstance, wa0, wa1)
+            reloadMemoryRegistersFromInstance(targetWasmInstance, wa0)
 
             # Load registers from stack
-            forEachArgumentGPR(macro (offset, gpr)
-                loadq CallFrameHeaderSize + offset[sp, ws1, 8], gpr
+if ARM64 or ARM64E
+            leap [sp, ws1, 8], ws1
+            forEachArgumentJSR(macro (offset, gpr1, gpr2)
+                loadpairq CallFrameHeaderSize + 8 + offset[ws1], gpr1, gpr2
             end)
-
+elsif JSVALUE64
+            forEachArgumentJSR(macro (offset, gpr)
+                loadq CallFrameHeaderSize + 8 + offset[sp, ws1, 8], gpr
+            end)
+else
+            forEachArgumentJSR(macro (offset, gprMsw, gpLsw)
+                load2ia CallFrameHeaderSize + 8 + offset[sp, ws1, 8], gpLsw, gprMsw
+            end)
+end
+if ARM64 or ARM64E
+            forEachArgumentFPR(macro (offset, fpr1, fpr2)
+                loadpaird CallFrameHeaderSize + 8 + offset[ws1], fpr1, fpr2
+            end)
+else
             forEachArgumentFPR(macro (offset, fpr)
-                loadd CallFrameHeaderSize + offset[sp, ws1, 8], fpr
+                loadd CallFrameHeaderSize + 8 + offset[sp, ws1, 8], fpr
             end)
-
+end
             addp CallerFrameAndPCSize, sp
 
             ctx(macro(opcodeName, opcodeStruct, size)
                 macro callNarrow()
                     if ARM64E
-                        leap JSCConfig + constexpr JSC::offsetOfJSCConfigGateMap + (constexpr Gate::%opcodeName%) * PtrSize, ws1
-                        jmp [ws1], NativeToJITGatePtrTag # JSEntrySlowPathPtrTag
+                        leap _g_config, ws1
+                        jmp JSCConfigGateMapOffset + (constexpr Gate::%opcodeName%) * PtrSize[ws1], NativeToJITGatePtrTag # JSEntrySlowPathPtrTag
                     end
                     _wasm_trampoline_%opcodeName%:
                     call ws0, JSEntrySlowPathPtrTag
@@ -791,8 +1630,8 @@ macro slowPathForWasmCall(ctx, slowPath, storeWasmInstance)
 
                 macro callWide16()
                     if ARM64E
-                        leap JSCConfig + constexpr JSC::offsetOfJSCConfigGateMap + (constexpr Gate::%opcodeName%_wide16) * PtrSize, ws1
-                        jmp [ws1], NativeToJITGatePtrTag # JSEntrySlowPathPtrTag
+                        leap _g_config, ws1
+                        jmp JSCConfigGateMapOffset + (constexpr Gate::%opcodeName%_wide16) * PtrSize[ws1], NativeToJITGatePtrTag # JSEntrySlowPathPtrTag
                     end
                     _wasm_trampoline_%opcodeName%_wide16:
                     call ws0, JSEntrySlowPathPtrTag
@@ -800,8 +1639,8 @@ macro slowPathForWasmCall(ctx, slowPath, storeWasmInstance)
 
                 macro callWide32()
                     if ARM64E
-                        leap JSCConfig + constexpr JSC::offsetOfJSCConfigGateMap + (constexpr Gate::%opcodeName%_wide32) * PtrSize, ws1
-                        jmp [ws1], NativeToJITGatePtrTag # JSEntrySlowPathPtrTag
+                        leap _g_config, ws1
+                        jmp JSCConfigGateMapOffset + (constexpr Gate::%opcodeName%_wide32) * PtrSize[ws1], NativeToJITGatePtrTag # JSEntrySlowPathPtrTag
                     end
                     _wasm_trampoline_%opcodeName%_wide32:
                     call ws0, JSEntrySlowPathPtrTag
@@ -811,47 +1650,64 @@ macro slowPathForWasmCall(ctx, slowPath, storeWasmInstance)
                 defineReturnLabel(opcodeName, size)
             end)
 
-            loadp CodeBlock[cfr], ws1
-            loadi Wasm::FunctionCodeBlock::m_numCalleeLocals[ws1], ws1
-            lshiftp 3, ws1
-            addp maxFrameExtentForSlowPathCall, ws1
-            subp cfr, ws1, sp
+            restoreStackPointerAfterCall()
 
             # We need to set PC to load information from the instruction stream, but we
             # need to preserve its current value since it might contain a return value
+if ARMv7
+            push PC
+else
             move PC, memoryBase
+end
             move PB, wasmInstance
-            loadi ArgumentCountIncludingThis + TagOffset[cfr], PC
-            loadp CodeBlock[cfr], PB
-            loadp Wasm::FunctionCodeBlock::m_instructionsRawPointer[PB], PB
+            loadi CallSiteIndex[cfr], PC
+            loadp UnboxedWasmCalleeStackSlot[cfr], PB
+            loadp Wasm::LLIntCallee::m_instructionsRawPointer[PB], PB
 
             wgetu(ctx, m_stackOffset, ws1)
             lshifti 3, ws1
             negi ws1
+if JSVALUE64
             sxi2q ws1, ws1
+end
             addp cfr, ws1
 
             # Argument registers are also return registers, so they must be stored to the stack
             # in case they contain return values.
             wgetu(ctx, m_numberOfStackArgs, ws0)
+if ARMv7
+            pop PC
+else
             move memoryBase, PC
-            forEachArgumentGPR(macro (offset, gpr)
-                storeq gpr, CallFrameHeaderSize + offset[ws1, ws0, 8]
+end
+if ARM64 or ARM64E
+            leap [ws1, ws0, 8], ws1
+            forEachArgumentJSR(macro (offset, gpr1, gpr2)
+                storepairq gpr1, gpr2, CallFrameHeaderSize + 8 + offset[ws1]
             end)
-
+elsif JSVALUE64
+            forEachArgumentJSR(macro (offset, gpr)
+                storeq gpr, CallFrameHeaderSize + 8 + offset[ws1, ws0, 8]
+            end)
+else
+            forEachArgumentJSR(macro (offset, gprMsw, gpLsw)
+                store2ia gpLsw, gprMsw, CallFrameHeaderSize + 8 + offset[ws1, ws0, 8]
+            end)
+end
+if ARM64 or ARM64E
+            forEachArgumentFPR(macro (offset, fpr1, fpr2)
+                storepaird fpr1, fpr2, CallFrameHeaderSize + 8 + offset[ws1]
+            end)
+else
             forEachArgumentFPR(macro (offset, fpr)
-                stored fpr, CallFrameHeaderSize + offset[ws1, ws0, 8]
+                stored fpr, CallFrameHeaderSize + 8 + offset[ws1, ws0, 8]
             end)
+end
 
-            loadi ArgumentCountIncludingThis + TagOffset[cfr], PC
+            loadi CallSiteIndex[cfr], PC
 
             storeWasmInstance(wasmInstance)
-            reloadMemoryRegistersFromInstance(wasmInstance, ws0, ws1)
-
-            # Restore stack limit
-            loadp Wasm::Instance::m_pointerToActualStackLimit[wasmInstance], t5
-            loadp [t5], t5
-            storep t5, Wasm::Instance::m_cachedStackLimit[wasmInstance]
+            reloadMemoryRegistersFromInstance(wasmInstance, ws0)
 
             dispatch(ctx)
 
@@ -861,223 +1717,226 @@ macro slowPathForWasmCall(ctx, slowPath, storeWasmInstance)
         end)
 end
 
-unprefixedWasmOp(wasm_call, WasmCall, macro(ctx)
-    slowPathForWasmCall(ctx, _slow_path_wasm_call, storeWasmInstanceToTLS)
-end)
+macro slowPathForWasmTailCall(ctx, slowPath)
+    # First, prepare the new stack frame like a regular call
+    # We do this before the CCall so it can write stuff into the new frame from CPP
+    # Later, we will move the frame up.
+    wgetu(ctx, m_stackOffset, ws1)
+    muli SlotSize, ws1
+    if ARMv7
+        subp cfr, ws1, ws1
+        move ws1, sp
+    else
+        subp cfr, ws1, sp
+    end
 
-unprefixedWasmOp(wasm_call_no_tls, WasmCallNoTls, macro(ctx)
-    slowPathForWasmCall(ctx, _slow_path_wasm_call_no_tls, macro(targetInstance) move targetInstance, wasmInstance end)
+    if ASSERT_ENABLED
+        if ARMv7
+            move 0xBEEF, a0
+            storep a0, PayloadOffset + Callee[sp]
+            move 0, a0
+            storep a0, TagOffset + Callee[sp]
+        else
+            move 0xBEEF, a0
+            storep a0, Callee[sp]
+        end
+    end
+
+    callWasmCallSlowPath(
+        slowPath,
+        # callee is r0 and targetWasmInstance is r1
+        macro (calleeEntryPoint, targetWasmInstance)
+            move calleeEntryPoint, ws0
+
+            loadi CallSiteIndex[cfr], PC
+
+            # the call might throw (e.g. indirect call with bad signature)
+            btpz targetWasmInstance, .throw
+
+            move targetWasmInstance, wasmInstance
+            reloadMemoryRegistersFromInstance(targetWasmInstance, wa0)
+
+            wgetu(ctx, m_numberOfCalleeStackArgs, ws1)
+
+            # We make sure arguments registers are loaded from the stack before shuffling the frame.
+if ARM64 or ARM64E
+            leap [sp, ws1, 8], ws1
+            forEachArgumentJSR(macro (offset, gpr1, gpr2)
+                loadpairq CallFrameHeaderSize + 8 + offset[ws1], gpr1, gpr2
+            end)
+elsif JSVALUE64
+            forEachArgumentJSR(macro (offset, gpr)
+                loadq CallFrameHeaderSize + 8 + offset[sp, ws1, 8], gpr
+            end)
+else
+            forEachArgumentJSR(macro (offset, gprMsw, gpLsw)
+                load2ia CallFrameHeaderSize + 8 + offset[sp, ws1, 8], gpLsw, gprMsw
+            end)
+end
+if ARM64 or ARM64E
+            forEachArgumentFPR(macro (offset, fpr1, fpr2)
+                loadpaird CallFrameHeaderSize + 8 + offset[ws1], fpr1, fpr2
+            end)
+else
+            forEachArgumentFPR(macro (offset, fpr)
+                loadd CallFrameHeaderSize + 8 + offset[sp, ws1, 8], fpr
+            end)
+end
+
+            # We need PC to load information from the context
+            # and two scratch registers to perform the copy.
+
+            preserveGPRsUsedByTailCall(wa0, wa1)
+
+            # Preserve PC
+            move PC, ws1
+
+            # Reload PC
+            loadi CallSiteIndex[cfr], PC
+
+            # Compute old stack size
+            wgetu(ctx, m_numberOfCallerStackArgs, wa0)
+            muli SlotSize, wa0
+            addi CallFrameHeaderSize + StackAlignment - 1, wa0
+            andi ~StackAlignmentMask, wa0
+
+            # Compute new stack size
+            wgetu(ctx, m_numberOfCalleeStackArgs, wa1)
+            muli SlotSize, wa1
+            addi CallFrameHeaderSize + StackAlignment - 1, wa1
+            andi ~StackAlignmentMask, wa1
+
+            # Compute new stack pointer
+            addp cfr, wa0
+            subp wa1, wa0
+
+            # Restore PC
+            move ws1, PC
+
+if ARM64E
+            addp CallerFrameAndPCSize, cfr, ws2
+end
+            preserveReturnAddress(ws1)
+            usePreviousFrame()
+
+if ARMv7
+            addi SlotSize, wa1
+end
+            .copyLoop:
+if JSVALUE64
+            subi MachineRegisterSize, wa1
+            loadq [sp, wa1, 1], ws1
+            storeq ws1, [wa0, wa1, 1]
+else
+            subi PtrSize, wa1
+            loadp [sp, wa1, 1], ws1
+            storep ws1, [wa0, wa1, 1]
+end
+            btinz wa1, .copyLoop
+
+            # Store the wasm callee, set by the c slow path above.
+            loadp Callee[sp], ws1
+            storep ws1, Callee[wa0]
+
+            move wa0, ws1
+
+            restoreGPRsUsedByTailCall(wa0, wa1)
+
+            # We are done copying the callee's stack arguments to their final position.
+            # ws1 is the new stack pointer.
+            # cfr is the caller's caller's frame pointer.
+
+if X86_64
+            addp PtrSize, ws1, sp
+elsif ARMv7
+            addp CallerFrameAndPCSize, ws1
+            move ws1, sp
+elsif ARM64 or ARM64E or RISCV64
+            addp CallerFrameAndPCSize, ws1, sp
+else
+            error
+end
+
+            ctx(macro(opcodeName, opcodeStruct, size)
+                macro jumpNarrow()
+                    if ARM64E
+                        leap _g_config, ws1
+                        jmp JSCConfigGateMapOffset + (constexpr Gate::wasmTailCallJSEntrySlowPathPtrTag) * PtrSize[ws1], NativeToJITGatePtrTag # JSEntrySlowPathPtrTag
+                    end
+                    _wasm_trampoline_%opcodeName%:
+                    jmp ws0, JSEntrySlowPathPtrTag
+                end
+
+                macro jumpWide16()
+                    if ARM64E
+                        leap _g_config, ws1
+                        jmp JSCConfigGateMapOffset + (constexpr Gate::wasmTailCallJSEntrySlowPathPtrTag) * PtrSize[ws1], NativeToJITGatePtrTag # JSEntrySlowPathPtrTag
+                    end
+                    _wasm_trampoline_%opcodeName%_wide16:
+                    jmp ws0, JSEntrySlowPathPtrTag
+                end
+
+                macro jumpWide32()
+                    if ARM64E
+                        leap _g_config, ws1
+                        jmp JSCConfigGateMapOffset + (constexpr Gate::wasmTailCallJSEntrySlowPathPtrTag) * PtrSize[ws1], NativeToJITGatePtrTag # JSEntrySlowPathPtrTag
+                    end
+                    _wasm_trampoline_%opcodeName%_wide32:
+                    jmp ws0, JSEntrySlowPathPtrTag
+                end
+
+                size(jumpNarrow, jumpWide16, jumpWide32, macro (gen) gen() end)
+            end)
+    .throw:
+    restoreStateAfterCCall()
+    dispatch(ctx)
+    end)
+end
+
+unprefixedWasmOp(wasm_call, WasmCall, macro(ctx)
+    slowPathForWasmCall(ctx, _slow_path_wasm_call, macro(targetInstance) move targetInstance, wasmInstance end)
 end)
 
 wasmOp(call_indirect, WasmCallIndirect, macro(ctx)
-    slowPathForWasmCall(ctx, _slow_path_wasm_call_indirect, storeWasmInstanceToTLS)
-end)
-
-wasmOp(call_indirect_no_tls, WasmCallIndirectNoTls, macro(ctx)
-    slowPathForWasmCall(ctx, _slow_path_wasm_call_indirect_no_tls, macro(targetInstance) move targetInstance, wasmInstance end)
+    slowPathForWasmCall(ctx, _slow_path_wasm_call_indirect, macro(targetInstance) move targetInstance, wasmInstance end)
 end)
 
 wasmOp(call_ref, WasmCallRef, macro(ctx)
-    slowPathForWasmCall(ctx, _slow_path_wasm_call_ref, storeWasmInstanceToTLS)
+    slowPathForWasmCall(ctx, _slow_path_wasm_call_ref, macro(targetInstance) move targetInstance, wasmInstance end)
 end)
 
-wasmOp(call_ref_no_tls, WasmCallRefNoTls, macro(ctx)
-    slowPathForWasmCall(ctx, _slow_path_wasm_call_ref_no_tls, macro(targetInstance) move targetInstance, wasmInstance end)
+wasmOp(tail_call, WasmTailCall, macro(ctx)
+    slowPathForWasmTailCall(ctx, _slow_path_wasm_tail_call)
 end)
 
-wasmOp(current_memory, WasmCurrentMemory, macro(ctx)
-    loadp Wasm::Instance::m_memory[wasmInstance], t0
-    loadp Wasm::Memory::m_handle[t0], t0
-    loadp Wasm::MemoryHandle::m_size[t0], t0
-    urshiftq 16, t0
-    returnq(ctx, t0)
+wasmOp(tail_call_indirect, WasmTailCallIndirect, macro(ctx)
+    slowPathForWasmTailCall(ctx, _slow_path_wasm_tail_call_indirect)
 end)
+
+slowWasmOp(call_builtin)
 
 wasmOp(select, WasmSelect, macro(ctx)
     mloadi(ctx, m_condition, t0)
     btiz t0, .isZero
+if JSVALUE64
     mloadq(ctx, m_nonZero, t0)
     returnq(ctx, t0)
 .isZero:
     mloadq(ctx, m_zero, t0)
     returnq(ctx, t0)
+else
+    mload2i(ctx, m_nonZero, t1, t0)
+    return2i(ctx, t1, t0)
+.isZero:
+    mload2i(ctx, m_zero, t1, t0)
+    return2i(ctx, t1, t0)
+end
 end)
-
-# uses offset as scratch and returns result on pointer
-macro emitCheckAndPreparePointer(ctx, pointer, offset, size)
-    leap size - 1[pointer, offset], t5
-    bpb t5, boundsCheckingSize, .continuation
-    throwException(OutOfBoundsMemoryAccess)
-.continuation:
-    addp memoryBase, pointer
-end
-
-macro emitCheckAndPreparePointerAddingOffset(ctx, pointer, offset, size)
-    leap size - 1[pointer, offset], t5
-    bpb t5, boundsCheckingSize, .continuation
-.throw:
-    throwException(OutOfBoundsMemoryAccess)
-.continuation:
-    addp memoryBase, pointer
-    addp offset, pointer
-end
-
-macro emitCheckAndPreparePointerAddingOffsetWithAlignmentCheck(ctx, pointer, offset, size)
-    leap size - 1[pointer, offset], t5
-    bpb t5, boundsCheckingSize, .continuation
-.throw:
-    throwException(OutOfBoundsMemoryAccess)
-.continuation:
-    addp memoryBase, pointer
-    addp offset, pointer
-    btpnz pointer, (size - 1), .throw
-end
-
-macro wasmLoadOp(name, struct, size, fn)
-    wasmOp(name, struct, macro(ctx)
-        mloadi(ctx, m_pointer, t0)
-        wgetu(ctx, m_offset, t1)
-        emitCheckAndPreparePointer(ctx, t0, t1, size)
-        fn([t0, t1], t2)
-        returnq(ctx, t2)
-    end)
-end
-
-wasmLoadOp(load8_u, WasmLoad8U, 1, macro(mem, dst) loadb mem, dst end)
-wasmLoadOp(load16_u, WasmLoad16U, 2, macro(mem, dst) loadh mem, dst end)
-wasmLoadOp(load32_u, WasmLoad32U, 4, macro(mem, dst) loadi mem, dst end)
-wasmLoadOp(load64_u, WasmLoad64U, 8, macro(mem, dst) loadq mem, dst end)
-
-wasmLoadOp(i32_load8_s, WasmI32Load8S, 1, macro(mem, dst) loadbsi mem, dst end)
-wasmLoadOp(i64_load8_s, WasmI64Load8S, 1, macro(mem, dst) loadbsq mem, dst end)
-wasmLoadOp(i32_load16_s, WasmI32Load16S, 2, macro(mem, dst) loadhsi mem, dst end)
-wasmLoadOp(i64_load16_s, WasmI64Load16S, 2, macro(mem, dst) loadhsq mem, dst end)
-wasmLoadOp(i64_load32_s, WasmI64Load32S, 4, macro(mem, dst) loadis mem, dst end)
-
-macro wasmStoreOp(name, struct, size, fn)
-    wasmOp(name, struct, macro(ctx)
-        mloadi(ctx, m_pointer, t0)
-        wgetu(ctx, m_offset, t1)
-        emitCheckAndPreparePointer(ctx, t0, t1, size)
-        mloadq(ctx, m_value, t2)
-        fn(t2, [t0, t1])
-        dispatch(ctx)
-    end)
-end
-
-wasmStoreOp(store8, WasmStore8, 1, macro(value, mem) storeb value, mem end)
-wasmStoreOp(store16, WasmStore16, 2, macro(value, mem) storeh value, mem end)
-wasmStoreOp(store32, WasmStore32, 4, macro(value, mem) storei value, mem end)
-wasmStoreOp(store64, WasmStore64, 8, macro(value, mem) storeq value, mem end)
 
 # Opcodes that don't have the `b3op` entry in wasm.json. This should be kept in sync
 
-wasmOp(i32_div_s, WasmI32DivS, macro (ctx)
-    mloadi(ctx, m_lhs, t0)
-    mloadi(ctx, m_rhs, t1)
-
-    btiz t1, .throwDivisionByZero
-
-    bineq t1, -1, .safe
-    bieq t0, constexpr INT32_MIN, .throwIntegerOverflow
-
-.safe:
-    if X86_64
-        # FIXME: Add a way to static_asset that t0 is rax and t2 is rdx
-        # https://bugs.webkit.org/show_bug.cgi?id=203692
-        cdqi
-        idivi t1
-    elsif ARM64 or ARM64E
-        divis t1, t0
-    else
-        error
-    end
-    returni(ctx, t0)
-
-.throwDivisionByZero:
-    throwException(DivisionByZero)
-
-.throwIntegerOverflow:
-    throwException(IntegerOverflow)
-end)
-
-wasmOp(i32_div_u, WasmI32DivU, macro (ctx)
-    mloadi(ctx, m_lhs, t0)
-    mloadi(ctx, m_rhs, t1)
-
-    btiz t1, .throwDivisionByZero
-
-    if X86_64
-        xori t2, t2
-        udivi t1
-    elsif ARM64 or ARM64E
-        divi t1, t0
-    else
-        error
-    end
-    returni(ctx, t0)
-
-.throwDivisionByZero:
-    throwException(DivisionByZero)
-end)
-
-wasmOp(i32_rem_s, WasmI32RemS, macro (ctx)
-    mloadi(ctx, m_lhs, t0)
-    mloadi(ctx, m_rhs, t1)
-
-    btiz t1, .throwDivisionByZero
-
-    bineq t1, -1, .safe
-    bineq t0, constexpr INT32_MIN, .safe
-
-    move 0, t2
-    jmp .return
-
-.safe:
-    if X86_64
-        # FIXME: Add a way to static_asset that t0 is rax and t2 is rdx
-        # https://bugs.webkit.org/show_bug.cgi?id=203692
-        cdqi
-        idivi t1
-    elsif ARM64 or ARM64E
-        divis t1, t0, t2
-        muli t1, t2
-        subi t0, t2, t2
-    else
-        error
-    end
-
-.return:
-    returni(ctx, t2)
-
-.throwDivisionByZero:
-    throwException(DivisionByZero)
-end)
-
-wasmOp(i32_rem_u, WasmI32RemU, macro (ctx)
-    mloadi(ctx, m_lhs, t0)
-    mloadi(ctx, m_rhs, t1)
-
-    btiz t1, .throwDivisionByZero
-
-    if X86_64
-        xori t2, t2
-        udivi t1
-    elsif ARM64 or ARM64E
-        divi t1, t0, t2
-        muli t1, t2
-        subi t0, t2, t2
-    else
-        error
-    end
-    returni(ctx, t2)
-
-.throwDivisionByZero:
-    throwException(DivisionByZero)
-end)
-
 wasmOp(i32_ctz, WasmI32Ctz, macro (ctx)
-    mloadq(ctx, m_operand, t0)
+    mloadi(ctx, m_operand, t0)
     tzcnti t0, t0
     returni(ctx, t0)
 end)
@@ -1091,144 +1950,25 @@ wasmOp(i32_popcnt, WasmI32Popcnt, macro (ctx)
     returni(ctx, r1)
 end)
 
-wasmOp(i64_div_s, WasmI64DivS, macro (ctx)
-    mloadq(ctx, m_lhs, t0)
-    mloadq(ctx, m_rhs, t1)
-
-    btqz t1, .throwDivisionByZero
-
-    bqneq t1, -1, .safe
-    bqeq t0, constexpr INT64_MIN, .throwIntegerOverflow
-
-.safe:
-    if X86_64
-        # FIXME: Add a way to static_asset that t0 is rax and t2 is rdx
-        # https://bugs.webkit.org/show_bug.cgi?id=203692
-        cqoq
-        idivq t1
-    elsif ARM64 or ARM64E
-        divqs t1, t0
-    else
-        error
-    end
-    returnq(ctx, t0)
-
-.throwDivisionByZero:
-    throwException(DivisionByZero)
-
-.throwIntegerOverflow:
-    throwException(IntegerOverflow)
-end)
-
-wasmOp(i64_div_u, WasmI64DivU, macro (ctx)
-    mloadq(ctx, m_lhs, t0)
-    mloadq(ctx, m_rhs, t1)
-
-    btqz t1, .throwDivisionByZero
-
-    if X86_64
-        xorq t2, t2
-        udivq t1
-    elsif ARM64 or ARM64E
-        divq t1, t0
-    else
-        error
-    end
-    returnq(ctx, t0)
-
-.throwDivisionByZero:
-    throwException(DivisionByZero)
-end)
-
-wasmOp(i64_rem_s, WasmI64RemS, macro (ctx)
-    mloadq(ctx, m_lhs, t0)
-    mloadq(ctx, m_rhs, t1)
-
-    btqz t1, .throwDivisionByZero
-
-    bqneq t1, -1, .safe
-    bqneq t0, constexpr INT64_MIN, .safe
-
-    move 0, t2
-    jmp .return
-
-.safe:
-    if X86_64
-        # FIXME: Add a way to static_asset that t0 is rax and t2 is rdx
-        # https://bugs.webkit.org/show_bug.cgi?id=203692
-        cqoq
-        idivq t1
-    elsif ARM64 or ARM64E
-        divqs t1, t0, t2
-        mulq t1, t2
-        subq t0, t2, t2
-    else
-        error
-    end
-
-.return:
-    returnq(ctx, t2) # rdx has the remainder
-
-.throwDivisionByZero:
-    throwException(DivisionByZero)
-end)
-
-wasmOp(i64_rem_u, WasmI64RemU, macro (ctx)
-    mloadq(ctx, m_lhs, t0)
-    mloadq(ctx, m_rhs, t1)
-
-    btqz t1, .throwDivisionByZero
-
-    if X86_64
-        xorq t2, t2
-        udivq t1
-    elsif ARM64 or ARM64E
-        divq t1, t0, t2
-        mulq t1, t2
-        subq t0, t2, t2
-    else
-        error
-    end
-    returnq(ctx, t2)
-
-.throwDivisionByZero:
-    throwException(DivisionByZero)
-end)
-
-wasmOp(i64_ctz, WasmI64Ctz, macro (ctx)
-    mloadq(ctx, m_operand, t0)
-    tzcntq t0, t0
-    returnq(ctx, t0)
-end)
-
-wasmOp(i64_popcnt, WasmI64Popcnt, macro (ctx)
-    mloadq(ctx, m_operand, a1)
-    prepareStateForCCall()
-    move PC, a0
-    cCall2(_slow_path_wasm_popcountll)
-    restoreStateAfterCCall()
-    returnq(ctx, r1)
-end)
-
-wasmOp(f32_trunc, WasmF32Trunc, macro (ctx)
+wasmRoundingOp(f32_trunc, WasmF32Trunc, macro (ctx)
     mloadf(ctx, m_operand, ft0)
     truncatef ft0, ft0
     returnf(ctx, ft0)
 end)
 
-wasmOp(f32_nearest, WasmF32Nearest, macro (ctx)
+wasmRoundingOp(f32_nearest, WasmF32Nearest, macro (ctx)
     mloadf(ctx, m_operand, ft0)
     roundf ft0, ft0
     returnf(ctx, ft0)
 end)
 
-wasmOp(f64_trunc, WasmF64Trunc, macro (ctx)
+wasmRoundingOp(f64_trunc, WasmF64Trunc, macro (ctx)
     mloadd(ctx, m_operand, ft0)
     truncated ft0, ft0
     returnd(ctx, ft0)
 end)
 
-wasmOp(f64_nearest, WasmF64Nearest, macro (ctx)
+wasmRoundingOp(f64_nearest, WasmF64Nearest, macro (ctx)
     mloadd(ctx, m_operand, ft0)
     roundd ft0, ft0
     returnd(ctx, ft0)
@@ -1246,24 +1986,6 @@ wasmOp(i32_trunc_s_f32, WasmI32TruncSF32, macro (ctx)
     bfgtequn ft0, ft1, .outOfBoundsTrunc
 
     truncatef2is ft0, t0
-    returni(ctx, t0)
-
-.outOfBoundsTrunc:
-    throwException(OutOfBoundsTrunc)
-end)
-
-wasmOp(i32_trunc_s_f64, WasmI32TruncSF64, macro (ctx)
-    mloadd(ctx, m_operand, ft0)
-
-    move 0xc1e0000000200000, t0 # INT32_MIN - 1.0
-    fq2d t0, ft1
-    bdltequn ft0, ft1, .outOfBoundsTrunc
-
-    move 0x41e0000000000000, t0 # -INT32_MIN
-    fq2d t0, ft1
-    bdgtequn ft0, ft1, .outOfBoundsTrunc
-
-    truncated2is ft0, t0
     returni(ctx, t0)
 
 .outOfBoundsTrunc:
@@ -1288,96 +2010,6 @@ wasmOp(i32_trunc_u_f32, WasmI32TruncUF32, macro (ctx)
     throwException(OutOfBoundsTrunc)
 end)
 
-wasmOp(i32_trunc_u_f64, WasmI32TruncUF64, macro (ctx)
-    mloadd(ctx, m_operand, ft0)
-
-    move 0xbff0000000000000, t0 # -1.0
-    fq2d t0, ft1
-    bdltequn ft0, ft1, .outOfBoundsTrunc
-
-    move 0x41f0000000000000, t0 # INT32_MIN * -2.0
-    fq2d t0, ft1
-    bdgtequn ft0, ft1, .outOfBoundsTrunc
-
-    truncated2i ft0, t0
-    returni(ctx, t0)
-
-.outOfBoundsTrunc:
-    throwException(OutOfBoundsTrunc)
-end)
-
-wasmOp(i64_trunc_s_f32, WasmI64TruncSF32, macro (ctx)
-    mloadf(ctx, m_operand, ft0)
-
-    move 0xdf000000, t0 # INT64_MIN
-    fi2f t0, ft1
-    bfltun ft0, ft1, .outOfBoundsTrunc
-
-    move 0x5f000000, t0 # -INT64_MIN
-    fi2f t0, ft1
-    bfgtequn ft0, ft1, .outOfBoundsTrunc
-
-    truncatef2qs ft0, t0
-    returnq(ctx, t0)
-
-.outOfBoundsTrunc:
-    throwException(OutOfBoundsTrunc)
-end)
-
-wasmOp(i64_trunc_s_f64, WasmI64TruncSF64, macro (ctx)
-    mloadd(ctx, m_operand, ft0)
-
-    move 0xc3e0000000000000, t0 # INT64_MIN
-    fq2d t0, ft1
-    bdltun ft0, ft1, .outOfBoundsTrunc
-
-    move 0x43e0000000000000, t0 # -INT64_MIN
-    fq2d t0, ft1
-    bdgtequn ft0, ft1, .outOfBoundsTrunc
-
-    truncated2qs ft0, t0
-    returnq(ctx, t0)
-
-.outOfBoundsTrunc:
-    throwException(OutOfBoundsTrunc)
-end)
-
-wasmOp(i64_trunc_u_f32, WasmI64TruncUF32, macro (ctx)
-    mloadf(ctx, m_operand, ft0)
-
-    move 0xbf800000, t0 # -1.0
-    fi2f t0, ft1
-    bfltequn ft0, ft1, .outOfBoundsTrunc
-
-    move 0x5f800000, t0 # INT64_MIN * -2.0
-    fi2f t0, ft1
-    bfgtequn ft0, ft1, .outOfBoundsTrunc
-
-    truncatef2q ft0, t0
-    returnq(ctx, t0)
-
-.outOfBoundsTrunc:
-    throwException(OutOfBoundsTrunc)
-end)
-
-wasmOp(i64_trunc_u_f64, WasmI64TruncUF64, macro (ctx)
-    mloadd(ctx, m_operand, ft0)
-
-    move 0xbff0000000000000, t0 # -1.0
-    fq2d t0, ft1
-    bdltequn ft0, ft1, .outOfBoundsTrunc
-
-    move 0x43f0000000000000, t0 # INT64_MIN * -2.0
-    fq2d t0, ft1
-    bdgtequn ft0, ft1, .outOfBoundsTrunc
-
-    truncated2q ft0, t0
-    returnq(ctx, t0)
-
-.outOfBoundsTrunc:
-    throwException(OutOfBoundsTrunc)
-end)
-
 wasmOp(i32_trunc_sat_f32_s, WasmI32TruncSatF32S, macro (ctx)
     mloadf(ctx, m_operand, ft0)
 
@@ -1394,34 +2026,6 @@ wasmOp(i32_trunc_sat_f32_s, WasmI32TruncSatF32S, macro (ctx)
 
 .outOfBoundsTruncSatMinOrNaN:
     bfeq ft0, ft0, .outOfBoundsTruncSatMin
-    move 0, t0
-    returni(ctx, t0)
-
-.outOfBoundsTruncSatMax:
-    move (constexpr INT32_MAX), t0
-    returni(ctx, t0)
-
-.outOfBoundsTruncSatMin:
-    move (constexpr INT32_MIN), t0
-    returni(ctx, t0)
-end)
-
-wasmOp(i32_trunc_sat_f64_s, WasmI32TruncSatF64S, macro (ctx)
-    mloadd(ctx, m_operand, ft0)
-
-    move 0xc1e0000000200000, t0 # INT32_MIN - 1.0
-    fq2d t0, ft1
-    bdltequn ft0, ft1, .outOfBoundsTruncSatMinOrNaN
-
-    move 0x41e0000000000000, t0 # -INT32_MIN
-    fq2d t0, ft1
-    bdgtequn ft0, ft1, .outOfBoundsTruncSatMax
-
-    truncated2is ft0, t0
-    returni(ctx, t0)
-
-.outOfBoundsTruncSatMinOrNaN:
-    bdeq ft0, ft0, .outOfBoundsTruncSatMin
     move 0, t0
     returni(ctx, t0)
 
@@ -1457,152 +2061,22 @@ wasmOp(i32_trunc_sat_f32_u, WasmI32TruncSatF32U, macro (ctx)
     returni(ctx, t0)
 end)
 
-wasmOp(i32_trunc_sat_f64_u, WasmI32TruncSatF64U, macro (ctx)
-    mloadd(ctx, m_operand, ft0)
-
-    move 0xbff0000000000000, t0 # -1.0
-    fq2d t0, ft1
-    bdltequn ft0, ft1, .outOfBoundsTruncSatMin
-
-    move 0x41f0000000000000, t0 # INT32_MIN * -2.0
-    fq2d t0, ft1
-    bdgtequn ft0, ft1, .outOfBoundsTruncSatMax
-
-    truncated2i ft0, t0
-    returni(ctx, t0)
-
-.outOfBoundsTruncSatMin:
-    move 0, t0
-    returni(ctx, t0)
-
-.outOfBoundsTruncSatMax:
-    move (constexpr UINT32_MAX), t0
-    returni(ctx, t0)
-end)
-
-wasmOp(i64_trunc_sat_f32_s, WasmI64TruncSatF32S, macro (ctx)
-    mloadf(ctx, m_operand, ft0)
-
-    move 0xdf000000, t0 # INT64_MIN
-    fi2f t0, ft1
-    bfltun ft0, ft1, .outOfBoundsTruncSatMinOrNaN
-
-    move 0x5f000000, t0 # -INT64_MIN
-    fi2f t0, ft1
-    bfgtequn ft0, ft1, .outOfBoundsTruncSatMax
-
-    truncatef2qs ft0, t0
-    returnq(ctx, t0)
-
-.outOfBoundsTruncSatMinOrNaN:
-    bfeq ft0, ft0, .outOfBoundsTruncSatMin
-    move 0, t0
-    returnq(ctx, t0)
-
-.outOfBoundsTruncSatMax:
-    move (constexpr INT64_MAX), t0
-    returnq(ctx, t0)
-
-.outOfBoundsTruncSatMin:
-    move (constexpr INT64_MIN), t0
-    returnq(ctx, t0)
-end)
-
-wasmOp(i64_trunc_sat_f64_s, WasmI64TruncSatF64S, macro (ctx)
-    mloadd(ctx, m_operand, ft0)
-
-    move 0xc3e0000000000000, t0 # INT64_MIN
-    fq2d t0, ft1
-    bdltun ft0, ft1, .outOfBoundsTruncSatMinOrNaN
-
-    move 0x43e0000000000000, t0 # -INT64_MIN
-    fq2d t0, ft1
-    bdgtequn ft0, ft1, .outOfBoundsTruncSatMax
-
-    truncated2qs ft0, t0
-    returnq(ctx, t0)
-
-.outOfBoundsTruncSatMinOrNaN:
-    bdeq ft0, ft0, .outOfBoundsTruncSatMin
-    move 0, t0
-    returnq(ctx, t0)
-
-.outOfBoundsTruncSatMax:
-    move (constexpr INT64_MAX), t0
-    returnq(ctx, t0)
-
-.outOfBoundsTruncSatMin:
-    move (constexpr INT64_MIN), t0
-    returnq(ctx, t0)
-end)
-
-wasmOp(i64_trunc_sat_f32_u, WasmI64TruncSatF32U, macro (ctx)
-    mloadf(ctx, m_operand, ft0)
-
-    move 0xbf800000, t0 # -1.0
-    fi2f t0, ft1
-    bfltequn ft0, ft1, .outOfBoundsTruncSatMin
-
-    move 0x5f800000, t0 # INT64_MIN * -2.0
-    fi2f t0, ft1
-    bfgtequn ft0, ft1, .outOfBoundsTruncSatMax
-
-    truncatef2q ft0, t0
-    returnq(ctx, t0)
-
-.outOfBoundsTruncSatMin:
-    move 0, t0
-    returnq(ctx, t0)
-
-.outOfBoundsTruncSatMax:
-    move (constexpr UINT64_MAX), t0
-    returnq(ctx, t0)
-end)
-
-wasmOp(i64_trunc_sat_f64_u, WasmI64TruncSatF64U, macro (ctx)
-    mloadd(ctx, m_operand, ft0)
-
-    move 0xbff0000000000000, t0 # -1.0
-    fq2d t0, ft1
-    bdltequn ft0, ft1, .outOfBoundsTruncSatMin
-
-    move 0x43f0000000000000, t0 # INT64_MIN * -2.0
-    fq2d t0, ft1
-    bdgtequn ft0, ft1, .outOfBoundsTruncSatMax
-
-    truncated2q ft0, t0
-    returnq(ctx, t0)
-
-.outOfBoundsTruncSatMin:
-    move 0, t0
-    returnq(ctx, t0)
-
-.outOfBoundsTruncSatMax:
-    move (constexpr UINT64_MAX), t0
-    returnq(ctx, t0)
-end)
-
-
-wasmOp(f32_convert_u_i64, WasmF32ConvertUI64, macro (ctx)
+wasmI64ToFOp(f32_convert_u_i64, WasmF32ConvertUI64, macro (ctx)
     mloadq(ctx, m_operand, t0)
     if X86_64
         cq2f t0, t1, ft0
-    elsif ARM64 or ARM64E
-        cq2f t0, ft0
     else
-        error
+        cq2f t0, ft0
     end
     returnf(ctx, ft0)
 end)
 
-wasmOp(f64_convert_u_i64, WasmF64ConvertUI64, macro (ctx)
+wasmI64ToFOp(f64_convert_u_i64, WasmF64ConvertUI64, macro (ctx)
     mloadq(ctx, m_operand, t0)
     if X86_64
         cq2d t0, t1, ft0
-    elsif ARM64 or ARM64E
-        cq2d t0, ft0
     else
-        error
+        cq2d t0, ft0
     end
     returnd(ctx, ft0)
 end)
@@ -1610,47 +2084,6 @@ end)
 wasmOp(i32_eqz, WasmI32Eqz, macro(ctx)
     mloadi(ctx, m_operand, t0)
     cieq t0, 0, t0
-    returni(ctx, t0)
-end)
-
-wasmOp(i64_shl, WasmI64Shl, macro(ctx)
-    mloadq(ctx, m_lhs, t0)
-    mloadi(ctx, m_rhs, t1)
-    lshiftq t1, t0
-    returnq(ctx, t0)
-end)
-
-wasmOp(i64_shr_u, WasmI64ShrU, macro(ctx)
-    mloadq(ctx, m_lhs, t0)
-    mloadi(ctx, m_rhs, t1)
-    urshiftq t1, t0
-    returnq(ctx, t0)
-end)
-
-wasmOp(i64_shr_s, WasmI64ShrS, macro(ctx)
-    mloadq(ctx, m_lhs, t0)
-    mloadi(ctx, m_rhs, t1)
-    rshiftq t1, t0
-    returnq(ctx, t0)
-end)
-
-wasmOp(i64_rotr, WasmI64Rotr, macro(ctx)
-    mloadq(ctx, m_lhs, t0)
-    mloadi(ctx, m_rhs, t1)
-    rrotateq t1, t0
-    returnq(ctx, t0)
-end)
-
-wasmOp(i64_rotl, WasmI64Rotl, macro(ctx)
-    mloadq(ctx, m_lhs, t0)
-    mloadi(ctx, m_rhs, t1)
-    lrotateq t1, t0
-    returnq(ctx, t0)
-end)
-
-wasmOp(i64_eqz, WasmI64Eqz, macro(ctx)
-    mloadq(ctx, m_operand, t0)
-    cqeq t0, 0, t0
     returni(ctx, t0)
 end)
 
@@ -1763,23 +2196,6 @@ wasmOp(f64_max, WasmF64Max, macro(ctx)
     returnd(ctx, ft1)
 end)
 
-wasmOp(f64_copysign, WasmF64Copysign, macro(ctx)
-    mloadd(ctx, m_lhs, ft0)
-    mloadd(ctx, m_rhs, ft1)
-
-    fd2q ft1, t1
-    move 0x8000000000000000, t2
-    andq t2, t1
-
-    fd2q ft0, t0
-    move 0x7fffffffffffffff, t2
-    andq t2, t0
-
-    orq t1, t0
-    fq2d t0, ft0
-    returnd(ctx, ft0)
-end)
-
 wasmOp(f32_convert_u_i32, WasmF32ConvertUI32, macro(ctx)
     mloadi(ctx, m_operand, t0)
     ci2f t0, ft0
@@ -1873,7 +2289,6 @@ wasmOp(i32_eq, WasmI32Eq, macro(ctx)
     mloadi(ctx, m_lhs, t0)
     mloadi(ctx, m_rhs, t1)
     cieq t0, t1, t2
-    andi 1, t2
     returni(ctx, t2)
 end)
 
@@ -1881,7 +2296,6 @@ wasmOp(i32_ne, WasmI32Ne, macro(ctx)
     mloadi(ctx, m_lhs, t0)
     mloadi(ctx, m_rhs, t1)
     cineq t0, t1, t2
-    andi 1, t2
     returni(ctx, t2)
 end)
 
@@ -1889,7 +2303,6 @@ wasmOp(i32_lt_s, WasmI32LtS, macro(ctx)
     mloadi(ctx, m_lhs, t0)
     mloadi(ctx, m_rhs, t1)
     cilt t0, t1, t2
-    andi 1, t2
     returni(ctx, t2)
 end)
 
@@ -1897,7 +2310,6 @@ wasmOp(i32_le_s, WasmI32LeS, macro(ctx)
     mloadi(ctx, m_lhs, t0)
     mloadi(ctx, m_rhs, t1)
     cilteq t0, t1, t2
-    andi 1, t2
     returni(ctx, t2)
 end)
 
@@ -1905,7 +2317,6 @@ wasmOp(i32_lt_u, WasmI32LtU, macro(ctx)
     mloadi(ctx, m_lhs, t0)
     mloadi(ctx, m_rhs, t1)
     cib t0, t1, t2
-    andi 1, t2
     returni(ctx, t2)
 end)
 
@@ -1913,7 +2324,6 @@ wasmOp(i32_le_u, WasmI32LeU, macro(ctx)
     mloadi(ctx, m_lhs, t0)
     mloadi(ctx, m_rhs, t1)
     cibeq t0, t1, t2
-    andi 1, t2
     returni(ctx, t2)
 end)
 
@@ -1921,7 +2331,6 @@ wasmOp(i32_gt_s, WasmI32GtS, macro(ctx)
     mloadi(ctx, m_lhs, t0)
     mloadi(ctx, m_rhs, t1)
     cigt t0, t1, t2
-    andi 1, t2
     returni(ctx, t2)
 end)
 
@@ -1929,7 +2338,6 @@ wasmOp(i32_ge_s, WasmI32GeS, macro(ctx)
     mloadi(ctx, m_lhs, t0)
     mloadi(ctx, m_rhs, t1)
     cigteq t0, t1, t2
-    andi 1, t2
     returni(ctx, t2)
 end)
 
@@ -1937,7 +2345,6 @@ wasmOp(i32_gt_u, WasmI32GtU, macro(ctx)
     mloadi(ctx, m_lhs, t0)
     mloadi(ctx, m_rhs, t1)
     cia t0, t1, t2
-    andi 1, t2
     returni(ctx, t2)
 end)
 
@@ -1945,7 +2352,6 @@ wasmOp(i32_ge_u, WasmI32GeU, macro(ctx)
     mloadi(ctx, m_lhs, t0)
     mloadi(ctx, m_rhs, t1)
     ciaeq t0, t1, t2
-    andi 1, t2
     returni(ctx, t2)
 end)
 
@@ -1953,134 +2359,6 @@ wasmOp(i32_clz, WasmI32Clz, macro(ctx)
     mloadi(ctx, m_operand, t0)
     lzcnti t0, t1
     returni(ctx, t1)
-end)
-
-wasmOp(i64_add, WasmI64Add, macro(ctx)
-    mloadq(ctx, m_lhs, t0)
-    mloadq(ctx, m_rhs, t1)
-    addq t0, t1
-    returnq(ctx, t1)
-end)
-
-wasmOp(i64_sub, WasmI64Sub, macro(ctx)
-    mloadq(ctx, m_lhs, t0)
-    mloadq(ctx, m_rhs, t1)
-    subq t1, t0
-    returnq(ctx, t0)
-end)
-
-wasmOp(i64_mul, WasmI64Mul, macro(ctx)
-    mloadq(ctx, m_lhs, t0)
-    mloadq(ctx, m_rhs, t1)
-    mulq t0, t1
-    returnq(ctx, t1)
-end)
-
-wasmOp(i64_and, WasmI64And, macro(ctx)
-    mloadq(ctx, m_lhs, t0)
-    mloadq(ctx, m_rhs, t1)
-    andq t0, t1
-    returnq(ctx, t1)
-end)
-
-wasmOp(i64_or, WasmI64Or, macro(ctx)
-    mloadq(ctx, m_lhs, t0)
-    mloadq(ctx, m_rhs, t1)
-    orq t0, t1
-    returnq(ctx, t1)
-end)
-
-wasmOp(i64_xor, WasmI64Xor, macro(ctx)
-    mloadq(ctx, m_lhs, t0)
-    mloadq(ctx, m_rhs, t1)
-    xorq t0, t1
-    returnq(ctx, t1)
-end)
-
-wasmOp(i64_eq, WasmI64Eq, macro(ctx)
-    mloadq(ctx, m_lhs, t0)
-    mloadq(ctx, m_rhs, t1)
-    cqeq t0, t1, t2
-    andi 1, t2
-    returni(ctx, t2)
-end)
-
-wasmOp(i64_ne, WasmI64Ne, macro(ctx)
-    mloadq(ctx, m_lhs, t0)
-    mloadq(ctx, m_rhs, t1)
-    cqneq t0, t1, t2
-    andi 1, t2
-    returni(ctx, t2)
-end)
-
-wasmOp(i64_lt_s, WasmI64LtS, macro(ctx)
-    mloadq(ctx, m_lhs, t0)
-    mloadq(ctx, m_rhs, t1)
-    cqlt t0, t1, t2
-    andi 1, t2
-    returni(ctx, t2)
-end)
-
-wasmOp(i64_le_s, WasmI64LeS, macro(ctx)
-    mloadq(ctx, m_lhs, t0)
-    mloadq(ctx, m_rhs, t1)
-    cqlteq t0, t1, t2
-    andi 1, t2
-    returni(ctx, t2)
-end)
-
-wasmOp(i64_lt_u, WasmI64LtU, macro(ctx)
-    mloadq(ctx, m_lhs, t0)
-    mloadq(ctx, m_rhs, t1)
-    cqb t0, t1, t2
-    andi 1, t2
-    returni(ctx, t2)
-end)
-
-wasmOp(i64_le_u, WasmI64LeU, macro(ctx)
-    mloadq(ctx, m_lhs, t0)
-    mloadq(ctx, m_rhs, t1)
-    cqbeq t0, t1, t2
-    andi 1, t2
-    returni(ctx, t2)
-end)
-
-wasmOp(i64_gt_s, WasmI64GtS, macro(ctx)
-    mloadq(ctx, m_lhs, t0)
-    mloadq(ctx, m_rhs, t1)
-    cqgt t0, t1, t2
-    andi 1, t2
-    returni(ctx, t2)
-end)
-
-wasmOp(i64_ge_s, WasmI64GeS, macro(ctx)
-    mloadq(ctx, m_lhs, t0)
-    mloadq(ctx, m_rhs, t1)
-    cqgteq t0, t1, t2
-    andi 1, t2
-    returni(ctx, t2)
-end)
-
-wasmOp(i64_gt_u, WasmI64GtU, macro(ctx)
-    mloadq(ctx, m_lhs, t0)
-    mloadq(ctx, m_rhs, t1)
-    cqa t0, t1, t2
-    andi 1, t2
-    returni(ctx, t2)
-end)
-
-wasmOp(i64_ge_u, WasmI64GeU, macro(ctx)
-    mloadq(ctx, m_lhs, t0)
-    mloadq(ctx, m_rhs, t1)
-    cqaeq t0, t1, t2
-    andi 1, t2
-    returni(ctx, t2)
-end)
-
-wasmOp(i64_clz, WasmI64Clz, macro(ctx)
-    mloadq(ctx, m_operand, t0)
-    lzcntq t0, t1
-    returnq(ctx, t1)
 end)
 
 wasmOp(f32_add, WasmF32Add, macro(ctx)
@@ -2123,13 +2401,13 @@ wasmOp(f32_neg, WasmF32Neg, macro(ctx)
     returnf(ctx, ft1)
 end)
 
-wasmOp(f32_ceil, WasmF32Ceil, macro(ctx)
+wasmRoundingOp(f32_ceil, WasmF32Ceil, macro(ctx)
     mloadf(ctx, m_operand, ft0)
     ceilf ft0, ft1
     returnf(ctx, ft1)
 end)
 
-wasmOp(f32_floor, WasmF32Floor, macro(ctx)
+wasmRoundingOp(f32_floor, WasmF32Floor, macro(ctx)
     mloadf(ctx, m_operand, ft0)
     floorf ft0, ft1
     returnf(ctx, ft1)
@@ -2223,13 +2501,13 @@ wasmOp(f64_neg, WasmF64Neg, macro(ctx)
     returnd(ctx, ft1)
 end)
 
-wasmOp(f64_ceil, WasmF64Ceil, macro(ctx)
+wasmRoundingOp(f64_ceil, WasmF64Ceil, macro(ctx)
     mloadd(ctx, m_operand, ft0)
     ceild ft0, ft1
     returnd(ctx, ft1)
 end)
 
-wasmOp(f64_floor, WasmF64Floor, macro(ctx)
+wasmRoundingOp(f64_floor, WasmF64Floor, macro(ctx)
     mloadd(ctx, m_operand, ft0)
     floord ft0, ft1
     returnd(ctx, ft1)
@@ -2284,50 +2562,20 @@ wasmOp(f64_ge, WasmF64Ge, macro(ctx)
 end)
 
 wasmOp(i32_wrap_i64, WasmI32WrapI64, macro(ctx)
-    mloadq(ctx, m_operand, t0)
+    mloadi(ctx, m_operand, t0)
     returni(ctx, t0)
-end)
-
-wasmOp(i64_extend_s_i32, WasmI64ExtendSI32, macro(ctx)
-    mloadi(ctx, m_operand, t0)
-    sxi2q t0, t1
-    returnq(ctx, t1)
-end)
-
-wasmOp(i64_extend_u_i32, WasmI64ExtendUI32, macro(ctx)
-    mloadi(ctx, m_operand, t0)
-    zxi2q t0, t1
-    returnq(ctx, t1)
 end)
 
 wasmOp(i32_extend8_s, WasmI32Extend8S, macro(ctx)
     mloadi(ctx, m_operand, t0)
     sxb2i t0, t1
-    returnq(ctx, t1)
+    returni(ctx, t1)
 end)
 
 wasmOp(i32_extend16_s, WasmI32Extend16S, macro(ctx)
     mloadi(ctx, m_operand, t0)
     sxh2i t0, t1
-    returnq(ctx, t1)
-end)
-
-wasmOp(i64_extend8_s, WasmI64Extend8S, macro(ctx)
-    mloadq(ctx, m_operand, t0)
-    sxb2q t0, t1
-    returnq(ctx, t1)
-end)
-
-wasmOp(i64_extend16_s, WasmI64Extend16S, macro(ctx)
-    mloadq(ctx, m_operand, t0)
-    sxh2q t0, t1
-    returnq(ctx, t1)
-end)
-
-wasmOp(i64_extend32_s, WasmI64Extend16S, macro(ctx)
-    mloadq(ctx, m_operand, t0)
-    sxi2q t0, t1
-    returnq(ctx, t1)
+    returni(ctx, t1)
 end)
 
 wasmOp(f32_convert_s_i32, WasmF32ConvertSI32, macro(ctx)
@@ -2336,7 +2584,7 @@ wasmOp(f32_convert_s_i32, WasmF32ConvertSI32, macro(ctx)
     returnf(ctx, ft0)
 end)
 
-wasmOp(f32_convert_s_i64, WasmF32ConvertSI64, macro(ctx)
+wasmI64ToFOp(f32_convert_s_i64, WasmF32ConvertSI64, macro(ctx)
     mloadq(ctx, m_operand, t0)
     cq2fs t0, ft0
     returnf(ctx, ft0)
@@ -2360,7 +2608,7 @@ wasmOp(f64_convert_s_i32, WasmF64ConvertSI32, macro(ctx)
     returnd(ctx, ft0)
 end)
 
-wasmOp(f64_convert_s_i64, WasmF64ConvertSI64, macro(ctx)
+wasmI64ToFOp(f64_convert_s_i64, WasmF64ConvertSI64, macro(ctx)
     mloadq(ctx, m_operand, t0)
     cq2ds t0, ft0
     returnd(ctx, ft0)
@@ -2372,34 +2620,29 @@ wasmOp(f64_promote_f32, WasmF64PromoteF32, macro(ctx)
     returnd(ctx, ft1)
 end)
 
-wasmOp(f64_reinterpret_i64, WasmF64ReinterpretI64, macro(ctx)
-    mloadq(ctx, m_operand, t0)
-    fq2d t0, ft0
-    returnd(ctx, ft0)
-end)
-
 wasmOp(i32_reinterpret_f32, WasmI32ReinterpretF32, macro(ctx)
     mloadf(ctx, m_operand, ft0)
     ff2i ft0, t0
     returni(ctx, t0)
 end)
 
-wasmOp(i64_reinterpret_f64, WasmI64ReinterpretF64, macro(ctx)
-    mloadd(ctx, m_operand, ft0)
-    fd2q ft0, t0
-    returnq(ctx, t0)
-end)
-
 macro dropKeep(startOffset, drop, keep)
     lshifti 3, startOffset
     subp cfr, startOffset, startOffset
     negi drop
+if JSVALUE64
     sxi2q drop, drop
+end
 
 .copyLoop:
     btiz keep, .done
+if JSVALUE64
     loadq [startOffset, drop, 8], t6
     storeq t6, [startOffset]
+else
+    load2ia [startOffset, drop, 8], t5, t6
+    store2ia t5, t6, [startOffset]
+end
     subi 1, keep
     subp 8, startOffset
     jmp .copyLoop
@@ -2417,390 +2660,90 @@ wasmOp(drop_keep, WasmDropKeep, macro(ctx)
     dispatch(ctx)
 end)
 
-macro wasmAtomicBinaryRMWOps(lowerCaseOpcode, upperCaseOpcode, fnb, fnh, fni, fnq)
-    wasmOp(i64_atomic_rmw8%lowerCaseOpcode%_u, WasmI64AtomicRmw8%upperCaseOpcode%U, macro(ctx)
-        mloadi(ctx, m_pointer, t3)
-        wgetu(ctx, m_offset, t1)
-        mloadq(ctx, m_value, t0)
-        emitCheckAndPreparePointerAddingOffset(ctx, t3, t1, 1)
-        fnb(t0, [t3], t2, t5, t1)
-        andq 0xff, t0 # FIXME: ZeroExtend8To64
-        assert(macro(ok) bqbeq t0, 0xff, .ok end)
-        returnq(ctx, t0)
-    end)
-    wasmOp(i64_atomic_rmw16%lowerCaseOpcode%_u, WasmI64AtomicRmw16%upperCaseOpcode%U, macro(ctx)
-        mloadi(ctx, m_pointer, t3)
-        wgetu(ctx, m_offset, t1)
-        mloadq(ctx, m_value, t0)
-        emitCheckAndPreparePointerAddingOffsetWithAlignmentCheck(ctx, t3, t1, 2)
-        fnh(t0, [t3], t2, t5, t1)
-        andq 0xffff, t0 # FIXME: ZeroExtend16To64
-        assert(macro(ok) bqbeq t0, 0xffff, .ok end)
-        returnq(ctx, t0)
-    end)
-    wasmOp(i64_atomic_rmw32%lowerCaseOpcode%_u, WasmI64AtomicRmw32%upperCaseOpcode%U, macro(ctx)
-        mloadi(ctx, m_pointer, t3)
-        wgetu(ctx, m_offset, t1)
-        mloadq(ctx, m_value, t0)
-        emitCheckAndPreparePointerAddingOffsetWithAlignmentCheck(ctx, t3, t1, 4)
-        fni(t0, [t3], t2, t5, t1)
-        assert(macro(ok) bqbeq t0, 0xffffffff, .ok end)
-        returnq(ctx, t0)
-    end)
-    wasmOp(i64_atomic_rmw%lowerCaseOpcode%, WasmI64AtomicRmw%upperCaseOpcode%, macro(ctx)
-        mloadi(ctx, m_pointer, t3)
-        wgetu(ctx, m_offset, t1)
-        mloadq(ctx, m_value, t0)
-        emitCheckAndPreparePointerAddingOffsetWithAlignmentCheck(ctx, t3, t1, 8)
-        fnq(t0, [t3], t2, t5, t1)
-        returnq(ctx, t0)
-    end)
-end
-
-macro wasmAtomicBinaryRMWOpsWithWeakCAS(lowerCaseOpcode, upperCaseOpcode, fni, fnq)
-    wasmAtomicBinaryRMWOps(lowerCaseOpcode, upperCaseOpcode,
-        macro(t0GPR, mem, t2GPR, t5GPR, t1GPR)
-            if X86_64
-                move t0GPR, t5GPR
-                loadb mem, t0GPR
-            .loop:
-                move t0GPR, t2GPR
-                fni(t5GPR, t2GPR)
-                batomicweakcasb t0GPR, t2GPR, mem, .loop
-            else
-            .loop:
-                loadlinkacqb mem, t1GPR
-                fni(t0GPR, t1GPR, t2GPR)
-                storecondrelb t5GPR, t2GPR, mem
-                bineq t5GPR, 0, .loop
-                move t1GPR, t0GPR
-            end
-        end,
-        macro(t0GPR, mem, t2GPR, t5GPR, t1GPR)
-            if X86_64
-                move t0GPR, t5GPR
-                loadh mem, t0GPR
-            .loop:
-                move t0GPR, t2GPR
-                fni(t5GPR, t2GPR)
-                batomicweakcash t0GPR, t2GPR, mem, .loop
-            else
-            .loop:
-                loadlinkacqh mem, t1GPR
-                fni(t0GPR, t1GPR, t2GPR)
-                storecondrelh t5GPR, t2GPR, mem
-                bineq t5GPR, 0, .loop
-                move t1GPR, t0GPR
-            end
-        end,
-        macro(t0GPR, mem, t2GPR, t5GPR, t1GPR)
-            if X86_64
-                move t0GPR, t5GPR
-                loadi mem, t0GPR
-            .loop:
-                move t0GPR, t2GPR
-                fni(t5GPR, t2GPR)
-                batomicweakcasi t0GPR, t2GPR, mem, .loop
-            else
-            .loop:
-                loadlinkacqi mem, t1GPR
-                fni(t0GPR, t1GPR, t2GPR)
-                storecondreli t5GPR, t2GPR, mem
-                bineq t5GPR, 0, .loop
-                move t1GPR, t0GPR
-            end
-        end,
-        macro(t0GPR, mem, t2GPR, t5GPR, t1GPR)
-            if X86_64
-                move t0GPR, t5GPR
-                loadq mem, t0GPR
-            .loop:
-                move t0GPR, t2GPR
-                fnq(t5GPR, t2GPR)
-                batomicweakcasq t0GPR, t2GPR, mem, .loop
-            else
-            .loop:
-                loadlinkacqq mem, t1GPR
-                fnq(t0GPR, t1GPR, t2GPR)
-                storecondrelq t5GPR, t2GPR, mem
-                bineq t5GPR, 0, .loop
-                move t1GPR, t0GPR
-            end
-        end)
-end
-
-if X86_64
-    wasmAtomicBinaryRMWOps(_add, Add,
-        macro(t0GPR, mem, t2GPR, t5GPR, t1GPR) atomicxchgaddb t0GPR, mem end,
-        macro(t0GPR, mem, t2GPR, t5GPR, t1GPR) atomicxchgaddh t0GPR, mem end,
-        macro(t0GPR, mem, t2GPR, t5GPR, t1GPR) atomicxchgaddi t0GPR, mem end,
-        macro(t0GPR, mem, t2GPR, t5GPR, t1GPR) atomicxchgaddq t0GPR, mem end)
-    wasmAtomicBinaryRMWOps(_sub, Sub,
-        macro(t0GPR, mem, t2GPR, t5GPR, t1GPR) atomicxchgsubb t0GPR, mem end,
-        macro(t0GPR, mem, t2GPR, t5GPR, t1GPR) atomicxchgsubh t0GPR, mem end,
-        macro(t0GPR, mem, t2GPR, t5GPR, t1GPR) atomicxchgsubi t0GPR, mem end,
-        macro(t0GPR, mem, t2GPR, t5GPR, t1GPR) atomicxchgsubq t0GPR, mem end)
-    wasmAtomicBinaryRMWOps(_xchg, Xchg,
-        macro(t0GPR, mem, t2GPR, t5GPR, t1GPR) atomicxchgb t0GPR, mem end,
-        macro(t0GPR, mem, t2GPR, t5GPR, t1GPR) atomicxchgh t0GPR, mem end,
-        macro(t0GPR, mem, t2GPR, t5GPR, t1GPR) atomicxchgi t0GPR, mem end,
-        macro(t0GPR, mem, t2GPR, t5GPR, t1GPR) atomicxchgq t0GPR, mem end)
-    wasmAtomicBinaryRMWOpsWithWeakCAS(_and, And,
-        macro(t5GPR, t2GPR)
-            andi t5GPR, t2GPR
-        end,
-        macro(t5GPR, t2GPR)
-            andq t5GPR, t2GPR
-        end)
-    wasmAtomicBinaryRMWOpsWithWeakCAS(_or, Or,
-        macro(t5GPR, t2GPR)
-            ori t5GPR, t2GPR
-        end,
-        macro(t5GPR, t2GPR)
-            orq t5GPR, t2GPR
-        end)
-    wasmAtomicBinaryRMWOpsWithWeakCAS(_xor, Xor,
-        macro(t5GPR, t2GPR)
-            xori t5GPR, t2GPR
-        end,
-        macro(t5GPR, t2GPR)
-            xorq t5GPR, t2GPR
-        end)
-elsif ARM64E
-    wasmAtomicBinaryRMWOps(_add, Add,
-        macro(t0GPR, mem, t2GPR, t5GPR, t1GPR) atomicxchgaddb t0GPR, mem, t0GPR end,
-        macro(t0GPR, mem, t2GPR, t5GPR, t1GPR) atomicxchgaddh t0GPR, mem, t0GPR end,
-        macro(t0GPR, mem, t2GPR, t5GPR, t1GPR) atomicxchgaddi t0GPR, mem, t0GPR end,
-        macro(t0GPR, mem, t2GPR, t5GPR, t1GPR) atomicxchgaddq t0GPR, mem, t0GPR end)
-    wasmAtomicBinaryRMWOps(_sub, Sub,
-        macro(t0GPR, mem, t2GPR, t5GPR, t1GPR)
-            negq t0GPR
-            atomicxchgaddb t0GPR, mem, t0GPR
-        end,
-        macro(t0GPR, mem, t2GPR, t5GPR, t1GPR)
-            negq t0GPR
-            atomicxchgaddh t0GPR, mem, t0GPR
-        end,
-        macro(t0GPR, mem, t2GPR, t5GPR, t1GPR)
-            negq t0GPR
-            atomicxchgaddi t0GPR, mem, t0GPR
-        end,
-        macro(t0GPR, mem, t2GPR, t5GPR, t1GPR)
-            negq t0GPR
-            atomicxchgaddq t0GPR, mem, t0GPR
-        end)
-    wasmAtomicBinaryRMWOps(_and, And,
-        macro(t0GPR, mem, t2GPR, t5GPR, t1GPR)
-            notq t0GPR
-            atomicxchgclearb t0GPR, mem, t0GPR
-        end,
-        macro(t0GPR, mem, t2GPR, t5GPR, t1GPR)
-            notq t0GPR
-            atomicxchgclearh t0GPR, mem, t0GPR
-        end,
-        macro(t0GPR, mem, t2GPR, t5GPR, t1GPR)
-            notq t0GPR
-            atomicxchgcleari t0GPR, mem, t0GPR
-        end,
-        macro(t0GPR, mem, t2GPR, t5GPR, t1GPR)
-            notq t0GPR
-            atomicxchgclearq t0GPR, mem, t0GPR
-        end)
-    wasmAtomicBinaryRMWOps(_or, Or,
-        macro(t0GPR, mem, t2GPR, t5GPR, t1GPR) atomicxchgorb t0GPR, mem, t0GPR end,
-        macro(t0GPR, mem, t2GPR, t5GPR, t1GPR) atomicxchgorh t0GPR, mem, t0GPR end,
-        macro(t0GPR, mem, t2GPR, t5GPR, t1GPR) atomicxchgori t0GPR, mem, t0GPR end,
-        macro(t0GPR, mem, t2GPR, t5GPR, t1GPR) atomicxchgorq t0GPR, mem, t0GPR end)
-    wasmAtomicBinaryRMWOps(_xor, Xor,
-        macro(t0GPR, mem, t2GPR, t5GPR, t1GPR) atomicxchgxorb t0GPR, mem, t0GPR end,
-        macro(t0GPR, mem, t2GPR, t5GPR, t1GPR) atomicxchgxorh t0GPR, mem, t0GPR end,
-        macro(t0GPR, mem, t2GPR, t5GPR, t1GPR) atomicxchgxori t0GPR, mem, t0GPR end,
-        macro(t0GPR, mem, t2GPR, t5GPR, t1GPR) atomicxchgxorq t0GPR, mem, t0GPR end)
-    wasmAtomicBinaryRMWOps(_xchg, Xchg,
-        macro(t0GPR, mem, t2GPR, t5GPR, t1GPR) atomicxchgb t0GPR, mem, t0GPR end,
-        macro(t0GPR, mem, t2GPR, t5GPR, t1GPR) atomicxchgh t0GPR, mem, t0GPR end,
-        macro(t0GPR, mem, t2GPR, t5GPR, t1GPR) atomicxchgi t0GPR, mem, t0GPR end,
-        macro(t0GPR, mem, t2GPR, t5GPR, t1GPR) atomicxchgq t0GPR, mem, t0GPR end)
-else
-    wasmAtomicBinaryRMWOpsWithWeakCAS(_add, Add,
-        macro(t0GPR, t1GPR, t2GPR)
-            addi t0GPR, t1GPR, t2GPR
-        end,
-        macro(t0GPR, t1GPR, t2GPR)
-            addq t0GPR, t1GPR, t2GPR
-        end)
-    wasmAtomicBinaryRMWOpsWithWeakCAS(_sub, Sub,
-        macro(t0GPR, t1GPR, t2GPR)
-            subi t1GPR, t0GPR, t2GPR
-        end,
-        macro(t0GPR, t1GPR, t2GPR)
-            subq t1GPR, t0GPR, t2GPR
-        end)
-    wasmAtomicBinaryRMWOpsWithWeakCAS(_xchg, Xchg,
-        macro(t0GPR, t1GPR, t2GPR)
-            move t0GPR, t2GPR
-        end,
-        macro(t0GPR, t1GPR, t2GPR)
-            move t0GPR, t2GPR
-        end)
-    wasmAtomicBinaryRMWOpsWithWeakCAS(_and, And,
-        macro(t0GPR, t1GPR, t2GPR)
-            andi t0GPR, t1GPR, t2GPR
-        end,
-        macro(t0GPR, t1GPR, t2GPR)
-            andq t0GPR, t1GPR, t2GPR
-        end)
-    wasmAtomicBinaryRMWOpsWithWeakCAS(_or, Or,
-        macro(t0GPR, t1GPR, t2GPR)
-            ori t0GPR, t1GPR, t2GPR
-        end,
-        macro(t0GPR, t1GPR, t2GPR)
-            orq t0GPR, t1GPR, t2GPR
-        end)
-    wasmAtomicBinaryRMWOpsWithWeakCAS(_xor, Xor,
-        macro(t0GPR, t1GPR, t2GPR)
-            xori t0GPR, t1GPR, t2GPR
-        end,
-        macro(t0GPR, t1GPR, t2GPR)
-            xorq t0GPR, t1GPR, t2GPR
-        end)
-end
-
-macro wasmAtomicCompareExchangeOps(lowerCaseOpcode, upperCaseOpcode, fnb, fnh, fni, fnq)
-    wasmOp(i64_atomic_rmw8%lowerCaseOpcode%_u, WasmI64AtomicRmw8%upperCaseOpcode%U, macro(ctx)
-        mloadi(ctx, m_pointer, t3)
-        wgetu(ctx, m_offset, t1)
-        mloadq(ctx, m_expected, t0)
-        mloadq(ctx, m_value, t2)
-        emitCheckAndPreparePointerAddingOffset(ctx, t3, t1, 1)
-        fnb(t0, t2, [t3], t5, t1)
-        andq 0xff, t0 # FIXME: ZeroExtend8To64
-        assert(macro(ok) bqbeq t0, 0xff, .ok end)
-        returnq(ctx, t0)
-    end)
-    wasmOp(i64_atomic_rmw16%lowerCaseOpcode%_u, WasmI64AtomicRmw16%upperCaseOpcode%U, macro(ctx)
-        mloadi(ctx, m_pointer, t3)
-        wgetu(ctx, m_offset, t1)
-        mloadq(ctx, m_expected, t0)
-        mloadq(ctx, m_value, t2)
-        emitCheckAndPreparePointerAddingOffsetWithAlignmentCheck(ctx, t3, t1, 2)
-        fnh(t0, t2, [t3], t5, t1)
-        andq 0xffff, t0 # FIXME: ZeroExtend16To64
-        assert(macro(ok) bqbeq t0, 0xffff, .ok end)
-        returnq(ctx, t0)
-    end)
-    wasmOp(i64_atomic_rmw32%lowerCaseOpcode%_u, WasmI64AtomicRmw32%upperCaseOpcode%U, macro(ctx)
-        mloadi(ctx, m_pointer, t3)
-        wgetu(ctx, m_offset, t1)
-        mloadq(ctx, m_expected, t0)
-        mloadq(ctx, m_value, t2)
-        emitCheckAndPreparePointerAddingOffsetWithAlignmentCheck(ctx, t3, t1, 4)
-        fni(t0, t2, [t3], t5, t1)
-        assert(macro(ok) bqbeq t0, 0xffffffff, .ok end)
-        returnq(ctx, t0)
-    end)
-    wasmOp(i64_atomic_rmw%lowerCaseOpcode%, WasmI64AtomicRmw%upperCaseOpcode%, macro(ctx)
-        mloadi(ctx, m_pointer, t3)
-        wgetu(ctx, m_offset, t1)
-        mloadq(ctx, m_expected, t0)
-        mloadq(ctx, m_value, t2)
-        emitCheckAndPreparePointerAddingOffsetWithAlignmentCheck(ctx, t3, t1, 8)
-        fnq(t0, t2, [t3], t5, t1)
-        returnq(ctx, t0)
-    end)
-end
-
-# t0GPR => expected, t2GPR => value, mem => memory reference
-wasmAtomicCompareExchangeOps(_cmpxchg, Cmpxchg,
-    macro(t0GPR, t2GPR, mem, t5GPR, t1GPR)
-        if X86_64 or ARM64E
-            bqa t0GPR , 0xff, .fail
-            atomicweakcasb t0GPR, t2GPR, mem
-            jmp .done
-        .fail:
-            atomicloadb mem, t0GPR
-        .done:
-        else
-        .loop:
-            loadlinkacqb mem, t1GPR
-            bqneq t0GPR, t1GPR, .fail
-            storecondrelb t5GPR, t2GPR, mem
-            bieq t5GPR, 0, .done
-            jmp .loop
-        .fail:
-            storecondrelb t5GPR, t1GPR, mem
-            bieq t5GPR, 0, .done
-            jmp .loop
-        .done:
-            move t1GPR, t0GPR
-        end
-    end,
-    macro(t0GPR, t2GPR, mem, t5GPR, t1GPR)
-        if X86_64 or ARM64E
-            bqa t0GPR, 0xffff, .fail
-            atomicweakcash t0GPR, t2GPR, mem
-            jmp .done
-        .fail:
-            atomicloadh mem, t0GPR
-        .done:
-        else
-        .loop:
-            loadlinkacqh mem, t1GPR
-            bqneq t0GPR, t1GPR, .fail
-            storecondrelh t5GPR, t2GPR, mem
-            bieq t5GPR, 0, .done
-            jmp .loop
-        .fail:
-            storecondrelh t5GPR, t1GPR, mem
-            bieq t5GPR, 0, .done
-            jmp .loop
-        .done:
-            move t1GPR, t0GPR
-        end
-    end,
-    macro(t0GPR, t2GPR, mem, t5GPR, t1GPR)
-        if X86_64 or ARM64E
-            bqa t0GPR, 0xffffffff, .fail
-            atomicweakcasi t0GPR, t2GPR, mem
-            jmp .done
-        .fail:
-            atomicloadi mem, t0GPR
-        .done:
-        else
-        .loop:
-            loadlinkacqi mem, t1GPR
-            bqneq t0GPR, t1GPR, .fail
-            storecondreli t5GPR, t2GPR, mem
-            bieq t5GPR, 0, .done
-            jmp .loop
-        .fail:
-            storecondreli t5GPR, t1GPR, mem
-            bieq t5GPR, 0, .done
-            jmp .loop
-        .done:
-            move t1GPR, t0GPR
-        end
-    end,
-    macro(t0GPR, t2GPR, mem, t5GPR, t1GPR)
-        if X86_64 or ARM64E
-            atomicweakcasq t0GPR, t2GPR, mem
-        else
-        .loop:
-            loadlinkacqq mem, t1GPR
-            bqneq t0GPR, t1GPR, .fail
-            storecondrelq t5GPR, t2GPR, mem
-            bieq t5GPR, 0, .done
-            jmp .loop
-        .fail:
-            storecondrelq t5GPR, t1GPR, mem
-            bieq t5GPR, 0, .done
-            jmp .loop
-        .done:
-            move t1GPR, t0GPR
-        end
-    end)
-
 wasmOp(atomic_fence, WasmDropKeep, macro(ctx)
     fence
     dispatch(ctx)
 end)
+
+wasmOp(throw, WasmThrow, macro(ctx)
+    loadp JSWebAssemblyInstance::m_vm[wasmInstance], t5
+    loadp VM::topEntryFrame[t5], t5
+    copyCalleeSavesToEntryFrameCalleeSavesBuffer(t5)
+
+    callWasmSlowPath(_slow_path_wasm_throw)
+    jumpToException()
+end)
+
+wasmOp(rethrow, WasmRethrow, macro(ctx)
+    loadp JSWebAssemblyInstance::m_vm[wasmInstance], t5
+    loadp VM::topEntryFrame[t5], t5
+    copyCalleeSavesToEntryFrameCalleeSavesBuffer(t5)
+
+    callWasmSlowPath(_slow_path_wasm_rethrow)
+    jumpToException()
+end)
+
+macro commonCatchImpl(ctx)
+    getVMFromCallFrame(t3, t0)
+    restoreCalleeSavesFromVMEntryFrameCalleeSavesBuffer(t3, t0)
+
+    loadp VM::callFrameForCatch[t3], cfr
+    storep 0, VM::callFrameForCatch[t3]
+
+    restoreStackPointerAfterCall()
+
+    loadp CodeBlock[cfr], wasmInstance
+    reloadMemoryRegistersFromInstance(wasmInstance, ws0)
+
+    loadp UnboxedWasmCalleeStackSlot[cfr], PB
+    loadp Wasm::LLIntCallee::m_instructionsRawPointer[PB], PB
+    loadp VM::targetInterpreterPCForThrow[t3], PC
+    subp PB, PC
+
+    callWasmSlowPath(_slow_path_wasm_retrieve_and_clear_exception)
+end
+
+commonWasmOp(wasm_catch, WasmCatch, macro() end, macro(ctx)
+    commonCatchImpl(ctx)
+
+    move r1, t1
+
+    wgetu(ctx, m_startOffset, t2)
+    wgetu(ctx, m_argumentCount, t3)
+
+    lshifti 3, t2
+    subp cfr, t2, t2
+
+.copyLoop:
+    btiz t3, .done
+if JSVALUE64
+    loadq [t1], t6
+    storeq t6, [t2]
+else
+    load2ia [t1], t5, t6
+    store2ia t5, t6, [t2]
+end
+    subi 1, t3
+    # FIXME: Use arm store-add/sub instructions in wasm LLInt catch
+    # https://bugs.webkit.org/show_bug.cgi?id=231210
+    subp 8, t2
+    addp 8, t1
+    jmp .copyLoop
+
+.done:
+    traceExecution()
+    dispatch(ctx)
+end)
+
+commonWasmOp(wasm_catch_all, WasmCatchAll, macro() end, macro(ctx)
+    commonCatchImpl(ctx)
+    traceExecution()
+    dispatch(ctx)
+end)
+
+# Value-representation-specific code.
+if JSVALUE64
+    include WebAssembly64
+else
+    include WebAssembly32_64
+end

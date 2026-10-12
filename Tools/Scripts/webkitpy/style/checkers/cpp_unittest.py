@@ -338,6 +338,22 @@ class CppStyleTestBase(unittest.TestCase):
                                             error_collector)
         self.assertEqual(error_collector.results(), expected_warning)
 
+    def perform_function_body_check(self, file_name, lines, expected_warning):
+        file_extension = file_name.split('.')[1]
+        clean_lines = cpp_style.CleansedLines(lines.splitlines())
+        function_state = cpp_style._FunctionState(5)
+        error_collector = ErrorCollector(self.assertTrue)
+
+        for i in range(clean_lines.num_lines()):
+            cpp_style.detect_functions(clean_lines, i, function_state, error_collector)
+        self.assertEqual(function_state.in_a_function, True)
+        self.assertEqual(error_collector.results(), '')
+
+        class_state = cpp_style._ClassState()
+        cpp_style.check_function_body(file_name, file_extension, clean_lines, clean_lines.num_lines() - 1, class_state,
+                                      function_state, error_collector)
+        self.assertEqual(error_collector.results(), expected_warning)
+
     # Perform lint and compare the error message with "expected_message".
     def assert_lint(self, code, expected_message, file_name='foo.cpp'):
         self.assertEqual(expected_message, self.perform_single_line_lint(code, file_name))
@@ -1022,6 +1038,16 @@ class CppStyleTest(CppStyleTestBase):
             'instead of static_cast<Text*>'
             '  [readability/check] [4]')
 
+    def test_gst_structure_get(self):
+        error_message = 'Consider using gstStructureGet<T>() instead  [readability/check] [4]'
+        self.assert_lint('gst_structure_get_int(s, "foo", &bar)', error_message)
+        self.assert_lint('gst_structure_get_int64(s, "foo", &bar)', error_message)
+        self.assert_lint('gst_structure_get_uint(s, "foo", &bar)', error_message)
+        self.assert_lint('gst_structure_get_double(s, "foo", &bar)', error_message)
+        self.assert_lint('gst_structure_get_boolean(s, "foo", &bar)', error_message)
+        self.assert_lint('const char* foo = gst_structure_get_string(s, "foo")', 'Consider using gstStructureGetString() instead  [readability/check] [4]')
+        self.assert_lint('const char* foo = gst_structure_get_name(s)', 'Consider using gstStructureGetName() instead  [readability/check] [4]')
+
     # We cannot test this functionality because of difference of
     # function definitions.  Anyway, we may never enable this.
     #
@@ -1624,6 +1650,220 @@ class CppStyleTest(CppStyleTestBase):
                          ' for improved thread safety.'
                          '  [runtime/threadsafe_fn] [2]')
 
+    def test_debug_not_reached_assertion(self):
+        self.perform_function_body_check(
+            'foo.cpp',
+            'void f()\n'
+            '{\n'
+            '    if (auto createdHandle = SandboxExtension::createHandle(URL.fileSystemPath(), SandboxExtension::Type::ReadWrite))\n'
+            '        handle = WTFMove(*createdHandle);\n'
+            '    else\n'
+            '        ASSERT_NOT_REACHED();\n\n'
+            '    m_dataStore->networkProcess().send(Messages::NetworkProcess::PublishDownloadProgress(m_downloadID, URL, handle), 0);]\n'
+            '}',
+            'ASSERT_NOT_REACHED() statement fallthrough may result in unexpected code execution.'
+            '  [security/assertion_fallthrough] [4]')
+
+        self.perform_function_body_check(
+            'foo.cpp',
+            'void f()\n'
+            '{\n'
+            '    if (auto createdHandle = SandboxExtension::createHandle(URL.fileSystemPath(), SandboxExtension::Type::ReadWrite))\n'
+            '        handle = WTFMove(*createdHandle);\n'
+            '    else\n'
+            '        RELEASE_ASSERT_NOT_REACHED();\n\n'
+            '    m_dataStore->networkProcess().send(Messages::NetworkProcess::PublishDownloadProgress(m_downloadID, URL, handle), 0);]\n'
+            '}',
+            '')
+
+        self.perform_function_body_check(
+            'foo.cpp',
+            'void f()\n'
+            '{\n'
+            '    for (int i = 0; i < 10; ++i) {'
+            '        if (i % 2 == 0) {'
+            '            ASSERT_NOT_REACHED();\n'
+            '            continue;\n'
+            '        }\n'
+            '    }\n'
+            '}',
+            '')
+
+        self.perform_function_body_check(
+            'foo.cpp',
+            'void f(int i)\n'
+            '{\n'
+            '    if (i % 2 == 0) {'
+            '        ASSERT_NOT_REACHED();\n'
+            '        return;\n'
+            '    }\n'
+            '}',
+            '')
+
+        self.perform_function_body_check(
+            'foo.cpp',
+            'void f(int i)\n'
+            '{\n'
+            '    if (i % 2 == 0) {'
+            '        ASSERT_NOT_REACHED();\n'
+            '        completionHandler(nullptr);\n'
+            '        return;\n'
+            '    }\n'
+            '}',
+            '')
+
+        self.perform_function_body_check(
+            'foo.cpp',
+            'void f(int i)\n'
+            '{\n'
+            '    if (i % 2 == 0) {'
+            '        ASSERT_NOT_REACHED();\n'
+            '        failureBlock(nullptr);\n'
+            '        return;\n'
+            '    }\n'
+            '}',
+            '')
+
+        self.perform_function_body_check(
+            'foo.cpp',
+            'void f()\n'
+            '{\n'
+            '    ASSERT_NOT_REACHED();\n'
+            '    completionHandler(nullString());\n'
+            '}',
+            '')
+
+        self.perform_function_body_check(
+            'foo.cpp',
+            'void f(int i)\n'
+            '{\n'
+            '    if (i % 2 == 0) {\n'
+            '        ASSERT_NOT_REACHED();\n'
+            '        completionHandler(nullString());\n'
+            '    }\n'
+            '}',
+            '')
+
+        self.perform_function_body_check(
+            'foo.cpp',
+            'void f(int i)\n'
+            '{\n'
+            '    switch (i) {'
+            '    case 0:'
+            '        ASSERT_NOT_REACHED();\n'
+            '    }\n'
+            '    g();\n'
+            '}',
+            'ASSERT_NOT_REACHED() statement fallthrough may result in unexpected code execution.'
+            '  [security/assertion_fallthrough] [4]')
+
+        self.perform_function_body_check(
+            'foo.cpp',
+            'void f(int i)\n'
+            '{\n'
+            '    switch (i) {'
+            '    default:'
+            '        ASSERT_NOT_REACHED();\n'
+            '    }\n'
+            '    g();\n'
+            '}',
+            'ASSERT_NOT_REACHED() statement fallthrough may result in unexpected code execution.'
+            '  [security/assertion_fallthrough] [4]')
+
+        self.perform_function_body_check(
+            'foo.cpp',
+            'void f(int i)\n'
+            '{\n'
+            '    if (!i) {'
+            '        g();'
+            '    } else {'
+            '        ASSERT_NOT_REACHED();\n'
+            '    }\n'
+            '}',
+            '')
+
+        self.perform_function_body_check(
+            'foo.cpp',
+            'void f(int i)\n'
+            '{\n'
+            '    switch (i) {'
+            '    case 0:'
+            '        ASSERT_NOT_REACHED();\n'
+            '        break;\n'
+            '    }\n'
+            '}',
+            '')
+
+        self.perform_function_body_check(
+            'foo.cpp',
+            'void f(int i)\n'
+            '{\n'
+            '    switch (i) {'
+            '    default:'
+            '        ASSERT_NOT_REACHED();\n'
+            '        break;\n'
+            '    }\n'
+            '}',
+            '')
+
+        self.perform_function_body_check(
+            'foo.cpp',
+            'void f(int i)\n'
+            '{\n'
+            '    switch (i) {'
+            '    case 0:'
+            '        ASSERT_NOT_REACHED();\n'
+            '        m_completionHandler();\n'
+            '        break;\n'
+            '    }\n'
+            '}',
+            '')
+
+        self.perform_function_body_check(
+            'foo.cpp',
+            'void f(int i)\n'
+            '{\n'
+            '    switch (i) {'
+            '    default:'
+            '        ASSERT_NOT_REACHED();\n'
+            '        m_completionHandler();\n'
+            '        break;\n'
+            '    }\n'
+            '}',
+            '')
+
+        self.perform_function_body_check(
+            'foo.cpp',
+            'void f()\n'
+            '{\n'
+            '#if PLATFORM(COCOA)\n'
+            '    pageClient().clearTextIndicator(WebCore::TextIndicatorDismissalAnimation::FadeOut);\n'
+            '#else\n'
+            '    ASSERT_NOT_REACHED();\n'
+            '#endif\n'
+            '}',
+            '')
+
+        self.perform_function_body_check(
+            'foo.cpp',
+            'int f()\n'
+            '{\n'
+            '    ASSERT_NOT_REACHED();\n'
+            '    *errorCode = U_UNSUPPORTED_ERROR;\n'
+            '    return 0;\n'
+            '}',
+            '')
+
+        self.perform_function_body_check(
+            'foo.h',
+            'void f() { ASSERT_NOT_REACHED(); }',
+            '')
+        self.perform_function_body_check(
+            'foo.h',
+            'void* f() { ASSERT_NOT_REACHED(); return nullptr; }',
+            '')
+
+
     def test_debug_security_assertion(self):
         self.assert_lint(
             'ASSERT_WITH_SECURITY_IMPLICATION(value)',
@@ -1844,7 +2084,7 @@ class CppStyleTest(CppStyleTestBase):
         self.assert_lint(
             '''\
             const int foo[] =
-                {1, 2, 3 };''',
+                { 1, 2, 3 };''',
             '')
         # For single line, unmatched '}' with a ';' is ignored (not enough context)
         self.assert_multi_line_lint(
@@ -2123,6 +2363,10 @@ class CppStyleTest(CppStyleTestBase):
         self.assert_lint('foo (Foo::*bar)(',
                          'Extra space before ( in function call'
                          '  [whitespace/parens] [4]')
+        self.assert_lint('void foo(int bar, Function<void (std::optional<double>)>&&);',
+                         '')
+        self.assert_lint('void foo(int bar, std::function<void (dummy)>&&);',
+                         '')
         self.assert_lint('typedef foo (Foo::*bar)(', '')
         self.assert_lint('(foo)(bar)', '')
         self.assert_lint('Foo (*foo)(bar)', '')
@@ -2150,6 +2394,24 @@ class CppStyleTest(CppStyleTestBase):
         self.assert_lint('    { }', '')
         self.assert_lint('    {}', 'Missing space inside { }.  [whitespace/braces] [5]')
         self.assert_lint('    {   }', 'Too many spaces inside { }.  [whitespace/braces] [5]')
+        self.assert_lint('    }', '')  # closing brace by itself is fine
+        self.assert_lint('    int64_t {0xffffffff }', 'Missing space after {.  [whitespace/braces] [5]')
+        self.assert_lint('    int64_t { 0xffffffff}', 'Missing space before }.  [whitespace/braces] [5]')
+        self.assert_lint('    int64_t { 0xffffffff }', '')
+        self.assert_lint('    IntTuple {1, 2 }', 'Missing space after {.  [whitespace/braces] [5]')
+        self.assert_lint('    IntTuple { 1, 2}', 'Missing space before }.  [whitespace/braces] [5]')
+        self.assert_lint('    IntTuple { 1, 2 }', '')
+        self.assert_lint('    int a[2][2] = {{ 1, 2 }, { 3, 4 } };', 'Missing space after {.  [whitespace/braces] [5]')
+        self.assert_lint('    int a[2][2] = { {1, 2 }, { 3, 4 } };', 'Missing space after {.  [whitespace/braces] [5]')
+        self.assert_lint('    int a[2][2] = { { 1, 2 }, {3, 4 } };', 'Missing space after {.  [whitespace/braces] [5]')
+        self.assert_lint('    int a[2][2] = { { 1, 2}, { 3, 4 } };', 'Missing space before }.  [whitespace/braces] [5]')
+        self.assert_lint('    int a[2][2] = { { 1, 2 }, { 3, 4} };', 'Missing space before }.  [whitespace/braces] [5]')
+        self.assert_lint('    int a[2][2] = { { 1, 2 }, { 3, 4 }};', 'Missing space before }.  [whitespace/braces] [5]')
+        self.assert_lint('    int a[2][2] = { { 1, 2 }, { 3, 4 } };', '')
+        self.assert_lint('    StrPair {"strings", "inside" }', 'Missing space after {.  [whitespace/braces] [5]')
+        self.assert_lint('    StrPair { "strings", "inside"}', 'Missing space before }.  [whitespace/braces] [5]')
+        self.assert_lint('    StrPair { "strings", "inside" }', '')
+        self.assert_lint('    foo("{braces in a string}");', '')
 
     def test_spacing_before_brackets(self):
         self.assert_lint('delete [] base;', '')
@@ -2163,6 +2425,7 @@ class CppStyleTest(CppStyleTestBase):
     def test_cpp_lambda_functions(self):
         self.assert_lint('        [&] (Type argument) {', '')
         self.assert_lint('        [] {', '')
+        self.assert_lint('        [foo call:@[ bar, baz ]] completionHandler:^{', '', 'foo.mm')
         self.assert_lint('        [ =] (Type argument) {', 'Extra space in capture list.  [whitespace/brackets] [4]')
         self.assert_lint('        [var, var_ref&] {', '')
         self.assert_lint('        [var , var_ref&] {', 'Extra space in capture list.  [whitespace/brackets] [4]')
@@ -2171,6 +2434,9 @@ class CppStyleTest(CppStyleTestBase):
     def test_objective_c_block(self):
         self.assert_lint('        ^(var, var_ref) {', '', 'foo.mm')
         self.assert_lint('        ^(var, var_ref) {', '', 'foo.m')
+        self.assert_lint('        ^NSArray<id<Protocol>> *(var) {', '', 'foo.mm')
+        self.assert_lint('        ^BOOL(var) {', '', 'foo.mm')
+        self.assert_lint('        ^NSType *(var) {', '', 'foo.mm')
         self.assert_lint('        ^(var , var_ref) {', 'Extra space in block arguments.  [whitespace/brackets] [4]', 'foo.m')
         self.assert_lint('        ^(var,var_ref) {', 'Missing space after ,  [whitespace/comma] [3]', 'foo.m')
         self.assert_lint('        ^(var, var_ref) {', 'Place brace on its own line for function definitions.  [whitespace/braces] [4]', 'foo.cpp')
@@ -2178,6 +2444,7 @@ class CppStyleTest(CppStyleTestBase):
         self.assert_lint('        ^ {', 'Extra space between ^ and block definition.  [whitespace/brackets] [4]', 'foo.m')
         self.assert_lint('        ^   {', 'Extra space between ^ and block definition.  [whitespace/brackets] [4]', 'foo.m')
         self.assert_lint('        ^ (arg1, arg2) {', 'Extra space between ^ and block arguments.  [whitespace/brackets] [4]', 'foo.m')
+        self.assert_lint('        ^   (arg1, arg2) {', 'Extra space between ^ and block arguments.  [whitespace/brackets] [4]', 'foo.m')
         self.assert_lint('        ^(arg1, arg2){', 'Missing space before {  [whitespace/braces] [5]', 'foo.m')
 
     def test_objective_c_block_as_argument(self):
@@ -2304,6 +2571,9 @@ class CppStyleTest(CppStyleTestBase):
         self.assert_lint('while (true) ;',
                          'Extra space before last semicolon. If this should be an '
                          'empty statement, use { } instead.'
+                         '  [whitespace/semicolon] [5]')
+        self.assert_lint('case DAV1D_TASK_TYPE_FG_APPLY:;',
+                         'Semicolon defining empty statement. Use { } instead.'
                          '  [whitespace/semicolon] [5]')
         self.assert_lint('default:;',
                          'Semicolon defining empty statement. Use { } instead.'
@@ -2958,6 +3228,14 @@ class CppStyleTest(CppStyleTestBase):
         self.assert_lint('mutable AnEnum a : 14;', errmsg)
         self.assert_lint('const AnEnum a : 6;', errmsg)
         self.assert_lint('bool a : 1;', '')
+        self.assert_lint('uint8_t a : 1;', '')
+        self.assert_lint('uint16_t a : 1;', '')
+        self.assert_lint('uint32_t a : 1;', '')
+        self.assert_lint('uint64_t a : 1;', '')
+        self.assert_lint('int8_t a : 1;', '')
+        self.assert_lint('int16_t a : 1;', '')
+        self.assert_lint('int32_t a : 1;', '')
+        self.assert_lint('int64_t a : 1;', '')
 
     # Integral bitfields must be declared with either signed or unsigned keyword.
     def test_plain_integral_bitfields(self):
@@ -3386,6 +3664,20 @@ class OrderOfIncludesTest(CppStyleTestBase):
                                          '#include "config.h"\n'
                                          '\n'
                                          '#include "bar.h"\n',
+                                         '')
+
+        # .. for tests even if the base name of an include is the prefix of the includee base name.
+        self.assert_language_rules_check('FooTest.cpp',
+                                         '#include "config.h"\n'
+                                         '\n'
+                                         '#include "Foo.h"\n',
+                                         '')
+
+        # .. for tests even if the base name of an include is contained in the includee base name.
+        self.assert_language_rules_check('FooTests.cpp',
+                                         '#include "config.h"\n'
+                                         '\n'
+                                         '#include "Test.h"\n',
                                          '')
 
         # Pretend that header files exist.
@@ -4058,7 +4350,7 @@ class NoNonVirtualDestructorsTest(CppStyleTestBase):
                     FOO_TWO
                 };
                 enum { FOO_ONE };
-                enum {FooOne, fooTwo};
+                enum { FooOne, fooTwo };
                 enum {
                     FOO_ONE
                 };''',
@@ -4078,6 +4370,26 @@ class NoNonVirtualDestructorsTest(CppStyleTestBase):
         self.assert_multi_line_lint(
             '''\
                 enum JSTokenType { NULLTOKEN = KeywordTokenFlag, TRUETOKEN, FALSETOKEN };''',
+            '')
+
+        self.assert_multi_line_lint(
+            '''\
+                enum class Requester { Main, XHR };''',
+            '')
+
+        self.assert_lint(
+            '''enum class CommonAbbreviations { AM, CF, PM, URL, XHR };''',
+            '')
+
+        self.assert_multi_line_lint(
+            '''\
+                enum class CommonAbbreviationsMultiline {
+                    AM,
+                    CF,
+                    PM,
+                    URL,
+                    XHR
+                };''',
             '')
 
         self.assert_multi_line_lint(
@@ -4110,7 +4422,7 @@ class NoNonVirtualDestructorsTest(CppStyleTestBase):
                     FOO_TWO
                 };
                 enum class Foo { FOO_ONE };
-                enum class Foo {FooOne, fooTwo};
+                enum class Foo { FooOne, fooTwo };
                 enum class Foo {
                     FOO_ONE
                 };''',
@@ -4134,6 +4446,22 @@ class NoNonVirtualDestructorsTest(CppStyleTestBase):
                     FooOne,
                     FooTwo = FooOne,
                 };''',
+            '')
+
+        self.assert_multi_line_lint(
+            '''\
+                enum class Foo : uint8_t {
+                    ONE,
+                    Two
+                };''',
+            'enum members should use InterCaps with an initial capital letter or initial \'k\' for C-style enums.  [readability/enum_casing] [4]')
+
+        self.assert_lint(
+            '''enum class Type : uint8_t { FIRST, SECOND };''',
+            'enum members should use InterCaps with an initial capital letter or initial \'k\' for C-style enums.  [readability/enum_casing] [4]')
+
+        self.assert_lint(
+            '''enum class Type : uint8_t { Uno, Dos };''',
             '')
 
         self.assert_lint(
@@ -4476,6 +4804,16 @@ class WebKitStyleTest(CppStyleTestBase):
             '  [whitespace/indent] [4]',
             'foo.cpp')
         self.assert_multi_line_lint(
+            'namespace IPC {\n'
+            'Decoder::Decoder(std::span<const uint8_t> buffer, BufferDeallocator&& bufferDeallocator, Vector<Attachment>&& attachments)\n'
+            '    : m_buffer { buffer }\n'
+            '    , m_bufferPosition { m_buffer.begin() }\n'
+            '    , m_bufferDeallocator { WTFMove(bufferDeallocator) }\n'
+            '    , m_attachments { WTFMove(attachments) }\n'
+            '{ }',
+            '',
+            'Decoder.cpp')
+        self.assert_multi_line_lint(
             'namespace WebCore {\n'
             '#define abc(x) x; \\\n'
             '    x\n'
@@ -4486,7 +4824,7 @@ class WebKitStyleTest(CppStyleTestBase):
             'namespace WebCore {\n'
             '#define abc(x) x; \\\n'
             '    x\n'
-            '    void* x;'
+            '    void* x;\n'
             '}',
             'Code inside a namespace should not be indented.  [whitespace/indent] [4]',
             'foo.cpp')
@@ -4676,6 +5014,17 @@ class WebKitStyleTest(CppStyleTestBase):
             'f( a, b );',
             ['Extra space after ( in function call  [whitespace/parens] [4]',
              'Extra space before )  [whitespace/parens] [2]'])
+
+        # Ignore concept constraints.
+        self.assert_multi_line_lint(
+            'template<typename T>\n'
+            'requires (MyConcept<T>)\n'
+            'int f(T a);',
+            '')
+
+        self.assert_multi_line_lint(
+            'int foo(int a, int b) requires (MyConcept<T>) { return a + b; }',
+            '')
 
         # Ignore spacing inside four char code.
         self.assert_multi_line_lint(
@@ -5532,6 +5881,7 @@ class WebKitStyleTest(CppStyleTestBase):
             "  [runtime/wtf_checked_size] [5]",
             'foo.cpp')
 
+
     def test_wtf_make_unique(self):
         self.assert_lint(
              'std::unique_ptr<Foo> foo = WTF::makeUnique<Foo>();',
@@ -5936,11 +6286,6 @@ class WebKitStyleTest(CppStyleTestBase):
         self.assert_lint('typedef struct _Evas_Object Evas_Object;', '')
         self.assert_lint('typedef struct _Ewk_History_Item Ewk_History_Item;', '')
 
-        # NPAPI functions that start with NPN_, NPP_ or NP_ are allowed.
-        self.assert_lint('void NPN_Status(NPP, const char*)', '')
-        self.assert_lint('NPError NPP_SetWindow(NPP instance, NPWindow *window)', '')
-        self.assert_lint('NPObject* NP_Allocate(NPP, NPClass*)', '')
-
         # const_iterator is allowed as well.
         self.assert_lint('typedef VectorType::const_iterator const_iterator;', '')
 
@@ -5957,66 +6302,72 @@ class WebKitStyleTest(CppStyleTestBase):
         # Valid protector RefPtr/Ref variable names.
         self.assert_lint('RefPtr<Node> protectedThis(this);', '')
         self.assert_lint('Ref<Node> protectedThis(*this);', '')
-        self.assert_lint('RefPtr<Node> protectedNode(node);', '')
-        self.assert_lint('RefPtr<Node> protectedNode(&node);', '')
-        self.assert_lint('RefPtr<Node> protector(node);', '')
-        self.assert_lint('RefPtr<Node> protector(&node);', '')
-        self.assert_lint('Ref<Node> protectedNode(node);', '')
-        self.assert_lint('Ref<Node> protectedNode(*node);', '')
-        self.assert_lint('Ref<Node> protector(node);', '')
-        self.assert_lint('Ref<Node> protector(*node);', '')
-        self.assert_lint('RefPtr<Node> protectedOtherNode(otherNode);', '')
-        self.assert_lint('RefPtr<Node> protectedOtherNode(&otherNode);', '')
-        self.assert_lint('Ref<Node> protectedOtherNode(otherNode);', '')
-        self.assert_lint('Ref<Node> protectedOtherNode(*otherNode);', '')
-        self.assert_lint('RefPtr<Widget> protectedWidget(m_widget);', '')
-        self.assert_lint('RefPtr<Widget> protectedWidget(&m_widget);', '')
-        self.assert_lint('Ref<Widget> protectedWidget(m_widget);', '')
-        self.assert_lint('Ref<Widget> protectedWidget(*m_widget);', '')
-        self.assert_lint('RefPtr<Widget> protector(m_widget);', '')
-        self.assert_lint('RefPtr<Widget> protector(&m_widget);', '')
-        self.assert_lint('Ref<Widget> protector(m_widget);', '')
-        self.assert_lint('Ref<Widget> protector(*m_widget);', '')
         self.assert_lint('RefPtr<SomeNamespace::Node> protectedThis(this);', '')
         self.assert_lint('RefPtr<SomeClass::InternalClass::Node> protectedThis(this);', '')
         self.assert_lint('RefPtr<Node> protectedThis = this;', '')
         self.assert_lint('Ref<Node> protectedThis = *this;', '')
-        self.assert_lint('RefPtr<Node> protectedNode = node;', '')
-        self.assert_lint('RefPtr<Node> protectedNode = &node;', '')
-        self.assert_lint('RefPtr<Node> protector = node;', '')
-        self.assert_lint('RefPtr<Node> protector = &node;', '')
-        self.assert_lint('Ref<Node> protectedNode = node;', '')
-        self.assert_lint('Ref<Node> protectedNode =*node;', '')
-        self.assert_lint('Ref<Node> protector = node;', '')
-        self.assert_lint('Ref<Node> protector = *node;', '')
+        self.assert_lint('RefPtr<Node> nodeRef(node);', '')
+        self.assert_lint('Ref<Node> nodeRef(*node);', '')
+        self.assert_lint('Ref<Node> node(*node);', '')
+        self.assert_lint('Ref<Node> nodeRef = node;', '')
 
         # Invalid protector RefPtr/Ref variable names.
+        self.assert_lint('RefPtr<Node> protectedNode(node);', "'protectedNode' is incorrectly named. New variables should not use the 'protected' prefix.  [readability/naming/protected] [4]")
+        self.assert_lint('RefPtr<Node> protectedNode(&node);', "'protectedNode' is incorrectly named. New variables should not use the 'protected' prefix.  [readability/naming/protected] [4]")
+        self.assert_lint('RefPtr<Node> protector(node);', "'protector' is incorrectly named. New variables should not be named 'protector'  [readability/naming/protected] [4]")
+        self.assert_lint('RefPtr<Node> protector(&node);', "'protector' is incorrectly named. New variables should not be named 'protector'  [readability/naming/protected] [4]")
+        self.assert_lint('Ref<Node> protectedNode(node);', "'protectedNode' is incorrectly named. New variables should not use the 'protected' prefix.  [readability/naming/protected] [4]")
+        self.assert_lint('Ref<Node> protectedNode(*node);', "'protectedNode' is incorrectly named. New variables should not use the 'protected' prefix.  [readability/naming/protected] [4]")
+        self.assert_lint('Ref<Node> protector(node);', "'protector' is incorrectly named. New variables should not be named 'protector'  [readability/naming/protected] [4]")
+        self.assert_lint('Ref<Node> protector(*node);', "'protector' is incorrectly named. New variables should not be named 'protector'  [readability/naming/protected] [4]")
+        self.assert_lint('RefPtr<Node> protectedOtherNode(otherNode);', "'protectedOtherNode' is incorrectly named. New variables should not use the 'protected' prefix.  [readability/naming/protected] [4]")
+        self.assert_lint('RefPtr<Node> protectedOtherNode(&otherNode);', "'protectedOtherNode' is incorrectly named. New variables should not use the 'protected' prefix.  [readability/naming/protected] [4]")
+        self.assert_lint('Ref<Node> protectedOtherNode(otherNode);', "'protectedOtherNode' is incorrectly named. New variables should not use the 'protected' prefix.  [readability/naming/protected] [4]")
+        self.assert_lint('Ref<Node> protectedOtherNode(*otherNode);', "'protectedOtherNode' is incorrectly named. New variables should not use the 'protected' prefix.  [readability/naming/protected] [4]")
+        self.assert_lint('RefPtr<Widget> protectedWidget(m_widget);', "'protectedWidget' is incorrectly named. New variables should not use the 'protected' prefix.  [readability/naming/protected] [4]")
+        self.assert_lint('RefPtr<Widget> protectedWidget(&m_widget);', "'protectedWidget' is incorrectly named. New variables should not use the 'protected' prefix.  [readability/naming/protected] [4]")
+        self.assert_lint('Ref<Widget> protectedWidget(m_widget);', "'protectedWidget' is incorrectly named. New variables should not use the 'protected' prefix.  [readability/naming/protected] [4]")
+        self.assert_lint('Ref<Widget> protectedWidget(*m_widget);', "'protectedWidget' is incorrectly named. New variables should not use the 'protected' prefix.  [readability/naming/protected] [4]")
+        self.assert_lint('RefPtr<Widget> protector(m_widget);', "'protector' is incorrectly named. New variables should not be named 'protector'  [readability/naming/protected] [4]")
+        self.assert_lint('RefPtr<Widget> protector(&m_widget);', "'protector' is incorrectly named. New variables should not be named 'protector'  [readability/naming/protected] [4]")
+        self.assert_lint('Ref<Widget> protector(m_widget);', "'protector' is incorrectly named. New variables should not be named 'protector'  [readability/naming/protected] [4]")
+        self.assert_lint('Ref<Widget> protector(*m_widget);', "'protector' is incorrectly named. New variables should not be named 'protector'  [readability/naming/protected] [4]")
         self.assert_lint('RefPtr<Node> protector(this);', "'protector' is incorrectly named. It should be named 'protectedThis'.  [readability/naming/protected] [4]")
         self.assert_lint('Ref<Node> protector(*this);', "'protector' is incorrectly named. It should be named 'protectedThis'.  [readability/naming/protected] [4]")
         self.assert_lint('RefPtr<Node> protector = this;', "'protector' is incorrectly named. It should be named 'protectedThis'.  [readability/naming/protected] [4]")
         self.assert_lint('Ref<Node> protector = *this;', "'protector' is incorrectly named. It should be named 'protectedThis'.  [readability/naming/protected] [4]")
         self.assert_lint('RefPtr<Node> self(this);', "'self' is incorrectly named. It should be named 'protectedThis'.  [readability/naming/protected] [4]")
         self.assert_lint('Ref<Node> self(*this);', "'self' is incorrectly named. It should be named 'protectedThis'.  [readability/naming/protected] [4]")
-        self.assert_lint('RefPtr<Node> protectedThis(node);', "'protectedThis' is incorrectly named. It should be named 'protector' or 'protectedNode'.  [readability/naming/protected] [4]")
-        self.assert_lint('RefPtr<Node> protectedThis(&node);', "'protectedThis' is incorrectly named. It should be named 'protector' or 'protectedNode'.  [readability/naming/protected] [4]")
-        self.assert_lint('Ref<Node> protectedThis(node);', "'protectedThis' is incorrectly named. It should be named 'protector' or 'protectedNode'.  [readability/naming/protected] [4]")
-        self.assert_lint('Ref<Node> protectedThis(*node);', "'protectedThis' is incorrectly named. It should be named 'protector' or 'protectedNode'.  [readability/naming/protected] [4]")
-        self.assert_lint('RefPtr<Node> protectedNode(otherNode);', "'protectedNode' is incorrectly named. It should be named 'protector' or 'protectedOtherNode'.  [readability/naming/protected] [4]")
-        self.assert_lint('RefPtr<Node> protectedNode(&otherNode);', "'protectedNode' is incorrectly named. It should be named 'protector' or 'protectedOtherNode'.  [readability/naming/protected] [4]")
-        self.assert_lint('Ref<Node> protectedNode(otherNode);', "'protectedNode' is incorrectly named. It should be named 'protector' or 'protectedOtherNode'.  [readability/naming/protected] [4]")
-        self.assert_lint('Ref<Node> protectedNode(*otherNode);', "'protectedNode' is incorrectly named. It should be named 'protector' or 'protectedOtherNode'.  [readability/naming/protected] [4]")
-        self.assert_lint('RefPtr<Node> protectedNode = otherNode;', "'protectedNode' is incorrectly named. It should be named 'protector' or 'protectedOtherNode'.  [readability/naming/protected] [4]")
-        self.assert_lint('RefPtr<Node> protectedNode = &otherNode;', "'protectedNode' is incorrectly named. It should be named 'protector' or 'protectedOtherNode'.  [readability/naming/protected] [4]")
-        self.assert_lint('Ref<Node> protectedNode = otherNode;', "'protectedNode' is incorrectly named. It should be named 'protector' or 'protectedOtherNode'.  [readability/naming/protected] [4]")
-        self.assert_lint('Ref<Node> protectedNode = *otherNode;', "'protectedNode' is incorrectly named. It should be named 'protector' or 'protectedOtherNode'.  [readability/naming/protected] [4]")
-        self.assert_lint('RefPtr<Node> nodeRef(node);', "'nodeRef' is incorrectly named. It should be named 'protector' or 'protectedNode'.  [readability/naming/protected] [4]")
-        self.assert_lint('Ref<Node> nodeRef(*node);', "'nodeRef' is incorrectly named. It should be named 'protector' or 'protectedNode'.  [readability/naming/protected] [4]")
+        self.assert_lint('RefPtr<Node> protectedThis(node);', "Incorrect use of 'protectedThis'.  [readability/naming/protected] [4]")
+        self.assert_lint('RefPtr<Node> protectedThis(&node);', "Incorrect use of 'protectedThis'.  [readability/naming/protected] [4]")
+        self.assert_lint('Ref<Node> protectedThis(node);', "Incorrect use of 'protectedThis'.  [readability/naming/protected] [4]")
+        self.assert_lint('Ref<Node> protectedThis(*node);', "Incorrect use of 'protectedThis'.  [readability/naming/protected] [4]")
+        self.assert_lint('RefPtr<Node> protectedNode(otherNode);', "'protectedNode' is incorrectly named. New variables should not use the 'protected' prefix.  [readability/naming/protected] [4]")
+        self.assert_lint('RefPtr<Node> protectedNode(&otherNode);', "'protectedNode' is incorrectly named. New variables should not use the 'protected' prefix.  [readability/naming/protected] [4]")
+        self.assert_lint('Ref<Node> protectedNode(otherNode);', "'protectedNode' is incorrectly named. New variables should not use the 'protected' prefix.  [readability/naming/protected] [4]")
+        self.assert_lint('Ref<Node> protectedNode(*otherNode);', "'protectedNode' is incorrectly named. New variables should not use the 'protected' prefix.  [readability/naming/protected] [4]")
+        self.assert_lint('RefPtr<Node> protectedNode = otherNode;', "'protectedNode' is incorrectly named. New variables should not use the 'protected' prefix.  [readability/naming/protected] [4]")
+        self.assert_lint('RefPtr<Node> protectedNode = &otherNode;', "'protectedNode' is incorrectly named. New variables should not use the 'protected' prefix.  [readability/naming/protected] [4]")
+        self.assert_lint('Ref<Node> protectedNode = otherNode;', "'protectedNode' is incorrectly named. New variables should not use the 'protected' prefix.  [readability/naming/protected] [4]")
+        self.assert_lint('Ref<Node> protectedNode = *otherNode;', "'protectedNode' is incorrectly named. New variables should not use the 'protected' prefix.  [readability/naming/protected] [4]")
+        self.assert_lint('RefPtr<Node> protectedNode = node;', "'protectedNode' is incorrectly named. New variables should not use the 'protected' prefix.  [readability/naming/protected] [4]")
+        self.assert_lint('RefPtr<Node> protectedNode = &node;', "'protectedNode' is incorrectly named. New variables should not use the 'protected' prefix.  [readability/naming/protected] [4]")
+        self.assert_lint('RefPtr<Node> protector = node;', "'protector' is incorrectly named. New variables should not be named 'protector'  [readability/naming/protected] [4]")
+        self.assert_lint('RefPtr<Node> protector = &node;', "'protector' is incorrectly named. New variables should not be named 'protector'  [readability/naming/protected] [4]")
+        self.assert_lint('Ref<Node> protectedNode = node;', "'protectedNode' is incorrectly named. New variables should not use the 'protected' prefix.  [readability/naming/protected] [4]")
+        self.assert_lint('Ref<Node> protectedNode = *node;', "'protectedNode' is incorrectly named. New variables should not use the 'protected' prefix.  [readability/naming/protected] [4]")
+        self.assert_lint('Ref<Node> protector = node;', "'protector' is incorrectly named. New variables should not be named 'protector'  [readability/naming/protected] [4]")
+        self.assert_lint('Ref<Node> protector = *node;', "'protector' is incorrectly named. New variables should not be named 'protector'  [readability/naming/protected] [4]")
 
         # Lines that look like a protector variable declaration but aren't.
         self.assert_lint('static RefPtr<Widget> doSomethingWith(widget);', '')
         self.assert_lint('RefPtr<Widget> create();', '')
         self.assert_lint('Ref<GeolocationPermissionRequestProxy> createRequest(GeolocationIdentifier);', '')
         self.assert_lint('Ref<TypeName> createSomething(OtherTypeName);', '')
+        self.assert_lint('Ref<Settings> protectedSettings() const;', '')
+        self.assert_lint('RefPtr<Settings> protectedSettings() const;', '')
+        self.assert_lint('RefPtr<Settings> protectedSettings();', '')
+        self.assert_lint('RefPtr<Settings> protectedSettings() { return m_settings.get(); }', '')
 
     def test_parameter_names(self):
         # Leave meaningless variable names out of function declarations.
@@ -6241,12 +6592,13 @@ class WebKitStyleTest(CppStyleTestBase):
         'Should be indented on a separate line, with the colon or comma first on that line.'
         '  [whitespace/indent] [4]')
 
-        self.assert_multi_line_lint((
+        self.assert_multi_line_lint(
             'MyClass::MyClass(Document* doc)\n'
             '    : m_myMember(b ? bar() : baz())\n'
             '    , MySuperClass()\n'
             '    , m_doc(0)\n'
-            '{ }'), '')
+            '{ }',
+            '')
 
         self.assert_multi_line_lint('''\
         MyClass::MyClass(Document* doc) : MySuperClass()

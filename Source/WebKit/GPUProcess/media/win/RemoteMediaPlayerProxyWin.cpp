@@ -26,17 +26,12 @@
 #include "config.h"
 #include "RemoteMediaPlayerProxy.h"
 
-#if ENABLE(GPU_PROCESS)
+#if ENABLE(GPU_PROCESS) && ENABLE(VIDEO)
 
 #include "LayerHostingContext.h"
 #include <WebCore/NotImplemented.h>
 
 namespace WebKit {
-
-void RemoteMediaPlayerProxy::prepareForPlayback(bool, WebCore::MediaPlayerEnums::Preload, bool, bool, float, WebCore::DynamicRangeMode, CompletionHandler<void(std::optional<LayerHostingContextID>&& inlineLayerHostingContextId)>&&)
-{
-    notImplemented();
-}
 
 void RemoteMediaPlayerProxy::mediaPlayerFirstVideoFrameAvailable()
 {
@@ -57,4 +52,4 @@ void RemoteMediaPlayerProxy::exitFullscreen(CompletionHandler<void()>&& completi
 
 } // namespace WebKit
 
-#endif // ENABLE(GPU_PROCESS)
+#endif // ENABLE(GPU_PROCESS) && ENABLE(VIDEO)

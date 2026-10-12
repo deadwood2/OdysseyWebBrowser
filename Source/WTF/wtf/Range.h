@@ -73,17 +73,8 @@ public:
         return Range(std::numeric_limits<Type>::min(), std::numeric_limits<Type>::max());
     }
 
-    bool operator==(const Range& other) const
-    {
-        return m_begin == other.m_begin
-            && m_end == other.m_end;
-    }
+    friend bool operator==(const Range&, const Range&) = default;
 
-    bool operator!=(const Range& other) const
-    {
-        return !(*this == other);
-    }
-    
     explicit operator bool() const { return m_begin != m_end; }
 
     Range operator|(const Range& other) const
@@ -104,6 +95,8 @@ public:
     
     Type begin() const { return m_begin; }
     Type end() const { return m_end; }
+
+    Type distance() const { return end() - begin(); }
 
     bool overlaps(const Range& other) const
     {
@@ -138,3 +131,5 @@ private:
 };
 
 } // namespace WTF
+
+using WTF::Range;

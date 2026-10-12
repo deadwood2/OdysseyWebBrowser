@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2005-2024 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -21,17 +21,20 @@
 #pragma once
 
 #include "ColorHash.h"
-#include "ControlStates.h"
 #include "GraphicsContext.h"
 #include "PaintInfo.h"
 #include "PopupMenuStyle.h"
 #include "ScrollTypes.h"
 #include "StyleColor.h"
+#include "SwitchTrigger.h"
 #include "ThemeTypes.h"
 #include <wtf/HashMap.h>
 
 namespace WebCore {
 
+enum class DocumentMarkerLineStyleMode : uint8_t;
+
+struct AttachmentLayout;
 class BorderData;
 class Element;
 class FileList;
@@ -51,8 +54,7 @@ class Settings;
 class RenderTheme {
 protected:
     RenderTheme();
-
-    virtual ~RenderTheme() = default;
+    virtual ~RenderTheme();
 
 public:
     // This function is to be implemented in platform-specific theme implementations to hand back the
@@ -68,10 +70,19 @@ public:
     // "border" are set, or if the appearance is not supported by the theme.
     void adjustStyle(RenderStyle&, const Element*, const RenderStyle* userAgentAppearanceStyle);
 
-    // This method is called to paint the widget as a background of the RenderObject.  A widget's foreground, e.g., the
-    // text of a button, is always rendered by the engine itself.  The boolean return value indicates
+    virtual bool canCreateControlPartForRenderer(const RenderObject&) const { return false; }
+    virtual bool canCreateControlPartForBorderOnly(const RenderObject&) const { return false; }
+    virtual bool canCreateControlPartForDecorations(const RenderObject&) const { return false; }
+    RefPtr<ControlPart> createControlPart(const RenderObject&) const;
+
+    void updateControlPartForRenderer(ControlPart&, const RenderObject&) const;
+
+    // These methods are called to paint the widget as a background of the RenderObject. A widget's foreground, e.g., the
+    // text of a button, is always rendered by the engine itself. The boolean return value indicates
     // whether the CSS border/background should also be painted.
-    bool paint(const RenderBox&, ControlStates&, const PaintInfo&, const LayoutRect&);
+    bool paint(const RenderBox&, ControlPart&, const PaintInfo&, const LayoutRect&);
+    bool paint(const RenderBox&, const PaintInfo&, const LayoutRect&);
+    
     bool paintBorderOnly(const RenderBox&, const PaintInfo&, const LayoutRect&);
     void paintDecorations(const RenderBox&, const PaintInfo&, const LayoutRect&);
 
@@ -92,14 +103,14 @@ public:
     virtual String mediaControlsFormattedStringForDuration(double) { return String(); }
 #endif // ENABLE(MODERN_MEDIA_CONTROLS)
 #endif // ENABLE(VIDEO)
-#if ENABLE(FULLSCREEN_API)
-    virtual String extraFullScreenStyleSheet() { return String(); }
+#if ENABLE(ATTACHMENT_ELEMENT)
+    virtual String attachmentStyleSheet() const;
 #endif
 #if ENABLE(DATALIST_ELEMENT)
     String dataListStyleSheet() const;
 #endif
 #if ENABLE(INPUT_TYPE_COLOR)
-    virtual String colorInputStyleSheet(const Settings&) const;
+    virtual String colorInputStyleSheet() const;
 #endif
 
     virtual LayoutRect adjustedPaintRect(const RenderBox&, const LayoutRect& paintRect) const { return paintRect; }
@@ -111,7 +122,7 @@ public:
 
     // A method for asking if a control is a container or not.  Leaf controls have to have some special behavior (like
     // the baseline position API above).
-    bool isControlContainer(ControlPart) const;
+    bool isControlContainer(StyleAppearance) const;
 
     // A method asking if the control changes its tint when the window has focus or not.
     virtual bool controlSupportsTints(const RenderObject&) const { return false; }
@@ -124,57 +135,53 @@ public:
 
     // Some controls may spill out of their containers (e.g., the check on an OS X checkbox).  When these controls repaint,
     // the theme needs to communicate this inflated rect to the engine so that it can invalidate the whole control.
-    virtual void adjustRepaintRect(const RenderObject&, FloatRect&);
-
-    // This method is called whenever a relevant state changes on a particular themed object, e.g., the mouse becomes pressed
-    // or a control becomes disabled.
-    virtual bool stateChanged(const RenderObject&, ControlStates::States) const;
-
-    // This method is called whenever the theme changes on the system in order to flush cached resources from the
-    // old theme.
-    virtual void themeChanged() { }
+    virtual void inflateRectForControlRenderer(const RenderObject&, FloatRect&) { }
+    virtual void adjustRepaintRect(const RenderBox&, FloatRect&) { }
 
     // A method asking if the theme is able to draw the focus ring.
     virtual bool supportsFocusRing(const RenderStyle&) const;
 
     // A method asking if the theme's controls actually care about redrawing when hovered.
-    virtual bool supportsHover(const RenderStyle&) const { return false; }
+    virtual bool supportsHover() const { return false; }
 
     // A method asking if the platform is able to show datalist suggestions for a given input type.
     virtual bool supportsDataListUI(const AtomString&) const { return false; }
 
     virtual bool supportsBoxShadow(const RenderStyle&) const { return false; }
 
+    bool useFormSemanticContext() const { return m_useFormSemanticContext; }
+    void setUseFormSemanticContext(bool value) { m_useFormSemanticContext = value; }
+    virtual bool supportsLargeFormControls() const { return false; }
+
+    virtual bool searchFieldShouldAppearAsTextField(const RenderStyle&) const { return false; }
+
     // Text selection colors.
-    Color activeSelectionBackgroundColor(OptionSet<StyleColor::Options>) const;
-    Color inactiveSelectionBackgroundColor(OptionSet<StyleColor::Options>) const;
-    virtual Color transformSelectionBackgroundColor(const Color&, OptionSet<StyleColor::Options>) const;
-    Color activeSelectionForegroundColor(OptionSet<StyleColor::Options>) const;
-    Color inactiveSelectionForegroundColor(OptionSet<StyleColor::Options>) const;
+    WEBCORE_EXPORT Color activeSelectionBackgroundColor(OptionSet<StyleColorOptions>) const;
+    WEBCORE_EXPORT Color inactiveSelectionBackgroundColor(OptionSet<StyleColorOptions>) const;
+    virtual Color transformSelectionBackgroundColor(const Color&, OptionSet<StyleColorOptions>) const;
+    Color activeSelectionForegroundColor(OptionSet<StyleColorOptions>) const;
+    Color inactiveSelectionForegroundColor(OptionSet<StyleColorOptions>) const;
 
     // List box selection colors
-    Color activeListBoxSelectionBackgroundColor(OptionSet<StyleColor::Options>) const;
-    Color activeListBoxSelectionForegroundColor(OptionSet<StyleColor::Options>) const;
-    Color inactiveListBoxSelectionBackgroundColor(OptionSet<StyleColor::Options>) const;
-    Color inactiveListBoxSelectionForegroundColor(OptionSet<StyleColor::Options>) const;
+    WEBCORE_EXPORT Color activeListBoxSelectionBackgroundColor(OptionSet<StyleColorOptions>) const;
+    WEBCORE_EXPORT Color activeListBoxSelectionForegroundColor(OptionSet<StyleColorOptions>) const;
+    Color inactiveListBoxSelectionBackgroundColor(OptionSet<StyleColorOptions>) const;
+    Color inactiveListBoxSelectionForegroundColor(OptionSet<StyleColorOptions>) const;
 
     // Highlighting color for search matches.
-    Color textSearchHighlightColor(OptionSet<StyleColor::Options>) const;
+    Color textSearchHighlightColor(OptionSet<StyleColorOptions>) const;
 
-#if ENABLE(APP_HIGHLIGHTS)
     // Default highlighting color for app highlights.
-    Color appHighlightColor(OptionSet<StyleColor::Options>) const;
-#endif
+    Color annotationHighlightColor(OptionSet<StyleColorOptions>) const;
 
-    Color defaultButtonTextColor(OptionSet<StyleColor::Options>) const;
+    Color defaultButtonTextColor(OptionSet<StyleColorOptions>) const;
 
     Color datePlaceholderTextColor(const Color& textColor, const Color& backgroundColor) const;
 
-    virtual Color disabledTextColor(const Color& textColor, const Color& backgroundColor) const;
+    Color documentMarkerLineColor(const RenderText&, DocumentMarkerLineStyleMode) const;
 
-    WEBCORE_EXPORT Color focusRingColor(OptionSet<StyleColor::Options>) const;
-    virtual Color platformFocusRingColor(OptionSet<StyleColor::Options>) const { return Color::black; }
-    static void setCustomFocusRingColor(const Color&);
+    WEBCORE_EXPORT Color focusRingColor(OptionSet<StyleColorOptions>) const;
+    virtual Color platformFocusRingColor(OptionSet<StyleColorOptions>) const { return Color::black; }
     static float platformFocusRingWidth() { return 3; }
     static float platformFocusRingOffset(float outlineWidth) { return std::max<float>(outlineWidth - platformFocusRingWidth(), 0); }
 #if ENABLE(TOUCH_EVENTS)
@@ -183,51 +190,31 @@ public:
 #endif
     virtual void platformColorsDidChange();
 
-    virtual Seconds caretBlinkInterval() const { return 500_ms; }
+    virtual std::optional<Seconds> caretBlinkInterval() const { return { 500_ms }; }
 
     // System fonts and colors for CSS.
-    void systemFont(CSSValueID, FontCascadeDescription&) const;
-    virtual Color systemColor(CSSValueID, OptionSet<StyleColor::Options>) const;
+    virtual Color systemColor(CSSValueID, OptionSet<StyleColorOptions>) const;
 
     virtual int minimumMenuListSize(const RenderStyle&) const { return 0; }
 
-    virtual void adjustSliderThumbSize(RenderStyle&, const Element*) const;
+    virtual void adjustSliderThumbSize(RenderStyle&, const Element*) const { }
 
-    virtual LengthBox popupInternalPaddingBox(const RenderStyle&, const Settings&) const { return { 0, 0, 0, 0 }; }
+    virtual LengthBox popupInternalPaddingBox(const RenderStyle&) const { return { 0, 0, 0, 0 }; }
     virtual bool popupOptionSupportsTextIndent() const { return false; }
-    virtual PopupMenuStyle::PopupMenuSize popupMenuSize(const RenderStyle&, IntRect&) const { return PopupMenuStyle::PopupMenuSizeNormal; }
+    virtual PopupMenuStyle::Size popupMenuSize(const RenderStyle&, IntRect&) const { return PopupMenuStyle::Size::Normal; }
 
-    virtual ScrollbarControlSize scrollbarControlSizeForPart(ControlPart) { return ScrollbarControlSize::Regular; }
+    virtual ScrollbarWidth scrollbarWidthStyleForPart(StyleAppearance) { return ScrollbarWidth::Auto; }
 
-    // Returns the repeat interval of the animation for the progress bar.
-    virtual Seconds animationRepeatIntervalForProgressBar(const RenderProgress&) const;
-    // Returns the duration of the animation for the progress bar.
-    virtual Seconds animationDurationForProgressBar(const RenderProgress&) const;
-    virtual IntRect progressBarRectForBounds(const RenderObject&, const IntRect&) const;
+    virtual Seconds animationRepeatIntervalForProgressBar(const RenderProgress&) const { return 0_s; }
+    virtual Seconds animationDurationForProgressBar() const { return 0_s; }
+    virtual IntRect progressBarRectForBounds(const RenderProgress&, const IntRect& bounds) const { return bounds; }
 
-#if ENABLE(VIDEO)
-    // Media controls
-    virtual bool supportsClosedCaptioning() const { return false; }
-    virtual bool hasOwnDisabledStateHandlingFor(ControlPart) const { return false; }
-    virtual bool usesMediaControlStatusDisplay() { return false; }
-    virtual bool usesMediaControlVolumeSlider() const { return true; }
-    virtual bool usesVerticalVolumeSlider() const { return true; }
-    virtual double mediaControlsFadeInDuration() { return 0.1; }
-    virtual Seconds mediaControlsFadeOutDuration() { return 300_ms; }
-    virtual String formatMediaControlsTime(float time) const;
-    virtual String formatMediaControlsCurrentTime(float currentTime, float duration) const;
-    virtual String formatMediaControlsRemainingTime(float currentTime, float duration) const;
-    
-    // Returns the media volume slider container's offset from the mute button.
-    virtual LayoutPoint volumeSliderOffsetFromMuteButton(const RenderBox&, const LayoutSize&) const;
-#endif
-
-    virtual IntSize meterSizeForBounds(const RenderMeter&, const IntRect&) const;
-    virtual bool supportsMeter(ControlPart, const HTMLMeterElement&) const;
+    virtual FloatSize meterSizeForBounds(const RenderMeter&, const FloatRect&) const;
+    virtual bool supportsMeter(StyleAppearance) const { return false; }
 
 #if ENABLE(DATALIST_ELEMENT)
     // Returns the threshold distance for snapping to a slider tick mark.
-    virtual LayoutUnit sliderTickSnappingThreshold() const;
+    virtual LayoutUnit sliderTickSnappingThreshold() const { return 0; }
     // Returns size of one slider tick mark for a horizontal track.
     // For vertical tracks we rotate it and use it. i.e. Width is always length along the track.
     virtual IntSize sliderTickSize() const = 0;
@@ -237,7 +224,7 @@ public:
 #endif
 
     virtual bool shouldHaveSpinButton(const HTMLInputElement&) const;
-    virtual bool shouldHaveCapsLockIndicator(const HTMLInputElement&) const;
+    virtual bool shouldHaveCapsLockIndicator(const HTMLInputElement&) const { return false; }
 
     // Functions for <select> elements.
     virtual bool delegatesMenuListRendering() const { return false; }
@@ -247,8 +234,12 @@ public:
     virtual String fileListDefaultLabel(bool multipleFilesAllowed) const;
     virtual String fileListNameForWidth(const FileList*, const FontCascade&, int width, bool multipleFilesAllowed) const;
 
-    enum FileUploadDecorations { SingleFile, MultipleFiles };
+    enum class FileUploadDecorations : bool { SingleFile, MultipleFiles };
     virtual void paintFileUploadIconDecorations(const RenderObject& /*inputRenderer*/, const RenderObject& /*buttonRenderer*/, const PaintInfo&, const IntRect&, Icon*, FileUploadDecorations) { }
+    
+#if ENABLE(SERVICE_CONTROLS)
+    virtual IntSize imageControlsButtonSize() const { return IntSize(); }
+#endif
 
 #if ENABLE(ATTACHMENT_ELEMENT)
     virtual LayoutSize attachmentIntrinsicSize(const RenderAttachment&) const { return LayoutSize(); }
@@ -259,157 +250,141 @@ public:
     enum class InnerSpinButtonLayout { Vertical, HorizontalUpLeft, HorizontalUpRight };
     virtual InnerSpinButtonLayout innerSpinButtonLayout(const RenderObject&) const { return InnerSpinButtonLayout::Vertical; }
 
-    virtual bool shouldMockBoldSystemFontForAccessibility() const { return false; }
-    virtual void setShouldMockBoldSystemFontForAccessibility(bool) { }
-
 #if USE(SYSTEM_PREVIEW)
     virtual void paintSystemPreviewBadge(Image&, const PaintInfo&, const FloatRect&);
 #endif
+    virtual Seconds switchAnimationVisuallyOnDuration() const { return 0_s; }
+    virtual Seconds switchAnimationHeldDuration() const { return 0_s; }
+    float switchPointerTrackingMagnitudeProportion() const { return 0.4f; }
+    virtual bool hasSwitchHapticFeedback(SwitchTrigger) const { return false; }
 
 protected:
-    virtual bool canPaint(const PaintInfo&, const Settings&) const { return true; }
-    virtual FontCascadeDescription& cachedSystemFontDescription(CSSValueID systemFontID) const;
-    virtual void updateCachedSystemFontDescription(CSSValueID systemFontID, FontCascadeDescription&) const = 0;
+    OptionSet<ControlStyle::State> extractControlStyleStatesForRenderer(const RenderObject&) const;
+    ControlStyle extractControlStyleForRenderer(const RenderObject&) const;
+
+    virtual bool canPaint(const PaintInfo&, const Settings&, StyleAppearance) const { return true; }
 
     // The platform selection color.
-    virtual Color platformActiveSelectionBackgroundColor(OptionSet<StyleColor::Options>) const;
-    virtual Color platformInactiveSelectionBackgroundColor(OptionSet<StyleColor::Options>) const;
-    virtual Color platformActiveSelectionForegroundColor(OptionSet<StyleColor::Options>) const;
-    virtual Color platformInactiveSelectionForegroundColor(OptionSet<StyleColor::Options>) const;
+    virtual Color platformActiveSelectionBackgroundColor(OptionSet<StyleColorOptions>) const;
+    virtual Color platformInactiveSelectionBackgroundColor(OptionSet<StyleColorOptions>) const;
+    virtual Color platformActiveSelectionForegroundColor(OptionSet<StyleColorOptions>) const;
+    virtual Color platformInactiveSelectionForegroundColor(OptionSet<StyleColorOptions>) const;
 
-    virtual Color platformActiveListBoxSelectionBackgroundColor(OptionSet<StyleColor::Options>) const;
-    virtual Color platformInactiveListBoxSelectionBackgroundColor(OptionSet<StyleColor::Options>) const;
-    virtual Color platformActiveListBoxSelectionForegroundColor(OptionSet<StyleColor::Options>) const;
-    virtual Color platformInactiveListBoxSelectionForegroundColor(OptionSet<StyleColor::Options>) const;
+    virtual Color platformActiveListBoxSelectionBackgroundColor(OptionSet<StyleColorOptions>) const;
+    virtual Color platformInactiveListBoxSelectionBackgroundColor(OptionSet<StyleColorOptions>) const;
+    virtual Color platformActiveListBoxSelectionForegroundColor(OptionSet<StyleColorOptions>) const;
+    virtual Color platformInactiveListBoxSelectionForegroundColor(OptionSet<StyleColorOptions>) const;
 
-    virtual Color platformTextSearchHighlightColor(OptionSet<StyleColor::Options>) const;
-#if ENABLE(APP_HIGHLIGHTS)
-    virtual Color platformAppHighlightColor(OptionSet<StyleColor::Options>) const;
-#endif
+    virtual Color platformTextSearchHighlightColor(OptionSet<StyleColorOptions>) const;
+    virtual Color platformAnnotationHighlightColor(OptionSet<StyleColorOptions>) const;
 
-    virtual Color platformDefaultButtonTextColor(OptionSet<StyleColor::Options>) const;
+    virtual Color platformDefaultButtonTextColor(OptionSet<StyleColorOptions>) const;
 
-    virtual bool supportsSelectionForegroundColors(OptionSet<StyleColor::Options>) const { return true; }
-    virtual bool supportsListBoxSelectionForegroundColors(OptionSet<StyleColor::Options>) const { return true; }
+    virtual Color platformSpellingMarkerColor(OptionSet<StyleColorOptions>) const;
+    virtual Color platformDictationAlternativesMarkerColor(OptionSet<StyleColorOptions>) const;
+    virtual Color platformAutocorrectionReplacementMarkerColor(OptionSet<StyleColorOptions>) const;
+    virtual Color platformGrammarMarkerColor(OptionSet<StyleColorOptions>) const;
 
-#if !USE(NEW_THEME)
+    virtual bool supportsSelectionForegroundColors(OptionSet<StyleColorOptions>) const { return true; }
+    virtual bool supportsListBoxSelectionForegroundColors(OptionSet<StyleColorOptions>) const { return true; }
+
     // Methods for each appearance value.
     virtual void adjustCheckboxStyle(RenderStyle&, const Element*) const;
     virtual bool paintCheckbox(const RenderObject&, const PaintInfo&, const FloatRect&) { return true; }
-    virtual void setCheckboxSize(RenderStyle&) const { }
 
     virtual void adjustRadioStyle(RenderStyle&, const Element*) const;
     virtual bool paintRadio(const RenderObject&, const PaintInfo&, const FloatRect&) { return true; }
-    virtual void setRadioSize(RenderStyle&) const { }
 
     virtual void adjustButtonStyle(RenderStyle&, const Element*) const;
     virtual bool paintButton(const RenderObject&, const PaintInfo&, const IntRect&) { return true; }
 
-    virtual void adjustInnerSpinButtonStyle(RenderStyle&, const Element*) const;
-    virtual bool paintInnerSpinButton(const RenderObject&, const PaintInfo&, const IntRect&) { return true; }
-
 #if ENABLE(INPUT_TYPE_COLOR)
     virtual void adjustColorWellStyle(RenderStyle&, const Element*) const;
-    virtual bool paintColorWell(const RenderObject&, const PaintInfo&, const IntRect&);
-#endif
-#endif
-
-    virtual void paintCheckboxDecorations(const RenderObject&, const PaintInfo&, const IntRect&) { }
-    virtual void paintRadioDecorations(const RenderObject&, const PaintInfo&, const IntRect&) { }
-    virtual void paintButtonDecorations(const RenderObject&, const PaintInfo&, const IntRect&) { }
-#if ENABLE(INPUT_TYPE_COLOR)
-    virtual void paintColorWellDecorations(const RenderObject&, const PaintInfo&, const FloatRect&);
+    virtual bool paintColorWell(const RenderObject&, const PaintInfo&, const IntRect&) { return true; }
+    virtual void paintColorWellDecorations(const RenderObject&, const PaintInfo&, const FloatRect&) { }
 #endif
 
-    virtual void adjustTextFieldStyle(RenderStyle&, const Element*) const;
+    virtual void adjustInnerSpinButtonStyle(RenderStyle&, const Element*) const;
+
+    virtual void adjustTextFieldStyle(RenderStyle&, const Element*) const { }
     virtual bool paintTextField(const RenderObject&, const PaintInfo&, const FloatRect&) { return true; }
-    virtual void paintTextFieldDecorations(const RenderObject&, const PaintInfo&, const FloatRect&) { }
+    virtual void paintTextFieldDecorations(const RenderBox&, const PaintInfo&, const FloatRect&) { }
 
-    virtual void adjustTextAreaStyle(RenderStyle&, const Element*) const;
+    virtual void adjustTextAreaStyle(RenderStyle&, const Element*) const { }
     virtual bool paintTextArea(const RenderObject&, const PaintInfo&, const FloatRect&) { return true; }
-    virtual void paintTextAreaDecorations(const RenderObject&, const PaintInfo&, const FloatRect&) { }
+    virtual void paintTextAreaDecorations(const RenderBox&, const PaintInfo&, const FloatRect&) { }
 
     virtual void adjustMenuListStyle(RenderStyle&, const Element*) const;
     virtual bool paintMenuList(const RenderObject&, const PaintInfo&, const FloatRect&) { return true; }
     virtual void paintMenuListDecorations(const RenderObject&, const PaintInfo&, const IntRect&) { }
 
-    virtual void adjustMenuListButtonStyle(RenderStyle&, const Element*) const;
+    virtual void adjustMenuListButtonStyle(RenderStyle&, const Element*) const { }
     virtual void paintMenuListButtonDecorations(const RenderBox&, const PaintInfo&, const FloatRect&) { }
 
     virtual void paintPushButtonDecorations(const RenderObject&, const PaintInfo&, const IntRect&) { }
     virtual void paintSquareButtonDecorations(const RenderObject&, const PaintInfo&, const IntRect&) { }
 
     virtual void adjustMeterStyle(RenderStyle&, const Element*) const;
-    virtual bool paintMeter(const RenderObject&, const PaintInfo&, const IntRect&);
-
-    virtual void adjustCapsLockIndicatorStyle(RenderStyle&, const Element*) const;
-    virtual bool paintCapsLockIndicator(const RenderObject&, const PaintInfo&, const IntRect&);
+    virtual bool paintMeter(const RenderObject&, const PaintInfo&, const IntRect&) { return true; }
 
 #if ENABLE(APPLE_PAY)
     virtual void adjustApplePayButtonStyle(RenderStyle&, const Element*) const { }
-    virtual bool paintApplePayButton(const RenderObject&, const PaintInfo&, const IntRect&) { return true; }
 #endif
 
 #if ENABLE(ATTACHMENT_ELEMENT)
-    virtual void adjustAttachmentStyle(RenderStyle&, const Element*) const;
-    virtual bool paintAttachment(const RenderObject&, const PaintInfo&, const IntRect&);
+    virtual bool paintAttachment(const RenderObject&, const PaintInfo&, const IntRect&) { return false; }
+    virtual void paintAttachmentText(GraphicsContext&, AttachmentLayout*) { }
 #endif
 
 #if ENABLE(DATALIST_ELEMENT)
-    virtual void adjustListButtonStyle(RenderStyle&, const Element*) const;
+    virtual void adjustListButtonStyle(RenderStyle&, const Element*) const { }
+    virtual bool paintListButton(const RenderObject&, const PaintInfo&, const FloatRect&) { return true; }
+#endif
+    
+#if ENABLE(SERVICE_CONTROLS)
+    virtual void adjustImageControlsButtonStyle(RenderStyle&, const Element*) const { }
+    virtual bool paintImageControlsButton(const RenderObject&, const PaintInfo&, const IntRect&) { return true; }
+    virtual bool isImageControlsButton(const Element&) const { return false; }
 #endif
 
-    virtual void adjustProgressBarStyle(RenderStyle&, const Element*) const;
+    virtual void adjustProgressBarStyle(RenderStyle&, const Element*) const { }
     virtual bool paintProgressBar(const RenderObject&, const PaintInfo&, const IntRect&) { return true; }
 
-    virtual void adjustSliderTrackStyle(RenderStyle&, const Element*) const;
+    virtual void adjustSliderTrackStyle(RenderStyle&, const Element*) const { }
     virtual bool paintSliderTrack(const RenderObject&, const PaintInfo&, const IntRect&) { return true; }
 
     virtual void adjustSliderThumbStyle(RenderStyle&, const Element*) const;
     virtual bool paintSliderThumb(const RenderObject&, const PaintInfo&, const IntRect&) { return true; }
-    virtual void paintSliderThumbDecorations(const RenderObject&, const PaintInfo&, const IntRect&) { }
 
-    virtual void adjustSearchFieldStyle(RenderStyle&, const Element*) const;
+    virtual void adjustSearchFieldStyle(RenderStyle&, const Element*) const { }
     virtual bool paintSearchField(const RenderObject&, const PaintInfo&, const IntRect&) { return true; }
-    virtual void paintSearchFieldDecorations(const RenderObject&, const PaintInfo&, const IntRect&) { }
+    virtual void paintSearchFieldDecorations(const RenderBox&, const PaintInfo&, const IntRect&) { }
 
-    virtual void adjustSearchFieldCancelButtonStyle(RenderStyle&, const Element*) const;
+    virtual void adjustSearchFieldCancelButtonStyle(RenderStyle&, const Element*) const { }
     virtual bool paintSearchFieldCancelButton(const RenderBox&, const PaintInfo&, const IntRect&) { return true; }
 
-    virtual void adjustSearchFieldDecorationPartStyle(RenderStyle&, const Element*) const;
+    virtual void adjustSearchFieldDecorationPartStyle(RenderStyle&, const Element*) const { }
     virtual bool paintSearchFieldDecorationPart(const RenderObject&, const PaintInfo&, const IntRect&) { return true; }
 
-    virtual void adjustSearchFieldResultsDecorationPartStyle(RenderStyle&, const Element*) const;
+    virtual void adjustSearchFieldResultsDecorationPartStyle(RenderStyle&, const Element*) const { }
     virtual bool paintSearchFieldResultsDecorationPart(const RenderBox&, const PaintInfo&, const IntRect&) { return true; }
 
-    virtual void adjustSearchFieldResultsButtonStyle(RenderStyle&, const Element*) const;
+    virtual void adjustSearchFieldResultsButtonStyle(RenderStyle&, const Element*) const { }
     virtual bool paintSearchFieldResultsButton(const RenderBox&, const PaintInfo&, const IntRect&) { return true; }
 
-    virtual void adjustMediaControlStyle(RenderStyle&, const Element*) const;
-    virtual bool paintMediaFullscreenButton(const RenderObject&, const PaintInfo&, const IntRect&) { return true; }
-    virtual bool paintMediaPlayButton(const RenderObject&, const PaintInfo&, const IntRect&) { return true; }
-    virtual bool paintMediaOverlayPlayButton(const RenderObject&, const PaintInfo&, const IntRect&) { return true; }
-    virtual bool paintMediaMuteButton(const RenderObject&, const PaintInfo&, const IntRect&) { return true; }
-    virtual bool paintMediaSeekBackButton(const RenderObject&, const PaintInfo&, const IntRect&) { return true; }
-    virtual bool paintMediaSeekForwardButton(const RenderObject&, const PaintInfo&, const IntRect&) { return true; }
-    virtual bool paintMediaSliderTrack(const RenderObject&, const PaintInfo&, const IntRect&) { return true; }
-    virtual bool paintMediaSliderThumb(const RenderObject&, const PaintInfo&, const IntRect&) { return true; }
-    virtual bool paintMediaVolumeSliderContainer(const RenderObject&, const PaintInfo&, const IntRect&) { return true; }
-    virtual bool paintMediaVolumeSliderTrack(const RenderObject&, const PaintInfo&, const IntRect&) { return true; }
-    virtual bool paintMediaVolumeSliderThumb(const RenderObject&, const PaintInfo&, const IntRect&) { return true; }
-    virtual bool paintMediaRewindButton(const RenderObject&, const PaintInfo&, const IntRect&) { return true; }
-    virtual bool paintMediaReturnToRealtimeButton(const RenderObject&, const PaintInfo&, const IntRect&) { return true; }
-    virtual bool paintMediaToggleClosedCaptionsButton(const RenderObject&, const PaintInfo&, const IntRect&) { return true; }
-    virtual bool paintMediaControlsBackground(const RenderObject&, const PaintInfo&, const IntRect&) { return true; }
-    virtual bool paintMediaCurrentTime(const RenderObject&, const PaintInfo&, const IntRect&) { return true; }
-    virtual bool paintMediaTimeRemaining(const RenderObject&, const PaintInfo&, const IntRect&) { return true; }
-    virtual bool paintMediaFullScreenVolumeSliderTrack(const RenderObject&, const PaintInfo&, const IntRect&) { return true; }
-    virtual bool paintMediaFullScreenVolumeSliderThumb(const RenderObject&, const PaintInfo&, const IntRect&) { return true; }
+    void adjustSwitchStyleDisplay(RenderStyle&) const;
+    virtual void adjustSwitchStyle(RenderStyle&, const Element*) const;
+    void adjustSwitchThumbOrSwitchTrackStyle(RenderStyle&) const;
+    virtual bool paintSwitchThumb(const RenderObject&, const PaintInfo&, const FloatRect&) { return true; }
+    virtual bool paintSwitchTrack(const RenderObject&, const PaintInfo&, const FloatRect&) { return true; }
+
+private:
+    OptionSet<ControlStyle::State> extractControlStyleStatesForRendererInternal(const RenderObject&) const;
+
+    void adjustButtonOrCheckboxOrColorWellOrInnerSpinButtonOrRadioStyle(RenderStyle&, const Element*) const;
 
 public:
-    void updateControlStatesForRenderer(const RenderBox&, ControlStates&) const;
-    OptionSet<ControlStates::States> extractControlStatesForRenderer(const RenderObject&) const;
-    bool isActive(const RenderObject&) const;
+    bool isWindowActive(const RenderObject&) const;
     bool isChecked(const RenderObject&) const;
     bool isIndeterminate(const RenderObject&) const;
     bool isEnabled(const RenderObject&) const;
@@ -421,6 +396,10 @@ public:
     bool isPresenting(const RenderObject&) const;
     bool isReadOnlyControl(const RenderObject&) const;
     bool isDefault(const RenderObject&) const;
+#if ENABLE(DATALIST_ELEMENT)
+    bool hasListButton(const RenderObject&) const;
+    bool hasListButtonPressed(const RenderObject&) const;
+#endif
 
 protected:
     struct ColorCache {
@@ -443,20 +422,31 @@ protected:
         Color inactiveListBoxSelectionForegroundColor;
 
         Color textSearchHighlightColor;
-
-#if ENABLE(APP_HIGHLIGHTS)
-        Color appHighlightColor;
-#endif
+        Color annotationHighlightColor;
 
         Color defaultButtonTextColor;
+
+        Color spellingMarkerColor;
+        Color dictationAlternativesMarkerColor;
+        Color autocorrectionReplacementMarkerColor;
+        Color grammarMarkerColor;
     };
 
-    virtual ColorCache& colorCache(OptionSet<StyleColor::Options>) const;
+    virtual ColorCache& colorCache(OptionSet<StyleColorOptions>) const;
+
+    virtual Color autocorrectionReplacementMarkerColor(const RenderText&) const;
 
 private:
-    void adjustSearchFieldDecorationStyle(RenderStyle&, const Element*) const;
+    StyleAppearance autoAppearanceForElement(RenderStyle&, const Element*) const;
+    StyleAppearance adjustAppearanceForElement(RenderStyle&, const Element*, StyleAppearance) const;
+
+    Color spellingMarkerColor(OptionSet<StyleColorOptions>) const;
+    Color dictationAlternativesMarkerColor(OptionSet<StyleColorOptions>) const;
+    Color grammarMarkerColor(OptionSet<StyleColorOptions>) const;
 
     mutable HashMap<uint8_t, ColorCache, DefaultHash<uint8_t>, WTF::UnsignedWithZeroKeyHashTraits<uint8_t>> m_colorCacheMap;
+
+    bool m_useFormSemanticContext { false };
 };
 
 } // namespace WebCore

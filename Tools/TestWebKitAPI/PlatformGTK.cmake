@@ -1,5 +1,8 @@
 set(TESTWEBKITAPI_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/TestWebKitAPI")
 
+file(REMOVE_RECURSE ${TESTWEBKITAPI_RUNTIME_OUTPUT_DIRECTORY})
+file(MAKE_DIRECTORY ${TESTWEBKITAPI_RUNTIME_OUTPUT_DIRECTORY})
+
 add_custom_target(TestWebKitAPI-forwarding-headers
     COMMAND ${PERL_EXECUTABLE} ${WEBKIT_DIR}/Scripts/generate-forwarding-headers.pl --include-path ${TESTWEBKITAPI_DIR} --output ${FORWARDING_HEADERS_DIR} --platform gtk --platform soup
     DEPENDS WebKit-forwarding-headers
@@ -14,10 +17,10 @@ set(test_main_SOURCES gtk/main.cpp)
 list(APPEND TestWTF_SOURCES
     ${test_main_SOURCES}
 
+    Tests/WTF/glib/GRefPtr.cpp
     Tests/WTF/glib/GUniquePtr.cpp
+    Tests/WTF/glib/GWeakPtr.cpp
     Tests/WTF/glib/WorkQueueGLib.cpp
-
-    glib/UtilitiesGLib.cpp
 )
 
 list(APPEND TestWTF_SYSTEM_INCLUDE_DIRECTORIES
@@ -28,18 +31,14 @@ list(APPEND TestWTF_LIBRARIES
     GTK::GTK
 )
 
-# FIXME: Remove when turning on hidden visibility https://bugs.webkit.org/show_bug.cgi?id=181916
-list(APPEND TestJavaScriptCore_LIBRARIES WTF)
-
 # TestWebCore
 list(APPEND TestWebCore_SOURCES
     ${test_main_SOURCES}
 
     Tests/WebCore/UserAgentQuirks.cpp
     Tests/WebCore/gstreamer/GStreamerTest.cpp
+    Tests/WebCore/gstreamer/GstElementHarness.cpp
     Tests/WebCore/gstreamer/GstMappedBuffer.cpp
-
-    glib/UtilitiesGLib.cpp
 )
 
 list(APPEND TestWebCore_SYSTEM_INCLUDE_DIRECTORIES
@@ -59,14 +58,13 @@ list(APPEND TestWebCore_LIBRARIES
 list(APPEND TestWebKit_SOURCES
     ${test_main_SOURCES}
 
-    glib/UtilitiesGLib.cpp
-
     gtk/PlatformUtilitiesGtk.cpp
     gtk/PlatformWebViewGtk.cpp
 )
 
 list(APPEND TestWebKit_PRIVATE_INCLUDE_DIRECTORIES
     "${CMAKE_SOURCE_DIR}/Source"
+    ${WebKitGTK_FRAMEWORK_HEADERS_DIR}
 )
 
 list(APPEND TestWebKit_SYSTEM_INCLUDE_DIRECTORIES
@@ -83,8 +81,6 @@ target_include_directories(TestWebKitAPIBase PRIVATE "${CMAKE_SOURCE_DIR}/Source
 
 # TestWebKitAPIInjectedBundle
 target_sources(TestWebKitAPIInjectedBundle PRIVATE
-    glib/UtilitiesGLib.cpp
-
     gtk/PlatformUtilitiesGtk.cpp
 )
 target_include_directories(TestWebKitAPIInjectedBundle PRIVATE
@@ -106,6 +102,7 @@ set(TestJSC_SYSTEM_INCLUDE_DIRECTORIES
 set(TestJSC_PRIVATE_INCLUDE_DIRECTORIES
     ${CMAKE_BINARY_DIR}
     ${TESTWEBKITAPI_DIR}
+    "${JavaScriptCoreGLib_DERIVED_SOURCES_DIR}/jsc"
 )
 
 set(TestJSC_LIBRARIES

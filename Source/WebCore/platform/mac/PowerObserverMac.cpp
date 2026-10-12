@@ -30,7 +30,7 @@
 
 namespace WebCore {
 
-PowerObserver::PowerObserver(WTF::Function<void()>&& powerOnHander)
+PowerObserver::PowerObserver(Function<void()>&& powerOnHander)
     : m_powerOnHander(WTFMove(powerOnHander))
     , m_powerConnection(0)
     , m_notificationPort(nullptr)
@@ -65,8 +65,10 @@ void PowerObserver::didReceiveSystemPowerNotification(io_service_t, uint32_t mes
         return;
 
     // We need to restart the timer on the main thread.
+    WeakPtr weakThis { *this };
     CFRunLoopPerformBlock(CFRunLoopGetMain(), kCFRunLoopCommonModes, ^() {
-        m_powerOnHander();
+        if (weakThis)
+            weakThis->m_powerOnHander();
     });
 }
 

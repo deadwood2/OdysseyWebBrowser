@@ -24,10 +24,11 @@
  */
 
 #include "config.h"
+#include <wtf/ThreadAssertions.h>
 
 #include "Utilities.h"
+#include <wtf/MainThread.h>
 #include <wtf/RunLoop.h>
-#include <wtf/ThreadAssertions.h> // NOLINT: check-webkit-style has problems with files that do not have primary header.
 
 namespace TestWebKitAPI {
 namespace {
@@ -46,9 +47,9 @@ public:
     template<typename T> int doTaskCompileFailure(T n) { return doTaskImpl(n); }
     template<typename T> void accessVariableCompileFailure(T n) { m_value = n; }
 private:
-    int doTaskImpl(int n) WTF_REQUIRES_LOCK(m_ownerThread) { return n + 1; }
-    int m_value WTF_GUARDED_BY_LOCK(m_ownerThread) { 0 };
-    NO_UNIQUE_ADDRESS ThreadAssertion m_ownerThread;
+    int doTaskImpl(int n) WTF_REQUIRES_CAPABILITY(m_ownerThread) { return n + 1; }
+    int m_value WTF_GUARDED_BY_CAPABILITY(m_ownerThread) { 0 };
+    NO_UNIQUE_ADDRESS ThreadLikeAssertion m_ownerThread;
 };
 }
 
@@ -64,7 +65,7 @@ TEST(WTF_ThreadAssertions, TestThreadAssertion)
     // instance.accessVariableCompileFailure(10);
 }
 
-static int testMainThreadFunction() WTF_REQUIRES_LOCK(mainThread) { return 11; }
+static int testMainThreadFunction() WTF_REQUIRES_CAPABILITY(mainThread) { return 11; }
 
 TEST(WTF_ThreadAssertions, TestMainThreadNamedAssertion)
 {
@@ -75,7 +76,7 @@ TEST(WTF_ThreadAssertions, TestMainThreadNamedAssertion)
     EXPECT_EQ(11, testMainThreadFunction());
 }
 
-static int testMainRunLoopFunction() WTF_REQUIRES_LOCK(mainRunLoop) { return 12; }
+static int testMainRunLoopFunction() WTF_REQUIRES_CAPABILITY(mainRunLoop) { return 12; }
 
 TEST(WTF_ThreadAssertions, TestMainRunLoopNamedAssertion)
 {

@@ -27,6 +27,7 @@
 
 #import "HTTPServer.h"
 #import "PlatformUtilities.h"
+#import "TestNavigationDelegate.h"
 #import "TestUIDelegate.h"
 #import <WebKit/WKWebViewConfigurationPrivate.h>
 #import <WebKit/WKWebsiteDataStorePrivate.h>
@@ -61,12 +62,12 @@ TEST(WebSocket, LongMessageNoDeflate)
 
                 Vector<uint8_t> bytesToSend;
                 bytesToSend.reserveInitialCapacity(twoMegabytes + headerSizeWithLargePayloadLength);
-                bytesToSend.uncheckedAppend(fin | textFrame);
-                bytesToSend.uncheckedAppend(payloadLengthIndicatingLargeExtendedPayloadLength);
+                bytesToSend.append(fin | textFrame);
+                bytesToSend.append(payloadLengthIndicatingLargeExtendedPayloadLength);
                 for (size_t i = 0; i < 8; i++)
-                    bytesToSend.uncheckedAppend((twoMegabytes >> (8 * (7 - i))) & 0xFF);
+                    bytesToSend.append((twoMegabytes >> (8 * (7 - i))) & 0xFF);
                 for (size_t i = 0; i < twoMegabytes; i++)
-                    bytesToSend.uncheckedAppend('x');
+                    bytesToSend.append('x');
 
                 connection.send(WTFMove(bytesToSend));
             }, expectedReceiveSize);
@@ -127,7 +128,6 @@ TEST(WebSocket, PageWithAttributedBundleIdentifierDestroyed)
     EXPECT_EQ(originalNetworkProcessPID, configuration.get().websiteDataStore._networkProcessIdentifier);
 }
 
-#if HAVE(NSURLSESSION_WEBSOCKET)
 TEST(WebSocket, CloseCode)
 {
     bool receivedWebSocketClose { false };
@@ -166,11 +166,11 @@ TEST(WebSocket, CloseCode)
     };
 
     HTTPServer httpServer({
-        { "/navigateAway", { htmlWithOnOpen("window.location = '/navigationTarget'") }},
-        { "/navigationTarget", { "hi" } },
-        { "/closeCustomCode", { htmlWithOnOpen("ws.close(3000)") } },
-        { "/closeNoArguments", { htmlWithOnOpen("ws.close()") } },
-        { "/closeBothParameters", { htmlWithOnOpen("ws.close(3001, 'custom reason')") } },
+        { "/navigateAway"_s, { htmlWithOnOpen("window.location = '/navigationTarget'") }},
+        { "/navigationTarget"_s, { "hi"_s } },
+        { "/closeCustomCode"_s, { htmlWithOnOpen("ws.close(3000)") } },
+        { "/closeNoArguments"_s, { htmlWithOnOpen("ws.close()") } },
+        { "/closeBothParameters"_s, { htmlWithOnOpen("ws.close(3001, 'custom reason')") } },
     });
 
     auto appendString = [] (Vector<uint8_t>& vector, const char* string) {
@@ -180,9 +180,7 @@ TEST(WebSocket, CloseCode)
     };
 
     auto webView = adoptNS([WKWebView new]);
-    [webView loadRequest:httpServer.request("/navigateAway")];
-    [webView _test_waitForDidFinishNavigation];
-    [webView _test_waitForDidFinishNavigation];
+    [webView loadRequest:httpServer.request("/navigateAway"_s)];
     Util::run(&receivedWebSocketClose);
     Vector<uint8_t> expected { 0x3, 0xe9 }; // NSURLSessionWebSocketCloseCodeGoingAway
     appendString(expected, "WebSocket is closed due to suspension.");
@@ -191,14 +189,14 @@ TEST(WebSocket, CloseCode)
     receivedWebSocketClose = false;
     closeData = { };
     expected = { 0xb, 0xb8 }; // 3000
-    [webView loadRequest:httpServer.request("/closeCustomCode")];
+    [webView loadRequest:httpServer.request("/closeCustomCode"_s)];
     Util::run(&receivedWebSocketClose);
     EXPECT_EQ(closeData, expected);
 
     receivedWebSocketClose = false;
     closeData = { };
     expected = { };
-    [webView loadRequest:httpServer.request("/closeNoArguments")];
+    [webView loadRequest:httpServer.request("/closeNoArguments"_s)];
     Util::run(&receivedWebSocketClose);
     EXPECT_EQ(closeData, expected);
 
@@ -206,11 +204,10 @@ TEST(WebSocket, CloseCode)
     closeData = { };
     expected = { 0xb, 0xb9 }; // 3001
     appendString(expected, "custom reason");
-    [webView loadRequest:httpServer.request("/closeBothParameters")];
+    [webView loadRequest:httpServer.request("/closeBothParameters"_s)];
     Util::run(&receivedWebSocketClose);
     EXPECT_EQ(closeData, expected);
 }
-#endif // HAVE(NSURLSESSION_WEBSOCKET)
 
 TEST(WebSocket, BlockedWithSubresources)
 {
@@ -235,6 +232,27 @@ TEST(WebSocket, BlockedWithSubresources)
     auto webView = adoptNS([WKWebView new]);
     [webView loadHTMLString:html baseURL:nil];
     EXPECT_WK_STREQ([webView _test_waitForAlert], "opened successfully");
+}
+
+TEST(WebSocket, LoadRequestWSS)
+{
+    HTTPServer tlsServer({ }, HTTPServer::Protocol::HttpsProxy);
+    HTTPServer plaintextServer({ });
+
+    auto storeConfiguration = adoptNS([[_WKWebsiteDataStoreConfiguration alloc] initNonPersistentConfiguration]);
+    [storeConfiguration setHTTPSProxy:[NSURL URLWithString:[NSString stringWithFormat:@"https://127.0.0.1:%d/", tlsServer.port()]]];
+    [storeConfiguration setHTTPProxy:[NSURL URLWithString:[NSString stringWithFormat:@"https://127.0.0.1:%d/", plaintextServer.port()]]];
+    auto viewConfiguration = adoptNS([WKWebViewConfiguration new]);
+    [viewConfiguration setWebsiteDataStore:adoptNS([[WKWebsiteDataStore alloc] _initWithConfiguration:storeConfiguration.get()]).get()];
+    auto webView = adoptNS([[WKWebView alloc] initWithFrame:CGRectZero configuration:viewConfiguration.get()]);
+    auto delegate = adoptNS([TestNavigationDelegate new]);
+    [delegate allowAnyTLSCertificate];
+    webView.get().navigationDelegate = delegate.get();
+
+    [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"wss://webkit.org/"]]];
+    [delegate waitForDidFailProvisionalNavigation];
+    [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"ws://webkit.org/"]]];
+    [delegate waitForDidFailProvisionalNavigation];
 }
 
 }

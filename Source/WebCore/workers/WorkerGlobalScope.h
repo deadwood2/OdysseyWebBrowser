@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2008-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,20 +28,20 @@
 
 #include "Base64Utilities.h"
 #include "CacheStorageConnection.h"
+#include "ClientOrigin.h"
 #include "ImageBitmap.h"
-#include "ScriptBufferSourceProvider.h"
+#include "ReportingClient.h"
 #include "ScriptExecutionContext.h"
 #include "Supplementable.h"
 #include "WindowOrWorkerGlobalScope.h"
 #include "WorkerOrWorkletGlobalScope.h"
 #include "WorkerOrWorkletScriptController.h"
-#include "WorkerCacheStorageConnection.h"
-#include "WorkerMessagePortChannelProvider.h"
-#include "WorkerThread.h"
+#include "WorkerType.h"
 #include <JavaScriptCore/ConsoleMessage.h>
 #include <memory>
-#include <wtf/HashMap.h>
+#include <wtf/FixedVector.h>
 #include <wtf/MemoryPressureHandler.h>
+#include <wtf/RobinHoodHashMap.h>
 #include <wtf/URL.h>
 #include <wtf/URLHash.h>
 #include <wtf/WeakHashSet.h>
@@ -50,41 +50,67 @@ namespace WebCore {
 
 class CSSFontSelector;
 class CSSValuePool;
+class CacheStorageConnection;
 class ContentSecurityPolicyResponseHeaders;
 class Crypto;
+class FileSystemStorageConnection;
 class FontFaceSet;
+class MessagePortChannelProvider;
 class Performance;
+class ReportingScope;
 class ScheduledAction;
+class ScriptBuffer;
+class ScriptBufferSourceProvider;
+class TrustedScriptURL;
+class WorkerCacheStorageConnection;
+class WorkerClient;
+class WorkerFileSystemStorageConnection;
 class WorkerLocation;
+class WorkerMessagePortChannelProvider;
 class WorkerNavigator;
 class WorkerSWClientConnection;
+class WorkerStorageConnection;
+class WorkerStorageConnection;
+class WorkerThread;
 struct WorkerParameters;
+
+enum class ViolationReportType : uint8_t;
 
 namespace IDBClient {
 class IDBConnectionProxy;
 }
 
-class WorkerGlobalScope : public Supplementable<WorkerGlobalScope>, public Base64Utilities, public WindowOrWorkerGlobalScope, public WorkerOrWorkletGlobalScope {
-    WTF_MAKE_ISO_ALLOCATED(WorkerGlobalScope);
+class WorkerGlobalScope : public Supplementable<WorkerGlobalScope>, public Base64Utilities, public WindowOrWorkerGlobalScope, public WorkerOrWorkletGlobalScope, public ReportingClient {
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(WorkerGlobalScope);
 public:
     virtual ~WorkerGlobalScope();
 
-    virtual bool isDedicatedWorkerGlobalScope() const { return false; }
-    virtual bool isServiceWorkerGlobalScope() const { return false; }
+    enum class Type : uint8_t { DedicatedWorker, ServiceWorker, SharedWorker };
+    virtual Type type() const = 0;
 
     const URL& url() const final { return m_url; }
+    const URL& ownerURL() const { return m_ownerURL; }
     String origin() const;
-    const String& identifier() const { return m_identifier; }
+    const String& inspectorIdentifier() const { return m_inspectorIdentifier; }
 
     IDBClient::IDBConnectionProxy* idbConnectionProxy() final;
     void suspend() final;
     void resume() final;
+    GraphicsClient* graphicsClient() final;
 
-    WorkerCacheStorageConnection& cacheStorageConnection();
+
+    using EventTarget::weakPtrFactory;
+    using EventTarget::WeakValueType;
+    using EventTarget::WeakPtrImplType;
+    WorkerStorageConnection& storageConnection();
+    static void postFileSystemStorageTask(Function<void()>&&);
+    WorkerFileSystemStorageConnection& getFileSystemStorageConnection(Ref<FileSystemStorageConnection>&&);
+    WEBCORE_EXPORT WorkerFileSystemStorageConnection* fileSystemStorageConnection();
+    CacheStorageConnection& cacheStorageConnection();
     MessagePortChannelProvider& messagePortChannelProvider();
-#if ENABLE(SERVICE_WORKER)
+
     WorkerSWClientConnection& swClientConnection();
-#endif
+    void updateServiceWorkerClientData() final;
 
     WorkerThread& thread() const;
 
@@ -94,14 +120,15 @@ public:
     WorkerLocation& location() const;
     void close();
 
-    virtual ExceptionOr<void> importScripts(const Vector<String>& urls);
+    virtual ExceptionOr<void> importScripts(const FixedVector<std::variant<RefPtr<TrustedScriptURL>, String>>& urls);
     WorkerNavigator& navigator();
 
     void setIsOnline(bool);
+    bool isOnline() const { return m_isOnline; }
 
-    ExceptionOr<int> setTimeout(JSC::JSGlobalObject&, std::unique_ptr<ScheduledAction>, int timeout, Vector<JSC::Strong<JSC::Unknown>>&& arguments);
+    ExceptionOr<int> setTimeout(std::unique_ptr<ScheduledAction>, int timeout, FixedVector<JSC::Strong<JSC::Unknown>>&& arguments);
     void clearTimeout(int timeoutId);
-    ExceptionOr<int> setInterval(JSC::JSGlobalObject&, std::unique_ptr<ScheduledAction>, int timeout, Vector<JSC::Strong<JSC::Unknown>>&& arguments);
+    ExceptionOr<int> setInterval(std::unique_ptr<ScheduledAction>, int timeout, FixedVector<JSC::Strong<JSC::Unknown>>&& arguments);
     void clearInterval(int timeoutId);
 
     bool isSecureContext() const final;
@@ -116,6 +143,8 @@ public:
 
     Crypto& crypto();
     Performance& performance() const;
+    Ref<Performance> protectedPerformance() const;
+    ReportingScope& reportingScope() const { return m_reportingScope.get(); }
 
     void prepareForDestruction() override;
 
@@ -126,12 +155,9 @@ public:
 
     CSSValuePool& cssValuePool() final;
     CSSFontSelector* cssFontSelector() final;
-    FontCache& fontCache() final;
     Ref<FontFaceSet> fonts();
-    std::unique_ptr<FontLoadRequest> fontLoadRequest(String& url, bool isSVG, bool isInitiatingElementInUserAgentShadowTree, LoadedFromOpaqueSource) final;
+    std::unique_ptr<FontLoadRequest> fontLoadRequest(const String& url, bool isSVG, bool isInitiatingElementInUserAgentShadowTree, LoadedFromOpaqueSource) final;
     void beginLoadingFontSoon(FontLoadRequest&) final;
-
-    ReferrerPolicy referrerPolicy() const final;
 
     const Settings::Values& settingsValues() const final { return m_settingsValues; }
 
@@ -139,15 +165,24 @@ public:
 
     void releaseMemory(Synchronous);
     static void releaseMemoryInWorkers(Synchronous);
+    static void dumpGCHeapForWorkers();
 
     void setMainScriptSourceProvider(ScriptBufferSourceProvider&);
     void addImportedScriptSourceProvider(const URL&, ScriptBufferSourceProvider&);
 
+    ClientOrigin clientOrigin() const { return { topOrigin().data(), securityOrigin()->data() }; }
+
+    WorkerClient* workerClient() { return m_workerClient.get(); }
+
+    void reportErrorToWorkerObject(const String&);
+
 protected:
-    WorkerGlobalScope(WorkerThreadType, const WorkerParameters&, Ref<SecurityOrigin>&&, WorkerThread&, Ref<SecurityOrigin>&& topOrigin, IDBClient::IDBConnectionProxy*, SocketProvider*);
+    WorkerGlobalScope(WorkerThreadType, const WorkerParameters&, Ref<SecurityOrigin>&&, WorkerThread&, Ref<SecurityOrigin>&& topOrigin, IDBClient::IDBConnectionProxy*, SocketProvider*, std::unique_ptr<WorkerClient>&&);
 
     void applyContentSecurityPolicyResponseHeaders(const ContentSecurityPolicyResponseHeaders&);
     void updateSourceProviderBuffers(const ScriptBuffer& mainScript, const HashMap<URL, ScriptBuffer>& importedScripts);
+
+    void addConsoleMessage(MessageSource, MessageLevel, const String& message, unsigned long requestIdentifier) override;
 
 private:
     void logExceptionToConsole(const String& errorMessage, const String& sourceURL, int lineNumber, int columnNumber, RefPtr<Inspector::ScriptCallStack>&&) final;
@@ -155,7 +190,6 @@ private:
     // The following addMessage and addConsoleMessage functions are deprecated.
     // Callers should try to create the ConsoleMessage themselves.
     void addMessage(MessageSource, MessageLevel, const String& message, const String& sourceURL, unsigned lineNumber, unsigned columnNumber, RefPtr<Inspector::ScriptCallStack>&&, JSC::JSGlobalObject*, unsigned long requestIdentifier) final;
-    void addConsoleMessage(MessageSource, MessageLevel, const String& message, unsigned long requestIdentifier) final;
 
     bool isWorkerGlobalScope() const final { return true; }
 
@@ -166,21 +200,24 @@ private:
     String userAgent(const URL&) const final;
 
     EventTarget* errorEventTarget() final;
-    String resourceRequestIdentifier() const final { return m_identifier; }
+    String resourceRequestIdentifier() const final { return m_inspectorIdentifier; }
     SocketProvider* socketProvider() final;
     RefPtr<RTCDataChannelRemoteHandlerConnection> createRTCDataChannelRemoteHandlerConnection() final;
 
     bool shouldBypassMainWorldContentSecurityPolicy() const final { return m_shouldBypassMainWorldContentSecurityPolicy; }
 
-#if ENABLE(WEB_CRYPTO)
-    bool wrapCryptoKey(const Vector<uint8_t>& key, Vector<uint8_t>& wrappedKey) final;
-    bool unwrapCryptoKey(const Vector<uint8_t>& wrappedKey, Vector<uint8_t>& key) final;
-#endif
+    std::optional<Vector<uint8_t>> wrapCryptoKey(const Vector<uint8_t>& key) final;
+    std::optional<Vector<uint8_t>> unwrapCryptoKey(const Vector<uint8_t>& wrappedKey) final;
 
-    void stopIndexedDatabase();
+    // ReportingClient.
+    void notifyReportObservers(Ref<Report>&&) final;
+    String endpointURIForToken(const String&) const final;
+    void sendReportToEndpoints(const URL& baseURL, const Vector<String>& endpointURIs, const Vector<String>& endpointTokens, Ref<FormData>&& report, ViolationReportType) final;
+    String httpUserAgent() const final { return m_userAgent; }
 
     URL m_url;
-    String m_identifier;
+    URL m_ownerURL;
+    String m_inspectorIdentifier;
     String m_userAgent;
 
     mutable RefPtr<WorkerLocation> m_location;
@@ -196,23 +233,23 @@ private:
     RefPtr<SocketProvider> m_socketProvider;
 
     RefPtr<Performance> m_performance;
+    Ref<ReportingScope> m_reportingScope;
     mutable RefPtr<Crypto> m_crypto;
 
     WeakPtr<ScriptBufferSourceProvider> m_mainScriptSourceProvider;
-    HashMap<URL, WeakHashSet<ScriptBufferSourceProvider>> m_importedScriptsSourceProviders;
+    MemoryCompactRobinHoodHashMap<URL, WeakHashSet<ScriptBufferSourceProvider>> m_importedScriptsSourceProviders;
 
-    RefPtr<WorkerCacheStorageConnection> m_cacheStorageConnection;
+    RefPtr<CacheStorageConnection> m_cacheStorageConnection;
     std::unique_ptr<WorkerMessagePortChannelProvider> m_messagePortChannelProvider;
-#if ENABLE(SERVICE_WORKER)
     RefPtr<WorkerSWClientConnection> m_swClientConnection;
-#endif
     std::unique_ptr<CSSValuePool> m_cssValuePool;
+    std::unique_ptr<WorkerClient> m_workerClient;
     RefPtr<CSSFontSelector> m_cssFontSelector;
-    RefPtr<FontCache> m_fontCache;
-    ReferrerPolicy m_referrerPolicy;
     Settings::Values m_settingsValues;
     WorkerType m_workerType;
     FetchOptions::Credentials m_credentials;
+    RefPtr<WorkerStorageConnection> m_storageConnection;
+    RefPtr<WorkerFileSystemStorageConnection> m_fileSystemStorageConnection;
 };
 
 } // namespace WebCore

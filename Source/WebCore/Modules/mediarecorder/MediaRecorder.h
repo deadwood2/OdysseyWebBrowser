@@ -24,7 +24,7 @@
 
 #pragma once
 
-#if ENABLE(MEDIA_STREAM)
+#if ENABLE(MEDIA_RECORDER)
 
 #include "ActiveDOMObject.h"
 #include "EventTarget.h"
@@ -45,10 +45,10 @@ class MediaRecorderPrivate;
 class MediaRecorder final
     : public ActiveDOMObject
     , public RefCounted<MediaRecorder>
-    , public EventTargetWithInlineData
-    , private MediaStreamPrivate::Observer
-    , private MediaStreamTrackPrivate::Observer {
-    WTF_MAKE_ISO_ALLOCATED(MediaRecorder);
+    , public EventTarget
+    , private MediaStreamPrivateObserver
+    , private MediaStreamTrackPrivateObserver {
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(MediaRecorder);
 public:
     enum class RecordingState { Inactive, Recording, Paused };
     
@@ -66,8 +66,9 @@ public:
     RecordingState state() const { return m_state; }
     const String& mimeType() const { return m_options.mimeType; }
 
-    using RefCounted::ref;
-    using RefCounted::deref;
+    // ActiveDOMObject.
+    void ref() const final { RefCounted::ref(); }
+    void deref() const final { RefCounted::deref(); }
     
     ExceptionOr<void> startRecording(std::optional<unsigned>);
     void stopRecording();
@@ -75,10 +76,14 @@ public:
     ExceptionOr<void> pauseRecording();
     ExceptionOr<void> resumeRecording();
 
-    unsigned videoBitsPerSecond() const { return m_options.videoBitsPerSecond.value_or(0); }
-    unsigned audioBitsPerSecond() const { return m_options.audioBitsPerSecond.value_or(0); }
+    unsigned videoBitsPerSecond() const { return m_videoBitsPerSecond; }
+    unsigned audioBitsPerSecond() const { return m_audioBitsPerSecond; }
 
     MediaStream& stream() { return m_stream.get(); }
+
+    using EventTarget::weakPtrFactory;
+    using EventTarget::WeakValueType;
+    using EventTarget::WeakPtrImplType;
 
 private:
     MediaRecorder(Document&, Ref<MediaStream>&&, Options&&);
@@ -90,20 +95,19 @@ private:
     // EventTarget
     void refEventTarget() final { ref(); }
     void derefEventTarget() final { deref(); }
-    EventTargetInterface eventTargetInterface() const final { return MediaRecorderEventTargetInterfaceType; }
+    enum EventTargetInterfaceType eventTargetInterface() const final { return EventTargetInterfaceType::MediaRecorder; }
     ScriptExecutionContext* scriptExecutionContext() const final { return ActiveDOMObject::scriptExecutionContext(); }
 
-    // ActiveDOMObject API.
+    // ActiveDOMObject.
     void suspend(ReasonForSuspension) final;
     void stop() final;
-    const char* activeDOMObjectName() const final;
     bool virtualHasPendingActivity() const final;
     
-        void stopRecordingInternal(CompletionHandler<void()>&& = [] { });
+    void stopRecordingInternal(CompletionHandler<void()>&& = [] { });
     void dispatchError(Exception&&);
 
-    enum class TakePrivateRecorder { No, Yes };
-    using FetchDataCallback = Function<void(RefPtr<SharedBuffer>&&, const String& mimeType, double)>;
+    enum class TakePrivateRecorder : bool { No, Yes };
+    using FetchDataCallback = Function<void(RefPtr<FragmentedSharedBuffer>&&, const String& mimeType, double)>;
     void fetchData(FetchDataCallback&&, TakePrivateRecorder);
 
     // MediaStream::Observer
@@ -112,11 +116,15 @@ private:
 
     void handleTrackChange();
 
-    // MediaStreamTrackPrivate::Observer
+    // MediaStreamTrackPrivateObserver
     void trackEnded(MediaStreamTrackPrivate&) final;
     void trackMutedChanged(MediaStreamTrackPrivate&) final;
     void trackEnabledChanged(MediaStreamTrackPrivate&) final;
     void trackSettingsChanged(MediaStreamTrackPrivate&) final { };
+
+    void computeInitialBitRates() { computeBitRates(nullptr); }
+    void updateBitRates() { computeBitRates(&m_stream->privateStream()); }
+    void computeBitRates(const MediaStreamPrivate*);
 
     static CreatorFunction m_customCreator;
 
@@ -131,8 +139,13 @@ private:
     bool m_isActive { true };
     bool m_isFetchingData { false };
     Deque<FetchDataCallback> m_pendingFetchDataTasks;
+
+    unsigned m_audioBitsPerSecond { 0 };
+    unsigned m_videoBitsPerSecond { 0 };
+
+    std::optional<Seconds> m_nextFireInterval;
 };
 
 } // namespace WebCore
 
-#endif // ENABLE(MEDIA_STREAM)
+#endif // ENABLE(MEDIA_RECORDER)

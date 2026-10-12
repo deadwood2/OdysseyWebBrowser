@@ -29,6 +29,8 @@
 #include "IsoPage.h"
 #include "Mutex.h"
 
+#if !BUSE(LIBPAS)
+
 namespace bmalloc {
 
 template<typename Config>
@@ -42,7 +44,7 @@ public:
     ~IsoDeallocator();
     
     template<typename Type>
-    void deallocate(api::IsoHeap<Type>&, void* p);
+    void deallocate(api::IsoHeapBase<Type>&, void* p);
     void scavenge();
     
 private:
@@ -52,3 +54,4 @@ private:
 
 } // namespace bmalloc
 
+#endif

@@ -25,7 +25,7 @@
 #include "config.h"
 #include "AudioSampleBufferCompressor.h"
 
-#if ENABLE(MEDIA_STREAM) && USE(AVFOUNDATION)
+#if ENABLE(MEDIA_RECORDER) && USE(AVFOUNDATION)
 
 #include "Logging.h"
 #include <AudioToolbox/AudioCodec.h>
@@ -51,13 +51,19 @@ std::unique_ptr<AudioSampleBufferCompressor> AudioSampleBufferCompressor::create
 }
 
 AudioSampleBufferCompressor::AudioSampleBufferCompressor()
-    : m_serialDispatchQueue(WorkQueue::create("com.apple.AudioSampleBufferCompressor"))
+    : m_serialDispatchQueue(WorkQueue::create("com.apple.AudioSampleBufferCompressor"_s))
     , m_lowWaterTime(PAL::CMTimeMakeWithSeconds(LOW_WATER_TIME_IN_SECONDS, 1000))
+    , m_currentNativePresentationTimeStamp(PAL::kCMTimeInvalid)
+    , m_currentOutputPresentationTimeStamp(PAL::kCMTimeInvalid)
+    , m_remainingPrimeDuration(PAL::kCMTimeInvalid)
 {
 }
 
 AudioSampleBufferCompressor::~AudioSampleBufferCompressor()
 {
+    if (m_outputBufferQueue)
+        PAL::CMBufferQueueRemoveTrigger(m_outputBufferQueue.get(), m_triggerToken);
+
     if (m_converter) {
         PAL::AudioConverterDispose(m_converter);
         m_converter = nullptr;
@@ -79,16 +85,22 @@ bool AudioSampleBufferCompressor::initialize(CMBufferQueueTriggerCallback callba
         return false;
     }
     m_outputBufferQueue = adoptCF(outputBufferQueue);
-    PAL::CMBufferQueueInstallTrigger(m_outputBufferQueue.get(), callback, callbackObject, kCMBufferQueueTrigger_WhenDataBecomesReady, PAL::kCMTimeZero, NULL);
+    PAL::CMBufferQueueInstallTrigger(m_outputBufferQueue.get(), callback, callbackObject, kCMBufferQueueTrigger_WhenDataBecomesReady, PAL::kCMTimeZero, &m_triggerToken);
 
     m_isEncoding = true;
     return true;
 }
 
-void AudioSampleBufferCompressor::finish()
+void AudioSampleBufferCompressor::flushInternal(bool isFinished)
 {
-    m_serialDispatchQueue->dispatchSync([this] {
+    m_serialDispatchQueue->dispatchSync([this, isFinished] {
+        if (!isFinished) {
+            // FIXME: we might want to compress not yet processed data (whose duration is at most LOW_WATER_TIME_IN_SECONDS).
+            return;
+        }
+
         processSampleBuffersUntilLowWaterTime(PAL::kCMTimeInvalid);
+
         auto error = PAL::CMBufferQueueMarkEndOfData(m_outputBufferQueue.get());
         RELEASE_LOG_ERROR_IF(error, MediaStream, "AudioSampleBufferCompressor CMBufferQueueMarkEndOfData failed %d", error);
         m_isEncoding = false;
@@ -126,7 +138,12 @@ bool AudioSampleBufferCompressor::initAudioConverterForSourceFormatDescription(C
     }
 
     AudioConverterRef converter;
-    if (auto error = PAL::AudioConverterNew(&m_sourceFormat, &m_destinationFormat, &converter)) {
+    auto error = PAL::AudioConverterNew(&m_sourceFormat, &m_destinationFormat, &converter);
+    if (error == 'fmt?') {
+        m_destinationFormat.mSampleRate = 44100;
+        error = PAL::AudioConverterNew(&m_sourceFormat, &m_destinationFormat, &converter);
+    }
+    if (error) {
         RELEASE_LOG_ERROR(MediaStream, "AudioSampleBufferCompressor AudioConverterNew failed with %d", error);
         return false;
     }
@@ -192,7 +209,7 @@ bool AudioSampleBufferCompressor::initAudioConverterForSourceFormatDescription(C
 
     auto destinationBufferSize = computeBufferSizeForAudioFormat(m_destinationFormat, m_maxOutputPacketSize, LOW_WATER_TIME_IN_SECONDS);
     if (m_destinationBuffer.size() < destinationBufferSize)
-        m_destinationBuffer.resize(destinationBufferSize);
+        m_destinationBuffer.grow(destinationBufferSize);
     if (!m_destinationFormat.mBytesPerPacket)
         m_destinationPacketDescriptions.resize(m_destinationBuffer.capacity() / m_maxOutputPacketSize);
 
@@ -270,7 +287,7 @@ RetainPtr<CMSampleBufferRef> AudioSampleBufferCompressor::sampleBufferWithNumPac
 
         auto error = PAL::AudioConverterGetPropertyInfo(m_converter, kAudioConverterCompressionMagicCookie, &cookieSize, NULL);
         if ((error == noErr) && !!cookieSize) {
-            cookie.resize(cookieSize);
+            cookie.grow(cookieSize);
 
             if (auto error = PAL::AudioConverterGetProperty(m_converter, kAudioConverterCompressionMagicCookie, &cookieSize, cookie.data())) {
                 RELEASE_LOG_ERROR(MediaStream, "AudioSampleBufferCompressor getting kAudioConverterCompressionMagicCookie failed with %d", error);
@@ -335,7 +352,7 @@ OSStatus AudioSampleBufferCompressor::provideSourceDataNumOutputPackets(UInt32* 
         size_t currentOffsetInSourceBuffer = 0;
 
         if (m_sourceBuffer.size() < numBytesToCopy)
-            m_sourceBuffer.resize(numBytesToCopy);
+            m_sourceBuffer.grow(numBytesToCopy);
 
         while (numBytesToCopy) {
             if (m_sampleBlockBufferSize <= m_currentOffsetInSampleBlockBuffer) {
@@ -384,7 +401,7 @@ OSStatus AudioSampleBufferCompressor::provideSourceDataNumOutputPackets(UInt32* 
     ASSERT(m_sourceFormat.mFormatFlags & kAudioFormatFlagIsNonInterleaved);
 
     if (m_sourceBuffer.size() < 2 * numBytesToCopy)
-        m_sourceBuffer.resize(2 * numBytesToCopy);
+        m_sourceBuffer.grow(2 * numBytesToCopy);
     auto* firstChannel = m_sourceBuffer.data();
     auto* secondChannel = m_sourceBuffer.data() + numBytesToCopy;
 
@@ -491,10 +508,10 @@ void AudioSampleBufferCompressor::processSampleBuffersUntilLowWaterTime(CMTime l
         }
 
         CMTime nativeDuration = CMSampleBufferGetDuration(buffer.get());
-        m_currentNativePresentationTimeStamp = CMTimeAdd(m_currentNativePresentationTimeStamp, nativeDuration);
+        m_currentNativePresentationTimeStamp = PAL::CMTimeAdd(m_currentNativePresentationTimeStamp, nativeDuration);
 
         CMTime outputDuration = CMSampleBufferGetOutputDuration(buffer.get());
-        m_currentOutputPresentationTimeStamp = CMTimeAdd(m_currentOutputPresentationTimeStamp, outputDuration);
+        m_currentOutputPresentationTimeStamp = PAL::CMTimeAdd(m_currentOutputPresentationTimeStamp, outputDuration);
 
         error = CMBufferQueueEnqueue(m_outputBufferQueue.get(), buffer.get());
         if (error) {
@@ -540,4 +557,4 @@ unsigned AudioSampleBufferCompressor::bitRate() const
 
 }
 
-#endif // ENABLE(MEDIA_STREAM) && USE(AVFOUNDATION)
+#endif // ENABLE(MEDIA_RECORDER) && USE(AVFOUNDATION)

@@ -29,14 +29,18 @@
 #include "MessagePortChannelProvider.h"
 #include "MessagePortIdentifier.h"
 #include "ProcessIdentifier.h"
+#include <wtf/CheckedRef.h>
+#include <wtf/FastMalloc.h>
+#include <wtf/Forward.h>
 #include <wtf/HashMap.h>
 
 namespace WebCore {
 
-class MessagePortChannelRegistry {
+class MessagePortChannelRegistry final : public CanMakeWeakPtr<MessagePortChannelRegistry>, public CanMakeCheckedPtr<MessagePortChannelRegistry> {
+    WTF_MAKE_FAST_ALLOCATED;
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(MessagePortChannelRegistry);
 public:
-    using CheckProcessLocalPortForActivityCallback = Function<void(const MessagePortIdentifier&, ProcessIdentifier, CompletionHandler<void(MessagePortChannelProvider::HasActivity)>&&)>;
-    WEBCORE_EXPORT explicit MessagePortChannelRegistry(CheckProcessLocalPortForActivityCallback&&);
+    WEBCORE_EXPORT MessagePortChannelRegistry();
 
     WEBCORE_EXPORT ~MessagePortChannelRegistry();
     
@@ -45,19 +49,15 @@ public:
     WEBCORE_EXPORT void didDisentangleMessagePort(const MessagePortIdentifier& local);
     WEBCORE_EXPORT void didCloseMessagePort(const MessagePortIdentifier& local);
     WEBCORE_EXPORT bool didPostMessageToRemote(MessageWithMessagePorts&&, const MessagePortIdentifier& remoteTarget);
-    WEBCORE_EXPORT void takeAllMessagesForPort(const MessagePortIdentifier&, CompletionHandler<void(Vector<MessageWithMessagePorts>&&, Function<void()>&&)>&&);
-    WEBCORE_EXPORT void checkRemotePortForActivity(const MessagePortIdentifier& remoteTarget, CompletionHandler<void(MessagePortChannelProvider::HasActivity)>&& callback);
+    WEBCORE_EXPORT void takeAllMessagesForPort(const MessagePortIdentifier&, CompletionHandler<void(Vector<MessageWithMessagePorts>&&, CompletionHandler<void()>&&)>&&);
 
     WEBCORE_EXPORT MessagePortChannel* existingChannelContainingPort(const MessagePortIdentifier&);
 
     WEBCORE_EXPORT void messagePortChannelCreated(MessagePortChannel&);
     WEBCORE_EXPORT void messagePortChannelDestroyed(MessagePortChannel&);
 
-    void checkProcessLocalPortForActivity(const MessagePortIdentifier&, ProcessIdentifier, CompletionHandler<void(MessagePortChannelProvider::HasActivity)>&&);
-
 private:
-    HashMap<MessagePortIdentifier, MessagePortChannel*> m_openChannels;
-    CheckProcessLocalPortForActivityCallback m_checkProcessLocalPortForActivityCallback;
+    HashMap<MessagePortIdentifier, WeakRef<MessagePortChannel>> m_openChannels;
 };
 
 } // namespace WebCore

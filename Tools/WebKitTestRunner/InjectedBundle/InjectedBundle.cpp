@@ -32,14 +32,16 @@
 #include "WebCoreTestSupport.h"
 #include <JavaScriptCore/Options.h>
 #include <WebKit/WKBundle.h>
+#include <WebKit/WKBundleFrame.h>
 #include <WebKit/WKBundlePage.h>
 #include <WebKit/WKBundlePagePrivate.h>
 #include <WebKit/WKBundlePrivate.h>
 #include <WebKit/WKRetainPtr.h>
 #include <WebKit/WebKit2_C.h>
+#include <wtf/CompletionHandler.h>
+#include <wtf/Vector.h>
 #include <wtf/text/CString.h>
 #include <wtf/text/StringBuilder.h>
-#include <wtf/Vector.h>
 
 namespace WTR {
 
@@ -192,9 +194,9 @@ void InjectedBundle::didReceiveMessageToPage(WKBundlePageRef page, WKStringRef m
     if (WKStringIsEqualToUTF8CString(messageName, "BeginTest")) {
         ASSERT(messageBody);
         auto messageBodyDictionary = dictionaryValue(messageBody);
-        m_dumpPixels = booleanValue(messageBodyDictionary, "DumpPixels");
-        m_timeout = Seconds::fromMilliseconds(uint64Value(messageBodyDictionary, "Timeout"));
-        m_dumpJSConsoleLogInStdErr = booleanValue(messageBodyDictionary, "DumpJSConsoleLogInStdErr");
+#if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
+        m_accessibilityIsolatedTreeMode = booleanValue(messageBodyDictionary, "IsAccessibilityIsolatedTreeEnabled");
+#endif
         WKBundlePagePostMessage(page, toWK("Ack").get(), toWK("BeginTest").get());
         beginTesting(messageBodyDictionary, BegingTestingMode::New);
         return;
@@ -203,31 +205,30 @@ void InjectedBundle::didReceiveMessageToPage(WKBundlePageRef page, WKStringRef m
     if (WKStringIsEqualToUTF8CString(messageName, "Reset")) {
         ASSERT(messageBody);
         auto messageBodyDictionary = dictionaryValue(messageBody);
+
+        bool beforeTest = false;
+        if (auto options = stringValue(messageBodyDictionary, "ResetStage"))
+            beforeTest = toWTFString(options) == "BeforeTest"_s;
+
         if (auto options = stringValue(messageBodyDictionary, "JSCOptions"))
             JSC::Options::setOptions(toWTFString(options).utf8().data());
+
         if (booleanValue(messageBodyDictionary, "ShouldGC"))
             WKBundleGarbageCollectJavaScriptObjects(m_bundle.get());
 
-#if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
-        m_accessibilityIsolatedTreeMode = booleanValue(messageBodyDictionary, "AccessibilityIsolatedTree");
-#endif
-        
-        auto allowedHostsValue = value(messageBodyDictionary, "AllowedHosts");
-        if (allowedHostsValue && WKGetTypeID(allowedHostsValue) == WKArrayGetTypeID()) {
-            m_allowedHosts.clear();
-            auto array = static_cast<WKArrayRef>(allowedHostsValue);
-            for (size_t i = 0, size = WKArrayGetSize(array); i < size; ++i)
-                m_allowedHosts.append(toWTFString(WKArrayGetItemAtIndex(array, i)));
+        if (!beforeTest) {
+            setAllowedHosts(messageBodyDictionary);
+
+            m_dumpPixels = false;
+            m_pixelResultIsPending = false;
+
+            setlocale(LC_ALL, "");
+            if (m_testRunner)
+                m_testRunner->removeAllWebNotificationPermissions();
+            m_testRunner = nullptr;
+
+            InjectedBundle::page()->resetAfterTest();
         }
-
-        m_state = Idle;
-        m_dumpPixels = false;
-        m_pixelResultIsPending = false;
-
-        setlocale(LC_ALL, "");
-        TestRunner::removeAllWebNotificationPermissions();
-
-        InjectedBundle::page()->resetAfterTest();
         return;
     }
 
@@ -245,198 +246,39 @@ void InjectedBundle::didReceiveMessageToPage(WKBundlePageRef page, WKStringRef m
         return;
     }
 
-    if (WKStringIsEqualToUTF8CString(messageName, "CallAddChromeInputFieldCallback")) {
-        m_testRunner->callAddChromeInputFieldCallback();
-        return;
-    }
-
-    if (WKStringIsEqualToUTF8CString(messageName, "CallRemoveChromeInputFieldCallback")) {
-        m_testRunner->callRemoveChromeInputFieldCallback();
-        return;
-    }
-
-    if (WKStringIsEqualToUTF8CString(messageName, "CallSetTextInChromeInputFieldCallback")) {
-        m_testRunner->callSetTextInChromeInputFieldCallback();
-        return;
-    }
-
-    if (WKStringIsEqualToUTF8CString(messageName, "CallSelectChromeInputFieldCallback")) {
-        m_testRunner->callSelectChromeInputFieldCallback();
-        return;
-    }
-
-    if (WKStringIsEqualToUTF8CString(messageName, "CallGetSelectedTextInChromeInputFieldCallback")) {
-        ASSERT(messageBody);
-        ASSERT(WKGetTypeID(messageBody) == WKStringGetTypeID());
-        auto jsString = toJS(static_cast<WKStringRef>(messageBody));
-        m_testRunner->callGetSelectedTextInChromeInputFieldCallback(jsString.get());
-        return;
-    }
-
-    if (WKStringIsEqualToUTF8CString(messageName, "CallFocusWebViewCallback")) {
-        m_testRunner->callFocusWebViewCallback();
-        return;
-    }
-
-    if (WKStringIsEqualToUTF8CString(messageName, "CallSetBackingScaleFactorCallback")) {
-        m_testRunner->callSetBackingScaleFactorCallback();
-        return;
-    }
-
     if (WKStringIsEqualToUTF8CString(messageName, "CallDidBeginSwipeCallback")) {
-        m_testRunner->callDidBeginSwipeCallback();
+        if (m_testRunner)
+            m_testRunner->callDidBeginSwipeCallback();
         return;
     }
 
     if (WKStringIsEqualToUTF8CString(messageName, "CallWillEndSwipeCallback")) {
-        m_testRunner->callWillEndSwipeCallback();
+        if (m_testRunner)
+            m_testRunner->callWillEndSwipeCallback();
         return;
     }
 
     if (WKStringIsEqualToUTF8CString(messageName, "CallDidEndSwipeCallback")) {
-        m_testRunner->callDidEndSwipeCallback();
+        if (m_testRunner)
+            m_testRunner->callDidEndSwipeCallback();
         return;
     }
 
     if (WKStringIsEqualToUTF8CString(messageName, "CallDidRemoveSwipeSnapshotCallback")) {
-        m_testRunner->callDidRemoveSwipeSnapshotCallback();
-        return;
-    }
-
-    if (WKStringIsEqualToUTF8CString(messageName, "CallDidClearStatisticsInMemoryAndPersistentStore")) {
-        m_testRunner->statisticsCallClearInMemoryAndPersistentStoreCallback();
-        return;
-    }
-
-    if (WKStringIsEqualToUTF8CString(messageName, "CallDidClearStatisticsThroughWebsiteDataRemoval")) {
-        m_testRunner->statisticsCallClearThroughWebsiteDataRemovalCallback();
-        return;
-    }
-
-    if (WKStringIsEqualToUTF8CString(messageName, "CallDidSetShouldDowngradeReferrer")) {
-        m_testRunner->statisticsCallDidSetShouldDowngradeReferrerCallback();
-        return;
-    }
-
-    if (WKStringIsEqualToUTF8CString(messageName, "CallDidSetShouldBlockThirdPartyCookies")) {
-        m_testRunner->statisticsCallDidSetShouldBlockThirdPartyCookiesCallback();
-        return;
-    }
-
-    if (WKStringIsEqualToUTF8CString(messageName, "CallDidSetFirstPartyWebsiteDataRemovalMode")) {
-        m_testRunner->statisticsCallDidSetFirstPartyWebsiteDataRemovalModeCallback();
-        return;
-    }
-
-    if (WKStringIsEqualToUTF8CString(messageName, "CallDidSetToSameSiteStrictCookies")) {
-        m_testRunner->statisticsCallDidSetToSameSiteStrictCookiesCallback();
-        return;
-    }
-
-    if (WKStringIsEqualToUTF8CString(messageName, "CallDidSetFirstPartyHostCNAMEDomain")) {
-        m_testRunner->statisticsCallDidSetFirstPartyHostCNAMEDomainCallback();
-        return;
-    }
-
-    if (WKStringIsEqualToUTF8CString(messageName, "CallDidSetThirdPartyCNAMEDomain")) {
-        m_testRunner->statisticsCallDidSetThirdPartyCNAMEDomainCallback();
-        return;
-    }
-
-    if (WKStringIsEqualToUTF8CString(messageName, "CallDidResetStatisticsToConsistentState")) {
-        m_testRunner->statisticsCallDidResetToConsistentStateCallback();
-        return;
-    }
-    
-    if (WKStringIsEqualToUTF8CString(messageName, "CallDidSetBlockCookiesForHost")) {
-        m_testRunner->statisticsCallDidSetBlockCookiesForHostCallback();
-        return;
-    }
-
-    if (WKStringIsEqualToUTF8CString(messageName, "CallDidSetStatisticsDebugMode")) {
-        m_testRunner->statisticsCallDidSetDebugModeCallback();
-        return;
-    }
-    
-    if (WKStringIsEqualToUTF8CString(messageName, "CallDidSetPrevalentResourceForDebugMode")) {
-        m_testRunner->statisticsCallDidSetPrevalentResourceForDebugModeCallback();
-        return;
-    }
-    
-    if (WKStringIsEqualToUTF8CString(messageName, "CallDidSetLastSeen")) {
-        m_testRunner->statisticsCallDidSetLastSeenCallback();
-        return;
-    }
-    
-    if (WKStringIsEqualToUTF8CString(messageName, "CallDidMergeStatistic")) {
-        m_testRunner->statisticsCallDidSetMergeStatisticCallback();
-        return;
-    }
-    
-    if (WKStringIsEqualToUTF8CString(messageName, "CallDidSetExpiredStatistic")) {
-        m_testRunner->statisticsCallDidSetExpiredStatisticCallback();
-        return;
-    }
-
-    if (WKStringIsEqualToUTF8CString(messageName, "CallDidSetPrevalentResource")) {
-        m_testRunner->statisticsCallDidSetPrevalentResourceCallback();
-        return;
-    }
-
-    if (WKStringIsEqualToUTF8CString(messageName, "CallDidSetVeryPrevalentResource")) {
-        m_testRunner->statisticsCallDidSetVeryPrevalentResourceCallback();
-        return;
-    }
-
-    if (WKStringIsEqualToUTF8CString(messageName, "CallDidSetHasHadUserInteraction")) {
-        m_testRunner->statisticsCallDidSetHasHadUserInteractionCallback();
-        return;
-    }
-    
-    if (WKStringIsEqualToUTF8CString(messageName, "CallDidReceiveAllStorageAccessEntries")) {
-        ASSERT(messageBody);
-        ASSERT(WKGetTypeID(messageBody) == WKArrayGetTypeID());
-
-        WKArrayRef domainsArray = static_cast<WKArrayRef>(messageBody);
-        auto size = WKArrayGetSize(domainsArray);
-        Vector<String> domains;
-        domains.reserveInitialCapacity(size);
-        for (size_t i = 0; i < size; ++i) {
-            auto item = WKArrayGetItemAtIndex(domainsArray, i);
-            if (item && WKGetTypeID(item) == WKStringGetTypeID())
-                domains.append(toWTFString(static_cast<WKStringRef>(item)));
-        }
-
-        m_testRunner->callDidReceiveAllStorageAccessEntriesCallback(domains);
-        return;
-    }
-    
-    if (WKStringIsEqualToUTF8CString(messageName, "CallDidReceiveLoadedSubresourceDomains")) {
-        ASSERT(messageBody);
-        ASSERT(WKGetTypeID(messageBody) == WKArrayGetTypeID());
-
-        WKArrayRef domainsArray = static_cast<WKArrayRef>(messageBody);
-        auto size = WKArrayGetSize(domainsArray);
-        Vector<String> domains;
-        domains.reserveInitialCapacity(size);
-        for (size_t i = 0; i < size; ++i) {
-            auto item = WKArrayGetItemAtIndex(domainsArray, i);
-            if (item && WKGetTypeID(item) == WKStringGetTypeID())
-                domains.uncheckedAppend(toWTFString(static_cast<WKStringRef>(item)));
-        }
-
-        m_testRunner->callDidReceiveLoadedSubresourceDomainsCallback(WTFMove(domains));
-        return;
-    }
-
-    if (WKStringIsEqualToUTF8CString(messageName, "CallDidRemoveAllSessionCredentialsCallback")) {
-        m_testRunner->callDidRemoveAllSessionCredentialsCallback();
+        if (m_testRunner)
+            m_testRunner->callDidRemoveSwipeSnapshotCallback();
         return;
     }
 
     if (WKStringIsEqualToUTF8CString(messageName, "NotifyDownloadDone")) {
-        if (m_testRunner->shouldFinishAfterDownload())
+        if (m_testRunner && m_testRunner->shouldFinishAfterDownload())
             m_testRunner->notifyDone();
+        return;
+    }
+
+    if (WKStringIsEqualToUTF8CString(messageName, "NotifyDone")) {
+        if (m_testRunner && InjectedBundle::page())
+            InjectedBundle::page()->dump(m_testRunner->shouldForceRepaint());
         return;
     }
 
@@ -444,65 +286,85 @@ void InjectedBundle::didReceiveMessageToPage(WKBundlePageRef page, WKStringRef m
         auto messageBodyDictionary = dictionaryValue(messageBody);
         auto callbackID = uint64Value(messageBodyDictionary, "CallbackID");
         auto resultString = stringValue(messageBodyDictionary, "Result");
-        m_testRunner->runUIScriptCallback(callbackID, toJS(resultString).get());
+        if (m_testRunner)
+            m_testRunner->runUIScriptCallback(callbackID, toJS(resultString).get());
         return;
     }
 
     if (WKStringIsEqualToUTF8CString(messageName, "WorkQueueProcessedCallback")) {
-        if (!topLoadingFrame() && !m_testRunner->shouldWaitUntilDone())
-            InjectedBundle::page()->dump();
+        if (!topLoadingFrame() && m_testRunner && m_testRunner && !m_testRunner->shouldWaitUntilDone())
+            InjectedBundle::page()->dump(m_testRunner->shouldForceRepaint());
         return;
     }
 
     if (WKStringIsEqualToUTF8CString(messageName, "WebsiteDataDeletionForRegistrableDomainsFinished")) {
-        m_testRunner->statisticsDidModifyDataRecordsCallback();
+        if (m_testRunner)
+            m_testRunner->statisticsDidModifyDataRecordsCallback();
         return;
     }
 
     if (WKStringIsEqualToUTF8CString(messageName, "WebsiteDataScanForRegistrableDomainsFinished")) {
-        m_testRunner->statisticsDidScanDataRecordsCallback();
-        return;
-    }
-    
-    if (WKStringIsEqualToUTF8CString(messageName, "DidGetApplicationManifest")) {
-        m_testRunner->didGetApplicationManifest();
-        return;
-    }
-
-    if (WKStringIsEqualToUTF8CString(messageName, "PerformCustomMenuAction")) {
-        m_testRunner->performCustomMenuAction();
-        return;
-    }
-
-    if (WKStringIsEqualToUTF8CString(messageName, "CallDidSetAppBoundDomains")) {
-        m_testRunner->didSetAppBoundDomainsCallback();
+        if (m_testRunner)
+            m_testRunner->statisticsDidScanDataRecordsCallback();
         return;
     }
 
     if (WKStringIsEqualToUTF8CString(messageName, "ForceImmediateCompletion")) {
-        m_testRunner->forceImmediateCompletion();
+        if (m_testRunner)
+            m_testRunner->forceImmediateCompletion();
+        return;
+    }
+
+    if (WKStringIsEqualToUTF8CString(messageName, "WheelEventMarker")) {
+        ASSERT(messageBody);
+        ASSERT(WKGetTypeID(messageBody) == WKStringGetTypeID());
+
+        auto bodyString = toWTFString(static_cast<WKStringRef>(messageBody));
+        // These match the strings in EventSenderProxy::sendWheelEvent().
+        if (bodyString == "SentWheelPhaseEndOrCancel"_s)
+            m_eventSendingController->sentWheelPhaseEndOrCancel();
+        else if (bodyString == "SentWheelMomentumPhaseEnd"_s)
+            m_eventSendingController->sentWheelMomentumPhaseEnd();
         return;
     }
 
     postPageMessage("Error", "Unknown");
 }
 
+void InjectedBundle::setAllowedHosts(WKDictionaryRef settings)
+{
+    auto allowedHostsValue = value(settings, "AllowedHosts");
+    if (allowedHostsValue && WKGetTypeID(allowedHostsValue) == WKArrayGetTypeID()) {
+        m_allowedHosts.clear();
+        auto array = static_cast<WKArrayRef>(allowedHostsValue);
+        for (size_t i = 0, size = WKArrayGetSize(array); i < size; ++i)
+            m_allowedHosts.append(toWTFString(WKArrayGetItemAtIndex(array, i)));
+    }
+}
+
 void InjectedBundle::beginTesting(WKDictionaryRef settings, BegingTestingMode testingMode)
 {
-    m_state = Testing;
+    m_dumpPixels = booleanValue(settings, "DumpPixels");
+    m_timeout = Seconds::fromMilliseconds(uint64Value(settings, "Timeout"));
+    m_dumpJSConsoleLogInStdErr = booleanValue(settings, "DumpJSConsoleLogInStdErr");
 
     m_pixelResult.clear();
     m_repaintRects.clear();
+
+    setAllowedHosts(settings);
 
     m_testRunner = TestRunner::create();
     m_gcController = GCController::create();
     m_eventSendingController = EventSendingController::create();
     m_textInputController = TextInputController::create();
-#if HAVE(ACCESSIBILITY)
     m_accessibilityController = AccessibilityController::create();
+    m_accessibilityController->setForceDeferredSpellChecking(false);
 #if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
     m_accessibilityController->setIsolatedTreeMode(m_accessibilityIsolatedTreeMode);
 #endif
+#if ENABLE(VIDEO)
+    if (!m_captionUserPreferencesTestingModeToken)
+        m_captionUserPreferencesTestingModeToken = WKBundlePageCreateCaptionUserPreferencesTestingModeToken(page()->page());
 #endif
 
 #if PLATFORM(IOS_FAMILY)
@@ -515,7 +377,6 @@ void InjectedBundle::beginTesting(WKDictionaryRef settings, BegingTestingMode te
 
     m_testRunner->setUserStyleSheetEnabled(false);
 
-    m_testRunner->setCloseRemainingWindowsWhenComplete(false);
     m_testRunner->setAcceptsEditing(true);
     m_testRunner->setTabKeyCyclesThroughElements(true);
     m_testRunner->clearTestRunnerCallbacks();
@@ -528,28 +389,24 @@ void InjectedBundle::beginTesting(WKDictionaryRef settings, BegingTestingMode te
     if (testingMode != BegingTestingMode::New)
         return;
 
-    WKBundleClearAllDatabases(m_bundle.get());
-    WKBundlePageClearApplicationCache(page()->page());
     WKBundleResetOriginAccessAllowLists(m_bundle.get());
-    WKBundleClearResourceLoadStatistics(m_bundle.get());
+    clearResourceLoadStatistics();
 
+#if ENABLE(VIDEO)
+    WKBundlePageSetCaptionDisplayMode(page()->page(), stringValue(settings, "CaptionDisplayMode"));
+#endif
     // [WK2] REGRESSION(r128623): It made layout tests extremely slow
     // https://bugs.webkit.org/show_bug.cgi?id=96862
     // WKBundleSetDatabaseQuota(m_bundle.get(), 5 * 1024 * 1024);
 }
 
-void InjectedBundle::done()
+void InjectedBundle::done(bool forceRepaint)
 {
-    m_state = Stopping;
-
     m_useWorkQueue = false;
 
-    page()->stopLoading();
     setTopLoadingFrame(0);
 
-#if HAVE(ACCESSIBILITY)
     m_accessibilityController->resetToConsistentState();
-#endif
 
     auto body = adoptWK(WKMutableDictionaryCreate());
 
@@ -558,22 +415,21 @@ void InjectedBundle::done()
         setValue(body, "PixelResult", m_pixelResult);
     setValue(body, "RepaintRects", m_repaintRects);
     setValue(body, "AudioResult", m_audioResult);
+    setValue(body, "ForceRepaint", forceRepaint);
 
     WKBundlePagePostMessageIgnoringFullySynchronousMode(page()->page(), toWK("Done").get(), body.get());
-
-    closeOtherPages();
-
-    m_state = Idle;
+    m_testRunner = nullptr;
 }
 
-void InjectedBundle::closeOtherPages()
+void InjectedBundle::clearResourceLoadStatistics()
 {
-    Vector<WKBundlePageRef> pagesToClose;
-    size_t size = m_pages.size();
-    for (size_t i = 1; i < size; ++i)
-        pagesToClose.append(m_pages[i]->page());
-    for (auto& page : pagesToClose)
-        WKBundlePageClose(page);
+    WKBundleClearResourceLoadStatistics(m_bundle.get());
+}
+
+void InjectedBundle::reloadFromOrigin()
+{
+    m_useWorkQueue = true;
+    postPageMessage("ReloadFromOrigin");
 }
 
 void InjectedBundle::dumpBackForwardListsForAllPages(StringBuilder& stringBuilder)
@@ -585,68 +441,33 @@ void InjectedBundle::dumpBackForwardListsForAllPages(StringBuilder& stringBuilde
 
 void InjectedBundle::dumpToStdErr(const String& output)
 {
-    if (m_state != Testing)
+    if (!isTestRunning())
         return;
     if (output.isEmpty())
         return;
     // FIXME: Do we really have to convert to UTF-8 instead of using toWK?
-    auto string = output.tryGetUtf8();
+    auto string = output.tryGetUTF8();
     postPageMessage("DumpToStdErr", string ? string->data() : "Out of memory\n");
 }
 
-void InjectedBundle::outputText(const String& output)
+void InjectedBundle::outputText(StringView output, IsFinalTestOutput isFinalTestOutput)
 {
-    if (m_state != Testing)
+    if (!isTestRunning())
         return;
     if (output.isEmpty())
         return;
     // FIXME: Do we really have to convert to UTF-8 instead of using toWK?
-    auto string = output.tryGetUtf8();
+    auto string = output.tryGetUTF8();
     // We use WKBundlePagePostMessageIgnoringFullySynchronousMode() instead of WKBundlePagePostMessage() to make sure that all text output
     // is done via asynchronous IPC, even if the connection is in fully synchronous mode due to a WKBundlePagePostSynchronousMessageForTesting()
     // call. Otherwise, messages logged via sync and async IPC may end up out of order and cause flakiness.
-    WKBundlePagePostMessageIgnoringFullySynchronousMode(page()->page(), toWK("TextOutput").get(), toWK(string ? string->data() : "Out of memory\n").get());
+    auto messageName = isFinalTestOutput == IsFinalTestOutput::Yes ? toWK("FinalTextOutput") : toWK("TextOutput");
+    WKBundlePagePostMessageIgnoringFullySynchronousMode(page()->page(), messageName.get(), toWK(string ? string->data() : "Out of memory\n").get());
 }
 
 void InjectedBundle::postNewBeforeUnloadReturnValue(bool value)
 {
     postPageMessage("BeforeUnloadReturnValue", value);
-}
-
-void InjectedBundle::postAddChromeInputField()
-{
-    postPageMessage("AddChromeInputField");
-}
-
-void InjectedBundle::postRemoveChromeInputField()
-{
-    postPageMessage("RemoveChromeInputField");
-}
-
-void InjectedBundle::postSetTextInChromeInputField(const String& text)
-{
-    auto wkText = toWK(text);
-    postPageMessage("SetTextInChromeInputField", wkText.get());
-}
-
-void InjectedBundle::postSelectChromeInputField()
-{
-    postPageMessage("SelectChromeInputField");
-}
-
-void InjectedBundle::postGetSelectedTextInChromeInputField()
-{
-    postPageMessage("GetSelectedTextInChromeInputField");
-}
-
-void InjectedBundle::postFocusWebView()
-{
-    postPageMessage("FocusWebView");
-}
-
-void InjectedBundle::postSetBackingScaleFactor(double backingScaleFactor)
-{
-    postPageMessage("SetBackingScaleFactor", adoptWK(WKDoubleCreate(backingScaleFactor)));
 }
 
 void InjectedBundle::postSetWindowIsKey(bool isKey)
@@ -662,9 +483,14 @@ void InjectedBundle::postSetViewSize(double width, double height)
     WKBundlePagePostSynchronousMessageForTesting(page()->page(), toWK("SetViewSize").get(), body.get(), 0);
 }
 
-void InjectedBundle::postSimulateWebNotificationClick(uint64_t notificationID)
+void InjectedBundle::postSimulateWebNotificationClick(WKDataRef notificationID)
 {
-    postPageMessage("SimulateWebNotificationClick", adoptWK(WKUInt64Create(notificationID)));
+    postPageMessage("SimulateWebNotificationClick", notificationID);
+}
+
+void InjectedBundle::postSimulateWebNotificationClickForServiceWorkerNotifications()
+{
+    postPageMessage("SimulateWebNotificationClickForServiceWorkerNotifications");
 }
 
 void InjectedBundle::postSetAddsVisitedLinks(bool addsVisitedLinks)
@@ -675,6 +501,11 @@ void InjectedBundle::postSetAddsVisitedLinks(bool addsVisitedLinks)
 void InjectedBundle::setGeolocationPermission(bool enabled)
 {
     postPageMessage("SetGeolocationPermission", adoptWK(WKBooleanCreate(enabled)));
+}
+
+void InjectedBundle::setScreenWakeLockPermission(bool enabled)
+{
+    postPageMessage("SetScreenWakeLockPermission", adoptWK(WKBooleanCreate(enabled)));
 }
 
 void InjectedBundle::setMockGeolocationPosition(double latitude, double longitude, double accuracy, std::optional<double> altitude, std::optional<double> altitudeAccuracy, std::optional<double> heading, std::optional<double> speed, std::optional<double> floorLevel)
@@ -703,6 +534,13 @@ bool InjectedBundle::isGeolocationProviderActive() const
     return booleanValue(adoptWK(result).get());
 }
 
+WKRetainPtr<WKStringRef> InjectedBundle::getBackgroundFetchIdentifier()
+{
+    WKTypeRef result = nullptr;
+    WKBundlePagePostSynchronousMessageForTesting(page()->page(), toWK("GetBackgroundFetchIdentifier").get(), 0, &result);
+    return static_cast<WKStringRef>(result);
+}
+
 unsigned InjectedBundle::imageCountInGeneralPasteboard() const
 {
     WKTypeRef result = nullptr;
@@ -710,9 +548,14 @@ unsigned InjectedBundle::imageCountInGeneralPasteboard() const
     return uint64Value(adoptWK(result).get());
 }
 
-void InjectedBundle::setUserMediaPermission(bool enabled)
+void InjectedBundle::setCameraPermission(bool enabled)
 {
-    postPageMessage("SetUserMediaPermission", adoptWK(WKBooleanCreate(enabled)));
+    postPageMessage("SetCameraPermission", adoptWK(WKBooleanCreate(enabled)));
+}
+
+void InjectedBundle::setMicrophonePermission(bool enabled)
+{
+    postPageMessage("SetMicrophonePermission", adoptWK(WKBooleanCreate(enabled)));
 }
 
 void InjectedBundle::resetUserMediaPermission()
@@ -853,9 +696,39 @@ void InjectedBundle::setAllowsAnySSLCertificate(bool allowsAnySSLCertificate)
     WebCoreTestSupport::setAllowsAnySSLCertificate(allowsAnySSLCertificate);
 }
 
-bool InjectedBundle::statisticsNotifyObserver()
+void InjectedBundle::statisticsNotifyObserver(CompletionHandler<void()>&& completionHandler)
 {
-    return WKBundleResourceLoadStatisticsNotifyObserver(m_bundle.get());
+    return WKBundleResourceLoadStatisticsNotifyObserver(m_bundle.get(), completionHandler.leak(), [] (void* context) {
+        WTF::adopt(static_cast<CompletionHandler<void()>::Impl*>(context))();
+    });
+}
+
+WKRetainPtr<WKStringRef> InjectedBundle::lastAddedBackgroundFetchIdentifier() const
+{
+    WKTypeRef result = nullptr;
+    WKBundlePagePostSynchronousMessageForTesting(page()->page(), toWK("LastAddedBackgroundFetchIdentifier").get(), 0, &result);
+    return static_cast<WKStringRef>(result);
+}
+
+WKRetainPtr<WKStringRef> InjectedBundle::lastRemovedBackgroundFetchIdentifier() const
+{
+    WKTypeRef result = nullptr;
+    WKBundlePagePostSynchronousMessageForTesting(page()->page(), toWK("LastRemovedBackgroundFetchIdentifier").get(), 0, &result);
+    return static_cast<WKStringRef>(result);
+}
+
+WKRetainPtr<WKStringRef> InjectedBundle::lastUpdatedBackgroundFetchIdentifier() const
+{
+    WKTypeRef result = nullptr;
+    WKBundlePagePostSynchronousMessageForTesting(page()->page(), toWK("LastUpdatedBackgroundFetchIdentifier").get(), 0, &result);
+    return static_cast<WKStringRef>(result);
+}
+
+WKRetainPtr<WKStringRef> InjectedBundle::backgroundFetchState(WKStringRef identifier)
+{
+    WKTypeRef result = nullptr;
+    WKBundlePagePostSynchronousMessageForTesting(page()->page(), toWK("BackgroundFetchState").get(), identifier, &result);
+    return static_cast<WKStringRef>(result);
 }
 
 void InjectedBundle::textDidChangeInTextField()
@@ -940,6 +813,12 @@ void postPageMessage(const char* name, WKStringRef value)
         WKBundlePagePostMessage(page, toWK(name).get(), value);
 }
 
+void postPageMessage(const char* name, WKDataRef value)
+{
+    if (auto page = InjectedBundle::singleton().pageRef())
+        WKBundlePagePostMessage(page, toWK(name).get(), value);
+}
+
 void postSynchronousPageMessage(const char* name)
 {
     postSynchronousPageMessage(name, WKRetainPtr<WKTypeRef> { });
@@ -948,6 +827,60 @@ void postSynchronousPageMessage(const char* name)
 void postSynchronousPageMessage(const char* name, bool value)
 {
     postSynchronousPageMessage(name, adoptWK(WKBooleanCreate(value)));
+}
+
+static JSValueRef stringArrayToJS(JSContextRef context, WKArrayRef strings)
+{
+    ASSERT(WKGetTypeID(strings) == WKArrayGetTypeID());
+    const size_t count = WKArrayGetSize(strings);
+    auto array = JSObjectMakeArray(context, 0, 0, nullptr);
+    for (size_t i = 0; i < count; ++i) {
+        auto stringRef = static_cast<WKStringRef>(WKArrayGetItemAtIndex(strings, i));
+        ASSERT(WKGetTypeID(stringRef) == WKStringGetTypeID());
+        JSObjectSetPropertyAtIndex(context, array, i, JSValueMakeString(context, toJS(stringRef).get()), nullptr);
+    }
+    return array;
+}
+
+void postMessageWithAsyncReply(JSContextRef context, const char* messageName, WKRetainPtr<WKTypeRef> parameter, JSValueRef callback)
+{
+    auto globalContext = JSContextGetGlobalContext(context);
+    JSValueProtect(globalContext, callback);
+
+    Function<void(WKTypeRef)> completionHandler = [callback, globalContext = JSRetainPtr { globalContext }] (WKTypeRef result) mutable {
+        JSContextRef context = globalContext.get();
+
+        size_t argumentCount { 0 };
+        JSValueRef* arguments { nullptr };
+        JSValueRef resultJS { nullptr };
+
+        if (result) {
+            if (WKGetTypeID(result) == WKArrayGetTypeID())
+                resultJS = stringArrayToJS(context, static_cast<WKArrayRef>(result));
+            else if (WKGetTypeID(result) == WKStringGetTypeID())
+                resultJS = JSValueMakeString(context, toJS(static_cast<WKStringRef>(result)).get());
+            else
+                RELEASE_ASSERT_NOT_REACHED();
+            arguments = &resultJS;
+            argumentCount = 1;
+        }
+
+        JSObjectCallAsFunction(context, JSValueToObject(context, callback, nullptr), JSContextGetGlobalObject(context), argumentCount, arguments, nullptr);
+        JSValueUnprotect(context, callback);
+    };
+
+    if (auto page = InjectedBundle::singleton().pageRef()) {
+        WKBundlePagePostMessageWithAsyncReply(page, toWK(messageName).get(), parameter.get(), [] (WKTypeRef result, void* context) {
+            auto function = WTF::adopt(static_cast<Function<void(WKTypeRef)>::Impl*>(context));
+            function(result);
+        }, completionHandler.leak());
+    } else
+        completionHandler(nullptr);
+}
+
+void postMessageWithAsyncReply(JSContextRef context, const char* messageName, JSValueRef callback)
+{
+    postMessageWithAsyncReply(context, messageName, nullptr, callback);
 }
 
 } // namespace WTR

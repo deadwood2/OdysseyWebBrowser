@@ -30,6 +30,7 @@
 
 #import "WebKitVersionChecks.h"
 #import "WebView.h"
+#import <WebCore/FrameDestructionObserverInlines.h>
 
 using namespace WebCore;
 
@@ -66,7 +67,7 @@ void WebDocumentLoaderMac::setDataSource(WebDataSource *dataSource, WebView *web
     // from firing. We work around that issue here. See <rdar://problem/5266289>
     // and <rdar://problem/5049509>.
     if (needsDataLoadWorkaround(webView))
-        m_deferMainResourceDataLoad = false;
+        setDeferMainResourceDataLoad(false);
 }
 
 WebDataSource *WebDocumentLoaderMac::dataSource() const
@@ -81,9 +82,9 @@ void WebDocumentLoaderMac::attachToFrame()
     retainDataSource();
 }
 
-void WebDocumentLoaderMac::detachFromFrame()
+void WebDocumentLoaderMac::detachFromFrame(LoadWillContinueInAnotherProcess loadWillContinueInAnotherProcess)
 {
-    DocumentLoader::detachFromFrame();
+    DocumentLoader::detachFromFrame(loadWillContinueInAnotherProcess);
 
     if (m_loadingResources.isEmpty())
         releaseDataSource();
@@ -92,7 +93,7 @@ void WebDocumentLoaderMac::detachFromFrame()
     // frame is not attached?
 }
 
-void WebDocumentLoaderMac::increaseLoadCount(unsigned long identifier)
+void WebDocumentLoaderMac::increaseLoadCount(WebCore::ResourceLoaderIdentifier identifier)
 {
     ASSERT(m_dataSource);
 
@@ -103,9 +104,9 @@ void WebDocumentLoaderMac::increaseLoadCount(unsigned long identifier)
     retainDataSource();
 }
 
-void WebDocumentLoaderMac::decreaseLoadCount(unsigned long identifier)
+void WebDocumentLoaderMac::decreaseLoadCount(WebCore::ResourceLoaderIdentifier identifier)
 {
-    HashSet<unsigned long>::iterator it = m_loadingResources.find(identifier);
+    auto it = m_loadingResources.find(identifier);
     
     // It is valid for a load to be cancelled before it's started.
     if (it == m_loadingResources.end())

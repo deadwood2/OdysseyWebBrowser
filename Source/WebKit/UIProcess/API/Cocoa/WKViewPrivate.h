@@ -89,8 +89,6 @@
 
 @property (strong, nonatomic, setter=_setInspectorAttachmentView:) NSView *_inspectorAttachmentView WK_API_AVAILABLE(macos(10.11));
 
-@property (nonatomic, readwrite, setter=_setRequiresUserActionForEditingControlsManager:) BOOL _requiresUserActionForEditingControlsManager;
-
 - (NSView*)fullScreenPlaceholderView;
 - (NSWindow*)createFullScreenWindow;
 
@@ -133,6 +131,7 @@
 - (void)_didChangeContentSize:(NSSize)newSize;
 
 - (void)_gestureEventWasNotHandledByWebCore:(NSEvent *)event;
+- (void)_simulateMouseMove:(NSEvent *)event;
 
 - (void)_setShouldSuppressFirstResponderChanges:(BOOL)shouldSuppress WK_API_AVAILABLE(macos(10.13.4));
 

@@ -28,11 +28,11 @@
 
 #include <wtf/CrossThreadCopier.h>
 #include <wtf/HashSet.h>
-#include <wtf/IsoMallocInlines.h>
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(IDBGetAllResult);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(IDBGetAllResult);
 
 IDBGetAllResult::IDBGetAllResult(const IDBGetAllResult& that, IsolatedCopyTag)
 {
@@ -49,7 +49,7 @@ void IDBGetAllResult::isolatedCopy(const IDBGetAllResult& source, IDBGetAllResul
     destination.m_type = source.m_type;
     destination.m_keys = crossThreadCopy(source.m_keys);
     destination.m_values = crossThreadCopy(source.m_values);
-    destination.m_keyPath = WebCore::isolatedCopy(source.m_keyPath);
+    destination.m_keyPath = crossThreadCopy(source.m_keyPath);
 }
 
 void IDBGetAllResult::addKey(IDBKeyData&& key)

@@ -35,7 +35,26 @@
 
 namespace WebCore {
 
-void DistantLightSource::initPaintingData(const FilterEffect&, PaintingData& paintingData)
+Ref<DistantLightSource> DistantLightSource::create(float azimuth, float elevation)
+{
+    return adoptRef(*new DistantLightSource(azimuth, elevation));
+}
+
+DistantLightSource::DistantLightSource(float azimuth, float elevation)
+    : LightSource(LightType::LS_DISTANT)
+    , m_azimuth(azimuth)
+    , m_elevation(elevation)
+{
+}
+
+bool DistantLightSource::operator==(const DistantLightSource& other) const
+{
+    return LightSource::operator==(other)
+        && m_azimuth == other.m_azimuth
+        && m_elevation == other.m_elevation;
+}
+
+void DistantLightSource::initPaintingData(const Filter&, const FilterImage&, PaintingData& paintingData) const
 {
     float azimuth = deg2rad(m_azimuth);
     float elevation = deg2rad(m_elevation);

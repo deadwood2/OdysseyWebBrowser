@@ -25,14 +25,14 @@
 
 #import "config.h"
 
-#if ENABLE(NOTIFICATIONS)
+#if ENABLE(NOTIFICATIONS) && !(PLATFORM(IOS) || PLATFORM(VISION))
+#import "DeprecatedGlobalValues.h"
 #import "PlatformUtilities.h"
 #import "TestWKWebView.h"
 #import <WebKit/WKUIDelegatePrivate.h>
 #import <wtf/Function.h>
 #import <wtf/RetainPtr.h>
 
-static RetainPtr<NSMutableArray> receivedMessages = adoptNS([@[] mutableCopy]);
 static unsigned clientPermissionRequestCount;
 static bool didReceiveMessage;
 
@@ -107,7 +107,8 @@ static void runRequestPermissionTest(ShouldGrantPermission shouldGrantPermission
     [webView evaluateJavaScript:@"Notification.requestPermission((permission) => { webkit.messageHandlers.testHandler.postMessage(permission) });" completionHandler:nil];
     TestWebKitAPI::Util::run(&didReceiveMessage);
 
-    EXPECT_EQ(clientPermissionRequestCount, 1U);
+    // All calls to Notification.requestPermission result in a call to the client to request permission.
+    EXPECT_EQ(clientPermissionRequestCount, 2U);
     if (shouldGrantPermission == ShouldGrantPermission::Yes)
         EXPECT_WK_STREQ(@"granted", receivedMessages.get()[1]);
     else
@@ -170,4 +171,4 @@ TEST(Notification, ParallelPermissionRequestsGranted)
 
 } // namespace TestWebKitAPI
 
-#endif // ENABLE(NOTIFICATIONS)
+#endif // ENABLE(NOTIFICATIONS) && !(PLATFORM(IOS) || PLATFORM(VISION))

@@ -36,7 +36,7 @@
 @class WebPluginController;
 
 namespace WebCore {
-    class CachedImage;
+class CachedImage;
     class KeyboardEvent;
 }
 
@@ -101,6 +101,8 @@ namespace WebCore {
 - (WebPluginController *)_pluginController;
 
 - (void)_executeSavedKeypressCommands;
+
+- (WebCore::ScrollbarWidth)_scrollbarWidthStyle;
 
 @end
 

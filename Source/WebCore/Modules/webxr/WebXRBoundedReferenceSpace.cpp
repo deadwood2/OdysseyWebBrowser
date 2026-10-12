@@ -32,7 +32,7 @@
 #include "Document.h"
 #include "WebXRRigidTransform.h"
 #include "WebXRSession.h"
-#include <wtf/IsoMallocInlines.h>
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
 
@@ -42,26 +42,26 @@ static constexpr float BoundsPrecisionInMeters = 0.05;
 // A valid polygon has at least 3 vertices.
 static constexpr int MinimumBoundsVertices = 3; 
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(WebXRBoundedReferenceSpace);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(WebXRBoundedReferenceSpace);
 
-Ref<WebXRBoundedReferenceSpace> WebXRBoundedReferenceSpace::create(Document& document, Ref<WebXRSession>&& session, XRReferenceSpaceType type)
+Ref<WebXRBoundedReferenceSpace> WebXRBoundedReferenceSpace::create(Document& document, WebXRSession& session, XRReferenceSpaceType type)
 {
-    return adoptRef(*new WebXRBoundedReferenceSpace(document, WTFMove(session), WebXRRigidTransform::create(), type));
+    return adoptRef(*new WebXRBoundedReferenceSpace(document, session, WebXRRigidTransform::create(), type));
 }
 
-Ref<WebXRBoundedReferenceSpace> WebXRBoundedReferenceSpace::create(Document& document, Ref<WebXRSession>&& session, Ref<WebXRRigidTransform>&& offset, XRReferenceSpaceType type)
+Ref<WebXRBoundedReferenceSpace> WebXRBoundedReferenceSpace::create(Document& document, WebXRSession& session, Ref<WebXRRigidTransform>&& offset, XRReferenceSpaceType type)
 {
-    return adoptRef(*new WebXRBoundedReferenceSpace(document, WTFMove(session), WTFMove(offset), type));
+    return adoptRef(*new WebXRBoundedReferenceSpace(document, session, WTFMove(offset), type));
 }
 
-WebXRBoundedReferenceSpace::WebXRBoundedReferenceSpace(Document& document, Ref<WebXRSession>&& session, Ref<WebXRRigidTransform>&& offset, XRReferenceSpaceType type)
-    : WebXRReferenceSpace(document, WTFMove(session), WTFMove(offset), type)
+WebXRBoundedReferenceSpace::WebXRBoundedReferenceSpace(Document& document, WebXRSession& session, Ref<WebXRRigidTransform>&& offset, XRReferenceSpaceType type)
+    : WebXRReferenceSpace(document, session, WTFMove(offset), type)
 {
 }
 
 WebXRBoundedReferenceSpace::~WebXRBoundedReferenceSpace() = default;
 
-TransformationMatrix WebXRBoundedReferenceSpace::nativeOrigin() const
+std::optional<TransformationMatrix> WebXRBoundedReferenceSpace::nativeOrigin() const
 {
     // https://immersive-web.github.io/webxr/#dom-xrreferencespacetype-bounded-floor.
     // Bounded floor space should be at the same height as local floor space.
@@ -76,20 +76,26 @@ const Vector<Ref<DOMPointReadOnly>>& WebXRBoundedReferenceSpace::boundsGeometry(
 
 ExceptionOr<Ref<WebXRReferenceSpace>> WebXRBoundedReferenceSpace::getOffsetReferenceSpace(const WebXRRigidTransform& offsetTransform)
 {
-    auto* document = downcast<Document>(scriptExecutionContext());
+    if (!m_session)
+        return Exception { ExceptionCode::InvalidStateError };
+
+    RefPtr document = downcast<Document>(scriptExecutionContext());
     if (!document)
-        return Exception { InvalidStateError };
+        return Exception { ExceptionCode::InvalidStateError };
 
     // https://immersive-web.github.io/webxr/#dom-xrreferencespace-getoffsetreferencespace
     // Set offsetSpace’s origin offset to the result of multiplying base’s origin offset by originOffset in the relevant realm of base.
     auto offset = WebXRRigidTransform::create(originOffset().rawTransform() * offsetTransform.rawTransform());
 
-    return { create(*document, m_session.copyRef(), WTFMove(offset), m_type) };
+    return { create(*document, *m_session.get(), WTFMove(offset), m_type) };
 }
 
 // https://immersive-web.github.io/webxr/#dom-xrboundedreferencespace-boundsgeometry
 void WebXRBoundedReferenceSpace::updateIfNeeded()
 {
+    if (!m_session)
+        return;
+
     auto& frameData = m_session->frameData();
     if (frameData.stageParameters.id == m_lastUpdateId)
         return;
@@ -99,7 +105,7 @@ void WebXRBoundedReferenceSpace::updateIfNeeded()
 
     if (frameData.stageParameters.bounds.size() >= MinimumBoundsVertices) {
         // Each point has to multiplied by the inverse of originOffset.
-        auto transform = originOffset().rawTransform().inverse().value_or(TransformationMatrix());
+        auto transform = valueOrDefault(originOffset().rawTransform().inverse());
         for (auto& point : frameData.stageParameters.bounds) {
             auto mappedPoint = transform.mapPoint(FloatPoint3D(point.x(), 0.0, point.y()));
             m_boundsGeometry.append(DOMPointReadOnly::create(quantize(mappedPoint.x()), quantize(mappedPoint.y()), quantize(mappedPoint.z()), 1.0));

@@ -35,8 +35,11 @@
 #include "RemoteSampleBufferDisplayLayerManagerMessages.h"
 #include "RemoteSampleBufferDisplayLayerMessages.h"
 #include <WebCore/IntSize.h>
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebKit {
+
+WTF_MAKE_TZONE_ALLOCATED_IMPL(RemoteSampleBufferDisplayLayerManager);
 
 RemoteSampleBufferDisplayLayerManager::RemoteSampleBufferDisplayLayerManager(GPUConnectionToWebProcess& gpuConnectionToWebProcess)
     : m_connectionToWebProcess(gpuConnectionToWebProcess)
@@ -47,24 +50,26 @@ RemoteSampleBufferDisplayLayerManager::RemoteSampleBufferDisplayLayerManager(GPU
 
 void RemoteSampleBufferDisplayLayerManager::startListeningForIPC()
 {
-    m_connectionToWebProcess.connection().addThreadMessageReceiver(Messages::RemoteSampleBufferDisplayLayer::messageReceiverName(), this);
-    m_connectionToWebProcess.connection().addThreadMessageReceiver(Messages::RemoteSampleBufferDisplayLayerManager::messageReceiverName(), this);
+    auto connection = m_connectionToWebProcess.get();
+    if (!connection)
+        return;
+    connection->connection().addWorkQueueMessageReceiver(Messages::RemoteSampleBufferDisplayLayer::messageReceiverName(), m_queue, *this);
+    connection->connection().addWorkQueueMessageReceiver(Messages::RemoteSampleBufferDisplayLayerManager::messageReceiverName(), m_queue, *this);
 }
 
 RemoteSampleBufferDisplayLayerManager::~RemoteSampleBufferDisplayLayerManager() = default;
 
 void RemoteSampleBufferDisplayLayerManager::close()
 {
-    m_connectionToWebProcess.connection().removeThreadMessageReceiver(Messages::RemoteSampleBufferDisplayLayer::messageReceiverName());
-    m_connectionToWebProcess.connection().removeThreadMessageReceiver(Messages::RemoteSampleBufferDisplayLayerManager::messageReceiverName());
-    dispatchToThread([this, protectedThis = makeRef(*this)] {
+    auto connection = m_connectionToWebProcess.get();
+    if (!connection)
+        return;
+    connection->connection().removeWorkQueueMessageReceiver(Messages::RemoteSampleBufferDisplayLayer::messageReceiverName());
+    connection->connection().removeWorkQueueMessageReceiver(Messages::RemoteSampleBufferDisplayLayerManager::messageReceiverName());
+    m_queue->dispatch([this, protectedThis = Ref { *this }] {
+        Locker lock(m_layersLock);
         callOnMainRunLoop([layers = WTFMove(m_layers)] { });
     });
-}
-
-void RemoteSampleBufferDisplayLayerManager::dispatchToThread(Function<void()>&& callback)
-{
-    m_queue->dispatch(WTFMove(callback));
 }
 
 bool RemoteSampleBufferDisplayLayerManager::dispatchMessage(IPC::Connection& connection, IPC::Decoder& decoder)
@@ -72,19 +77,28 @@ bool RemoteSampleBufferDisplayLayerManager::dispatchMessage(IPC::Connection& con
     if (!decoder.destinationID())
         return false;
 
-    auto identifier = makeObjectIdentifier<SampleBufferDisplayLayerIdentifierType>(decoder.destinationID());
+    auto identifier = LegacyNullableObjectIdentifier<SampleBufferDisplayLayerIdentifierType>(decoder.destinationID());
+    Locker lock(m_layersLock);
     if (auto* layer = m_layers.get(identifier))
         layer->didReceiveMessage(connection, decoder);
     return true;
 }
 
-void RemoteSampleBufferDisplayLayerManager::createLayer(SampleBufferDisplayLayerIdentifier identifier, bool hideRootLayer, WebCore::IntSize size, LayerCreationCallback&& callback)
+void RemoteSampleBufferDisplayLayerManager::createLayer(SampleBufferDisplayLayerIdentifier identifier, bool hideRootLayer, WebCore::IntSize size, bool shouldMaintainAspectRatio, bool canShowWhileLocked, LayerCreationCallback&& callback)
 {
-    callOnMainRunLoop([this, protectedThis = makeRef(*this), identifier, hideRootLayer, size, callback = WTFMove(callback)]() mutable {
-        auto layer = RemoteSampleBufferDisplayLayer::create(identifier, m_connection.copyRef());
+    callOnMainRunLoop([this, protectedThis = Ref { *this }, identifier, hideRootLayer, size, shouldMaintainAspectRatio, canShowWhileLocked, callback = WTFMove(callback)]() mutable {
+        auto connection = m_connectionToWebProcess.get();
+        if (!connection)
+            return callback({ });
+        auto layer = RemoteSampleBufferDisplayLayer::create(*connection, identifier, m_connection.copyRef());
+        if (!layer) {
+            callback({ });
+            return;
+        }
         auto& layerReference = *layer;
-        layerReference.initialize(hideRootLayer, size, [this, protectedThis = makeRef(*this), callback = WTFMove(callback), identifier, layer = WTFMove(layer)](auto layerId) mutable {
-            dispatchToThread([this, protectedThis = WTFMove(protectedThis), callback = WTFMove(callback), identifier, layer = WTFMove(layer), layerId = WTFMove(layerId)]() mutable {
+        layerReference.initialize(hideRootLayer, size, shouldMaintainAspectRatio, canShowWhileLocked, [this, protectedThis = Ref { *this }, callback = WTFMove(callback), identifier, layer = layer.releaseNonNull()](auto layerId) mutable {
+            m_queue->dispatch([this, protectedThis = WTFMove(protectedThis), callback = WTFMove(callback), identifier, layer = WTFMove(layer), layerId = WTFMove(layerId)]() mutable {
+                Locker lock(m_layersLock);
                 ASSERT(!m_layers.contains(identifier));
                 m_layers.add(identifier, WTFMove(layer));
                 callback(WTFMove(layerId));
@@ -95,8 +109,9 @@ void RemoteSampleBufferDisplayLayerManager::createLayer(SampleBufferDisplayLayer
 
 void RemoteSampleBufferDisplayLayerManager::releaseLayer(SampleBufferDisplayLayerIdentifier identifier)
 {
-    callOnMainRunLoop([this, protectedThis = makeRef(*this), identifier]() mutable {
-        dispatchToThread([this, protectedThis = WTFMove(protectedThis), identifier] {
+    callOnMainRunLoop([this, protectedThis = Ref { *this }, identifier]() mutable {
+        m_queue->dispatch([this, protectedThis = WTFMove(protectedThis), identifier] {
+            Locker lock(m_layersLock);
             ASSERT(m_layers.contains(identifier));
             callOnMainRunLoop([layer = m_layers.take(identifier)] { });
         });
@@ -105,7 +120,15 @@ void RemoteSampleBufferDisplayLayerManager::releaseLayer(SampleBufferDisplayLaye
 
 bool RemoteSampleBufferDisplayLayerManager::allowsExitUnderMemoryPressure() const
 {
+    Locker lock(m_layersLock);
     return m_layers.isEmpty();
+}
+
+void RemoteSampleBufferDisplayLayerManager::updateSampleBufferDisplayLayerBoundsAndPosition(SampleBufferDisplayLayerIdentifier identifier, WebCore::FloatRect bounds, std::optional<MachSendRight>&& sendRight)
+{
+    Locker lock(m_layersLock);
+    if (auto* layer = m_layers.get(identifier))
+        layer->updateBoundsAndPosition(bounds, WTFMove(sendRight));
 }
 
 }

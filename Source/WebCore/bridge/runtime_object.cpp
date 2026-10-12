@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2003, 2008-2009, 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2003-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -36,7 +36,7 @@ using namespace WebCore;
 namespace JSC {
 namespace Bindings {
 
-WEBCORE_EXPORT const ClassInfo RuntimeObject::s_info = { "RuntimeObject", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(RuntimeObject) };
+WEBCORE_EXPORT const ClassInfo RuntimeObject::s_info = { "RuntimeObject"_s, &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(RuntimeObject) };
 
 static JSC_DECLARE_HOST_FUNCTION(convertRuntimeObjectToPrimitive);
 static JSC_DECLARE_HOST_FUNCTION(callRuntimeObject);
@@ -55,10 +55,10 @@ RuntimeObject::RuntimeObject(VM& vm, Structure* structure, RefPtr<Instance>&& in
 void RuntimeObject::finishCreation(VM& vm)
 {
     Base::finishCreation(vm);
-    ASSERT(inherits(vm, info()));
+    ASSERT(inherits(info()));
     putDirect(vm, vm.propertyNames->toPrimitiveSymbol,
-        JSFunction::create(vm, globalObject(vm), 1, "[Symbol.toPrimitive]"_s, convertRuntimeObjectToPrimitive),
-        static_cast<unsigned>(PropertyAttribute::DontEnum));
+        JSFunction::create(vm, globalObject(), 1, "[Symbol.toPrimitive]"_s, convertRuntimeObjectToPrimitive, ImplementationVisibility::Public),
+        enumToUnderlyingType(PropertyAttribute::DontEnum));
 }
 
 void RuntimeObject::destroy(JSCell* cell)
@@ -76,8 +76,7 @@ void RuntimeObject::invalidate()
 
 JSC_DEFINE_CUSTOM_GETTER(fallbackObjectGetter, (JSGlobalObject* lexicalGlobalObject, EncodedJSValue thisValue, PropertyName propertyName))
 {
-    VM& vm = lexicalGlobalObject->vm();
-    auto scope = DECLARE_THROW_SCOPE(vm);
+    auto scope = DECLARE_THROW_SCOPE(lexicalGlobalObject->vm());
 
     RuntimeObject* thisObj = jsCast<RuntimeObject*>(JSValue::decode(thisValue));
     RefPtr<Instance> instance = thisObj->getInternalInstance();
@@ -96,9 +95,8 @@ JSC_DEFINE_CUSTOM_GETTER(fallbackObjectGetter, (JSGlobalObject* lexicalGlobalObj
 }
 
 JSC_DEFINE_CUSTOM_GETTER(fieldGetter, (JSGlobalObject* lexicalGlobalObject, EncodedJSValue thisValue, PropertyName propertyName))
-{    
-    VM& vm = lexicalGlobalObject->vm();
-    auto scope = DECLARE_THROW_SCOPE(vm);
+{
+    auto scope = DECLARE_THROW_SCOPE(lexicalGlobalObject->vm());
 
     RuntimeObject* thisObj = jsCast<RuntimeObject*>(JSValue::decode(thisValue));
     RefPtr<Instance> instance = thisObj->getInternalInstance();
@@ -119,8 +117,7 @@ JSC_DEFINE_CUSTOM_GETTER(fieldGetter, (JSGlobalObject* lexicalGlobalObject, Enco
 
 JSC_DEFINE_CUSTOM_GETTER(methodGetter, (JSGlobalObject* lexicalGlobalObject, EncodedJSValue thisValue, PropertyName propertyName))
 {
-    VM& vm = lexicalGlobalObject->vm();
-    auto scope = DECLARE_THROW_SCOPE(vm);
+    auto scope = DECLARE_THROW_SCOPE(lexicalGlobalObject->vm());
 
     RuntimeObject* thisObj = jsCast<RuntimeObject*>(JSValue::decode(thisValue));
     RefPtr<Instance> instance = thisObj->getInternalInstance();
@@ -139,7 +136,7 @@ JSC_DEFINE_CUSTOM_GETTER(methodGetter, (JSGlobalObject* lexicalGlobalObject, Enc
 
 bool RuntimeObject::getOwnPropertySlot(JSObject* object, JSGlobalObject* lexicalGlobalObject, PropertyName propertyName, PropertySlot& slot)
 {
-    VM& vm = lexicalGlobalObject->vm();
+    Ref vm = lexicalGlobalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
 
     RuntimeObject* thisObject = jsCast<RuntimeObject*>(object);
@@ -148,7 +145,7 @@ bool RuntimeObject::getOwnPropertySlot(JSObject* object, JSGlobalObject* lexical
         return false;
     }
 
-    if (propertyName.uid() == vm.propertyNames->toPrimitiveSymbol.impl())
+    if (propertyName.uid() == vm->propertyNames->toPrimitiveSymbol.impl())
         return JSObject::getOwnPropertySlot(thisObject, lexicalGlobalObject, propertyName, slot);
     
     RefPtr<Instance> instance = thisObject->m_instance;
@@ -161,7 +158,7 @@ bool RuntimeObject::getOwnPropertySlot(JSObject* object, JSGlobalObject* lexical
         // See if the instance has a field with the specified name.
         Field *aField = aClass->fieldNamed(propertyName, instance.get());
         if (aField) {
-            slot.setCustom(thisObject, static_cast<unsigned>(JSC::PropertyAttribute::DontDelete), fieldGetter);
+            slot.setCustom(thisObject, enumToUnderlyingType(JSC::PropertyAttribute::DontDelete), fieldGetter);
             instance->end();
             return true;
         } else {
@@ -190,8 +187,7 @@ bool RuntimeObject::getOwnPropertySlot(JSObject* object, JSGlobalObject* lexical
 
 bool RuntimeObject::put(JSCell* cell, JSGlobalObject* lexicalGlobalObject, PropertyName propertyName, JSValue value, PutPropertySlot& slot)
 {
-    VM& vm = lexicalGlobalObject->vm();
-    auto scope = DECLARE_THROW_SCOPE(vm);
+    auto scope = DECLARE_THROW_SCOPE(lexicalGlobalObject->vm());
 
     RuntimeObject* thisObject = jsCast<RuntimeObject*>(cell);
     if (!thisObject->m_instance) {
@@ -222,13 +218,12 @@ bool RuntimeObject::deleteProperty(JSCell*, JSGlobalObject*, PropertyName, Delet
 
 JSC_DEFINE_HOST_FUNCTION(convertRuntimeObjectToPrimitive, (JSGlobalObject* lexicalGlobalObject, CallFrame* callFrame))
 {
-    VM& vm = lexicalGlobalObject->vm();
-    auto scope = DECLARE_THROW_SCOPE(vm);
+    auto scope = DECLARE_THROW_SCOPE(lexicalGlobalObject->vm());
 
-    auto* thisObject = jsDynamicCast<RuntimeObject*>(vm, callFrame->thisValue());
+    auto* thisObject = jsDynamicCast<RuntimeObject*>(callFrame->thisValue());
     if (!thisObject)
         return throwVMTypeError(lexicalGlobalObject, scope, "RuntimeObject[Symbol.toPrimitive] method called on incompatible |this| value."_s);
-    auto instance = makeRefPtr(thisObject->getInternalInstance());
+    RefPtr instance = thisObject->getInternalInstance();
     if (!instance)
         return JSValue::encode(throwRuntimeObjectInvalidAccessError(lexicalGlobalObject, scope));
     auto hint = toPreferredPrimitiveType(lexicalGlobalObject, callFrame->argument(0));
@@ -242,7 +237,7 @@ JSC_DEFINE_HOST_FUNCTION(convertRuntimeObjectToPrimitive, (JSGlobalObject* lexic
 
 JSC_DEFINE_HOST_FUNCTION(callRuntimeObject, (JSGlobalObject* globalObject, CallFrame* callFrame))
 {
-    ASSERT_UNUSED(globalObject, callFrame->jsCallee()->inherits<RuntimeObject>(globalObject->vm()));
+    ASSERT_UNUSED(globalObject, callFrame->jsCallee()->inherits<RuntimeObject>());
     RefPtr<Instance> instance(static_cast<RuntimeObject*>(callFrame->jsCallee())->getInternalInstance());
     instance->begin();
     JSValue result = instance->invokeDefaultMethod(globalObject, callFrame);
@@ -258,6 +253,7 @@ CallData RuntimeObject::getCallData(JSCell* cell)
     if (thisObject->m_instance && thisObject->m_instance->supportsInvokeDefaultMethod()) {
         callData.type = CallData::Type::Native;
         callData.native.function = callRuntimeObject;
+        callData.native.isBoundFunction = false;
     }
 
     return callData;
@@ -266,7 +262,7 @@ CallData RuntimeObject::getCallData(JSCell* cell)
 JSC_DEFINE_HOST_FUNCTION(callRuntimeConstructor, (JSGlobalObject* globalObject, CallFrame* callFrame))
 {
     JSObject* constructor = callFrame->jsCallee();
-    ASSERT_UNUSED(globalObject, constructor->inherits<RuntimeObject>(globalObject->vm()));
+    ASSERT_UNUSED(globalObject, constructor->inherits<RuntimeObject>());
     RefPtr<Instance> instance(static_cast<RuntimeObject*>(callFrame->jsCallee())->getInternalInstance());
     instance->begin();
     ArgList args(callFrame);
@@ -285,6 +281,7 @@ CallData RuntimeObject::getConstructData(JSCell* cell)
     if (thisObject->m_instance && thisObject->m_instance->supportsConstruct()) {
         constructData.type = CallData::Type::Native;
         constructData.native.function = callRuntimeConstructor;
+        constructData.native.isBoundFunction = false;
     }
 
     return constructData;
@@ -292,8 +289,7 @@ CallData RuntimeObject::getConstructData(JSCell* cell)
 
 void RuntimeObject::getOwnPropertyNames(JSObject* object, JSGlobalObject* lexicalGlobalObject, PropertyNameArray& propertyNames, DontEnumPropertiesMode)
 {
-    VM& vm = lexicalGlobalObject->vm();
-    auto scope = DECLARE_THROW_SCOPE(vm);
+    auto scope = DECLARE_THROW_SCOPE(lexicalGlobalObject->vm());
 
     RuntimeObject* thisObject = jsCast<RuntimeObject*>(object);
     if (!thisObject->m_instance) {
@@ -310,10 +306,10 @@ void RuntimeObject::getOwnPropertyNames(JSObject* object, JSGlobalObject* lexica
 
 Exception* throwRuntimeObjectInvalidAccessError(JSGlobalObject* lexicalGlobalObject, ThrowScope& scope)
 {
-    return throwException(lexicalGlobalObject, scope, createReferenceError(lexicalGlobalObject, "Trying to access object from destroyed plug-in."));
+    return throwException(lexicalGlobalObject, scope, createReferenceError(lexicalGlobalObject, "Trying to access object from destroyed plug-in."_s));
 }
 
-JSC::IsoSubspace* RuntimeObject::subspaceForImpl(JSC::VM& vm)
+JSC::GCClient::IsoSubspace* RuntimeObject::subspaceForImpl(JSC::VM& vm)
 {
     return &static_cast<JSVMClientData*>(vm.clientData)->runtimeObjectSpace();
 }

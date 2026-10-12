@@ -42,8 +42,27 @@ class Logger;
 #endif
 
 namespace WebCore {
+class CDMInstanceSessionClient;
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebCore::CDMInstanceSessionClient> : std::true_type { };
+}
+
+namespace WebCore {
 
 class SharedBuffer;
+
+enum class CDMKeyGroupingStrategy : bool;
+
+enum class CDMInstanceSessionLoadFailure : uint8_t {
+    None,
+    NoSessionData,
+    MismatchedSessionType,
+    QuotaExceeded,
+    Other,
+};
 
 class CDMInstanceSessionClient : public CanMakeWeakPtr<CDMInstanceSessionClient> {
 public:
@@ -62,12 +81,13 @@ class CDMInstanceSession : public RefCounted<CDMInstanceSession> {
 public:
     virtual ~CDMInstanceSession() = default;
 
+    using KeyGroupingStrategy = CDMKeyGroupingStrategy;
     using KeyStatus = CDMKeyStatus;
     using LicenseType = CDMSessionType;
     using MessageType = CDMMessageType;
 
 #if !RELEASE_LOG_DISABLED
-    virtual void setLogger(WTF::Logger&, const void*) { }
+    virtual void setLogIdentifier(const void*) { }
 #endif
 
     virtual void setClient(WeakPtr<CDMInstanceSessionClient>&&) { }
@@ -79,20 +99,14 @@ public:
     };
 
     using LicenseCallback = CompletionHandler<void(Ref<SharedBuffer>&& message, const String& sessionId, bool needsIndividualization, SuccessValue succeeded)>;
-    virtual void requestLicense(LicenseType, const AtomString& initDataType, Ref<SharedBuffer>&& initData, LicenseCallback&&) = 0;
+    virtual void requestLicense(LicenseType, KeyGroupingStrategy, const AtomString& initDataType, Ref<SharedBuffer>&& initData, LicenseCallback&&) = 0;
 
     using KeyStatusVector = CDMInstanceSessionClient::KeyStatusVector;
     using Message = std::pair<MessageType, Ref<SharedBuffer>>;
     using LicenseUpdateCallback = CompletionHandler<void(bool sessionWasClosed, std::optional<KeyStatusVector>&& changedKeys, std::optional<double>&& changedExpiration, std::optional<Message>&& message, SuccessValue succeeded)>;
     virtual void updateLicense(const String& sessionId, LicenseType, Ref<SharedBuffer>&& response, LicenseUpdateCallback&&) = 0;
 
-    enum class SessionLoadFailure : uint8_t {
-        None,
-        NoSessionData,
-        MismatchedSessionType,
-        QuotaExceeded,
-        Other,
-    };
+    using SessionLoadFailure = CDMInstanceSessionLoadFailure;
 
     using LoadSessionCallback = CompletionHandler<void(std::optional<KeyStatusVector>&&, std::optional<double>&&, std::optional<Message>&&, SuccessValue, SessionLoadFailure)>;
     virtual void loadSession(LicenseType, const String& sessionId, const String& origin, LoadSessionCallback&&) = 0;
@@ -100,7 +114,7 @@ public:
     using CloseSessionCallback = CompletionHandler<void()>;
     virtual void closeSession(const String& sessionId, CloseSessionCallback&&) = 0;
 
-    using RemoveSessionDataCallback = CompletionHandler<void(KeyStatusVector&&, std::optional<Ref<SharedBuffer>>&&, SuccessValue)>;
+    using RemoveSessionDataCallback = CompletionHandler<void(KeyStatusVector&&, RefPtr<SharedBuffer>&&, SuccessValue)>;
     virtual void removeSessionData(const String& sessionId, LicenseType, RemoveSessionDataCallback&&) = 0;
 
     virtual void storeRecordOfKeyUsage(const String& sessionId) = 0;

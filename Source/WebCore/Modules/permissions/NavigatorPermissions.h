@@ -37,12 +37,12 @@ class NavigatorPermissions final : public Supplement<Navigator> {
 public:
     explicit NavigatorPermissions(Navigator&);
 
-    static RefPtr<Permissions> permissions(Navigator&);
-    RefPtr<Permissions> permissions();
+    static Permissions& permissions(Navigator&);
+    Permissions& permissions();
 
 private:
-    static NavigatorPermissions* from(Navigator&);
-    static const char* supplementName();
+    static NavigatorPermissions& from(Navigator&);
+    static ASCIILiteral supplementName();
 
     RefPtr<Permissions> m_permissions;
     Navigator& m_navigator;

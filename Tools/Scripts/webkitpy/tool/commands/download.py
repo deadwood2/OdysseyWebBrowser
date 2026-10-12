@@ -29,18 +29,13 @@
 
 import logging
 
-from webkitpy.tool import steps
-
 from webkitcorepy.string_utils import pluralize
 
-from webkitpy.common.checkout.changelog import ChangeLog
 from webkitpy.common.config import urls
-from webkitpy.common.net.bugzilla import Bugzilla
 from webkitpy.common.system.executive import ScriptError
+from webkitpy.tool import steps
 from webkitpy.tool.commands.abstractsequencedcommand import AbstractSequencedCommand
-from webkitpy.tool.commands.deprecatedcommand import DeprecatedCommand
 from webkitpy.tool.commands.stepsequence import StepSequence
-from webkitpy.tool.comments import bug_comment_from_commit_text
 from webkitpy.tool.multicommandtool import Command
 
 _log = logging.getLogger(__name__)
@@ -57,46 +52,12 @@ class Clean(AbstractSequencedCommand):
         options.force_clean = True
 
 
-@DeprecatedCommand
-class Update(AbstractSequencedCommand):
-    name = "update"
-    help_text = "Update working copy (used internally)"
-    steps = [
-        steps.DiscardLocalChanges,
-        steps.Update,
-    ]
-
-
-@DeprecatedCommand
-class Build(AbstractSequencedCommand):
-    name = "build"
-    help_text = "Update working copy and build"
-    steps = [
-        steps.DiscardLocalChanges,
-        steps.Update,
-        steps.Build,
-    ]
-
-    def _prepare_state(self, options, args, tool):
-        options.build = True
-
-
-@DeprecatedCommand
-class CheckPatchRelevance(AbstractSequencedCommand):
-    name = "check-patch-relevance"
-    help_text = "Check if this patch needs to be tested"
-    steps = [
-        steps.CheckPatchRelevance,
-    ]
-
-
-class Land(AbstractSequencedCommand):
-    name = "land"
+class LandUnsafe(AbstractSequencedCommand):
+    name = "land-unsafe"
     help_text = "Land the current working directory diff and updates the associated bug if any"
     argument_names = "[BUGID]"
-    show_in_main_help = True
+    show_in_main_help = False
     steps = [
-        steps.AddSvnMimetypeForPng,
         steps.UpdateChangeLogsWithReviewer,
         steps.ValidateReviewer,
         steps.ValidateChangeLogs,  # We do this after UpdateChangeLogsWithReviewer to avoid not having to cache the diff twice.
@@ -114,35 +75,6 @@ If a bug id is provided, or one can be found in the ChangeLog land will update t
             "changed_files": changed_files,
             "bug_id": (args and args[0]) or tool.checkout().bug_id_for_this_commit(options.git_commit, changed_files),
         }
-
-
-@DeprecatedCommand
-class LandCowhand(AbstractSequencedCommand):
-    # Gender-blind term for cowboy, see: http://en.wiktionary.org/wiki/cowhand
-    name = "land-cowhand"
-    help_text = "Prepares a ChangeLog and lands the current working directory diff."
-    steps = [
-        steps.SortXcodeProjectFiles,
-        steps.PrepareChangeLog,
-        steps.EditChangeLog,
-        steps.CheckStyle,
-        steps.ConfirmDiff,
-        steps.Build,
-        steps.Commit,
-        steps.CloseBugForLandDiff,
-    ]
-
-    def _prepare_state(self, options, args, tool):
-        options.check_style_filter = "-changelog"
-
-
-@DeprecatedCommand
-class LandCowboy(LandCowhand):
-    name = "land-cowboy"
-
-    def _prepare_state(self, options, args, tool):
-        _log.warning("land-cowboy is deprecated, use land-cowhand instead.")
-        LandCowhand._prepare_state(self, options, args, tool)
 
 
 class CheckStyleLocal(AbstractSequencedCommand):
@@ -230,23 +162,6 @@ class ProcessBugsMixin(object):
         return all_patches
 
 
-class ProcessURLsMixin(object):
-    def _fetch_list_of_patches_to_process(self, options, args, tool):
-        all_patches = []
-        for url in args:
-            bug_id = urls.parse_bug_id(url)
-            if bug_id:
-                patches = tool.bugs.fetch_bug(bug_id).patches()
-                _log.info("%s found on bug %s." % (pluralize(len(patches), 'patch', plural='patches'), bug_id))
-                all_patches += patches
-
-            attachment_id = urls.parse_attachment_id(url)
-            if attachment_id:
-                all_patches += tool.bugs.fetch_attachment(attachment_id)
-
-        return all_patches
-
-
 class CheckStyle(AbstractPatchSequencingCommand, ProcessAttachmentsMixin):
     name = "check-style"
     help_text = "Run check-webkit-style on the specified attachments"
@@ -256,19 +171,6 @@ class CheckStyle(AbstractPatchSequencingCommand, ProcessAttachmentsMixin):
         steps.Update,
         steps.ApplyPatch,
         steps.CheckStyle,
-    ]
-
-
-@DeprecatedCommand
-class BuildAttachment(AbstractPatchSequencingCommand, ProcessAttachmentsMixin):
-    name = "build-attachment"
-    help_text = "Apply and build patches from bugzilla"
-    argument_names = "ATTACHMENT_ID [ATTACHMENT_IDS]"
-    main_steps = [
-        steps.DiscardLocalChanges,
-        steps.Update,
-        steps.ApplyPatch,
-        steps.Build,
     ]
 
 
@@ -297,21 +199,6 @@ class ApplyFromBug(AbstractPatchApplyingCommand, ProcessBugsMixin):
     help_text = "Apply reviewed patches from provided bugs to the local working directory"
     argument_names = "BUGID [BUGIDS]"
     show_in_main_help = True
-
-
-@DeprecatedCommand
-class ApplyWatchList(AbstractPatchSequencingCommand, ProcessAttachmentsMixin):
-    name = "apply-watchlist"
-    help_text = "Applies the watchlist to the specified attachments"
-    argument_names = "ATTACHMENT_ID [ATTACHMENT_IDS]"
-    main_steps = [
-        steps.DiscardLocalChanges,
-        steps.Update,
-        steps.ApplyPatch,
-        steps.ApplyWatchList,
-    ]
-    long_help = """"Applies the watchlist to the specified attachments.
-Downloads the attachment, applies it locally, runs the watchlist against it, and updates the bug with the result."""
 
 
 class AbstractPatchLandingCommand(AbstractPatchSequencingCommand):
@@ -350,13 +237,6 @@ class LandFromBug(AbstractPatchLandingCommand, ProcessBugsMixin):
     show_in_main_help = True
 
 
-@DeprecatedCommand
-class LandFromURL(AbstractPatchLandingCommand, ProcessURLsMixin):
-    name = "land-from-url"
-    help_text = "Land all patches on the given URLs, optionally building and testing them first"
-    argument_names = "URL [URLS]"
-
-
 class ValidateChangelog(AbstractSequencedCommand):
     name = "validate-changelog"
     help_text = "Validate that the ChangeLogs and reviewers look reasonable"
@@ -385,21 +265,27 @@ class AbstractRevertPrepCommand(AbstractSequencedCommand):
         return commit_info
 
     def _prepare_state(self, options, args, tool):
-        revision_list = []
         description_list = []
         bug_id_list = []
+
+        revisions = []
+        commits = []
         for revision in str(args[0]).split():
             if revision.isdigit():
-                revision_list.append(int(revision))
+                revisions.append(int(revision))
+            elif revision.startswith('r') and revision[1:].isdigit():
+                revisions.append(int(revision[1:]))
             else:
-                raise ScriptError(message="Invalid svn revision number: " + revision)
-        revision_list.sort()
+                commits.append(revision)
+        revisions.sort()
+        commits.sort()
+        revision_list = ['r{}'.format(rev) for rev in revisions] + commits
 
         earliest_revision = revision_list[0]
         state = {
             "revision": earliest_revision,
             "revision_list": revision_list,
-            "reason": args[1],
+            "reason": ' '.join(args[1:]),
             "bug_id": None,
             "bug_id_list": bug_id_list,
             "description_list": description_list,
@@ -410,9 +296,9 @@ class AbstractRevertPrepCommand(AbstractSequencedCommand):
                 # We use the earliest revision for the bug info
                 if revision == earliest_revision:
                     state["bug_blocked"] = commit_info.bug_id()
-                    cc_list = sorted([party.bugzilla_email()
+                    cc_list = sorted([party.email
                             for party in commit_info.responsible_parties()
-                            if party.bugzilla_email()])
+                            if getattr(party, 'email', None)])
                     # FIXME: We should used the list as the canonical representation.
                     state["bug_cc"] = ",".join(cc_list)
                 description_list.append(commit_info.bug_description())
@@ -438,15 +324,6 @@ Creates an appropriate revert ChangeLog, including a trac link and bug link.
     ]
 
 
-@DeprecatedCommand
-class PrepareRollout(PrepareRevert):
-    name = "prepare-rollout"
-
-    def _prepare_state(self, options, args, tool):
-        _log.warning("prepare-rollout is deprecated, use prepare-revert instead.")
-        return PrepareRevert._prepare_state(self, options, args, tool)
-
-
 class CreateRevert(AbstractRevertPrepCommand):
     name = "create-revert"
     help_text = "Creates a bug to track the broken SVN revision(s) and uploads a revert patch."
@@ -461,7 +338,7 @@ class CreateRevert(AbstractRevertPrepCommand):
 
     def _prepare_state(self, options, args, tool):
         state = AbstractRevertPrepCommand._prepare_state(self, options, args, tool)
-        state["bug_title"] = "REGRESSION(r%s): %s" % (state["revision"], state["reason"])
+        state["bug_title"] = "REGRESSION(%s): %s" % (state["revision"], state["reason"])
         state["bug_description"] = "%s introduced a regression:\n%s" % (urls.view_revision_url(state["revision"]), state["reason"])
         # FIXME: If we had more context here, we could link to other open bugs
         #        that mention the test that regressed.
@@ -474,15 +351,6 @@ test (if we don't already have one on file) and dup this bug against that bug
 so that we can track how often these flaky tests fail.
 """
         return state
-
-
-@DeprecatedCommand
-class CreateRollout(CreateRevert):
-    name = "create-rollout"
-
-    def _prepare_state(self, options, args, tool):
-        _log.warning("create-rollout is deprecated, use create-revert instead.")
-        return CreateRevert._prepare_state(self, options, args, tool)
 
 
 class Revert(AbstractRevertPrepCommand):
@@ -506,13 +374,3 @@ Commits the revert and updates the bug (including re-opening the bug if necessar
         steps.Commit,
         steps.ReopenBugAfterRevert,
     ]
-
-
-@DeprecatedCommand
-class Rollout(Revert):
-    name = "rollout"
-    show_in_main_help = False
-
-    def _prepare_state(self, options, args, tool):
-        _log.warning("rollout is deprecated, use revert instead.")
-        return Revert._prepare_state(self, options, args, tool)

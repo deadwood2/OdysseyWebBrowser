@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2006-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,22 +23,22 @@
  */
 
 #import "config.h"
-#import "Frame.h"
+#import "LocalFrame.h"
 
 #if PLATFORM(IOS_FAMILY)
 
 #import "CommonVM.h"
 #import "ComposedTreeIterator.h"
-#import "DOMWindow.h"
 #import "Document.h"
+#import "DocumentInlines.h"
 #import "DocumentMarkerController.h"
 #import "Editor.h"
 #import "EditorClient.h"
+#import "ElementRareData.h"
 #import "EventHandler.h"
 #import "EventNames.h"
 #import "FormController.h"
 #import "FrameSelection.h"
-#import "FrameView.h"
 #import "HTMLAreaElement.h"
 #import "HTMLBodyElement.h"
 #import "HTMLDocument.h"
@@ -47,6 +47,8 @@
 #import "HTMLObjectElement.h"
 #import "HitTestRequest.h"
 #import "HitTestResult.h"
+#import "LocalDOMWindow.h"
+#import "LocalFrameView.h"
 #import "Logging.h"
 #import "NodeRenderStyle.h"
 #import "NodeTraversal.h"
@@ -80,7 +82,7 @@ using JSC::JSLockHolder;
 namespace WebCore {
 
 // Create <html><body (style="...")></body></html> doing minimal amount of work.
-void Frame::initWithSimpleHTMLDocument(const String& style, const URL& url)
+void LocalFrame::initWithSimpleHTMLDocument(const AtomString& style, const URL& url)
 {
     m_loader->initForSynthesizedDocument(url);
 
@@ -99,19 +101,19 @@ void Frame::initWithSimpleHTMLDocument(const String& style, const URL& url)
     document->appendChild(rootElement);
 }
 
-const ViewportArguments& Frame::viewportArguments() const
+const ViewportArguments& LocalFrame::viewportArguments() const
 {
     return m_viewportArguments;
 }
 
-void Frame::setViewportArguments(const ViewportArguments& arguments)
+void LocalFrame::setViewportArguments(const ViewportArguments& arguments)
 {
     m_viewportArguments = arguments;
 }
 
-NSArray *Frame::wordsInCurrentParagraph() const
+NSArray *LocalFrame::wordsInCurrentParagraph() const
 {
-    document()->updateLayout();
+    protectedDocument()->updateLayout();
 
     if (!page() || !page()->selection().isCaret())
         return nil;
@@ -123,7 +125,7 @@ NSArray *Frame::wordsInCurrentParagraph() const
         VisiblePosition previous = end.previous();
         UChar c(previous.characterAfter());
         // FIXME: Should use something from ICU or ASCIICType that is not subject to POSIX current language rather than iswpunct.
-        if (!iswpunct(c) && !isSpaceOrNewline(c) && c != noBreakSpace)
+        if (!iswpunct(c) && !deprecatedIsSpaceOrNewline(c) && c != noBreakSpace)
             end = startOfWord(end);
     }
     VisiblePosition start(startOfParagraph(end));
@@ -138,10 +140,10 @@ NSArray *Frame::wordsInCurrentParagraph() const
     while (!it.atEnd()) {
         StringView text = it.text();
         int length = text.length();
-        if (length > 1 || !isSpaceOrNewline(text[0])) {
+        if (length > 1 || !deprecatedIsSpaceOrNewline(text[0])) {
             int startOfWordBoundary = 0;
             for (int i = 1; i < length; i++) {
-                if (isSpaceOrNewline(text[i]) || text[i] == noBreakSpace) {
+                if (deprecatedIsSpaceOrNewline(text[i]) || text[i] == noBreakSpace) {
                     int wordLength = i - startOfWordBoundary;
                     if (wordLength > 0) {
                         RetainPtr<NSString> chunk = text.substring(startOfWordBoundary, wordLength).createNSString();
@@ -161,7 +163,7 @@ NSArray *Frame::wordsInCurrentParagraph() const
     if ([words count] > 0 && isEndOfParagraph(position) && !isStartOfParagraph(position)) {
         VisiblePosition previous = position.previous();
         UChar c(previous.characterAfter());
-        if (!isSpaceOrNewline(c) && c != noBreakSpace)
+        if (!deprecatedIsSpaceOrNewline(c) && c != noBreakSpace)
             [words removeLastObject];
     }
 
@@ -171,7 +173,7 @@ NSArray *Frame::wordsInCurrentParagraph() const
 #define CHECK_FONT_SIZE 0
 #define RECT_LOGGING 0
 
-CGRect Frame::renderRectForPoint(CGPoint point, bool* isReplaced, float* fontSize) const
+CGRect LocalFrame::renderRectForPoint(CGPoint point, bool* isReplaced, float* fontSize) const
 {
     *isReplaced = false;
     *fontSize = 0;
@@ -204,12 +206,12 @@ CGRect Frame::renderRectForPoint(CGPoint point, bool* isReplaced, float* fontSiz
             printf("%s %f %f %f %f\n", nodeName, rect.origin.x, rect.origin.y, rect.size.width, rect.size.height);
         }
 #endif
-        if (renderer->isRenderBlock() || renderer->isInlineBlockOrInlineTable() || renderer->isReplaced()) {
-            *isReplaced = renderer->isReplaced();
+        if (renderer->isRenderBlock() || renderer->isInlineBlockOrInlineTable() || renderer->isReplacedOrInlineBlock()) {
+            *isReplaced = renderer->isReplacedOrInlineBlock();
 #if CHECK_FONT_SIZE
             for (RenderObject* textRenderer = hitRenderer; textRenderer; textRenderer = textRenderer->traverseNext(hitRenderer)) {
                 if (textRenderer->isText()) {
-                    *fontSize = textRenderer->font(true).pixelSize();
+                    *fontSize = textRenderer->font(true).size();
                     break;
                 }
             }
@@ -226,7 +228,7 @@ CGRect Frame::renderRectForPoint(CGPoint point, bool* isReplaced, float* fontSiz
     return CGRectZero;
 }
 
-void Frame::betterApproximateNode(const IntPoint& testPoint, const NodeQualifier& nodeQualifierFunction, Node*& best, Node* failedNode, IntPoint& bestPoint, IntRect& bestRect, const IntRect& testRect)
+void LocalFrame::betterApproximateNode(const IntPoint& testPoint, const NodeQualifier& nodeQualifierFunction, Node*& best, Node* failedNode, IntPoint& bestPoint, IntRect& bestRect, const IntRect& testRect)
 {
     IntRect candidateRect;
     constexpr OptionSet<HitTestRequest::Type> hitType { HitTestRequest::Type::ReadOnly, HitTestRequest::Type::Active, HitTestRequest::Type::DisallowUserAgentShadowContent, HitTestRequest::Type::AllowVisibleChildFrameContentOnly };
@@ -255,12 +257,12 @@ void Frame::betterApproximateNode(const IntPoint& testPoint, const NodeQualifier
     bestRect = candidateRect;
 }
 
-bool Frame::hitTestResultAtViewportLocation(const FloatPoint& viewportLocation, HitTestResult& hitTestResult, IntPoint& center)
+bool LocalFrame::hitTestResultAtViewportLocation(const FloatPoint& viewportLocation, HitTestResult& hitTestResult, IntPoint& center)
 {
     if (!m_doc || !m_doc->renderView())
         return false;
 
-    FrameView* view = m_view.get();
+    auto* view = m_view.get();
     if (!view)
         return false;
 
@@ -270,7 +272,7 @@ bool Frame::hitTestResultAtViewportLocation(const FloatPoint& viewportLocation, 
     return true;
 }
 
-Node* Frame::qualifyingNodeAtViewportLocation(const FloatPoint& viewportLocation, FloatPoint& adjustedViewportLocation, const NodeQualifier& nodeQualifierFunction, ShouldApproximate shouldApproximate, ShouldFindRootEditableElement shouldFindRootEditableElement)
+Node* LocalFrame::qualifyingNodeAtViewportLocation(const FloatPoint& viewportLocation, FloatPoint& adjustedViewportLocation, const NodeQualifier& nodeQualifierFunction, ShouldApproximate shouldApproximate, ShouldFindRootEditableElement shouldFindRootEditableElement)
 {
     adjustedViewportLocation = viewportLocation;
 
@@ -308,7 +310,7 @@ Node* Frame::qualifyingNodeAtViewportLocation(const FloatPoint& viewportLocation
         };
 
         Node* originalApproximateNode = approximateNode;
-        for (unsigned n = 0; n < WTF_ARRAY_LENGTH(testOffsets); n += 2) {
+        for (unsigned n = 0; n < std::size(testOffsets); n += 2) {
             IntSize testOffset(testOffsets[n] * searchRadius, testOffsets[n + 1] * searchRadius);
             IntPoint testPoint = testCenter + testOffset;
 
@@ -351,10 +353,10 @@ Node* Frame::qualifyingNodeAtViewportLocation(const FloatPoint& viewportLocation
         IntRect testRect(testCenter, IntSize());
         testRect.inflate(searchRadius);
         int currentTestRadius = 0;
-        for (unsigned n = 0; n < WTF_ARRAY_LENGTH(testOffsets); n += 2) {
+        for (unsigned n = 0; n < std::size(testOffsets); n += 2) {
             IntSize testOffset(testOffsets[n] * searchRadius, testOffsets[n + 1] * searchRadius);
             IntPoint testPoint = testCenter + testOffset;
-            int testRadius = std::max(abs(testOffset.width()), abs(testOffset.height()));
+            int testRadius = std::max(std::abs(testOffset.width()), std::abs(testOffset.height()));
             if (testRadius > currentTestRadius) {
                 // Bail out with the best match within a radius
                 currentTestRadius = testRadius;
@@ -378,7 +380,7 @@ Node* Frame::qualifyingNodeAtViewportLocation(const FloatPoint& viewportLocation
     return approximateNode;
 }
 
-Node* Frame::deepestNodeAtLocation(const FloatPoint& viewportLocation)
+Node* LocalFrame::deepestNodeAtLocation(const FloatPoint& viewportLocation)
 {
     IntPoint center;
     HitTestResult hitTestResult;
@@ -390,17 +392,17 @@ Node* Frame::deepestNodeAtLocation(const FloatPoint& viewportLocation)
 
 static bool nodeIsMouseFocusable(Node& node)
 {
-    if (!is<Element>(node))
+    auto* element = dynamicDowncast<Element>(node);
+    if (!element)
         return false;
 
-    auto& element = downcast<Element>(node);
-    if (element.isMouseFocusable())
+    if (element->isMouseFocusable())
         return true;
 
-    if (auto shadowRoot = makeRefPtr(element.shadowRoot())) {
+    if (RefPtr shadowRoot = element->shadowRoot()) {
         if (shadowRoot->delegatesFocus()) {
-            for (auto& node : composedTreeDescendants(element)) {
-                if (is<Element>(node) && downcast<Element>(node).isMouseFocusable())
+            for (auto& node : composedTreeDescendants(*element)) {
+                if (auto* element = dynamicDowncast<Element>(node); element && element->isMouseFocusable())
                     return true;
             }
         }
@@ -414,7 +416,7 @@ static bool nodeWillRespondToMouseEvents(Node& node)
     return node.willRespondToMouseClickEvents() || node.willRespondToMouseMoveEvents() || nodeIsMouseFocusable(node);
 }
 
-Node* Frame::approximateNodeAtViewportLocationLegacy(const FloatPoint& viewportLocation, FloatPoint& adjustedViewportLocation)
+Node* LocalFrame::approximateNodeAtViewportLocationLegacy(const FloatPoint& viewportLocation, FloatPoint& adjustedViewportLocation)
 {
     // This function is only used for UIWebView.
     auto&& ancestorRespondingToClickEvents = [](const HitTestResult& hitTestResult, Node* terminationNode, IntRect* nodeBounds) -> Node* {
@@ -504,12 +506,12 @@ static inline NodeQualifier ancestorRespondingToClickEventsNodeQualifier(Securit
     };
 }
 
-Node* Frame::nodeRespondingToClickEvents(const FloatPoint& viewportLocation, FloatPoint& adjustedViewportLocation, SecurityOrigin* securityOrigin)
+Node* LocalFrame::nodeRespondingToClickEvents(const FloatPoint& viewportLocation, FloatPoint& adjustedViewportLocation, SecurityOrigin* securityOrigin)
 {
     return qualifyingNodeAtViewportLocation(viewportLocation, adjustedViewportLocation, ancestorRespondingToClickEventsNodeQualifier(securityOrigin), ShouldApproximate::Yes);
 }
 
-Node* Frame::nodeRespondingToDoubleClickEvent(const FloatPoint& viewportLocation, FloatPoint& adjustedViewportLocation)
+Node* LocalFrame::nodeRespondingToDoubleClickEvent(const FloatPoint& viewportLocation, FloatPoint& adjustedViewportLocation)
 {
     auto&& ancestorRespondingToDoubleClickEvent = [](const HitTestResult& hitTestResult, Node* terminationNode, IntRect* nodeBounds) -> Node* {
         if (nodeBounds)
@@ -536,12 +538,12 @@ Node* Frame::nodeRespondingToDoubleClickEvent(const FloatPoint& viewportLocation
     return qualifyingNodeAtViewportLocation(viewportLocation, adjustedViewportLocation, WTFMove(ancestorRespondingToDoubleClickEvent), ShouldApproximate::Yes);
 }
 
-Node* Frame::nodeRespondingToInteraction(const FloatPoint& viewportLocation, FloatPoint& adjustedViewportLocation)
+Node* LocalFrame::nodeRespondingToInteraction(const FloatPoint& viewportLocation, FloatPoint& adjustedViewportLocation)
 {
     return qualifyingNodeAtViewportLocation(viewportLocation, adjustedViewportLocation, ancestorRespondingToClickEventsNodeQualifier(), ShouldApproximate::Yes, ShouldFindRootEditableElement::No);
 }
 
-Node* Frame::nodeRespondingToScrollWheelEvents(const FloatPoint& viewportLocation)
+Node* LocalFrame::nodeRespondingToScrollWheelEvents(const FloatPoint& viewportLocation)
 {
     auto&& ancestorRespondingToScrollWheelEvents = [](const HitTestResult& hitTestResult, Node* terminationNode, IntRect* nodeBounds) -> Node* {
         if (nodeBounds)
@@ -553,7 +555,7 @@ Node* Frame::nodeRespondingToScrollWheelEvents(const FloatPoint& viewportLocatio
             if (!renderer)
                 continue;
 
-            if ((renderer->isTextField() || renderer->isTextArea()) && downcast<RenderTextControl>(*renderer).canScroll()) {
+            if ((renderer->isRenderTextControlSingleLine() || renderer->isRenderTextControlMultiLine()) && downcast<RenderTextControl>(*renderer).canScroll()) {
                 scrollingAncestor = node;
                 continue;
             }
@@ -574,9 +576,9 @@ Node* Frame::nodeRespondingToScrollWheelEvents(const FloatPoint& viewportLocatio
     return qualifyingNodeAtViewportLocation(viewportLocation, adjustedViewportLocation, WTFMove(ancestorRespondingToScrollWheelEvents), ShouldApproximate::No);
 }
 
-int Frame::preferredHeight() const
+int LocalFrame::preferredHeight() const
 {
-    Document* document = this->document();
+    RefPtr document = this->document();
     if (!document)
         return 0;
 
@@ -586,27 +588,26 @@ int Frame::preferredHeight() const
     if (!body)
         return 0;
 
-    RenderObject* renderer = body->renderer();
-    if (!is<RenderBlock>(renderer))
+    auto* block = dynamicDowncast<RenderBlock>(body->renderer());
+    if (!block)
         return 0;
 
-    RenderBlock& block = downcast<RenderBlock>(*renderer);
-    return block.height() + block.marginTop() + block.marginBottom();
+    return block->height() + block->marginTop() + block->marginBottom();
 }
 
-void Frame::updateLayout() const
+void LocalFrame::updateLayout() const
 {
-    Document* document = this->document();
+    RefPtr document = this->document();
     if (!document)
         return;
 
     document->updateLayout();
 
-    if (FrameView* view = this->view())
+    if (auto* view = this->view())
         view->adjustViewSize();
 }
 
-NSRect Frame::caretRect()
+NSRect LocalFrame::caretRect()
 {
     VisibleSelection visibleSelection = selection().selection();
     if (visibleSelection.isNone())
@@ -614,7 +615,7 @@ NSRect Frame::caretRect()
     return visibleSelection.isCaret() ? selection().absoluteCaretBounds() : VisiblePosition(visibleSelection.end()).absoluteCaretBounds();
 }
 
-NSRect Frame::rectForScrollToVisible()
+NSRect LocalFrame::rectForScrollToVisible()
 {
     VisibleSelection selection(this->selection().selection());
 
@@ -627,90 +628,97 @@ NSRect Frame::rectForScrollToVisible()
     return unionRect(selection.visibleStart().absoluteCaretBounds(), selection.visibleEnd().absoluteCaretBounds());
 }
 
-void Frame::setTimersPaused(bool paused)
+void LocalFrame::setTimersPaused(bool paused)
 {
-    if (!m_page)
+    auto* page = this->page();
+    if (!page)
         return;
     JSLockHolder lock(commonVM());
     if (paused)
-        m_page->suspendActiveDOMObjectsAndAnimations();
+        page->suspendActiveDOMObjectsAndAnimations();
     else
-        m_page->resumeActiveDOMObjectsAndAnimations();
+        page->resumeActiveDOMObjectsAndAnimations();
 }
 
-void Frame::dispatchPageHideEventBeforePause()
+void LocalFrame::dispatchPageHideEventBeforePause()
 {
     ASSERT(isMainFrame());
     if (!isMainFrame())
         return;
 
-    for (Frame* frame = this; frame; frame = frame->tree().traverseNext(this))
-        frame->document()->domWindow()->dispatchEvent(PageTransitionEvent::create(eventNames().pagehideEvent, true), document());
+    Page::forEachDocumentFromMainFrame(*this, [](Document& document) {
+        document.dispatchPagehideEvent(PageshowEventPersistence::Persisted);
+    });
 }
 
-void Frame::dispatchPageShowEventBeforeResume()
+void LocalFrame::dispatchPageShowEventBeforeResume()
 {
     ASSERT(isMainFrame());
     if (!isMainFrame())
         return;
 
-    for (Frame* frame = this; frame; frame = frame->tree().traverseNext(this))
-        frame->document()->domWindow()->dispatchEvent(PageTransitionEvent::create(eventNames().pageshowEvent, true), document());
+    Page::forEachDocumentFromMainFrame(*this, [](Document& document) {
+        document.dispatchPageshowEvent(PageshowEventPersistence::Persisted);
+    });
 }
 
-void Frame::setRangedSelectionBaseToCurrentSelection()
+void LocalFrame::setRangedSelectionBaseToCurrentSelection()
 {
     m_rangedSelectionBase = selection().selection();
 }
 
-void Frame::setRangedSelectionBaseToCurrentSelectionStart()
+void LocalFrame::setRangedSelectionBaseToCurrentSelectionStart()
 {
     const VisibleSelection& visibleSelection = selection().selection();
     m_rangedSelectionBase = VisibleSelection(visibleSelection.start(), visibleSelection.affinity());
 }
 
-void Frame::setRangedSelectionBaseToCurrentSelectionEnd()
+void LocalFrame::setRangedSelectionBaseToCurrentSelectionEnd()
 {
     const VisibleSelection& visibleSelection = selection().selection();
     m_rangedSelectionBase = VisibleSelection(visibleSelection.end(), visibleSelection.affinity());
 }
 
-VisibleSelection Frame::rangedSelectionBase() const
+VisibleSelection LocalFrame::rangedSelectionBase() const
 {
     return m_rangedSelectionBase;
 }
 
-void Frame::clearRangedSelectionInitialExtent()
+void LocalFrame::clearRangedSelectionInitialExtent()
 {
     m_rangedSelectionInitialExtent = VisibleSelection();
 }
 
-void Frame::setRangedSelectionInitialExtentToCurrentSelectionStart()
+void LocalFrame::setRangedSelectionInitialExtentToCurrentSelectionStart()
 {
     const VisibleSelection& visibleSelection = selection().selection();
     m_rangedSelectionInitialExtent = VisibleSelection(visibleSelection.start(), visibleSelection.affinity());
 }
 
-void Frame::setRangedSelectionInitialExtentToCurrentSelectionEnd()
+void LocalFrame::setRangedSelectionInitialExtentToCurrentSelectionEnd()
 {
     const VisibleSelection& visibleSelection = selection().selection();
     m_rangedSelectionInitialExtent = VisibleSelection(visibleSelection.end(), visibleSelection.affinity());
 }
 
-VisibleSelection Frame::rangedSelectionInitialExtent() const
+VisibleSelection LocalFrame::rangedSelectionInitialExtent() const
 {
     return m_rangedSelectionInitialExtent;
 }
 
-void Frame::recursiveSetUpdateAppearanceEnabled(bool enabled)
+void LocalFrame::recursiveSetUpdateAppearanceEnabled(bool enabled)
 {
     selection().setUpdateAppearanceEnabled(enabled);
-    for (Frame* child = tree().firstChild(); child; child = child->tree().nextSibling())
-        child->recursiveSetUpdateAppearanceEnabled(enabled);
+    for (auto* child = tree().firstChild(); child; child = child->tree().nextSibling()) {
+        auto* localChild = dynamicDowncast<LocalFrame>(child);
+        if (!localChild)
+            continue;
+        localChild->recursiveSetUpdateAppearanceEnabled(enabled);
+    }
 }
 
 // FIXME: Break this function up into pieces with descriptive function names so that it's easier to follow.
-NSArray *Frame::interpretationsForCurrentRoot() const
+NSArray *LocalFrame::interpretationsForCurrentRoot() const
 {
     if (!document())
         return nil;
@@ -718,7 +726,7 @@ NSArray *Frame::interpretationsForCurrentRoot() const
     auto* root = selection().isNone() ? document()->bodyOrFrameset() : selection().selection().rootEditableElement();
     auto rangeOfRootContents = makeRangeSelectingNodeContents(*root);
 
-    auto markersInRoot = document()->markers().markersInRange(rangeOfRootContents, DocumentMarker::DictationPhraseWithAlternatives);
+    auto markersInRoot = document()->markers().markersInRange(rangeOfRootContents, DocumentMarker::Type::DictationPhraseWithAlternatives);
 
     // There are no phrases with alternatives, so there is just one interpretation.
     if (markersInRoot.isEmpty())
@@ -727,8 +735,8 @@ NSArray *Frame::interpretationsForCurrentRoot() const
     // The number of interpretations will be i1 * i2 * ... * iN, where iX is the number of interpretations for the Xth phrase with alternatives.
     size_t interpretationsCount = 1;
 
-    for (auto* marker : markersInRoot)
-        interpretationsCount *= WTF::get<Vector<String>>(marker->data()).size() + 1;
+    for (auto& marker : markersInRoot)
+        interpretationsCount *= std::get<Vector<String>>(marker->data()).size() + 1;
 
     Vector<Vector<UChar>> interpretations;
     interpretations.grow(interpretationsCount);
@@ -738,8 +746,8 @@ NSArray *Frame::interpretationsForCurrentRoot() const
     unsigned combinationsSoFar = 1;
 
     for (auto& node : intersectingNodes(rangeOfRootContents)) {
-        for (auto* marker : document()->markers().markersFor(node, DocumentMarker::DictationPhraseWithAlternatives)) {
-            auto& alternatives = WTF::get<Vector<String>>(marker->data());
+        for (auto& marker : document()->markers().markersFor(node, DocumentMarker::Type::DictationPhraseWithAlternatives)) {
+            auto& alternatives = std::get<Vector<String>>(marker->data());
 
             auto rangeForMarker = makeSimpleRange(node, *marker);
 
@@ -781,7 +789,7 @@ NSArray *Frame::interpretationsForCurrentRoot() const
     }).autorelease();
 }
 
-void Frame::viewportOffsetChanged(ViewportOffsetChangeType changeType)
+void LocalFrame::viewportOffsetChanged(ViewportOffsetChangeType changeType)
 {
     LOG_WITH_STREAM(Scrolling, stream << "Frame::viewportOffsetChanged - " << (changeType == IncrementalScrollOffset ? "incremental" : "completed"));
 
@@ -796,7 +804,7 @@ void Frame::viewportOffsetChanged(ViewportOffsetChangeType changeType)
     }
 }
 
-bool Frame::containsTiledBackingLayers() const
+bool LocalFrame::containsTiledBackingLayers() const
 {
     if (RenderView* root = contentRenderer())
         return root->compositor().hasNonMainLayersWithTiledBacking();
@@ -804,7 +812,7 @@ bool Frame::containsTiledBackingLayers() const
     return false;
 }
 
-void Frame::overflowScrollPositionChangedForNode(const IntPoint& position, Node* node, bool isUserScroll)
+void LocalFrame::overflowScrollPositionChangedForNode(const IntPoint& position, Node* node, bool isUserScroll)
 {
     LOG_WITH_STREAM(Scrolling, stream << "Frame::overflowScrollPositionChangedForNode " << node << " position " << position);
 
@@ -825,13 +833,17 @@ void Frame::overflowScrollPositionChangedForNode(const IntPoint& position, Node*
     scrollableArea->didEndScroll(); // FIXME: Should we always call this?
 }
 
-void Frame::resetAllGeolocationPermission()
+void LocalFrame::resetAllGeolocationPermission()
 {
     if (document()->domWindow())
         document()->domWindow()->resetAllGeolocationPermission();
 
-    for (Frame* child = tree().firstChild(); child; child = child->tree().nextSibling())
-        child->resetAllGeolocationPermission();
+    for (auto* child = tree().firstChild(); child; child = child->tree().nextSibling()) {
+        auto* localChild = dynamicDowncast<LocalFrame>(child);
+        if (!localChild)
+            continue;
+        localChild->resetAllGeolocationPermission();
+    }
 }
 
 } // namespace WebCore

@@ -27,11 +27,8 @@
  */
 
 #import <WebKitLegacy/WebHTMLView.h>
-
-#if !TARGET_OS_IPHONE
-#if !defined(ENABLE_NETSCAPE_PLUGIN_API)
-#define ENABLE_NETSCAPE_PLUGIN_API 1
-#endif
+#if TARGET_OS_IPHONE
+#import <WebKitLegacy/WAKView.h>
 #endif
 
 @class DOMDocumentFragment;
@@ -113,13 +110,12 @@ extern const float _WebHTMLViewPrintingMaximumShrinkFactor;
 
 #endif
 
-#if defined(ENABLE_NETSCAPE_PLUGIN_API) && ENABLE_NETSCAPE_PLUGIN_API
-- (void)_resumeNullEventsForAllNetscapePlugins;
-- (void)_pauseNullEventsForAllNetscapePlugins;
-#endif
-
 - (BOOL)_isUsingAcceleratedCompositing;
+#if TARGET_OS_IPHONE
+- (WAKView *)_compositingLayersHostingView;
+#else
 - (NSView *)_compositingLayersHostingView;
+#endif
 
 #if !TARGET_OS_IPHONE
 // SPI for printing (should be converted to API someday). When the WebHTMLView isn't being printed

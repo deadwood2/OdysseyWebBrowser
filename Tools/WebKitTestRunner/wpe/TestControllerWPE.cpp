@@ -29,7 +29,20 @@
 #include "PlatformWebView.h"
 #include <glib.h>
 #include <wtf/RunLoop.h>
+#include <wtf/WTFProcess.h>
 #include <wtf/glib/GUniquePtr.h>
+#include <wtf/text/Base64.h>
+#include <wtf/text/MakeString.h>
+
+#if USE(CAIRO)
+#include <cairo.h>
+#elif USE(SKIA)
+#include <skia/core/SkData.h>
+
+IGNORE_CLANG_WARNINGS_BEGIN("cast-align")
+#include <skia/encode/SkPngEncoder.h>
+IGNORE_CLANG_WARNINGS_END
+#endif
 
 namespace WTR {
 
@@ -42,13 +55,8 @@ void TestController::setHidden(bool)
 {
 }
 
-void TestController::platformInitialize()
+void TestController::platformInitialize(const Options&)
 {
-}
-
-WKPreferencesRef TestController::platformPreferences()
-{
-    return WKPageGroupGetPreferences(m_pageGroup.get());
 }
 
 void TestController::platformDestroy()
@@ -72,7 +80,7 @@ void TestController::platformRunUntil(bool& done, WTF::Seconds timeout)
             RunLoop::main().stop();
         }
 
-        RunLoop::Timer<TimeoutTimer> timer;
+        RunLoop::Timer timer;
         bool timedOut { false };
     } timeoutTimer;
 
@@ -95,7 +103,7 @@ static char* getEnvironmentVariableAsUTF8String(const char* variableName)
     const char* value = g_getenv(variableName);
     if (!value) {
         fprintf(stderr, "%s environment variable not found\n", variableName);
-        exit(0);
+        exitProcess(0);
     }
     gsize bytesWritten;
     return g_filename_to_utf8(value, -1, 0, &bytesWritten, 0);
@@ -131,7 +139,8 @@ const char* TestController::platformLibraryPathForTesting()
 
 void TestController::platformConfigureViewForTest(const TestInvocation&)
 {
-    WKPageSetApplicationNameForUserAgent(mainWebView()->page(), WKStringCreateWithUTF8CString("WebKitTestRunnerWPE"));
+    WKRetainPtr<WKStringRef> appName = adoptWK(WKStringCreateWithUTF8CString("WebKitTestRunnerWPE"));
+    WKPageSetApplicationNameForUserAgent(mainWebView()->page(), appName.get());
 }
 
 bool TestController::platformResetStateToConsistentValues(const TestOptions&)
@@ -144,6 +153,23 @@ TestFeatures TestController::platformSpecificFeatureDefaultsForTest(const TestCo
     TestFeatures features;
     features.boolWebPreferenceFeatures.insert({ "AsyncOverflowScrollingEnabled", true });
     return features;
+}
+
+WKRetainPtr<WKStringRef> TestController::takeViewPortSnapshot()
+{
+#if USE(CAIRO)
+    Vector<uint8_t> output;
+    cairo_surface_write_to_png_stream(mainWebView()->windowSnapshotImage(), [](void* output, const unsigned char* data, unsigned length) -> cairo_status_t {
+        reinterpret_cast<Vector<uint8_t>*>(output)->append(std::span { reinterpret_cast<const uint8_t*>(data), length });
+        return CAIRO_STATUS_SUCCESS;
+    }, &output);
+    auto uri = makeString("data:image/png;base64,"_s, base64Encoded(output.span()));
+#elif USE(SKIA)
+    sk_sp<SkImage> image(mainWebView()->windowSnapshotImage());
+    auto data = SkPngEncoder::Encode(nullptr, image.get(), { });
+    auto uri = makeString("data:image/png;base64,"_s, base64Encoded(std::span { static_cast<const uint8_t*>(data->data()), data->size() }));
+#endif
+    return adoptWK(WKStringCreateWithUTF8CString(uri.utf8().data()));
 }
 
 } // namespace WTR

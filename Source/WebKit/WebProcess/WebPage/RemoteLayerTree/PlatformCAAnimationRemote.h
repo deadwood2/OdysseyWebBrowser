@@ -25,15 +25,10 @@
 
 #pragma once
 
+#include "PlatformCAAnimationRemoteProperties.h"
 #include <WebCore/PlatformCAAnimation.h>
-#include <wtf/EnumTraits.h>
 #include <wtf/HashMap.h>
 #include <wtf/HashSet.h>
-
-namespace IPC {
-class Encoder;
-class Decoder;
-};
 
 namespace WTF {
 class TextStream;
@@ -95,14 +90,14 @@ public:
     void setFromValue(const WebCore::TransformationMatrix&) override;
     void setFromValue(const WebCore::FloatPoint3D&) override;
     void setFromValue(const WebCore::Color&) override;
-    void setFromValue(const WebCore::FilterOperation*, int internalFilterPropertyIndex) override;
+    void setFromValue(const WebCore::FilterOperation&) override;
     void copyFromValueFrom(const WebCore::PlatformCAAnimation&) override;
 
     void setToValue(float) override;
     void setToValue(const WebCore::TransformationMatrix&) override;
     void setToValue(const WebCore::FloatPoint3D&) override;
     void setToValue(const WebCore::Color&) override;
-    void setToValue(const WebCore::FilterOperation*, int internalFilterPropertyIndex) override;
+    void setToValue(const WebCore::FilterOperation&) override;
     void copyToValueFrom(const WebCore::PlatformCAAnimation&) override;
 
     // Keyframe-animation properties.
@@ -110,13 +105,13 @@ public:
     void setValues(const Vector<WebCore::TransformationMatrix>&) override;
     void setValues(const Vector<WebCore::FloatPoint3D>&) override;
     void setValues(const Vector<WebCore::Color>&) override;
-    void setValues(const Vector<RefPtr<WebCore::FilterOperation>>&, int internalFilterPropertyIndex) override;
+    void setValues(const Vector<Ref<WebCore::FilterOperation>>&) override;
     void copyValuesFrom(const WebCore::PlatformCAAnimation&) override;
 
     void setKeyTimes(const Vector<float>&) override;
     void copyKeyTimesFrom(const WebCore::PlatformCAAnimation&) override;
 
-    void setTimingFunctions(const Vector<const WebCore::TimingFunction*>&, bool reverse = false) override;
+    void setTimingFunctions(const Vector<Ref<const WebCore::TimingFunction>>&, bool reverse) override;
     void copyTimingFunctionsFrom(const WebCore::PlatformCAAnimation&) override;
 
     // Animation group properties.
@@ -129,57 +124,8 @@ public:
 
     void didStart(CFTimeInterval beginTime) { m_properties.beginTime = beginTime; }
 
-
-    using KeyframeValue = Variant<float, WebCore::Color, WebCore::FloatPoint3D, WebCore::TransformationMatrix, RefPtr<WebCore::FilterOperation>>;
-
-    struct Properties {
-        Properties()
-            : animationType(Basic)
-            , beginTime(0)
-            , duration(0)
-            , timeOffset(0)
-            , repeatCount(1)
-            , speed(1)
-            , fillMode(NoFillMode)
-            , valueFunction(NoValueFunction)
-            , autoReverses(false)
-            , removedOnCompletion(true)
-            , additive(false)
-            , reverseTimingFunctions(false)
-            , hasExplicitBeginTime(false)
-        {
-        }
-
-        void encode(IPC::Encoder&) const;
-        static std::optional<Properties> decode(IPC::Decoder&);
-
-        String keyPath;
-        PlatformCAAnimation::AnimationType animationType;
-
-        CFTimeInterval beginTime;
-        double duration;
-        double timeOffset;
-        float repeatCount;
-        float speed;
-
-        PlatformCAAnimation::FillModeType fillMode;
-        PlatformCAAnimation::ValueFunctionType valueFunction;
-        RefPtr<WebCore::TimingFunction> timingFunction;
-
-        bool autoReverses;
-        bool removedOnCompletion;
-        bool additive;
-        bool reverseTimingFunctions;
-        bool hasExplicitBeginTime;
-
-        // For basic animations, these vectors have two entries. For keyframe animations, two or more.
-        // timingFunctions has n-1 entries.
-        Vector<KeyframeValue> keyValues;
-        Vector<float> keyTimes;
-        Vector<RefPtr<WebCore::TimingFunction>> timingFunctions;
-
-        Vector<Properties> animations;
-    };
+    using KeyframeValue = PlatformCAAnimationRemoteProperties::KeyframeValue;
+    using Properties = PlatformCAAnimationRemoteProperties;
 
     const Properties& properties() const { return m_properties; }
 

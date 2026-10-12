@@ -48,7 +48,7 @@ public:
     bool add(CurlRequestSchedulerClient*);
     void cancel(CurlRequestSchedulerClient*);
 
-    void callOnWorkerThread(WTF::Function<void()>&&);
+    void callOnWorkerThread(Function<void()>&&);
 
 #if OS(MORPHOS)
 	void stopCurlThread();

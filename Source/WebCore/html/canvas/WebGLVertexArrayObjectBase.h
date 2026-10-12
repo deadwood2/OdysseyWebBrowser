@@ -29,7 +29,8 @@
 
 #include "GraphicsContextGL.h"
 #include "WebGLBuffer.h"
-#include "WebGLContextObject.h"
+#include "WebGLObject.h"
+#include <optional>
 
 namespace JSC {
 class AbstractSlotVisitor;
@@ -41,7 +42,9 @@ class AbstractLocker;
 
 namespace WebCore {
 
-class WebGLVertexArrayObjectBase : public WebGLContextObject {
+class WebCoreOpaqueRoot;
+
+class WebGLVertexArrayObjectBase : public WebGLObject {
 public:
     enum class Type { Default, User };
 
@@ -51,7 +54,7 @@ public:
         bool validateBinding() const { return !enabled || isBound(); }
 
         bool enabled { false };
-        RefPtr<WebGLBuffer> bufferBinding;
+        WebGLBindingPoint<WebGLBuffer, GraphicsContextGL::ARRAY_BUFFER> bufferBinding;
         GCGLsizei bytesPerElement { 0 };
         GCGLint size { 4 };
         GCGLenum type { GraphicsContextGL::FLOAT };
@@ -65,29 +68,38 @@ public:
 
     bool isDefaultObject() const { return m_type == Type::Default; }
 
-    bool hasEverBeenBound() const { return object() && m_hasEverBeenBound; }
-    void setHasEverBeenBound() { m_hasEverBeenBound = true; }
+    void didBind() { m_hasEverBeenBound = true; }
 
     WebGLBuffer* getElementArrayBuffer() const { return m_boundElementArrayBuffer.get(); }
-    void setElementArrayBuffer(const WTF::AbstractLocker&, WebGLBuffer*);
+    void setElementArrayBuffer(const AbstractLocker&, WebGLBuffer*);
 
-    VertexAttribState& getVertexAttribState(int index) { return m_vertexAttribState[index]; }
-    void setVertexAttribState(const WTF::AbstractLocker&, GCGLuint, GCGLsizei, GCGLint, GCGLenum, GCGLboolean, GCGLsizei, GCGLintptr, bool, WebGLBuffer*);
-    void unbindBuffer(const WTF::AbstractLocker&, WebGLBuffer&);
+    void setVertexAttribEnabled(int index, bool flag);
+    const VertexAttribState& getVertexAttribState(int index) { return m_vertexAttribState[index]; }
+    void setVertexAttribState(const AbstractLocker&, GCGLuint, GCGLsizei, GCGLint, GCGLenum, GCGLboolean, GCGLsizei, GCGLintptr, bool, WebGLBuffer*);
+    bool hasArrayBuffer(WebGLBuffer* buffer) { return m_vertexAttribState.containsIf([&](auto& item) { return item.bufferBinding == buffer; }); }
+    void unbindBuffer(const AbstractLocker&, WebGLBuffer&);
 
     void setVertexAttribDivisor(GCGLuint index, GCGLuint divisor);
 
-    void addMembersToOpaqueRoots(const WTF::AbstractLocker&, JSC::AbstractSlotVisitor&);
+    void addMembersToOpaqueRoots(const AbstractLocker&, JSC::AbstractSlotVisitor&);
+
+    bool areAllEnabledAttribBuffersBound();
+
+    bool isUsable() const { return object() && !isDeleted(); }
+    bool isInitialized() const { return m_hasEverBeenBound; }
 
 protected:
-    WebGLVertexArrayObjectBase(WebGLRenderingContextBase&, Type);
-    void deleteObjectImpl(const WTF::AbstractLocker&, GraphicsContextGL*, PlatformGLObject) override = 0;
+    WebGLVertexArrayObjectBase(WebGLRenderingContextBase&, PlatformGLObject, Type);
+    void deleteObjectImpl(const AbstractLocker&, GraphicsContextGL*, PlatformGLObject) override = 0;
 
     Type m_type;
     bool m_hasEverBeenBound { false };
-    RefPtr<WebGLBuffer> m_boundElementArrayBuffer;
+    WebGLBindingPoint<WebGLBuffer, GraphicsContextGL::ELEMENT_ARRAY_BUFFER> m_boundElementArrayBuffer;
     Vector<VertexAttribState> m_vertexAttribState;
+    std::optional<bool> m_allEnabledAttribBuffersBoundCache;
 };
+
+WebCoreOpaqueRoot root(WebGLVertexArrayObjectBase*);
 
 } // namespace WebCore
 

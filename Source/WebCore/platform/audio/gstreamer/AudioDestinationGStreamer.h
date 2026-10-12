@@ -26,19 +26,21 @@
 
 namespace WebCore {
 
-class AudioDestinationGStreamer : public AudioDestination {
+class AudioDestinationGStreamer : public AudioDestination, public RefCounted<AudioDestinationGStreamer> {
 public:
     AudioDestinationGStreamer(AudioIOCallback&, unsigned long numberOfOutputChannels, float sampleRate);
     virtual ~AudioDestinationGStreamer();
+
+    void ref() const final { return RefCounted<AudioDestinationGStreamer>::ref(); }
+    void deref() const final { return RefCounted<AudioDestinationGStreamer>::deref(); }
 
     WEBCORE_EXPORT void start(Function<void(Function<void()>&&)>&& dispatchToRenderThread, CompletionHandler<void(bool)>&&) final;
     WEBCORE_EXPORT void stop(CompletionHandler<void(bool)>&&) final;
 
     bool isPlaying() override { return m_isPlaying; }
-    float sampleRate() const override { return m_sampleRate; }
     unsigned framesPerBuffer() const final;
 
-    gboolean handleMessage(GstMessage*);
+    bool handleMessage(GstMessage*);
     void notifyIsPlaying(bool);
 
 protected:
@@ -51,7 +53,6 @@ private:
 
     RefPtr<AudioBus> m_renderBus;
 
-    float m_sampleRate;
     bool m_isPlaying { false };
     bool m_audioSinkAvailable { false };
     GRefPtr<GstElement> m_pipeline;

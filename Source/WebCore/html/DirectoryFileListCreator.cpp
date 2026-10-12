@@ -31,6 +31,7 @@
 #include "FileList.h"
 #include <wtf/CrossThreadCopier.h>
 #include <wtf/FileSystem.h>
+#include <wtf/text/MakeString.h>
 
 namespace WebCore {
 
@@ -44,10 +45,8 @@ struct FileInformation {
     String relativePath;
     String displayName;
 
-    FileInformation isolatedCopy() const
-    {
-        return FileInformation { path.isolatedCopy(), relativePath.isolatedCopy(), displayName.isolatedCopy() };
-    }
+    FileInformation isolatedCopy() const & { return { path.isolatedCopy(), relativePath.isolatedCopy(), displayName.isolatedCopy() }; }
+    FileInformation isolatedCopy() && { return { WTFMove(path).isolatedCopy(), relativePath.isolatedCopy(), WTFMove(displayName).isolatedCopy() }; }
 };
 
 static void appendDirectoryFiles(const String& directory, const String& relativePath, Vector<FileInformation>& files)
@@ -62,7 +61,7 @@ static void appendDirectoryFiles(const String& directory, const String& relative
         if (!fileType)
             continue;
 
-        String childRelativePath = relativePath + "/" + childName;
+        auto childRelativePath = makeString(relativePath, '/', childName);
         if (*fileType == FileSystem::FileType::Directory)
             appendDirectoryFiles(childPath, childRelativePath, files);
         else if (*fileType == FileSystem::FileType::Regular)
@@ -86,18 +85,16 @@ static Vector<FileInformation> gatherFileInformation(const Vector<FileChooserFil
 static Ref<FileList> toFileList(Document* document, const Vector<FileInformation>& files)
 {
     ASSERT(isMainThread());
-    Vector<Ref<File>> fileObjects;
-    for (auto& file : files) {
+    auto fileObjects = files.map([document](auto& file) {
         if (file.relativePath.isNull())
-            fileObjects.append(File::create(document, file.path, { }, file.displayName));
-        else
-            fileObjects.append(File::createWithRelativePath(document, file.path, file.relativePath));
-    }
+            return File::create(document, file.path, { }, file.displayName);
+        return File::createWithRelativePath(document, file.path, file.relativePath);
+    });
     return FileList::create(WTFMove(fileObjects));
 }
 
 DirectoryFileListCreator::DirectoryFileListCreator(CompletionHandler&& completionHandler)
-    : m_workQueue(WorkQueue::create("DirectoryFileListCreator Work Queue"))
+    : m_workQueue(WorkQueue::create("DirectoryFileListCreator Work Queue"_s))
     , m_completionHandler(WTFMove(completionHandler))
 {
 }
@@ -105,7 +102,7 @@ DirectoryFileListCreator::DirectoryFileListCreator(CompletionHandler&& completio
 void DirectoryFileListCreator::start(Document* document, const Vector<FileChooserFileInfo>& paths)
 {
     // Resolve directories on a background thread to avoid blocking the main thread.
-    m_workQueue->dispatch([this, protectedThis = makeRef(*this), document = makeRefPtr(document), paths = crossThreadCopy(paths)]() mutable {
+    m_workQueue->dispatch([this, protectedThis = Ref { *this }, document = RefPtr { document }, paths = crossThreadCopy(paths)]() mutable {
         auto files = gatherFileInformation(paths);
         callOnMainThread([this, protectedThis = WTFMove(protectedThis), document = WTFMove(document), files = crossThreadCopy(files)]() mutable {
             if (auto completionHandler = std::exchange(m_completionHandler, nullptr))

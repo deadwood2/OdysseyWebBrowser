@@ -26,7 +26,7 @@
 #include "config.h"
 #include "WebPage.h"
 
-#include "WebKitWebPageAccessibilityObject.h"
+#include "DrawingArea.h"
 #include "WebPageProxy.h"
 #include "WebPageProxyMessages.h"
 #include <WebCore/NotImplemented.h>
@@ -36,50 +36,8 @@
 namespace WebKit {
 using namespace WebCore;
 
-void WebPage::platformInitialize()
-{
-#if ENABLE(ACCESSIBILITY)
-    // Create the accessible object (the plug) that will serve as the
-    // entry point to the web process, and send a message to the UI
-    // process to connect the two worlds through the accessibility
-    // object there specifically placed for that purpose (the socket).
-    auto isValidPlugID = [](const char* plugID) -> bool {
-        if (!plugID || plugID[0] != ':')
-            return false;
-
-        auto* p = g_strrstr(plugID, ":");
-        if (!p)
-            return false;
-
-        if (!g_variant_is_object_path(p + 1))
-            return false;
-
-        GUniquePtr<char> name(g_strndup(plugID, p - plugID));
-        if (!g_dbus_is_unique_name(name.get()))
-            return false;
-
-        return true;
-    };
-
-    m_accessibilityObject = adoptGRef(webkitWebPageAccessibilityObjectNew(this));
-    GUniquePtr<gchar> plugID(atk_plug_get_id(ATK_PLUG(m_accessibilityObject.get())));
-    if (isValidPlugID(plugID.get()))
-        send(Messages::WebPageProxy::BindAccessibilityTree(String::fromUTF8(plugID.get())));
-#endif
-}
-
 void WebPage::platformReinitialize()
 {
-}
-
-void WebPage::platformDetach()
-{
-}
-
-bool WebPage::performDefaultBehaviorForKeyEvent(const WebKeyboardEvent&)
-{
-    notImplemented();
-    return false;
 }
 
 bool WebPage::platformCanHandleRequest(const ResourceRequest&)
@@ -123,5 +81,14 @@ OptionSet<PointerCharacteristics> WebPage::pointerCharacteristicsOfAllAvailableP
 #endif
     return PointerCharacteristics::Fine;
 }
+
+#if USE(GBM) && ENABLE(WPE_PLATFORM)
+void WebPage::preferredBufferFormatsDidChange(Vector<DMABufRendererBufferFormat>&& preferredBufferFormats)
+{
+    m_preferredBufferFormats = WTFMove(preferredBufferFormats);
+    if (m_drawingArea)
+        m_drawingArea->preferredBufferFormatsDidChange();
+}
+#endif
 
 } // namespace WebKit

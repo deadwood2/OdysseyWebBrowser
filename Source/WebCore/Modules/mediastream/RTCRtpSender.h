@@ -32,7 +32,7 @@
 
 #if ENABLE(WEB_RTC)
 
-#include "JSDOMPromiseDeferred.h"
+#include "JSDOMPromiseDeferredForward.h"
 #include "MediaStreamTrack.h"
 #include "RTCDtlsTransport.h"
 #include "RTCRtpSenderBackend.h"
@@ -55,7 +55,7 @@ class RTCRtpSender final : public RefCounted<RTCRtpSender>
     , private LoggerHelper
 #endif
     {
-    WTF_MAKE_ISO_ALLOCATED(RTCRtpSender);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(RTCRtpSender);
 public:
     static Ref<RTCRtpSender> create(RTCPeerConnection&, Ref<MediaStreamTrack>&&, std::unique_ptr<RTCRtpSenderBackend>&&);
     static Ref<RTCRtpSender> create(RTCPeerConnection&, String&& trackKind, std::unique_ptr<RTCRtpSenderBackend>&&);
@@ -71,8 +71,8 @@ public:
     const String& trackId() const { return m_trackId; }
     const String& trackKind() const { return m_trackKind; }
 
-    ExceptionOr<void> setMediaStreamIds(const Vector<String>&);
-    ExceptionOr<void> setStreams(const Vector<std::reference_wrapper<MediaStream>>&);
+    ExceptionOr<void> setMediaStreamIds(const FixedVector<String>&);
+    ExceptionOr<void> setStreams(const FixedVector<std::reference_wrapper<MediaStream>>&);
 
     bool isStopped() const { return !m_backend; }
     void stop();
@@ -102,7 +102,7 @@ private:
 #if !RELEASE_LOG_DISABLED
     const Logger& logger() const final { return m_logger.get(); }
     const void* logIdentifier() const final { return m_logIdentifier; }
-    const char* logClassName() const final { return "RTCRtpSender"; }
+    ASCIILiteral logClassName() const final { return "RTCRtpSender"_s; }
     WTFLogChannel& logChannel() const final;
 #endif
 
@@ -111,7 +111,7 @@ private:
     String m_trackId;
     String m_trackKind;
     std::unique_ptr<RTCRtpSenderBackend> m_backend;
-    WeakPtr<RTCPeerConnection> m_connection;
+    WeakPtr<RTCPeerConnection, WeakPtrImplWithEventTargetData> m_connection;
     RefPtr<RTCDTMFSender> m_dtmfSender;
     std::unique_ptr<RTCRtpTransform> m_transform;
 #if !RELEASE_LOG_DISABLED

@@ -28,6 +28,7 @@
 
 #import <CoreFoundation/CFError.h>
 #import <Foundation/Foundation.h>
+#import <pal/spi/cocoa/NetworkSPI.h>
 #import <wtf/BlockObjCExceptions.h>
 #import <wtf/NeverDestroyed.h>
 #import <wtf/URL.h>
@@ -98,12 +99,12 @@ static RetainPtr<NSError> createNSErrorFromResourceErrorBase(const ResourceError
     RetainPtr<NSMutableDictionary> userInfo = adoptNS([[NSMutableDictionary alloc] init]);
 
     if (!resourceError.localizedDescription().isEmpty())
-        [userInfo.get() setValue:resourceError.localizedDescription() forKey:NSLocalizedDescriptionKey];
+        [userInfo setValue:resourceError.localizedDescription() forKey:NSLocalizedDescriptionKey];
 
     if (!resourceError.failingURL().isEmpty()) {
-        [userInfo.get() setValue:(NSString *)resourceError.failingURL().string() forKey:@"NSErrorFailingURLStringKey"];
+        [userInfo setValue:(NSString *)resourceError.failingURL().string() forKey:@"NSErrorFailingURLStringKey"];
         if (NSURL *cocoaURL = (NSURL *)resourceError.failingURL())
-            [userInfo.get() setValue:cocoaURL forKey:@"NSErrorFailingURLKey"];
+            [userInfo setValue:cocoaURL forKey:@"NSErrorFailingURLKey"];
     }
 
     return adoptNS([[NSError alloc] initWithDomain:resourceError.domain() code:resourceError.errorCode() userInfo:userInfo.get()]);
@@ -111,10 +112,34 @@ static RetainPtr<NSError> createNSErrorFromResourceErrorBase(const ResourceError
 
 ResourceError::ResourceError(NSError *nsError)
     : ResourceErrorBase(Type::Null)
-    , m_dataIsUpToDate(false)
     , m_platformError(nsError)
+    , m_dataIsUpToDate(false)
 {
     mapPlatformError();
+}
+
+ResourceError ResourceError::fromIPCData(std::optional<IPCData>&& ipcData)
+{
+    if (!ipcData)
+        return { };
+
+    ResourceError error(ipcData->nsError.get());
+    error.setType(ipcData->type);
+    if (ipcData->isSanitized)
+        error.setAsSanitized();
+    return error;
+}
+
+auto ResourceError::ipcData() const -> std::optional<IPCData>
+{
+    if (isNull())
+        return std::nullopt;
+
+    return IPCData {
+        type(),
+        nsError(),
+        isSanitized()
+    };
 }
 
 ResourceError::ResourceError(CFErrorRef cfError)
@@ -134,16 +159,55 @@ const String& ResourceError::getCFErrorDomainCFNetwork() const
     return errorDomain.get();
 }
 
+ResourceError::ErrorRecoveryMethod ResourceError::errorRecoveryMethod() const
+{
+    lazyInit();
+
+    bool isRecoverableError { false };
+    if ([m_domain isEqualToString:NSURLErrorDomain]) {
+        switch (m_errorCode) {
+        case NSURLErrorTimedOut:
+        case NSURLErrorCannotFindHost:
+        case NSURLErrorCannotConnectToHost:
+        case NSURLErrorNetworkConnectionLost:
+        case NSURLErrorHTTPTooManyRedirects:
+        case NSURLErrorResourceUnavailable:
+        case NSURLErrorRedirectToNonExistentLocation:
+        case NSURLErrorBadServerResponse:
+        case NSURLErrorZeroByteResource:
+        case NSURLErrorCannotDecodeRawData:
+        case NSURLErrorCannotDecodeContentData:
+        case NSURLErrorCannotParseResponse:
+        case NSURLErrorSecureConnectionFailed:
+        case NSURLErrorServerCertificateHasBadDate:
+        case NSURLErrorServerCertificateUntrusted:
+        case NSURLErrorServerCertificateHasUnknownRoot:
+        case NSURLErrorServerCertificateNotYetValid:
+        case NSURLErrorClientCertificateRejected:
+        case NSURLErrorClientCertificateRequired:
+            isRecoverableError = true;
+        }
+    } else if ([m_domain isEqualToString:@"WebKitErrorDomain"]) {
+        // FIXME: These literals should be moved into a central location that is shared with WebKit::API.
+        constexpr auto httpsUpgradeRedirectLoop { 304 };
+        isRecoverableError = m_errorCode == httpsUpgradeRedirectLoop;
+    }
+
+    if (isRecoverableError && m_failingURL.protocolIs("https"_s) && (!m_failingURL.port() || WTF::isDefaultPortForProtocol(m_failingURL.port().value(), m_failingURL.protocol())))
+        return ResourceError::ErrorRecoveryMethod::HTTPFallback;
+    return ResourceError::ErrorRecoveryMethod::NoRecovery;
+}
+
 void ResourceError::mapPlatformError()
 {
-    static_assert(NSURLErrorTimedOut == kCFURLErrorTimedOut, "NSURLErrorTimedOut needs to equal kCFURLErrorTimedOut");
-    static_assert(NSURLErrorCancelled == kCFURLErrorCancelled, "NSURLErrorCancelled needs to equal kCFURLErrorCancelled");
+    static_assert(static_cast<NSInteger>(NSURLErrorTimedOut) == static_cast<NSInteger>(kCFURLErrorTimedOut), "NSURLErrorTimedOut needs to equal kCFURLErrorTimedOut");
+    static_assert(static_cast<NSInteger>(NSURLErrorCancelled) == static_cast<NSInteger>(kCFURLErrorCancelled), "NSURLErrorCancelled needs to equal kCFURLErrorCancelled");
 
     if (!m_platformError)
         return;
 
-    auto domain = [m_platformError.get() domain];
-    auto errorCode = [m_platformError.get() code];
+    auto domain = [m_platformError domain];
+    auto errorCode = [m_platformError code];
 
     if ([domain isEqualToString:NSURLErrorDomain] || [domain isEqualToString:(__bridge NSString *)kCFErrorDomainCFNetwork])
         setType((errorCode == NSURLErrorTimedOut) ? Type::Timeout : (errorCode == NSURLErrorCancelled) ? Type::Cancellation : Type::General);
@@ -156,17 +220,18 @@ void ResourceError::platformLazyInit()
     if (m_dataIsUpToDate)
         return;
 
-    m_domain = [m_platformError.get() domain];
-    m_errorCode = [m_platformError.get() code];
+    m_domain = [m_platformError domain];
+    m_errorCode = [m_platformError code];
 
-    if (NSString* failingURLString = [[m_platformError.get() userInfo] valueForKey:@"NSErrorFailingURLStringKey"])
-        m_failingURL = URL(URL(), failingURLString);
-    else
-        m_failingURL = URL((NSURL *)[[m_platformError.get() userInfo] valueForKey:@"NSErrorFailingURLKey"]);
+    RetainPtr userInfo = [m_platformError userInfo];
+    if (auto *failingURLString = dynamic_objc_cast<NSString>([userInfo valueForKey:@"NSErrorFailingURLStringKey"]))
+        m_failingURL = URL { failingURLString };
+    else if (auto *failingURL = dynamic_objc_cast<NSURL>([userInfo valueForKey:@"NSErrorFailingURLKey"]))
+        m_failingURL = URL { failingURL };
     // Workaround for <rdar://problem/6554067>
     m_localizedDescription = m_failingURL.string();
     BEGIN_BLOCK_OBJC_EXCEPTIONS
-    m_localizedDescription = [m_platformError.get() _web_localizedDescription];
+    m_localizedDescription = [m_platformError _web_localizedDescription];
     END_BLOCK_OBJC_EXCEPTIONS
 
     m_dataIsUpToDate = true;
@@ -208,5 +273,42 @@ ResourceError::operator CFErrorRef() const
 {
     return cfError();
 }
+
+#if ENABLE(ADVANCED_PRIVACY_PROTECTIONS)
+
+bool ResourceError::blockedKnownTracker() const
+{
+    if (id blockedTrackerFailure = nsError().userInfo[@"_NSURLErrorBlockedTrackerFailureKey"])
+        return [blockedTrackerFailure boolValue];
+    // This loop can be removed when the CFNetwork loader is no longer in use
+    for (NSError *underlyingError in nsError().underlyingErrors) {
+        if ([underlyingError.userInfo[@"_NSURLErrorBlockedTrackerFailureKey"] boolValue])
+            return true;
+    }
+    return false;
+}
+
+String ResourceError::blockedTrackerHostName() const
+{
+    ASSERT(blockedKnownTracker());
+
+    if (id failingPath = nsError().userInfo[@"_NSURLErrorNWPathKey"]) {
+        auto failingEndpoint = adoptNS(nw_path_copy_effective_remote_endpoint(failingPath));
+        if (auto* hostName = nw_endpoint_get_known_tracker_name(failingEndpoint.get()))
+            return String::fromUTF8(hostName);
+        return { };
+    }
+    // This loop can be removed when the CFNetwork loader is no longer in use
+    for (NSError *underlyingError in nsError().underlyingErrors) {
+        if (id failingPath = underlyingError.userInfo[@"_NSURLErrorNWPathKey"]) {
+            auto failingEndpoint = adoptNS(nw_path_copy_effective_remote_endpoint(failingPath));
+            if (auto* hostName = nw_endpoint_get_known_tracker_name(failingEndpoint.get()))
+                return String::fromUTF8(hostName);
+        }
+    }
+    return { };
+}
+
+#endif // ENABLE(ADVANCED_PRIVACY_PROTECTIONS)
 
 } // namespace WebCore

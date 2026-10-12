@@ -27,13 +27,14 @@
 #include "DOMMatrix.h"
 
 #include "ScriptExecutionContext.h"
+#include <JavaScriptCore/Float32Array.h>
 #include <cmath>
 #include <limits>
 
 namespace WebCore {
 
 // https://drafts.fxtf.org/geometry/#dom-dommatrixreadonly-dommatrixreadonly
-ExceptionOr<Ref<DOMMatrix>> DOMMatrix::create(ScriptExecutionContext& scriptExecutionContext, std::optional<Variant<String, Vector<double>>>&& init)
+ExceptionOr<Ref<DOMMatrix>> DOMMatrix::create(ScriptExecutionContext& scriptExecutionContext, std::optional<std::variant<String, Vector<double>>>&& init)
 {
     if (!init)
         return adoptRef(*new DOMMatrix);
@@ -41,7 +42,7 @@ ExceptionOr<Ref<DOMMatrix>> DOMMatrix::create(ScriptExecutionContext& scriptExec
     return WTF::switchOn(init.value(),
         [&scriptExecutionContext](const String& init) -> ExceptionOr<Ref<DOMMatrix>> {
             if (!scriptExecutionContext.isDocument())
-                return Exception { TypeError };
+                return Exception { ExceptionCode::TypeError };
 
             auto parseResult = parseStringIntoAbstractMatrix(init);
             if (parseResult.hasException())
@@ -63,7 +64,7 @@ ExceptionOr<Ref<DOMMatrix>> DOMMatrix::create(ScriptExecutionContext& scriptExec
                     init[12], init[13], init[14], init[15]
                 }, Is2D::No));
             }
-            return Exception { TypeError };
+            return Exception { ExceptionCode::TypeError };
         }
     );
 }
@@ -98,7 +99,7 @@ ExceptionOr<Ref<DOMMatrix>> DOMMatrix::fromFloat32Array(Ref<Float32Array>&& arra
         ), Is2D::No);
     }
 
-    return Exception { TypeError };
+    return Exception { ExceptionCode::TypeError };
 }
 
 ExceptionOr<Ref<DOMMatrix>> DOMMatrix::fromFloat64Array(Ref<Float64Array>&& array64)
@@ -115,7 +116,7 @@ ExceptionOr<Ref<DOMMatrix>> DOMMatrix::fromFloat64Array(Ref<Float64Array>&& arra
         ), Is2D::No);
     }
 
-    return Exception { TypeError };
+    return Exception { ExceptionCode::TypeError };
 }
 
 // https://drafts.fxtf.org/geometry/#dom-dommatrix-multiplyself
@@ -158,11 +159,11 @@ Ref<DOMMatrix> DOMMatrix::scaleSelf(double scaleX, std::optional<double> scaleY,
 {
     if (!scaleY)
         scaleY = scaleX;
-    translateSelf(originX, originY, originZ);
+    m_matrix.translate3d(originX, originY, originZ);
     // Post-multiply a non-uniform scale transformation on the current matrix.
     // The 3D scale matrix is described in CSS Transforms with sx = scaleX, sy = scaleY and sz = scaleZ.
     m_matrix.scale3d(scaleX, scaleY.value(), scaleZ);
-    translateSelf(-originX, -originY, -originZ);
+    m_matrix.translate3d(-originX, -originY, -originZ);
     if (scaleZ != 1 || originZ)
         m_is2D = false;
     return *this;
@@ -171,12 +172,12 @@ Ref<DOMMatrix> DOMMatrix::scaleSelf(double scaleX, std::optional<double> scaleY,
 // https://drafts.fxtf.org/geometry/#dom-dommatrix-scale3dself
 Ref<DOMMatrix> DOMMatrix::scale3dSelf(double scale, double originX, double originY, double originZ)
 {
-    translateSelf(originX, originY, originZ);
+    m_matrix.translate3d(originX, originY, originZ);
     // Post-multiply a uniform 3D scale transformation (m11 = m22 = m33 = scale) on the current matrix.
     // The 3D scale matrix is described in CSS Transforms with sx = sy = sz = scale. [CSS3-TRANSFORMS]
     m_matrix.scale3d(scale, scale, scale);
-    translateSelf(-originX, -originY, -originZ);
-    if (scale != 1)
+    m_matrix.translate3d(-originX, -originY, -originZ);
+    if (scale != 1 || originZ)
         m_is2D = false;
     return *this;
 }

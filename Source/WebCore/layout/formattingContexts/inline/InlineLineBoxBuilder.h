@@ -25,45 +25,58 @@
 
 #pragma once
 
-#if ENABLE(LAYOUT_FORMATTING_CONTEXT)
-
 #include "InlineFormattingContext.h"
-#include "InlineLineBox.h"
+#include "InlineLayoutState.h"
 #include "InlineLineBuilder.h"
-#include "InlineLineGeometry.h"
+#include "TextUtil.h"
 
 namespace WebCore {
 namespace Layout {
 
 class Box;
-class ContainerBox;
+class ElementBox;
 class LayoutState;
 
 class LineBoxBuilder {
 public:
-    LineBoxBuilder(const InlineFormattingContext&);
+    LineBoxBuilder(const InlineFormattingContext&, LineLayoutResult&);
 
-    struct LineBoxAndGeometry {
-        LineBox lineBox;
-        LineGeometry lineGeometry;
-    };
-    LineBoxAndGeometry build(const LineBuilder::LineContent&);
+    LineBox build(size_t lineIndex);
 
 private:
-    void setVerticalGeometryForInlineBox(InlineLevelBox&) const;
-    InlineLayoutUnit constructAndAlignInlineLevelBoxes(LineBox&, const Line::RunList&);
+    void setVerticalPropertiesForInlineLevelBox(const LineBox&, InlineLevelBox&) const;
+    void setLayoutBoundsForInlineBox(InlineLevelBox&, FontBaseline) const;
+    void adjustInlineBoxHeightsForLineBoxContainIfApplicable(LineBox&);
+    void computeLineBoxGeometry(LineBox&) const;
+    InlineLevelBox::AscentAndDescent enclosingAscentDescentWithFallbackFonts(const InlineLevelBox&, const TextUtil::FallbackFontList& fallbackFontsForContent, FontBaseline) const;
+    TextUtil::FallbackFontList collectFallbackFonts(const InlineLevelBox& parentInlineBox, const Line::Run&, const RenderStyle&);
+    void adjustMarginStartForListMarker(const ElementBox& listMarkerBox, LayoutUnit nestedListMarkerMarginStart, InlineLayoutUnit rootInlineBoxOffset) const;
+    InlineLayoutUnit applyTextBoxTrimIfNeeded(InlineLayoutUnit lineBoxLogicalHeight, InlineLevelBox& rootInlineBox) const;
 
+    void constructInlineLevelBoxes(LineBox&);
+    void adjustIdeographicBaselineIfApplicable(LineBox&);
+    void adjustOutsideListMarkersPosition(LineBox&);
+    void expandAboveRootInlineBox(LineBox&, InlineLayoutUnit) const;
+
+    bool isFirstLine() const { return lineLayoutResult().isFirstLast.isFirstFormattedLine != LineLayoutResult::IsFirstLast::FirstFormattedLine::No; }
+    bool isLastLine() const { return lineLayoutResult().isFirstLast.isLastLineWithInlineContent; }
     const InlineFormattingContext& formattingContext() const { return m_inlineFormattingContext; }
-    const Box& rootBox() const { return formattingContext().root(); }
-    LayoutState& layoutState() const { return formattingContext().layoutState(); }
+    const LineLayoutResult& lineLayoutResult() const { return m_lineLayoutResult; }
+    const ElementBox& rootBox() const { return formattingContext().root(); }
+    const RenderStyle& rootStyle() const { return isFirstLine() ? rootBox().firstLineStyle() : rootBox().style(); }
 
-    bool isRootLayoutBox(const ContainerBox& containerBox) const { return &containerBox == &rootBox(); }
+    const InlineLayoutState& layoutState() const { return formattingContext().layoutState(); }
+    const BlockLayoutState& blockLayoutState() const { return layoutState().parentBlockLayoutState(); }
 
 private:
     const InlineFormattingContext& m_inlineFormattingContext;
+    LineLayoutResult& m_lineLayoutResult;
+    bool m_fallbackFontRequiresIdeographicBaseline { false };
+    bool m_lineHasNonLineSpanningRubyContent { false };
+    HashMap<const InlineLevelBox*, TextUtil::FallbackFontList> m_fallbackFontsForInlineBoxes;
+    Vector<size_t> m_outsideListMarkers;
 };
 
 }
 }
 
-#endif

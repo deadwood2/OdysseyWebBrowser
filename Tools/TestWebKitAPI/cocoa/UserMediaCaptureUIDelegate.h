@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2021-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -24,28 +24,37 @@
  */
 
 #if ENABLE(MEDIA_STREAM)
+#import <WebKit/WKNavigationDelegate.h>
 #import <WebKit/WKUIDelegate.h>
+#import <WebKit/WKUIDelegatePrivate.h>
 
-@interface UserMediaCaptureUIDelegate : NSObject<WKUIDelegate> {
+@interface UserMediaCaptureUIDelegate : NSObject<WKNavigationDelegate, WKUIDelegate> {
     bool _wasPrompted;
     int _numberOfPrompts;
     WKPermissionDecision _audioDecision;
     WKPermissionDecision _videoDecision;
+    WKDisplayCapturePermissionDecision _getDisplayMediaDecision;
 }
 
 @property (readonly) BOOL wasPrompted;
 @property int numberOfPrompts;
 @property WKPermissionDecision decision;
+@property (readonly) BOOL shouldCreateNewWebView;
 
-- (void)waitUntilPrompted;
+-(void)waitUntilPrompted;
 -(void)resetWasPrompted;
 
 -(void)setAudioDecision:(WKPermissionDecision)decision;
 -(void)setVideoDecision:(WKPermissionDecision)decision;
+-(void)setGetDisplayMediaDecision:(WKDisplayCapturePermissionDecision)decision;
+-(void)setWebViewForPopup:(WKWebView*)webView;
 
 // WKUIDelegate
 - (void)webView:(WKWebView *)webView requestMediaCapturePermissionForOrigin:(WKSecurityOrigin *)origin initiatedByFrame:(WKFrameInfo *)frame type:(WKMediaCaptureType)type decisionHandler:(void (^)(WKPermissionDecision decision))decisionHandler;
 - (void)_webView:(WKWebView *)webView checkUserMediaPermissionForURL:(NSURL *)url mainFrameURL:(NSURL *)mainFrameURL frameIdentifier:(NSUInteger)frameIdentifier decisionHandler:(void (^)(NSString *salt, BOOL authorized))decisionHandler;
+- (void)_webView:(WKWebView *)webView requestDisplayCapturePermissionForOrigin:(WKSecurityOrigin *)origin initiatedByFrame:(WKFrameInfo *)frame withSystemAudio:(BOOL)withSystemAudio decisionHandler:(void (^)(WKDisplayCapturePermissionDecision decision))decisionHandler;
+- (void)_webView:(WKWebView *)webView queryPermission:(NSString*) name forOrigin:(WKSecurityOrigin *)origin completionHandler:(void (^)(WKPermissionDecision state))completionHandler;
+- (WKWebView *)webView:(WKWebView *)webView createWebViewWithConfiguration:(WKWebViewConfiguration *)configuration forNavigationAction:(WKNavigationAction *)navigationAction windowFeatures:(WKWindowFeatures *)windowFeatures;
 
 @end
 

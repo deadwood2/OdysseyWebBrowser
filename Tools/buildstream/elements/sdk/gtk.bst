@@ -1,24 +1,23 @@
 kind: meson
-
 sources:
-- kind: git_tag
+- kind: git_repo
   url: gitlab_gnome_org:GNOME/gtk.git
-  track: master
-  track-tags: true
-  ref: 4.2.0-0-gccbbc2f2babcfaee88d8d8040938ca6bf39d05b6
+  track: 4.14.*
+  ref: 4.14.3-0-g686a629f98f743eb4fafd94c8216972f1387b8f3
 build-depends:
 - sdk-build-depends/sassc.bst
 - freedesktop-sdk.bst:public-stacks/buildsystem-meson.bst
+- freedesktop-sdk.bst:components/shaderc.bst
+- freedesktop-sdk.bst:components/vulkan-headers.bst
 
 depends:
-- freedesktop-sdk.bst:components/at-spi2-atk.bst
-- freedesktop-sdk.bst:components/atk.bst
+- freedesktop-sdk.bst:components/at-spi2-core.bst
 - freedesktop-sdk.bst:components/gdk-pixbuf.bst
-- sdk/glib.bst
+- freedesktop-sdk.bst:components/glib.bst
 - sdk/graphene.bst
-- sdk/gst-plugins-bad.bst
-- sdk/gst-plugins-base.bst
-- sdk/gstreamer.bst
+- freedesktop-sdk.bst:components/gstreamer-plugins-bad.bst
+- freedesktop-sdk.bst:components/gstreamer-plugins-base.bst
+- freedesktop-sdk.bst:components/gstreamer.bst
 - freedesktop-sdk.bst:components/pango.bst
 - freedesktop-sdk.bst:components/cups.bst
 - freedesktop-sdk.bst:components/hicolor-icon-theme.bst
@@ -30,11 +29,8 @@ depends:
 
 variables:
   meson-local: >-
-    -Denable-broadway-backend=true
-    -Dprint-cloudprint=disabled
-    -Dmedia-ffmpeg=disabled
-    -Dvulkan=disabled
-
+    -Dbuild-tests=false
+    -Dbuild-testsuite=false
 public:
   bst:
     overlap-whitelist:

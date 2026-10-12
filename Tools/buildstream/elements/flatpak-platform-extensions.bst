@@ -2,10 +2,21 @@ kind: flatpak_repo
 
 build-depends:
 - freedesktop-sdk.bst:components/flatpak.bst
+- filename:
+  - freedesktop-sdk.bst:flatpak-images/mesa.bst
+  config:
+    flatpak-image: true
+
+(?):
+- arch in ("i686", "x86_64"):
+    build-depends:
+      (>):
+      - filename:
+        - freedesktop-sdk.bst:flatpak-images/platform-vaapi-intel.bst
+        config:
+          flatpak-image: true
 
 config:
-  environment:
-  - components/flatpak.bst
   arch: '%{gcc_arch}'
-  branch: '1.0'
+  branch: '%{sdk-branch}'
   repo-mode: bare-user-only

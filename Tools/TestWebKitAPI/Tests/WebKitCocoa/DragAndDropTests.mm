@@ -24,12 +24,13 @@
  */
 
 #import "config.h"
-#import "Test.h"
 
 #if ENABLE(DRAG_SUPPORT) && !PLATFORM(MACCATALYST)
 
 #import "DragAndDropSimulator.h"
 #import "PlatformUtilities.h"
+#import "Test.h"
+#import "TestURLSchemeHandler.h"
 #import "WKWebViewConfigurationExtras.h"
 #import <WebKit/WKPreferencesPrivate.h>
 #import <WebKit/WebArchive.h>
@@ -159,12 +160,13 @@ TEST(DragAndDropTests, DragAndDropOnEmptyView)
     [pasteboard writeObjects:@[ url ]];
     [simulator setExternalDragPasteboard:pasteboard];
 
-    [simulator runFrom:CGPointMake(0, 0) to:CGPointMake(100, 100)];
-
     __block bool finished = false;
     [webView performAfterLoading:^{
         finished = true;
     }];
+
+    [simulator runFrom:CGPointMake(0, 0) to:CGPointMake(100, 100)];
+
     TestWebKitAPI::Util::run(&finished);
 
     EXPECT_WK_STREQ("Simple HTML file.", [webView stringByEvaluatingJavaScript:@"document.body.innerText"]);
@@ -311,6 +313,15 @@ TEST(DragAndDropTests, DataTransferTypesOnDragStartForLink)
     EXPECT_FALSE(result.containsFile);
 }
 
+TEST(DragAndDropTests, DoNotCrashWhenRemovingNodeOnDrop)
+{
+    auto simulator = adoptNS([[DragAndDropSimulator alloc] initWithWebViewFrame:CGRectMake(0, 0, 320, 500)]);
+    auto webView = [simulator webView];
+    [webView synchronouslyLoadTestPageNamed:@"remove-node-on-drop"];
+    [simulator runFrom:CGPointMake(150, 50) to:CGPointMake(150, 150)];
+    EXPECT_TRUE([[webView contentsAsString] containsString:@"Drag me"]);
+}
+
 #if ENABLE(INPUT_TYPE_COLOR)
 
 TEST(DragAndDropTests, ColorInputToColorInput)
@@ -433,5 +444,9 @@ TEST(DragAndDropTests, DragSelectedTextInImageOverlay)
 }
 
 #endif // ENABLE(IMAGE_ANALYSIS)
+
+#if USE(APPLE_INTERNAL_SDK) && __has_include(<WebKitAdditions/DragAndDropTestsAdditions.mm>)
+#import <WebKitAdditions/DragAndDropTestsAdditions.mm>
+#endif
 
 #endif // ENABLE(DRAG_SUPPORT) && !PLATFORM(MACCATALYST)

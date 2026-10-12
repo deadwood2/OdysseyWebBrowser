@@ -20,7 +20,7 @@
 #include "config.h"
 #include "ImageGStreamer.h"
 
-#if ENABLE(VIDEO) && USE(GSTREAMER)
+#if ENABLE(VIDEO) && USE(GSTREAMER) && USE(CAIRO)
 
 #include "GStreamerCommon.h"
 
@@ -31,9 +31,10 @@
 
 namespace WebCore {
 
-ImageGStreamer::ImageGStreamer(GstSample* sample)
+ImageGStreamer::ImageGStreamer(GRefPtr<GstSample>&& sample)
+    : m_sample(WTFMove(sample))
 {
-    GstCaps* caps = gst_sample_get_caps(sample);
+    GstCaps* caps = gst_sample_get_caps(m_sample.get());
     GstVideoInfo videoInfo;
     gst_video_info_init(&videoInfo);
     if (!gst_video_info_from_caps(&videoInfo, caps))
@@ -42,7 +43,7 @@ ImageGStreamer::ImageGStreamer(GstSample* sample)
     // The frame has to RGB so we can paint it.
     ASSERT(GST_VIDEO_INFO_IS_RGB(&videoInfo));
 
-    GstBuffer* buffer = gst_sample_get_buffer(sample);
+    GstBuffer* buffer = gst_sample_get_buffer(m_sample.get());
     if (UNLIKELY(!GST_IS_BUFFER(buffer)))
         return;
 
@@ -72,6 +73,8 @@ ImageGStreamer::ImageGStreamer(GstSample* sample)
     int width = GST_VIDEO_FRAME_WIDTH(&m_videoFrame);
     int height = GST_VIDEO_FRAME_HEIGHT(&m_videoFrame);
     RefPtr<cairo_surface_t> surface;
+
+    m_size = { static_cast<float>(width), static_cast<float>(height) };
 
     if (m_hasAlpha || componentSwapRequired) {
         uint8_t* surfaceData = static_cast<uint8_t*>(fastMalloc(height * stride));
@@ -155,7 +158,7 @@ ImageGStreamer::ImageGStreamer(GstSample* sample)
         surface = adoptRef(cairo_image_surface_create_for_data(bufferData, CAIRO_FORMAT_ARGB32, width, height, stride));
 
     ASSERT(cairo_surface_status(surface.get()) == CAIRO_STATUS_SUCCESS);
-    m_image = BitmapImage::create(WTFMove(surface));
+    m_image = WTFMove(surface);
 
     if (GstVideoCropMeta* cropMeta = gst_buffer_get_video_crop_meta(buffer))
         setCropRect(FloatRect(cropMeta->x, cropMeta->y, cropMeta->width, cropMeta->height));
@@ -170,8 +173,10 @@ ImageGStreamer::~ImageGStreamer()
     // cairo_surface_t was created using cairo_image_surface_create_for_data().
     if (m_frameMapped)
         gst_video_frame_unmap(&m_videoFrame);
+
+    m_sample.clear();
 }
 
 } // namespace WebCore
 
-#endif // USE(GSTREAMER)
+#endif // ENABLE(VIDEO) && USE(GSTREAMER) && USE(CAIRO)

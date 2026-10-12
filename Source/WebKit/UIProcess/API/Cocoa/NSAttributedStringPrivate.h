@@ -31,6 +31,27 @@
 NS_ASSUME_NONNULL_BEGIN
 
 /*!
+ @abstract Indicates additional local paths WebKit can read from when loading content.
+ The value is an NSArray containing one or more NSURLs.
+*/
+WK_EXTERN NSAttributedStringDocumentReadingOptionKey const _WKReadAccessFileURLsOption
+    NS_SWIFT_NAME(readAccessPaths) WK_API_AVAILABLE(macos(13.1), ios(16.2));
+
+/*!
+ @abstract Whether to allow loads over the network (including subresources).
+ The value is an NSNumber, which is interpreted as a BOOL.
+*/
+WK_EXTERN NSAttributedStringDocumentReadingOptionKey const _WKAllowNetworkLoadsOption
+    NS_SWIFT_NAME(allowNetworkLoads) WK_API_AVAILABLE(macos(14.4), ios(17.4), visionos(1.1));
+
+/*!
+ @abstract Bundle identifier of the application to which network activity is attributed.
+ The value is an NSString.
+*/
+WK_EXTERN NSAttributedStringDocumentReadingOptionKey const _WKSourceApplicationBundleIdentifierOption
+    NS_SWIFT_NAME(sourceApplicationBundleIdentifier) WK_API_AVAILABLE(macos(14.4), ios(17.4), visionos(1.1));
+
+/*!
  @discussion Private extension of @link //apple_ref/occ/NSAttributedString NSAttributedString @/link to
  translate HTML content into attributed strings using WebKit.
  */

@@ -39,32 +39,19 @@ HardwareAccelerationManager& HardwareAccelerationManager::singleton()
 
 HardwareAccelerationManager::HardwareAccelerationManager()
     : m_canUseHardwareAcceleration(true)
-    , m_forceHardwareAcceleration(false)
+    , m_forceHardwareAcceleration(true)
 {
 #if !ENABLE(WEBGL)
     m_canUseHardwareAcceleration = false;
-    return;
-#endif
-
-#if USE(GTK4)
-    RELEASE_ASSERT(AcceleratedBackingStore::checkRequirements());
-    m_forceHardwareAcceleration = true;
-#endif
-
+#else
     const char* disableCompositing = getenv("WEBKIT_DISABLE_COMPOSITING_MODE");
-    if (disableCompositing && strcmp(disableCompositing, "0")) {
+    if ((disableCompositing && strcmp(disableCompositing, "0")) || !AcceleratedBackingStore::checkRequirements())
         m_canUseHardwareAcceleration = false;
-        return;
-    }
-
-    if (!AcceleratedBackingStore::checkRequirements()) {
-        m_canUseHardwareAcceleration = false;
-        return;
-    }
+#endif
 
     const char* forceCompositing = getenv("WEBKIT_FORCE_COMPOSITING_MODE");
-    if (forceCompositing && strcmp(forceCompositing, "0"))
-        m_forceHardwareAcceleration = true;
+    if (forceCompositing && !strcmp(forceCompositing, "0"))
+        m_forceHardwareAcceleration = false;
 }
 
 } // namespace WebKit

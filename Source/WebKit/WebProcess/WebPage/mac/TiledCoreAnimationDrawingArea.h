@@ -38,8 +38,17 @@
 
 OBJC_CLASS CALayer;
 
+namespace WebKit {
+class TiledCoreAnimationDrawingArea;
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebKit::TiledCoreAnimationDrawingArea> : std::true_type { };
+}
+
 namespace WebCore {
-class FrameView;
+class LocalFrameView;
 class PlatformCALayer;
 class RunLoopObserver;
 class TiledBacking;
@@ -49,7 +58,7 @@ namespace WebKit {
 
 class LayerHostingContext;
 
-class TiledCoreAnimationDrawingArea : public DrawingArea {
+class TiledCoreAnimationDrawingArea final : public DrawingArea {
 public:
     TiledCoreAnimationDrawingArea(WebPage&, const WebPageCreationParameters&);
     virtual ~TiledCoreAnimationDrawingArea();
@@ -60,15 +69,15 @@ private:
     void setNeedsDisplayInRect(const WebCore::IntRect&) override;
     void scroll(const WebCore::IntRect& scrollRect, const WebCore::IntSize& scrollDelta) override { }
 
-    void forceRepaint() override;
-    void forceRepaintAsync(WebPage&, CompletionHandler<void()>&&) override;
+    void updateRenderingWithForcedRepaint() override;
+    void updateRenderingWithForcedRepaintAsync(WebPage&, CompletionHandler<void()>&&) override;
     void setLayerTreeStateIsFrozen(bool) override;
     bool layerTreeStateIsFrozen() const override;
-    void setRootCompositingLayer(WebCore::GraphicsLayer*) override;
+    void setRootCompositingLayer(WebCore::Frame&, WebCore::GraphicsLayer*) override;
     void triggerRenderingUpdate() override;
 
     void updatePreferences(const WebPreferencesStore&) override;
-    void mainFrameContentSizeChanged(const WebCore::IntSize&) override;
+    void mainFrameContentSizeChanged(WebCore::FrameIdentifier, const WebCore::IntSize&) override;
 
     void setViewExposedRect(std::optional<WebCore::FloatRect>) override;
     std::optional<WebCore::FloatRect> viewExposedRect() const override { return m_viewExposedRect; }
@@ -78,31 +87,36 @@ private:
 
     bool supportsAsyncScrolling() const override { return true; }
 
+    void registerScrollingTree() override;
+    void unregisterScrollingTree() override;
+
     void dispatchAfterEnsuringUpdatedScrollPosition(WTF::Function<void ()>&&) override;
 
-    bool shouldUseTiledBackingForFrameView(const WebCore::FrameView&) const override;
+    bool shouldUseTiledBackingForFrameView(const WebCore::LocalFrameView&) const override;
 
-    void activityStateDidChange(OptionSet<WebCore::ActivityState::Flag> changed, ActivityStateChangeID, CompletionHandler<void()>&&) override;
+    void activityStateDidChange(OptionSet<WebCore::ActivityState> changed, ActivityStateChangeID, CompletionHandler<void()>&&) override;
 
-    void attachViewOverlayGraphicsLayer(WebCore::GraphicsLayer*) override;
+    void attachViewOverlayGraphicsLayer(WebCore::FrameIdentifier, WebCore::GraphicsLayer*) override;
 
     bool addMilestonesToDispatch(OptionSet<WebCore::LayoutMilestone> paintMilestones) override;
 
     void addCommitHandlers();
+
     enum class UpdateRenderingType { Normal, TransientZoom };
     void updateRendering(UpdateRenderingType = UpdateRenderingType::Normal);
+    void didCompleteRenderingUpdateDisplay() override;
 
     // Message handlers.
-    void updateGeometry(const WebCore::IntSize& viewSize, bool flushSynchronously, const WTF::MachSendRight& fencePort) override;
+    void updateGeometry(const WebCore::IntSize& viewSize, bool flushSynchronously, const WTF::MachSendRight& fencePort, CompletionHandler<void()>&&) override;
     void setDeviceScaleFactor(float) override;
     void suspendPainting();
     void resumePainting();
     void setLayerHostingMode(LayerHostingMode) override;
     void setColorSpace(std::optional<WebCore::DestinationColorSpace>) override;
+    std::optional<WebCore::DestinationColorSpace> displayColorSpace() const override;
     void addFence(const WTF::MachSendRight&) override;
 
-    void addTransactionCallbackID(CallbackID) override;
-    void setShouldScaleViewToFitDocument(bool) override;
+    void dispatchAfterEnsuringDrawing(IPC::AsyncReplyID) final;
 
     void sendEnterAcceleratedCompositingModeIfNeeded() override;
     void sendDidFirstLayerFlushIfNeeded();
@@ -110,7 +124,7 @@ private:
     void handleActivityStateChangeCallbacks();
 
     void adjustTransientZoom(double scale, WebCore::FloatPoint origin) override;
-    void commitTransientZoom(double scale, WebCore::FloatPoint origin) override;
+    void commitTransientZoom(double scale, WebCore::FloatPoint origin, CompletionHandler<void()>&&) override;
     void applyTransientZoomToPage(double scale, WebCore::FloatPoint origin);
     WebCore::PlatformCALayer* layerForTransientZoom() const;
     WebCore::PlatformCALayer* shadowLayerForTransientZoom() const;
@@ -124,16 +138,17 @@ private:
     void setRootCompositingLayer(CALayer *);
     void updateRootLayers();
 
-    WebCore::TiledBacking* mainFrameTiledBacking() const;
     void updateDebugInfoLayer(bool showLayer);
-
-    void scaleViewToFitDocumentIfNeeded();
 
     void sendPendingNewlyReachedPaintingMilestones();
 
-    void updateRenderingRunLoopCallback();
-    void invalidateRenderingUpdateRunLoopObserver();
     void scheduleRenderingUpdateRunLoopObserver();
+    void invalidateRenderingUpdateRunLoopObserver();
+    void renderingUpdateRunLoopCallback();
+
+    void schedulePostRenderingUpdateRunLoopObserver();
+    void invalidatePostRenderingUpdateRunLoopObserver();
+    void postRenderingUpdateRunLoopCallback();
 
     void startRenderThrottlingTimer();
     void renderThrottlingTimerFired();
@@ -147,9 +162,6 @@ private:
 
     std::optional<WebCore::FloatRect> m_viewExposedRect;
 
-    WebCore::IntSize m_lastViewSizeForScaleToFit;
-    WebCore::IntSize m_lastDocumentSizeForScaleToFit;
-
     double m_transientZoomScale { 1 };
     WebCore::FloatPoint m_transientZoomOrigin;
 
@@ -159,18 +171,18 @@ private:
     RefPtr<WebCore::GraphicsLayer> m_viewOverlayRootLayer;
 
     OptionSet<WebCore::LayoutMilestone> m_pendingNewlyReachedPaintingMilestones;
-    Vector<CallbackID> m_pendingCallbackIDs;
+    Vector<IPC::AsyncReplyID> m_pendingCallbackIDs;
 
-    std::unique_ptr<WebCore::RunLoopObserver> m_renderUpdateRunLoopObserver;
+    std::unique_ptr<WebCore::RunLoopObserver> m_renderingUpdateRunLoopObserver;
+    std::unique_ptr<WebCore::RunLoopObserver> m_postRenderingUpdateRunLoopObserver;
 
     bool m_isPaintingSuspended { false };
     bool m_inUpdateGeometry { false };
     bool m_layerTreeStateIsFrozen { false };
-    bool m_shouldScaleViewToFitDocument { false };
-    bool m_isScalingViewToFitDocument { false };
     bool m_needsSendEnterAcceleratedCompositingMode { true };
     bool m_needsSendDidFirstLayerFlush { true };
     bool m_shouldHandleActivityStateChangeCallbacks { false };
+    bool m_haveRegisteredHandlersForNextCommit { false };
 };
 
 inline bool TiledCoreAnimationDrawingArea::addMilestonesToDispatch(OptionSet<WebCore::LayoutMilestone> paintMilestones)
@@ -181,6 +193,6 @@ inline bool TiledCoreAnimationDrawingArea::addMilestonesToDispatch(OptionSet<Web
 
 } // namespace WebKit
 
-SPECIALIZE_TYPE_TRAITS_DRAWING_AREA(TiledCoreAnimationDrawingArea, DrawingAreaTypeTiledCoreAnimation)
+SPECIALIZE_TYPE_TRAITS_DRAWING_AREA(TiledCoreAnimationDrawingArea, DrawingAreaType::TiledCoreAnimation)
 
 #endif // PLATFORM(MAC)

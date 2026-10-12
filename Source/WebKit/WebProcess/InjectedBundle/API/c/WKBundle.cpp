@@ -34,12 +34,12 @@
 #include "WKAPICast.h"
 #include "WKBundleAPICast.h"
 #include "WKBundlePrivate.h"
+#include "WKData.h"
 #include "WKMutableArray.h"
 #include "WKMutableDictionary.h"
 #include "WKNumber.h"
 #include "WKRetainPtr.h"
 #include "WKString.h"
-#include "WebConnection.h"
 #include "WebFrame.h"
 #include "WebPage.h"
 #include "WebPageGroupProxy.h"
@@ -74,11 +74,6 @@ void WKBundlePostSynchronousMessage(WKBundleRef bundleRef, WKStringRef messageNa
     WebKit::toImpl(bundleRef)->postSynchronousMessage(WebKit::toWTFString(messageNameRef), WebKit::toImpl(messageBodyRef), returnData);
     if (returnRetainedDataRef)
         *returnRetainedDataRef = WebKit::toAPI(returnData.leakRef());
-}
-
-WKConnectionRef WKBundleGetApplicationConnection(WKBundleRef bundleRef)
-{
-    return toAPI(WebKit::toImpl(bundleRef)->webConnectionToUIProcess());
 }
 
 void WKBundleGarbageCollectJavaScriptObjects(WKBundleRef bundleRef)
@@ -128,7 +123,7 @@ WKArrayRef WKBundleGetLiveDocumentURLsForTesting(WKBundleRef bundleRef, bool exc
         auto documentIDKey = adoptWK(WKStringCreateWithUTF8CString("id"));
         auto documentURLKey = adoptWK(WKStringCreateWithUTF8CString("url"));
 
-        auto documentIDValue = adoptWK(WKUInt64Create(it.key));
+        auto documentIDValue = adoptWK(WebKit::toCopiedAPI(it.key.toString()));
         auto documentURLValue = adoptWK(WebKit::toCopiedAPI(it.value));
 
         WKDictionarySetItem(urlInfo.get(), documentIDKey.get(), documentIDValue.get());
@@ -145,15 +140,10 @@ void WKBundleReportException(JSContextRef context, JSValueRef exception)
     WebKit::InjectedBundle::reportException(context, exception);
 }
 
-void WKBundleClearAllDatabases(WKBundleRef)
-{
-    WebCore::DatabaseTracker::singleton().deleteAllDatabasesImmediately();
-}
-
 void WKBundleSetDatabaseQuota(WKBundleRef bundleRef, uint64_t quota)
 {
     // Historically, we've used the following (somewhat nonsensical) string for the databaseIdentifier of local files.
-    WebCore::DatabaseTracker::singleton().setQuota(*WebCore::SecurityOriginData::fromDatabaseIdentifier("file__0"), quota);
+    WebCore::DatabaseTracker::singleton().setQuota(*WebCore::SecurityOriginData::fromDatabaseIdentifier("file__0"_s), quota);
 }
 
 void WKBundleReleaseMemory(WKBundleRef)
@@ -196,19 +186,19 @@ void WKBundleSetUserStyleSheetLocationForTesting(WKBundleRef bundleRef, WKString
     WebKit::toImpl(bundleRef)->setUserStyleSheetLocation(WebKit::toWTFString(location));
 }
 
-void WKBundleSetWebNotificationPermission(WKBundleRef bundleRef, WKBundlePageRef pageRef, WKStringRef originStringRef, bool allowed)
-{
-    WebKit::toImpl(bundleRef)->setWebNotificationPermission(WebKit::toImpl(pageRef), WebKit::toWTFString(originStringRef), allowed);
-}
-
 void WKBundleRemoveAllWebNotificationPermissions(WKBundleRef bundleRef, WKBundlePageRef pageRef)
 {
     WebKit::toImpl(bundleRef)->removeAllWebNotificationPermissions(WebKit::toImpl(pageRef));
 }
 
-uint64_t WKBundleGetWebNotificationID(WKBundleRef bundleRef, JSContextRef context, JSValueRef notification)
+WKDataRef WKBundleCopyWebNotificationID(WKBundleRef bundleRef, JSContextRef context, JSValueRef notification)
 {
-    return WebKit::toImpl(bundleRef)->webNotificationID(context, notification);
+    auto identifier = WebKit::toImpl(bundleRef)->webNotificationID(context, notification);
+    if (!identifier)
+        return nullptr;
+
+    auto span = identifier->span();
+    return WKDataCreate(span.data(), span.size());
 }
 
 void WKBundleSetTabKeyCyclesThroughElements(WKBundleRef bundleRef, WKBundlePageRef pageRef, bool enabled)
@@ -221,15 +211,15 @@ void WKBundleClearResourceLoadStatistics(WKBundleRef)
     WebCore::ResourceLoadObserver::shared().clearState();
 }
 
-bool WKBundleResourceLoadStatisticsNotifyObserver(WKBundleRef)
+void WKBundleResourceLoadStatisticsNotifyObserver(WKBundleRef, void* context, NotifyObserverCallback callback)
 {
     if (!WebCore::ResourceLoadObserver::shared().hasStatistics())
-        return false;
+        return callback(context);
 
-    WebCore::ResourceLoadObserver::shared().updateCentralStatisticsStore([] { });
-    return true;
+    WebCore::ResourceLoadObserver::shared().updateCentralStatisticsStore([context, callback] {
+        callback(context);
+    });
 }
-
 
 void WKBundleExtendClassesForParameterCoder(WKBundleRef bundle, WKArrayRef classes)
 {

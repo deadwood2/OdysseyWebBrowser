@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2017-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,20 +33,21 @@
 #import "PasteboardWriterData.h"
 #import "SharedBuffer.h"
 #import <pal/spi/mac/NSPasteboardSPI.h>
+#import <wtf/cocoa/TypeCastsCocoa.h>
 
 namespace WebCore {
 
 static RetainPtr<NSString> toUTI(NSString *pasteboardType)
 {
 ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-    return adoptNS((__bridge NSString *)UTTypeCreatePreferredIdentifierForTag(kUTTagClassNSPboardType, (__bridge CFStringRef)pasteboardType, nullptr));
+    return bridge_cast(adoptCF(UTTypeCreatePreferredIdentifierForTag(kUTTagClassNSPboardType, bridge_cast(pasteboardType), nullptr)));
 ALLOW_DEPRECATED_DECLARATIONS_END
 }
 
 static RetainPtr<NSString> toUTIUnlessAlreadyUTI(NSString *type)
 {
 ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-    if (UTTypeIsDeclared((__bridge CFStringRef)type) || UTTypeIsDynamic((__bridge CFStringRef)type)) {
+    if (UTTypeIsDeclared(bridge_cast(type)) || UTTypeIsDynamic(bridge_cast(type))) {
         // This is already a UTI.
         return type;
     }
@@ -63,7 +64,7 @@ RetainPtr<id <NSPasteboardWriting>> createPasteboardWriter(const PasteboardWrite
         [pasteboardItem setString:plainText->text forType:NSPasteboardTypeString];
         if (plainText->canSmartCopyOrDelete) {
 ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-            auto smartPasteType = adoptNS((__bridge NSString *)UTTypeCreatePreferredIdentifierForTag(kUTTagClassNSPboardType, (__bridge CFStringRef)_NXSmartPaste, nullptr));
+            auto smartPasteType = bridge_cast(adoptCF(UTTypeCreatePreferredIdentifierForTag(kUTTagClassNSPboardType, bridge_cast(_NXSmartPaste), nullptr)));
 ALLOW_DEPRECATED_DECLARATIONS_END
             [pasteboardItem setData:[NSData data] forType:smartPasteType.get()];
         }
@@ -80,7 +81,8 @@ ALLOW_DEPRECATED_DECLARATIONS_END
         }
 
         // WebURLsWithTitlesPboardType.
-        auto paths = adoptNS([[NSArray alloc] initWithObjects:@[ @[ cocoaURL.absoluteString ] ], @[ urlData->title.stripWhiteSpace() ], nil]);
+        // FIXME: This could use StringView (the one that creates NSString) to save an allocation
+        auto paths = adoptNS([[NSArray alloc] initWithObjects:@[ @[ cocoaURL.absoluteString ] ], @[ urlData->title.trim(deprecatedIsSpaceOrNewline) ], nil]);
         [pasteboardItem setPropertyList:paths.get() forType:toUTI(@"WebURLsWithTitlesPboardType").get()];
 
         // NSURLPboardType.
@@ -107,13 +109,13 @@ ALLOW_DEPRECATED_DECLARATIONS_END
     if (auto& webContent = data.webContent()) {
         if (webContent->canSmartCopyOrDelete) {
 ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-            auto smartPasteType = adoptNS((__bridge NSString *)UTTypeCreatePreferredIdentifierForTag(kUTTagClassNSPboardType, (__bridge CFStringRef)_NXSmartPaste, nullptr));
+            auto smartPasteType = bridge_cast(adoptCF(UTTypeCreatePreferredIdentifierForTag(kUTTagClassNSPboardType, bridge_cast(_NXSmartPaste), nullptr)));
 ALLOW_DEPRECATED_DECLARATIONS_END
             [pasteboardItem setData:[NSData data] forType:smartPasteType.get()];
         }
         if (webContent->dataInWebArchiveFormat) {
 ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-            auto webArchiveType = adoptNS((__bridge NSString *)UTTypeCreatePreferredIdentifierForTag(kUTTagClassNSPboardType, (__bridge CFStringRef)@"Apple Web Archive pasteboard type", nullptr));
+            auto webArchiveType = bridge_cast(adoptCF(UTTypeCreatePreferredIdentifierForTag(kUTTagClassNSPboardType, CFSTR("Apple Web Archive pasteboard type"), nullptr)));
 ALLOW_DEPRECATED_DECLARATIONS_END
             [pasteboardItem setData:webContent->dataInWebArchiveFormat->createNSData().get() forType:webArchiveType.get()];
         }
@@ -126,8 +128,8 @@ ALLOW_DEPRECATED_DECLARATIONS_END
         if (!webContent->dataInStringFormat.isNull())
             [pasteboardItem setString:webContent->dataInStringFormat forType:NSPasteboardTypeString];
 
-        for (unsigned i = 0; i < webContent->clientTypes.size(); ++i)
-            [pasteboardItem setData:webContent->clientData[i]->createNSData().get() forType:toUTIUnlessAlreadyUTI(webContent->clientTypes[i]).get()];
+        for (unsigned i = 0; i < webContent->clientTypesAndData.size(); ++i)
+            [pasteboardItem setData:webContent->clientTypesAndData[i].second->createNSData().get() forType:toUTIUnlessAlreadyUTI(webContent->clientTypesAndData[i].first).get()];
 
         PasteboardCustomData customData;
         customData.setOrigin(webContent->contentOrigin);

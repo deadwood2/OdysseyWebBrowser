@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,13 +26,14 @@
 #import "config.h"
 #import "WindowServerConnection.h"
 
-#if PLATFORM(MAC)
+#if PLATFORM(MAC) || PLATFORM(MACCATALYST)
 
 #import "WebProcessPool.h"
 #import <pal/spi/cg/CoreGraphicsSPI.h>
 
 namespace WebKit {
 
+#if PLATFORM(MAC)
 void WindowServerConnection::applicationWindowModificationsStopped(bool stopped)
 {
     if (m_applicationWindowModificationsHaveStopped == stopped)
@@ -46,6 +47,17 @@ void WindowServerConnection::windowServerConnectionStateChanged()
     for (auto& processPool : WebProcessPool::allProcessPools())
         processPool->windowServerConnectionStateChanged();
 }
+#endif
+
+void WindowServerConnection::hardwareConsoleStateChanged(HardwareConsoleState state)
+{
+    if (state == m_connectionState)
+        return;
+
+    m_connectionState = state;
+    for (auto& processPool : WebProcessPool::allProcessPools())
+        processPool->hardwareConsoleStateChanged();
+}
 
 WindowServerConnection& WindowServerConnection::singleton()
 {
@@ -53,6 +65,7 @@ WindowServerConnection& WindowServerConnection::singleton()
     return windowServerConnection;
 }
 
+#if PLATFORM(MAC)
 static bool registerOcclusionNotificationHandler(CGSNotificationType type, CGSNotifyConnectionProcPtr handler)
 {
     CGSConnectionID mainConnection = CGSMainConnectionID();
@@ -67,14 +80,16 @@ static bool registerOcclusionNotificationHandler(CGSNotificationType type, CGSNo
 
     return CGSRegisterConnectionNotifyProc(mainConnection, handler, type, nullptr) == kCGErrorSuccess;
 }
+#endif
 
 WindowServerConnection::WindowServerConnection()
     : m_applicationWindowModificationsHaveStopped(false)
 {
+#if PLATFORM(MAC)
     struct OcclusionNotificationHandler {
         CGSNotificationType notificationType;
         CGSNotifyConnectionProcPtr handler;
-        const char* name;
+        ASCIILiteral name;
     };
 
     static auto windowModificationsStarted = [](CGSNotificationType, void*, uint32_t, void*, CGSConnectionID) {
@@ -86,17 +101,42 @@ WindowServerConnection::WindowServerConnection()
     };
 
     static const OcclusionNotificationHandler occlusionNotificationHandlers[] = {
-        { kCGSConnectionWindowModificationsStarted, windowModificationsStarted, "Application Window Modifications Started" },
-        { kCGSConnectionWindowModificationsStopped, windowModificationsStopped, "Application Window Modifications Stopped" },
+        { kCGSConnectionWindowModificationsStarted, windowModificationsStarted, "Application Window Modifications Started"_s },
+        { kCGSConnectionWindowModificationsStopped, windowModificationsStopped, "Application Window Modifications Stopped"_s },
     };
 
     for (const auto& occlusionNotificationHandler : occlusionNotificationHandlers) {
         bool result = registerOcclusionNotificationHandler(occlusionNotificationHandler.notificationType, occlusionNotificationHandler.handler);
         UNUSED_PARAM(result);
-        ASSERT_WITH_MESSAGE(result, "Registration of \"%s\" notification handler failed.\n", occlusionNotificationHandler.name);
+        ASSERT_WITH_MESSAGE(result, "Registration of \"%s\" notification handler failed.\n", occlusionNotificationHandler.name.characters());
+    }
+#endif
+
+    static auto consoleWillDisconnect = [](CGSNotificationType, void*, uint32_t, void*) {
+        WindowServerConnection::singleton().hardwareConsoleStateChanged(HardwareConsoleState::Disconnected);
+    };
+    static auto consoleWillConnect = [](CGSNotificationType, void*, uint32_t, void*) {
+        WindowServerConnection::singleton().hardwareConsoleStateChanged(HardwareConsoleState::Connected);
+    };
+
+    struct ConnectionStateNotificationHandler {
+        CGSNotificationType notificationType;
+        CGSNotifyProcPtr handler;
+        ASCIILiteral name;
+    };
+
+    static const ConnectionStateNotificationHandler connectionStateNotificationHandlers[] = {
+        { kCGSessionConsoleWillDisconnect, consoleWillDisconnect, "Console Disconnected"_s },
+        { kCGSessionConsoleConnect, consoleWillConnect, "Console Connected"_s },
+    };
+
+    for (const auto& connectionStateNotificationHandler : connectionStateNotificationHandlers) {
+        auto error = CGSRegisterNotifyProc(connectionStateNotificationHandler.handler, connectionStateNotificationHandler.notificationType, nullptr);
+        UNUSED_PARAM(error);
+        ASSERT_WITH_MESSAGE(!error, "Registration of \"%s\" notification handler failed.\n", connectionStateNotificationHandler.name.characters());
     }
 }
 
 } // namespace WebKit
 
-#endif
+#endif // PLATFORM(MAC) || PLATFORM(MACCATALYST)

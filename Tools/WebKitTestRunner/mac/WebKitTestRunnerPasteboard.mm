@@ -30,6 +30,8 @@
 
 #import "NSPasteboardAdditions.h"
 #import <objc/runtime.h>
+#import <pal/spi/mac/NSPasteboardSPI.h>
+#import <wtf/Lock.h>
 #import <wtf/RetainPtr.h>
 
 @interface LocalPasteboard : NSPasteboard
@@ -45,16 +47,18 @@
 -(id)initWithName:(NSString *)name;
 @end
 
-static RetainPtr<NSMutableDictionary> localPasteboards;
+static Lock localPasteboardsLock;
+static RetainPtr<NSMutableDictionary> localPasteboards WTF_GUARDED_BY_LOCK(localPasteboardsLock);
 
 @implementation WebKitTestRunnerPasteboard
 
 // Return a local pasteboard so we don't disturb the real pasteboards when running tests.
 + (NSPasteboard *)_pasteboardWithName:(NSString *)name
 {
-    static int number = 0;
+    Locker locker { localPasteboardsLock };
+    static uint64_t number WTF_GUARDED_BY_LOCK(localPasteboardsLock) = 0;
     if (!name)
-        name = [NSString stringWithFormat:@"LocalPasteboard%d", ++number];
+        name = [NSString stringWithFormat:@"LocalPasteboard%llu", ++number];
     if (!localPasteboards)
         localPasteboards = adoptNS([[NSMutableDictionary alloc] init]);
     if (LocalPasteboard *pasteboard = [localPasteboards objectForKey:name])
@@ -72,6 +76,7 @@ static RetainPtr<NSMutableDictionary> localPasteboards;
 
 + (void)releaseLocalPasteboards
 {
+    Locker locker { localPasteboardsLock };
     localPasteboards = nil;
 }
 
@@ -192,6 +197,11 @@ static RetainPtr<NSMutableDictionary> localPasteboards;
 - (NSData *)dataForType:(NSString *)dataType
 {
     return [_dataByType objectForKey:dataType];
+}
+
+- (NSData *)_dataWithoutConversionForType:(NSString *)type securityScoped:(BOOL)securityScoped
+{
+    return [self dataForType:type];
 }
 
 - (BOOL)setPropertyList:(id)propertyList forType:(NSString *)dataType

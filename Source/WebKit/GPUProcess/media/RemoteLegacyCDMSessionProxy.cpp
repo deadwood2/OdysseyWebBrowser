@@ -29,51 +29,70 @@
 #if ENABLE(GPU_PROCESS) && ENABLE(LEGACY_ENCRYPTED_MEDIA)
 
 #include "GPUConnectionToWebProcess.h"
+#include "Logging.h"
 #include "RemoteLegacyCDMFactoryProxy.h"
 #include "RemoteLegacyCDMSessionMessages.h"
-#include "SharedBufferCopy.h"
 #include <JavaScriptCore/GenericTypedArrayViewInlines.h>
+#include <JavaScriptCore/TypedArrayAdaptors.h>
 #include <WebCore/LegacyCDM.h>
 #include <WebCore/SharedBuffer.h>
+#include <wtf/LoggerHelper.h>
 
 namespace WebKit {
 
 using namespace WebCore;
 
-std::unique_ptr<RemoteLegacyCDMSessionProxy> RemoteLegacyCDMSessionProxy::create(WeakPtr<RemoteLegacyCDMFactoryProxy>&& factory, RemoteLegacyCDMSessionIdentifier identifier, WebCore::LegacyCDM& cdm)
+std::unique_ptr<RemoteLegacyCDMSessionProxy> RemoteLegacyCDMSessionProxy::create(RemoteLegacyCDMFactoryProxy& factory, uint64_t logIdentifier, RemoteLegacyCDMSessionIdentifier sessionIdentifier, WebCore::LegacyCDM& cdm)
 {
-    return std::unique_ptr<RemoteLegacyCDMSessionProxy>(new RemoteLegacyCDMSessionProxy(WTFMove(factory), identifier, cdm));
+    return std::unique_ptr<RemoteLegacyCDMSessionProxy>(new RemoteLegacyCDMSessionProxy(factory, logIdentifier, sessionIdentifier, cdm));
 }
 
-RemoteLegacyCDMSessionProxy::RemoteLegacyCDMSessionProxy(WeakPtr<RemoteLegacyCDMFactoryProxy>&& factory, RemoteLegacyCDMSessionIdentifier identifier, WebCore::LegacyCDM& cdm)
-    : m_factory(WTFMove(factory))
-    , m_identifier(identifier)
+RemoteLegacyCDMSessionProxy::RemoteLegacyCDMSessionProxy(RemoteLegacyCDMFactoryProxy& factory, uint64_t parentLogIdentifier, RemoteLegacyCDMSessionIdentifier sessionIdentifier, WebCore::LegacyCDM& cdm)
+    : m_factory(factory)
+#if !RELEASE_LOG_DISABLED
+    , m_logger(factory.logger())
+    , m_logIdentifier(reinterpret_cast<const void*>(parentLogIdentifier))
+#endif
+    , m_identifier(sessionIdentifier)
     , m_session(cdm.createSession(*this))
 {
+    if (!m_session)
+        ERROR_LOG(LOGIDENTIFIER, "could not create CDM session.");
 }
 
 RemoteLegacyCDMSessionProxy::~RemoteLegacyCDMSessionProxy() = default;
 
-static RefPtr<Uint8Array> convertToUint8Array(IPC::SharedBufferCopy&& buffer)
+static RefPtr<Uint8Array> convertToUint8Array(RefPtr<SharedBuffer>&& buffer)
 {
-    if (!buffer.buffer())
+    if (!buffer)
         return nullptr;
 
-    size_t sizeInBytes = buffer.size();
-    auto arrayBuffer = ArrayBuffer::create(buffer.data(), sizeInBytes);
-    return Uint8Array::create(WTFMove(arrayBuffer), 0, sizeInBytes);
+    auto arrayBuffer = buffer->tryCreateArrayBuffer();
+    if (!arrayBuffer)
+        return nullptr;
+    return Uint8Array::create(arrayBuffer.releaseNonNull(), 0, buffer->size());
 }
 
 template <typename T>
-static std::optional<IPC::SharedBufferCopy> convertToOptionalDataReference(T array)
+static RefPtr<WebCore::SharedBuffer> convertToOptionalSharedBuffer(T array)
 {
     if (!array)
-        return std::nullopt;
-    return { SharedBuffer::create((const char*)array->data(), array->byteLength()) };
+        return nullptr;
+    return SharedBuffer::create(array->span());
 }
 
-void RemoteLegacyCDMSessionProxy::generateKeyRequest(const String& mimeType, IPC::SharedBufferCopy&& initData, GenerateKeyCallback&& completion)
+void RemoteLegacyCDMSessionProxy::setPlayer(WeakPtr<RemoteMediaPlayerProxy> player)
 {
+    m_player = WTFMove(player);
+}
+
+void RemoteLegacyCDMSessionProxy::generateKeyRequest(const String& mimeType, RefPtr<SharedBuffer>&& initData, GenerateKeyCallback&& completion)
+{
+    if (!m_session) {
+        completion({ }, emptyString(), 0, 0);
+        return;
+    }
+    
     auto initDataArray = convertToUint8Array(WTFMove(initData));
     if (!initDataArray) {
         completion({ }, emptyString(), 0, 0);
@@ -88,19 +107,25 @@ void RemoteLegacyCDMSessionProxy::generateKeyRequest(const String& mimeType, IPC
 
     destinationURL = "this is a test string"_s;
 
-    completion(convertToOptionalDataReference(keyRequest), destinationURL, errorCode, systemCode);
+    completion(convertToOptionalSharedBuffer(keyRequest), destinationURL, errorCode, systemCode);
 }
 
 void RemoteLegacyCDMSessionProxy::releaseKeys()
 {
-    m_session->releaseKeys();
+    if (m_session)
+        m_session->releaseKeys();
 }
 
-void RemoteLegacyCDMSessionProxy::update(IPC::SharedBufferCopy&& update, UpdateCallback&& completion)
+void RemoteLegacyCDMSessionProxy::update(RefPtr<SharedBuffer>&& update, UpdateCallback&& completion)
 {
+    if (!m_session) {
+        completion(false, nullptr, 0, 0);
+        return;
+    }
+    
     auto updateArray = convertToUint8Array(WTFMove(update));
     if (!updateArray) {
-        completion(false, std::nullopt, 0, 0);
+        completion(false, nullptr, 0, 0);
         return;
     }
 
@@ -110,17 +135,20 @@ void RemoteLegacyCDMSessionProxy::update(IPC::SharedBufferCopy&& update, UpdateC
 
     bool succeeded = m_session->update(updateArray.get(), nextMessage, errorCode, systemCode);
 
-    completion(succeeded, convertToOptionalDataReference(nextMessage), errorCode, systemCode);
+    completion(succeeded, convertToOptionalSharedBuffer(nextMessage), errorCode, systemCode);
 }
 
 RefPtr<ArrayBuffer> RemoteLegacyCDMSessionProxy::getCachedKeyForKeyId(const String& keyId)
 {
+    if (!m_session)
+        return nullptr;
+    
     return m_session->cachedKeyForKeyID(keyId);
 }
 
 void RemoteLegacyCDMSessionProxy::cachedKeyForKeyID(String keyId, CachedKeyForKeyIDCallback&& completion)
 {
-    completion(convertToOptionalDataReference(getCachedKeyForKeyId(keyId)));
+    completion(convertToOptionalSharedBuffer(getCachedKeyForKeyId(keyId)));
 }
 
 void RemoteLegacyCDMSessionProxy::sendMessage(Uint8Array* message, String destinationURL)
@@ -128,11 +156,11 @@ void RemoteLegacyCDMSessionProxy::sendMessage(Uint8Array* message, String destin
     if (!m_factory)
         return;
 
-    auto* gpuConnectionToWebProcess = m_factory->gpuConnectionToWebProcess();
+    RefPtr gpuConnectionToWebProcess = m_factory->gpuConnectionToWebProcess();
     if (!gpuConnectionToWebProcess)
         return;
 
-    gpuConnectionToWebProcess->connection().send(Messages::RemoteLegacyCDMSession::SendMessage(convertToOptionalDataReference(message), destinationURL), m_identifier);
+    gpuConnectionToWebProcess->connection().send(Messages::RemoteLegacyCDMSession::SendMessage(convertToOptionalSharedBuffer(message), destinationURL), m_identifier);
 }
 
 void RemoteLegacyCDMSessionProxy::sendError(MediaKeyErrorCode errorCode, uint32_t systemCode)
@@ -140,7 +168,7 @@ void RemoteLegacyCDMSessionProxy::sendError(MediaKeyErrorCode errorCode, uint32_
     if (!m_factory)
         return;
 
-    auto* gpuConnectionToWebProcess = m_factory->gpuConnectionToWebProcess();
+    RefPtr gpuConnectionToWebProcess = m_factory->gpuConnectionToWebProcess();
     if (!gpuConnectionToWebProcess)
         return;
 
@@ -152,13 +180,20 @@ String RemoteLegacyCDMSessionProxy::mediaKeysStorageDirectory() const
     if (!m_factory)
         return emptyString();
 
-    auto* gpuConnectionToWebProcess = m_factory->gpuConnectionToWebProcess();
+    RefPtr gpuConnectionToWebProcess = m_factory->gpuConnectionToWebProcess();
     if (!gpuConnectionToWebProcess)
         return emptyString();
 
     return gpuConnectionToWebProcess->mediaKeysStorageDirectory();
 }
 
+#if !RELEASE_LOG_DISABLED
+WTFLogChannel& RemoteLegacyCDMSessionProxy::logChannel() const
+{
+    return JOIN_LOG_CHANNEL_WITH_PREFIX(LOG_CHANNEL_PREFIX, EME);
 }
+#endif
+
+} // namespace WebKit
 
 #endif

@@ -31,6 +31,30 @@
 #include <wtf/UniqueRef.h>
 
 namespace WebCore {
+class SharedRoutingArbitratorToken;
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebCore::SharedRoutingArbitratorToken> : std::true_type { };
+}
+
+namespace WTF {
+class Logger;
+}
+
+namespace WebCore {
+
+class WEBCORE_EXPORT SharedRoutingArbitratorToken : public CanMakeWeakPtr<SharedRoutingArbitratorToken> {
+    WTF_MAKE_FAST_ALLOCATED;
+public:
+    static UniqueRef<SharedRoutingArbitratorToken> create();
+    const void* logIdentifier() const;
+private:
+    friend UniqueRef<SharedRoutingArbitratorToken> WTF::makeUniqueRefWithoutFastMallocCheck<SharedRoutingArbitratorToken>();
+    SharedRoutingArbitratorToken() = default;
+    mutable const void* m_logIdentifier;
+};
 
 class WEBCORE_EXPORT SharedRoutingArbitrator {
 public:
@@ -40,23 +64,21 @@ public:
     using DefaultRouteChanged = AudioSessionRoutingArbitrationClient::DefaultRouteChanged;
     using ArbitrationCallback = AudioSessionRoutingArbitrationClient::ArbitrationCallback;
 
-    class WEBCORE_EXPORT Token : public CanMakeWeakPtr<Token> {
-        WTF_MAKE_FAST_ALLOCATED;
-    public:
-        static UniqueRef<Token> create();
-    private:
-        friend UniqueRef<Token> WTF::makeUniqueRefWithoutFastMallocCheck<Token>();
-        Token() = default;
-    };
+    bool isInRoutingArbitrationForToken(const SharedRoutingArbitratorToken&);
+    void beginRoutingArbitrationForToken(const SharedRoutingArbitratorToken&, AudioSession::CategoryType, ArbitrationCallback&&);
+    void endRoutingArbitrationForToken(const SharedRoutingArbitratorToken&);
 
-    bool isInRoutingArbitrationForToken(const Token&);
-    void beginRoutingArbitrationForToken(const Token&, AudioSession::CategoryType, ArbitrationCallback&&);
-    void endRoutingArbitrationForToken(const Token&);
+    void setLogger(const Logger&);
 
 private:
+    const Logger& logger();
+    ASCIILiteral logClassName() const { return "SharedRoutingArbitrator"_s; }
+    WTFLogChannel& logChannel() const;
+
     std::optional<AudioSession::CategoryType> m_currentCategory { AudioSession::CategoryType::None };
-    WeakHashSet<Token> m_tokens;
+    WeakHashSet<SharedRoutingArbitratorToken> m_tokens;
     Vector<ArbitrationCallback> m_enqueuedCallbacks;
+    RefPtr<const Logger> m_logger;
     bool m_setupArbitrationOngoing { false };
 };
 

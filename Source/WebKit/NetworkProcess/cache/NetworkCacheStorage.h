@@ -36,6 +36,7 @@
 #include <wtf/HashSet.h>
 #include <wtf/MonotonicTime.h>
 #include <wtf/PriorityQueue.h>
+#include <wtf/TZoneMalloc.h>
 #include <wtf/WallTime.h>
 #include <wtf/WorkQueue.h>
 #include <wtf/text/WTFString.h>
@@ -57,7 +58,7 @@ public:
         Data body;
         std::optional<SHA1::Digest> bodyHash;
 
-        WTF_MAKE_FAST_ALLOCATED;
+        WTF_MAKE_TZONE_ALLOCATED(Record);
     };
 
     struct Timings {
@@ -74,7 +75,7 @@ public:
         bool shrinkInProgressAtDispatch { false };
         bool wasCanceled { false };
 
-        WTF_MAKE_FAST_ALLOCATED;
+        WTF_MAKE_TZONE_ALLOCATED(Timings);
     };
 
     // This may call completion handler synchronously on failure.
@@ -86,7 +87,7 @@ public:
 
     void remove(const Key&);
     void remove(const Vector<Key>&, CompletionHandler<void()>&&);
-    void clear(const String& type, WallTime modifiedSinceTime, CompletionHandler<void()>&&);
+    void clear(String&& type, WallTime modifiedSinceTime, CompletionHandler<void()>&&);
 
     struct RecordInfo {
         size_t bodySize;
@@ -94,20 +95,21 @@ public:
         unsigned bodyShareCount;
         String bodyHash;
     };
-    enum TraverseFlag {
+    enum class TraverseFlag : uint8_t {
         ComputeWorth = 1 << 0,
         ShareCount = 1 << 1,
     };
     using TraverseHandler = Function<void (const Record*, const RecordInfo&)>;
     // Null record signals end.
     void traverse(const String& type, OptionSet<TraverseFlag>, TraverseHandler&&);
+    void traverse(const String& type, const String& partition, OptionSet<TraverseFlag>, TraverseHandler&&);
 
     void setCapacity(size_t);
     size_t capacity() const { return m_capacity; }
     size_t approximateSize() const;
 
     // Incrementing this number will delete all existing cache content for everyone. Do you really need to do it?
-    static const unsigned version = 16;
+    static const unsigned version = 17;
 
     String basePathIsolatedCopy() const;
     String versionPath() const;
@@ -125,6 +127,8 @@ private:
     String recordDirectoryPathForKey(const Key&) const;
     String recordPathForKey(const Key&) const;
     String blobPathForKey(const Key&) const;
+
+    void traverseWithinRootPath(const String& rootPath, const String& type, OptionSet<TraverseFlag>, TraverseHandler&&);
 
     void synchronize();
     void deleteOldVersions();
@@ -147,11 +151,12 @@ private:
     Data encodeRecord(const Record&, std::optional<BlobStorage::Blob>);
     void readRecord(ReadOperation&, const Data&);
 
-    void updateFileModificationTime(const String& path);
+    void updateFileModificationTime(String&& path);
     void removeFromPendingWriteOperations(const Key&);
 
-    WorkQueue& ioQueue() { return m_ioQueue.get(); }
-    WorkQueue& backgroundIOQueue() { return m_backgroundIOQueue.get(); }
+    ConcurrentWorkQueue& ioQueue() { return m_ioQueue.get(); }
+    Ref<ConcurrentWorkQueue> protectedIOQueue() { return ioQueue(); }
+    ConcurrentWorkQueue& backgroundIOQueue() { return m_backgroundIOQueue.get(); }
     WorkQueue& serialBackgroundIOQueue() { return m_serialBackgroundIOQueue.get(); }
 
     bool mayContain(const Key&) const;
@@ -198,8 +203,8 @@ private:
     struct TraverseOperation;
     HashSet<std::unique_ptr<TraverseOperation>> m_activeTraverseOperations;
 
-    Ref<WorkQueue> m_ioQueue;
-    Ref<WorkQueue> m_backgroundIOQueue;
+    Ref<ConcurrentWorkQueue> m_ioQueue;
+    Ref<ConcurrentWorkQueue> m_backgroundIOQueue;
     Ref<WorkQueue> m_serialBackgroundIOQueue;
 
     BlobStorage m_blobStorage;

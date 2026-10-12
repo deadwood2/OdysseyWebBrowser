@@ -26,8 +26,8 @@
 #pragma once
 
 #import "APIDownloadClient.h"
-#import "ProcessThrottler.h"
 #import "WKFoundation.h"
+#import <wtf/TZoneMalloc.h>
 #import <wtf/WeakObjCPtr.h>
 
 @protocol _WKDownloadDelegate;
@@ -40,7 +40,7 @@ class ResourceResponse;
 namespace WebKit {
 
 class LegacyDownloadClient final : public API::DownloadClient {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED(LegacyDownloadClient);
 public:
     explicit LegacyDownloadClient(id <_WKDownloadDelegate>);
     
@@ -58,16 +58,7 @@ private:
     void didCreateDestination(DownloadProxy&, const String&) final;
     void processDidCrash(DownloadProxy&) final;
 
-#if USE(SYSTEM_PREVIEW)
-    void takeActivityToken(DownloadProxy&);
-    void releaseActivityTokenIfNecessary(DownloadProxy&);
-#endif
-
     WeakObjCPtr<id <_WKDownloadDelegate>> m_delegate;
-
-#if PLATFORM(IOS_FAMILY) && USE(SYSTEM_PREVIEW)
-    std::unique_ptr<ProcessThrottler::BackgroundActivity> m_activity;
-#endif
 
     struct {
         bool downloadDidStart : 1;            

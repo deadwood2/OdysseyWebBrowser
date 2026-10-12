@@ -1,5 +1,5 @@
 // Copyright 2015 The Chromium Authors. All rights reserved.
-// Copyright (C) 2016-2020 Apple Inc. All rights reserved.
+// Copyright (C) 2016-2021 Apple Inc. All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -30,36 +30,93 @@
 #pragma once
 
 #include "CSSValue.h"
+#include "CSSValueKeywords.h"
+#include "CSSVariableData.h"
+#include <wtf/PointerComparison.h>
+#include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
+class CSSParserToken;
 class CSSParserTokenRange;
-class CSSVariableData;
+struct CSSParserContext;
 
 namespace Style {
 class BuilderState;
 }
 
-class CSSVariableReferenceValue : public CSSValue {
+enum CSSPropertyID : uint16_t;
+
+class CSSVariableReferenceValue final : public CSSValue {
 public:
-    static Ref<CSSVariableReferenceValue> create(const CSSParserTokenRange&);
+    static Ref<CSSVariableReferenceValue> create(const CSSParserTokenRange&, const CSSParserContext&);
+    static Ref<CSSVariableReferenceValue> create(Ref<CSSVariableData>&&);
 
     bool equals(const CSSVariableReferenceValue&) const;
     String customCSSText() const;
 
     RefPtr<CSSVariableData> resolveVariableReferences(Style::BuilderState&) const;
+    const CSSParserContext& context() const;
 
-    // The maximum number of tokens that may be produced by a var()
-    // reference or var() fallback value.
+    RefPtr<CSSValue> resolveSingleValue(Style::BuilderState&, CSSPropertyID) const;
+
+    // The maximum number of tokens that may be produced by a var() reference or var() fallback value.
     // https://drafts.csswg.org/css-variables/#long-variables
     static constexpr size_t maxSubstitutionTokens = 65536;
+    
+    const CSSVariableData& data() const { return m_data.get(); }
+
+    template<typename CacheFunction> bool resolveAndCacheValue(Style::BuilderState&, CacheFunction&&) const;
 
 private:
     explicit CSSVariableReferenceValue(Ref<CSSVariableData>&&);
 
+    std::optional<Vector<CSSParserToken>> resolveTokenRange(CSSParserTokenRange, Style::BuilderState&) const;
+    bool resolveVariableReference(CSSParserTokenRange, CSSValueID, Vector<CSSParserToken>&, Style::BuilderState&) const;
+    enum class FallbackResult : uint8_t { None, Valid, Invalid };
+    std::pair<FallbackResult, Vector<CSSParserToken>> resolveVariableFallback(const AtomString& variableName, CSSParserTokenRange, CSSValueID functionId, Style::BuilderState&) const;
+
+    void cacheSimpleReference();
+    RefPtr<CSSVariableData> tryResolveSimpleReference(Style::BuilderState&) const;
+
     Ref<CSSVariableData> m_data;
     mutable String m_stringValue;
+
+    // For quicky resolving simple var(--foo) values.
+    struct SimpleReference {
+        AtomString name;
+        CSSValueID functionId;
+    };
+    std::optional<SimpleReference> m_simpleReference;
+
+    mutable RefPtr<CSSVariableData> m_cacheDependencyData;
+    mutable RefPtr<CSSValue> m_cachedValue;
+#if ASSERT_ENABLED
+    mutable CSSPropertyID m_cachePropertyID { CSSPropertyInvalid };
+#endif
 };
+
+template<typename CacheFunction>
+bool CSSVariableReferenceValue::resolveAndCacheValue(Style::BuilderState& builderState, CacheFunction&& cacheFunction) const
+
+{
+    if (auto data = tryResolveSimpleReference(builderState)) {
+        if (!arePointingToEqualData(m_cacheDependencyData, data))
+            cacheFunction(data);
+        m_cacheDependencyData = WTFMove(data);
+        return true;
+    }
+
+    auto resolvedTokens = resolveTokenRange(m_data->tokenRange(), builderState);
+    if (!resolvedTokens)
+        return false;
+
+    if (!m_cacheDependencyData || m_cacheDependencyData->tokens() != *resolvedTokens) {
+        m_cacheDependencyData = CSSVariableData::create(*resolvedTokens, context());
+        cacheFunction(m_cacheDependencyData);
+    }
+    return true;
+}
 
 } // namespace WebCore
 

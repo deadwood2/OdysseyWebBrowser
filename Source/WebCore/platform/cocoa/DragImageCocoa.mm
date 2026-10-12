@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007, 2009, 2012-2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2007-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -71,9 +71,9 @@ RetainPtr<NSImage> scaleDragImage(RetainPtr<NSImage> image, FloatSize scale)
     NSSize newSize = NSMakeSize((originalSize.width * scale.width()), (originalSize.height * scale.height()));
     newSize.width = roundf(newSize.width);
     newSize.height = roundf(newSize.height);
-    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     [image setScalesWhenResized:YES];
-    ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_END
     [image setSize:newSize];
     return image;
 }
@@ -94,13 +94,11 @@ RetainPtr<NSImage> dissolveDragImageToFraction(RetainPtr<NSImage> image, float d
 
 RetainPtr<NSImage> createDragImageFromImage(Image* image, ImageOrientation orientation)
 {
-    if (is<BitmapImage>(*image)) {
-        BitmapImage& bitmapImage = downcast<BitmapImage>(*image);
+    if (auto* bitmapImage = dynamicDowncast<BitmapImage>(*image)) {
+        if (orientation == ImageOrientation::Orientation::FromImage)
+            orientation = bitmapImage->currentFrameOrientation();
 
-        if (orientation == ImageOrientation::FromImage)
-            orientation = bitmapImage.orientationForCurrentFrame();
-
-        if (orientation != ImageOrientation::None) {
+        if (orientation != ImageOrientation::Orientation::None) {
             // Construct a correctly-rotated copy of the image to use as the drag image.
             FloatSize imageSize = image->size(orientation);
             RetainPtr<NSImage> rotatedDragImage = adoptNS([[NSImage alloc] initWithSize:(NSSize)(imageSize)]);
@@ -123,7 +121,7 @@ RetainPtr<NSImage> createDragImageFromImage(Image* image, ImageOrientation orien
             [cocoaTransform concat];
 
             FloatRect imageRect(FloatPoint(), imageSize);
-            [image->snapshotNSImage() drawInRect:imageRect fromRect:imageRect operation:NSCompositingOperationSourceOver fraction:1.0];
+            [image->adapter().snapshotNSImage() drawInRect:imageRect fromRect:imageRect operation:NSCompositingOperationSourceOver fraction:1.0];
 
             [rotatedDragImage unlockFocus];
 
@@ -132,26 +130,26 @@ RetainPtr<NSImage> createDragImageFromImage(Image* image, ImageOrientation orien
     }
 
     FloatSize imageSize = image->size();
-    auto dragImage = image->snapshotNSImage();
+    auto dragImage = image->adapter().snapshotNSImage();
     [dragImage setSize:(NSSize)imageSize];
     return dragImage;
 }
     
 RetainPtr<NSImage> createDragImageIconForCachedImageFilename(const String& filename)
 {
-    NSString *extension = nil;
+    RetainPtr<NSString> extension;
     size_t dotIndex = filename.reverseFind('.');
     
     if (dotIndex != notFound && dotIndex < (filename.length() - 1)) // require that a . exists after the first character and before the last
-        extension = filename.substring(dotIndex + 1);
+        extension = StringView(filename).substring(dotIndex + 1).createNSString();
     else {
         // It might be worth doing a further lookup to pull the extension from the MIME type.
         extension = @"";
     }
     
-    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-    return [[NSWorkspace sharedWorkspace] iconForFileType:extension];
-    ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+    return [[NSWorkspace sharedWorkspace] iconForFileType:extension.get()];
+ALLOW_DEPRECATED_DECLARATIONS_END
 }
 
 const CGFloat linkImagePadding = 10;
@@ -290,7 +288,7 @@ LinkImageLayout::LinkImageLayout(URL& url, const String& titleString)
     boundingRect.setHeight((static_cast<int>(boundingRect.height() / 2) * 2));
 }
 
-DragImageRef createDragImageForLink(Element& element, URL& url, const String& title, TextIndicatorData&, FontRenderingMode, float deviceScaleFactor)
+DragImageRef createDragImageForLink(Element& element, URL& url, const String& title, TextIndicatorData&, float deviceScaleFactor)
 {
     LinkImageLayout layout(url, title);
 
@@ -302,7 +300,7 @@ DragImageRef createDragImageForLink(Element& element, URL& url, const String& ti
 
     GraphicsContextCG context([NSGraphicsContext currentContext].CGContext);
 
-    context.fillRoundedRect(FloatRoundedRect(layout.boundingRect, FloatRoundedRect::Radii(linkImageCornerRadius)), colorFromNSColor([NSColor controlBackgroundColor]));
+    context.fillRoundedRect(FloatRoundedRect(layout.boundingRect, FloatRoundedRect::Radii(linkImageCornerRadius)), colorFromCocoaColor([NSColor controlBackgroundColor]));
 
     for (const auto& label : layout.labels) {
         GraphicsContextStateSaver saver(context);
@@ -324,7 +322,7 @@ DragImageRef createDragImageForColor(const Color& color, const FloatRect&, float
     NSBezierPath *path = [NSBezierPath bezierPathWithRoundedRect:NSMakeRect(0, 0, ColorSwatchWidth, ColorSwatchWidth) xRadius:ColorSwatchCornerRadius yRadius:ColorSwatchCornerRadius];
     [path setLineWidth:ColorSwatchStrokeSize];
 
-    [nsColor(color) setFill];
+    [cocoaColor(color) setFill];
     [path fill];
 
     [[NSColor quaternaryLabelColor] setStroke];

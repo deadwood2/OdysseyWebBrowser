@@ -30,6 +30,7 @@
 
 #include <wtf/HashMap.h>
 #include <wtf/MainThread.h>
+#include <wtf/TZoneMallocInlines.h>
 #include <wtf/Threading.h>
 #include <wtf/threads/BinarySemaphore.h>
 
@@ -39,28 +40,16 @@
 
 namespace WebKit {
 
-static RunLoop* createRunLoop()
-{
-    RunLoop* runLoop = nullptr;
-    BinarySemaphore semaphore;
-    Thread::create("org.webkit.ThreadedCompositor", [&] {
-        runLoop = &RunLoop::current();
-        semaphore.signal();
-        runLoop->run();
-    }, ThreadType::Graphics)->detach();
-    semaphore.wait();
-
-    return runLoop;
-}
+WTF_MAKE_TZONE_ALLOCATED_IMPL(CompositingRunLoop);
 
 CompositingRunLoop::CompositingRunLoop(Function<void ()>&& updateFunction)
-    : m_runLoop(createRunLoop())
-    , m_updateTimer(*m_runLoop, this, &CompositingRunLoop::updateTimerFired)
+    : m_runLoop(RunLoop::create("org.webkit.ThreadedCompositor"_s, ThreadType::Graphics))
+    , m_updateTimer(m_runLoop, this, &CompositingRunLoop::updateTimerFired)
     , m_updateFunction(WTFMove(updateFunction))
 {
 #if USE(GLIB_EVENT_LOOP)
     m_updateTimer.setPriority(RunLoopSourcePriority::CompositingThreadUpdateTimer);
-    m_updateTimer.setName("[WebKit] CompositingRunLoop");
+    m_updateTimer.setName("[WebKit] CompositingRunLoop"_s);
 #endif
 }
 
@@ -68,12 +57,17 @@ CompositingRunLoop::~CompositingRunLoop()
 {
     ASSERT(RunLoop::isMain());
     // Make sure the RunLoop is stopped after the CompositingRunLoop, because m_updateTimer has a reference.
-    RunLoop::main().dispatch([runLoop = makeRef(*m_runLoop)] {
+    RunLoop::main().dispatch([runLoop = m_runLoop] {
         runLoop->stop();
         runLoop->dispatch([] {
             RunLoop::current().stop();
         });
     });
+}
+
+bool CompositingRunLoop::isCurrent() const
+{
+    return m_runLoop->isCurrent();
 }
 
 void CompositingRunLoop::performTask(Function<void ()>&& function)
@@ -115,7 +109,7 @@ void CompositingRunLoop::scheduleUpdate()
     scheduleUpdate(stateLocker);
 }
 
-void CompositingRunLoop::scheduleUpdate(LockHolder& stateLocker)
+void CompositingRunLoop::scheduleUpdate(Locker<Lock>& stateLocker)
 {
     // An update was requested. Depending on the state:
     //  - if Idle, enter the Scheduled state and start the update timer,
@@ -149,7 +143,7 @@ void CompositingRunLoop::stopUpdates()
     m_state.pendingUpdate = false;
 }
 
-void CompositingRunLoop::updateCompleted(LockHolder& stateLocker)
+void CompositingRunLoop::updateCompleted(Locker<Lock>& stateLocker)
 {
     // Scene update has been signaled as completed. Depending on the state:
     //  - if Idle, Scheduled or InProgress, do nothing,

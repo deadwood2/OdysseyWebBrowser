@@ -26,9 +26,10 @@
 #include "config.h"
 #include "UserGestureIndicator.h"
 
-#include "DOMWindow.h"
 #include "Document.h"
-#include "Frame.h"
+#include "FrameDestructionObserverInlines.h"
+#include "LocalDOMWindow.h"
+#include "LocalFrame.h"
 #include "ResourceLoadObserver.h"
 #include "SecurityOrigin.h"
 #include <wtf/MainThread.h>
@@ -43,9 +44,11 @@ static RefPtr<UserGestureToken>& currentToken()
     return token;
 }
 
-UserGestureToken::UserGestureToken(ProcessingUserGestureState state, UserGestureType gestureType, Document* document)
-    : m_state(state)
+UserGestureToken::UserGestureToken(IsProcessingUserGesture isProcessingUserGesture, UserGestureType gestureType, Document* document, std::optional<WTF::UUID> authorizationToken, CanRequestDOMPaste canRequestDOMPaste)
+    : m_isProcessingUserGesture(isProcessingUserGesture)
     , m_gestureType(gestureType)
+    , m_canRequestDOMPaste(canRequestDOMPaste)
+    , m_authorizationToken(authorizationToken)
 {
     if (!document || !processingUserGesture())
         return;
@@ -54,19 +57,26 @@ UserGestureToken::UserGestureToken(ProcessingUserGestureState state, UserGesture
     // as well as all same-origin documents on the page.
     m_documentsImpactedByUserGesture.add(*document);
 
-    auto* documentFrame = document->frame();
+    RefPtr documentFrame = document->frame();
     if (!documentFrame)
         return;
 
-    for (auto* ancestorFrame = documentFrame->tree().parent(); ancestorFrame; ancestorFrame = ancestorFrame->tree().parent()) {
-        if (auto* ancestorDocument = ancestorFrame->document())
-            m_documentsImpactedByUserGesture.add(ancestorDocument);
+    for (RefPtr ancestorFrame = documentFrame->tree().parent(); ancestorFrame; ancestorFrame = ancestorFrame->tree().parent()) {
+        RefPtr localAncestor = dynamicDowncast<LocalFrame>(ancestorFrame);
+        if (!localAncestor)
+            continue;
+        if (RefPtr ancestorDocument = localAncestor->document())
+            m_documentsImpactedByUserGesture.add(*ancestorDocument);
     }
 
-    auto& documentOrigin = document->securityOrigin();
-    for (auto* frame = &documentFrame->tree().top(); frame; frame = frame->tree().traverseNext()) {
-        auto* frameDocument = frame->document();
-        if (frameDocument && documentOrigin.isSameOriginDomain(frameDocument->securityOrigin()))
+    Ref documentOrigin = document->securityOrigin();
+    for (RefPtr frame = &documentFrame->tree().top(); frame; frame = frame->tree().traverseNext()) {
+        RefPtr localFrame = dynamicDowncast<LocalFrame>(frame);
+        if (!localFrame)
+            continue;
+        RefPtr frameDocument = localFrame->document();
+        Ref frameOrigin = frameDocument->securityOrigin();
+        if (frameDocument && documentOrigin->isSameOriginDomain(frameOrigin.get()))
             m_documentsImpactedByUserGesture.add(*frameDocument);
     }
 }
@@ -93,27 +103,36 @@ bool UserGestureToken::isValidForDocument(const Document& document) const
     return m_documentsImpactedByUserGesture.contains(document);
 }
 
-UserGestureIndicator::UserGestureIndicator(std::optional<ProcessingUserGestureState> state, Document* document, UserGestureType gestureType, ProcessInteractionStyle processInteractionStyle)
+void UserGestureToken::forEachImpactedDocument(Function<void(Document&)>&& function)
+{
+    m_documentsImpactedByUserGesture.forEach(function);
+}
+
+UserGestureIndicator::UserGestureIndicator(std::optional<IsProcessingUserGesture> isProcessingUserGesture, Document* document, UserGestureType gestureType, ProcessInteractionStyle processInteractionStyle, std::optional<WTF::UUID> authorizationToken, CanRequestDOMPaste canRequestDOMPaste)
     : m_previousToken { currentToken() }
 {
     ASSERT(isMainThread());
 
-    if (state)
-        currentToken() = UserGestureToken::create(state.value(), gestureType, document);
+    if (isProcessingUserGesture)
+        currentToken() = UserGestureToken::create(isProcessingUserGesture.value(), gestureType, document, authorizationToken, canRequestDOMPaste);
 
-    if (state && document && currentToken()->processingUserGesture()) {
+    if (isProcessingUserGesture && document && currentToken()->processingUserGesture()) {
         document->updateLastHandledUserGestureTimestamp(currentToken()->startTime());
         if (processInteractionStyle == ProcessInteractionStyle::Immediate)
             ResourceLoadObserver::shared().logUserInteractionWithReducedTimeResolution(document->topDocument());
         document->topDocument().setUserDidInteractWithPage(true);
-        if (auto* frame = document->frame()) {
-            if (!frame->hasHadUserInteraction()) {
-                for (; frame; frame = frame->tree().parent())
-                    frame->setHasHadUserInteraction();
+        if (RefPtr frame = document->frame(); frame && !frame->hasHadUserInteraction()) {
+            for (RefPtr<Frame> ancestor = WTFMove(frame); ancestor; ancestor = ancestor->tree().parent()) {
+                if (RefPtr localAncestor = dynamicDowncast<LocalFrame>(ancestor))
+                    localAncestor->setHasHadUserInteraction();
             }
         }
 
-        if (auto* window = document->domWindow())
+        // https://html.spec.whatwg.org/multipage/interaction.html#user-activation-processing-model
+        // When a user interaction causes firing of an activation triggering input event in a Document...
+        // NOTE: Only activate the relevent DOMWindow when the gestureType is an ActivationTriggering one
+        RefPtr window = document->domWindow();
+        if (window && gestureType == UserGestureType::ActivationTriggering)
             window->notifyActivated(currentToken()->startTime());
     }
 }
@@ -173,6 +192,14 @@ bool UserGestureIndicator::processingUserGestureForMedia()
         return false;
 
     return currentToken() ? currentToken()->processingUserGestureForMedia() : false;
+}
+
+std::optional<WTF::UUID> UserGestureIndicator::authorizationToken() const
+{
+    if (!isMainThread())
+        return std::nullopt;
+
+    return currentToken() ? currentToken()->authorizationToken() : std::nullopt;
 }
 
 }

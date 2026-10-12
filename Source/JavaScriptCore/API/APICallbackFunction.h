@@ -49,10 +49,9 @@ EncodedJSValue APICallbackFunction::callImpl(JSGlobalObject* globalObject, CallF
     JSObjectRef thisObjRef = toRef(jsCast<JSObject*>(callFrame->thisValue().toThis(globalObject, ECMAMode::sloppy())));
 
     int argumentCount = static_cast<int>(callFrame->argumentCount());
-    Vector<JSValueRef, 16> arguments;
-    arguments.reserveInitialCapacity(argumentCount);
-    for (int i = 0; i < argumentCount; i++)
-        arguments.uncheckedAppend(toRef(globalObject, callFrame->uncheckedArgument(i)));
+    Vector<JSValueRef, 16> arguments(argumentCount, [&](size_t i) {
+        return toRef(globalObject, callFrame->uncheckedArgument(i));
+    });
 
     JSValueRef exception = nullptr;
     JSValueRef result;
@@ -93,10 +92,9 @@ EncodedJSValue APICallbackFunction::constructImpl(JSGlobalObject* globalObject, 
         }
 
         size_t argumentCount = callFrame->argumentCount();
-        Vector<JSValueRef, 16> arguments;
-        arguments.reserveInitialCapacity(argumentCount);
-        for (size_t i = 0; i < argumentCount; ++i)
-            arguments.uncheckedAppend(toRef(globalObject, callFrame->uncheckedArgument(i)));
+        Vector<JSValueRef, 16> arguments(argumentCount, [&](size_t i) {
+            return toRef(globalObject, callFrame->uncheckedArgument(i));
+        });
 
         JSValueRef exception = nullptr;
         JSObjectRef result;
@@ -115,7 +113,7 @@ EncodedJSValue APICallbackFunction::constructImpl(JSGlobalObject* globalObject, 
 
         JSObject* newObject = toJS(result);
         // This won't trigger proxy traps on newObject's prototype handler but that's probably desirable here anyway.
-        if (newTarget != constructor && newObject->getPrototypeDirect(vm) == constructor->get(globalObject, vm.propertyNames->prototype)) {
+        if (newTarget != constructor && newObject->getPrototypeDirect() == constructor->get(globalObject, vm.propertyNames->prototype)) {
             RETURN_IF_EXCEPTION(scope, { });
             newObject->setPrototype(vm, globalObject, prototype);
             RETURN_IF_EXCEPTION(scope, { });

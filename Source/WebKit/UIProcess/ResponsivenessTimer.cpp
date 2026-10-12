@@ -28,11 +28,10 @@
 
 namespace WebKit {
 
-static const Seconds responsivenessTimeout { 3_s };
-
-ResponsivenessTimer::ResponsivenessTimer(ResponsivenessTimer::Client& client)
+ResponsivenessTimer::ResponsivenessTimer(ResponsivenessTimer::Client& client, Seconds responsivenessTimeout)
     : m_client(client)
     , m_timer(RunLoop::main(), this, &ResponsivenessTimer::timerFired)
+    , m_responsivenessTimeout(responsivenessTimeout)
 {
 }
 
@@ -68,19 +67,19 @@ void ResponsivenessTimer::timerFired()
     if (!m_isResponsive)
         return;
 
-    auto protectedClient = makeRef(m_client);
+    Ref protectedClient { m_client.get() };
 
     if (!mayBecomeUnresponsive()) {
         m_waitingForTimer = true;
-        m_timer.startOneShot(responsivenessTimeout);
+        m_timer.startOneShot(m_responsivenessTimeout);
         return;
     }
 
-    m_client.willChangeIsResponsive();
+    protectedClient->willChangeIsResponsive();
     m_isResponsive = false;
-    m_client.didChangeIsResponsive();
+    protectedClient->didChangeIsResponsive();
 
-    m_client.didBecomeUnresponsive();
+    protectedClient->didBecomeUnresponsive();
 }
     
 void ResponsivenessTimer::start()
@@ -97,10 +96,10 @@ void ResponsivenessTimer::start()
         //
         // In most cases, stop is called before we get to schedule the second timer, saving us
         // the scheduling of the timer entirely.
-        m_restartFireTime = MonotonicTime::now() + responsivenessTimeout;
+        m_restartFireTime = MonotonicTime::now() + m_responsivenessTimeout;
     } else {
         m_restartFireTime = MonotonicTime();
-        m_timer.startOneShot(responsivenessTimeout);
+        m_timer.startOneShot(m_responsivenessTimeout);
     }
 }
 
@@ -120,7 +119,7 @@ bool ResponsivenessTimer::mayBecomeUnresponsive() const
     if (isLibgmallocEnabled)
         return false;
 
-    return m_client.mayBecomeUnresponsive();
+    return m_client->mayBecomeUnresponsive();
 #endif
 }
 
@@ -135,14 +134,14 @@ void ResponsivenessTimer::startWithLazyStop()
 void ResponsivenessTimer::stop()
 {
     if (!m_isResponsive) {
-        auto protectedClient = makeRef(m_client);
+        Ref protectedClient { m_client.get() };
 
         // We got a life sign from the web process.
-        m_client.willChangeIsResponsive();
+        protectedClient->willChangeIsResponsive();
         m_isResponsive = true;
-        m_client.didChangeIsResponsive();
+        protectedClient->didChangeIsResponsive();
 
-        m_client.didBecomeResponsive();
+        protectedClient->didBecomeResponsive();
     }
 
     m_waitingForTimer = false;

@@ -28,6 +28,8 @@
 
 #if ENABLE(MEDIA_SOURCE)
 
+#include "MediaSample.h"
+
 namespace WebCore {
 
 Ref<VideoTrackPrivateWebM> VideoTrackPrivateWebM::create(webm::TrackEntry&& trackEntry)
@@ -40,22 +42,26 @@ VideoTrackPrivateWebM::VideoTrackPrivateWebM(webm::TrackEntry&& trackEntry)
 {
     if (m_track.is_enabled.is_present())
         setSelected(m_track.is_enabled.value());
+
+    updateConfiguration();
 }
 
-AtomString VideoTrackPrivateWebM::id() const
+void VideoTrackPrivateWebM::setFormatDescription(Ref<VideoInfo>&& formatDescription)
 {
-    if (m_trackID.isNull()) {
-        auto uid = trackUID();
-        m_trackID = uid ? AtomString::number(*uid) : emptyAtom();
-    }
-    return m_trackID;
+    if (m_formatDescription && *m_formatDescription == formatDescription)
+        return;
+    m_formatDescription = WTFMove(formatDescription);
+    updateConfiguration();
 }
 
-std::optional<uint64_t> VideoTrackPrivateWebM::trackUID() const
+TrackID VideoTrackPrivateWebM::id() const
 {
     if (m_track.track_uid.is_present())
         return m_track.track_uid.value();
-    return std::nullopt;
+    if (m_track.track_number.is_present())
+        return m_track.track_number.value();
+    ASSERT_NOT_REACHED();
+    return 0;
 }
 
 std::optional<bool> VideoTrackPrivateWebM::defaultEnabled() const
@@ -68,14 +74,14 @@ std::optional<bool> VideoTrackPrivateWebM::defaultEnabled() const
 AtomString VideoTrackPrivateWebM::label() const
 {
     if (m_label.isNull())
-        m_label = m_track.name.is_present() ? AtomString::fromUTF8(m_track.name.value().data(), m_track.name.value().length()) : emptyAtom();
+        m_label = m_track.name.is_present() ? AtomString::fromUTF8(m_track.name.value()) : emptyAtom();
     return m_label;
 }
 
 AtomString VideoTrackPrivateWebM::language() const
 {
     if (m_language.isNull())
-        m_language = m_track.language.is_present() ? AtomString::fromUTF8(m_track.language.value().data(), m_track.language.value().length()) : emptyAtom();
+        m_language = m_track.language.is_present() ? AtomString::fromUTF8(m_track.language.value()) : emptyAtom();
     return m_language;
 }
 
@@ -84,6 +90,102 @@ int VideoTrackPrivateWebM::trackIndex() const
     if (m_track.track_number.is_present())
         return m_track.track_number.value();
     return 0;
+}
+
+String VideoTrackPrivateWebM::codec() const
+{
+    if (m_formatDescription) {
+        if (!m_formatDescription->codecString.isEmpty())
+            return m_formatDescription->codecString;
+        return String::fromLatin1(m_formatDescription->codecName.string().data());
+    }
+
+    if (!m_track.codec_id.is_present())
+        return emptyString();
+
+    StringView codecID { std::span { m_track.codec_id.value() } };
+
+    if (codecID == "V_VP9"_s)
+        return "vp09"_s;
+
+    if (codecID == "V_VP8"_s)
+        return "vp08"_s;
+
+    return emptyString();
+}
+
+uint32_t VideoTrackPrivateWebM::width() const
+{
+    if (m_formatDescription)
+        return m_formatDescription->size.width();
+
+    if (!m_track.video.is_present())
+        return 0;
+
+    auto& video = m_track.video.value();
+    if (video.display_width.is_present())
+        return video.display_width.value();
+
+    if (video.pixel_width.is_present())
+        return video.pixel_width.value();
+
+    return 0;
+}
+
+uint32_t VideoTrackPrivateWebM::height() const
+{
+    if (m_formatDescription)
+        return m_formatDescription->size.height();
+
+    if (!m_track.video.is_present())
+        return 0;
+
+    auto& video = m_track.video.value();
+    if (video.display_height.is_present())
+        return video.display_height.value();
+
+    if (video.pixel_height.is_present())
+        return video.pixel_height.value();
+
+    return 0;
+}
+
+double VideoTrackPrivateWebM::framerate() const
+{
+    if (!m_track.video.is_present())
+        return 0;
+
+    auto& video = m_track.video.value();
+    if (video.frame_rate.is_present())
+        return video.frame_rate.value();
+
+    if (m_track.default_duration.is_present()) {
+        static constexpr double nanosecondsPerSecond = 1000 * 1000 * 1000;
+        return nanosecondsPerSecond / m_track.default_duration.value();
+    }
+
+    return 0;
+}
+
+PlatformVideoColorSpace VideoTrackPrivateWebM::colorSpace() const
+{
+    if (m_formatDescription)
+        return m_formatDescription->colorSpace;
+    return { };
+}
+
+void VideoTrackPrivateWebM::updateConfiguration()
+{
+IGNORE_WARNINGS_BEGIN("c99-designator")
+    PlatformVideoTrackConfiguration configuration {
+        { .codec = codec() },
+        .width = width(),
+        .height = height(),
+        .colorSpace = colorSpace(),
+        .framerate = framerate(),
+    };
+IGNORE_WARNINGS_END
+    setConfiguration(WTFMove(configuration));
 }
 
 }

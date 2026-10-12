@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2021-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,7 +27,6 @@
 #include "ArgumentCoders.h"
 #include "Connection.h"
 #include "MessageNames.h"
-#include "TestWithImageDataMessagesReplies.h"
 #include <WebCore/ImageData.h>
 #include <wtf/Forward.h>
 #include <wtf/RefCounted.h>
@@ -44,23 +43,25 @@ static inline IPC::ReceiverName messageReceiverName()
 
 class SendImageData {
 public:
-    using Arguments = std::tuple<const RefPtr<WebCore::ImageData>&>;
+    using Arguments = std::tuple<RefPtr<WebCore::ImageData>>;
 
     static IPC::MessageName name() { return IPC::MessageName::TestWithImageData_SendImageData; }
     static constexpr bool isSync = false;
+    static constexpr bool canDispatchOutOfOrder = false;
+    static constexpr bool replyCanDispatchOutOfOrder = false;
 
     explicit SendImageData(const RefPtr<WebCore::ImageData>& s0)
         : m_arguments(s0)
     {
     }
 
-    const Arguments& arguments() const
+    auto&& arguments()
     {
-        return m_arguments;
+        return WTFMove(m_arguments);
     }
 
 private:
-    Arguments m_arguments;
+    std::tuple<const RefPtr<WebCore::ImageData>&> m_arguments;
 };
 
 class ReceiveImageData {
@@ -68,18 +69,22 @@ public:
     using Arguments = std::tuple<>;
 
     static IPC::MessageName name() { return IPC::MessageName::TestWithImageData_ReceiveImageData; }
-    static constexpr bool isSync = true;
+    static constexpr bool isSync = false;
+    static constexpr bool canDispatchOutOfOrder = false;
+    static constexpr bool replyCanDispatchOutOfOrder = false;
 
+    static IPC::MessageName asyncMessageReplyName() { return IPC::MessageName::TestWithImageData_ReceiveImageDataReply; }
     static constexpr auto callbackThread = WTF::CompletionHandlerCallThread::ConstructionThread;
-    using Reply = std::tuple<RefPtr<WebCore::ImageData>&>;
     using ReplyArguments = std::tuple<RefPtr<WebCore::ImageData>>;
-    const Arguments& arguments() const
+    using Reply = CompletionHandler<void(RefPtr<WebCore::ImageData>&&)>;
+    using Promise = WTF::NativePromise<RefPtr<WebCore::ImageData>, IPC::Error>;
+    auto&& arguments()
     {
-        return m_arguments;
+        return WTFMove(m_arguments);
     }
 
 private:
-    Arguments m_arguments;
+    std::tuple<> m_arguments;
 };
 
 } // namespace TestWithImageData

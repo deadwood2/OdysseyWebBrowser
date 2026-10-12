@@ -31,6 +31,7 @@
 #include "EventTarget.h"
 #include "FetchRequestCredentials.h"
 #include "MessagePort.h"
+#include "WorkerOptions.h"
 #include "WorkerScriptLoaderClient.h"
 #include "WorkerType.h"
 #include <JavaScriptCore/RuntimeFlags.h>
@@ -49,21 +50,26 @@ namespace WebCore {
 class RTCRtpScriptTransform;
 class RTCRtpScriptTransformer;
 class ScriptExecutionContext;
+class TrustedScriptURL;
 class WorkerGlobalScopeProxy;
 class WorkerScriptLoader;
 
 struct StructuredSerializeOptions;
+struct WorkerOptions;
 
 class Worker final : public AbstractWorker, public ActiveDOMObject, private WorkerScriptLoaderClient {
-    WTF_MAKE_ISO_ALLOCATED(Worker);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(Worker);
 public:
-    struct Options {
-        WorkerType type;
-        FetchRequestCredentials credentials;
-        String name;
-    };
-    static ExceptionOr<Ref<Worker>> create(ScriptExecutionContext&, JSC::RuntimeFlags, const String& url, const Options&);
+    using AbstractWorker::weakPtrFactory;
+    using AbstractWorker::WeakValueType;
+    using AbstractWorker::WeakPtrImplType;
+
+    static ExceptionOr<Ref<Worker>> create(ScriptExecutionContext&, JSC::RuntimeFlags, std::variant<RefPtr<TrustedScriptURL>, String>&&, WorkerOptions&&);
     virtual ~Worker();
+
+    // ActiveDOMObject.
+    void ref() const final { RefCounted::ref(); }
+    void deref() const final { RefCounted::deref(); }
 
     ExceptionOr<void> postMessage(JSC::JSGlobalObject&, JSC::JSValue message, StructuredSerializeOptions&&);
 
@@ -71,40 +77,41 @@ public:
     bool wasTerminated() const { return m_wasTerminated; }
 
     String identifier() const { return m_identifier; }
-    const String& name() const { return m_name; }
+    const String& name() const { return m_options.name; }
 
     ScriptExecutionContext* scriptExecutionContext() const final { return ActiveDOMObject::scriptExecutionContext(); }
 
     void dispatchEvent(Event&) final;
+    void reportError(const String&);
 
 #if ENABLE(WEB_RTC)
     void createRTCRtpScriptTransformer(RTCRtpScriptTransform&, MessageWithMessagePorts&&);
-    void postTaskToWorkerGlobalScope(Function<void(ScriptExecutionContext&)>&&);
 #endif
 
-    WorkerType type() const { return m_type; }
+    WorkerType type() const { return m_options.type; }
+
+    void postTaskToWorkerGlobalScope(Function<void(ScriptExecutionContext&)>&&);
+
+    static void forEachWorker(const Function<Function<void(ScriptExecutionContext&)>()>&);
 
 private:
-    explicit Worker(ScriptExecutionContext&, JSC::RuntimeFlags, const Options&);
+    Worker(ScriptExecutionContext&, JSC::RuntimeFlags, WorkerOptions&&);
 
-    EventTargetInterface eventTargetInterface() const final { return WorkerEventTargetInterfaceType; }
+    enum EventTargetInterfaceType eventTargetInterface() const final { return EventTargetInterfaceType::Worker; }
 
-    void notifyNetworkStateChange(bool isOnline);
-
-    void didReceiveResponse(unsigned long identifier, const ResourceResponse&) final;
-    void notifyFinished() final;
+    void didReceiveResponse(ScriptExecutionContextIdentifier, ResourceLoaderIdentifier, const ResourceResponse&) final;
+    void notifyFinished(ScriptExecutionContextIdentifier) final;
 
     // ActiveDOMObject.
     void stop() final;
     void suspend(ReasonForSuspension) final;
     void resume() final;
-    const char* activeDOMObjectName() const final;
     bool virtualHasPendingActivity() const final;
 
     static void networkStateChanged(bool isOnLine);
 
     RefPtr<WorkerScriptLoader> m_scriptLoader;
-    String m_name;
+    const WorkerOptions m_options;
     String m_identifier;
     WorkerGlobalScopeProxy& m_contextProxy; // The proxy outlives the worker to perform thread shutdown.
     std::optional<ContentSecurityPolicyResponseHeaders> m_contentSecurityPolicyResponseHeaders;
@@ -114,11 +121,8 @@ private:
     JSC::RuntimeFlags m_runtimeFlags;
     Deque<RefPtr<Event>> m_pendingEvents;
     bool m_wasTerminated { false };
-#if ENABLE(WEB_RTC)
-    HashSet<String> m_transformers;
-#endif
-    WorkerType m_type { WorkerType::Classic };
-    FetchRequestCredentials m_credentials { FetchRequestCredentials::SameOrigin };
+    bool m_didStartWorkerGlobalScope { false };
+    const ScriptExecutionContextIdentifier m_clientIdentifier;
 };
 
 } // namespace WebCore

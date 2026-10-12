@@ -44,12 +44,12 @@ WorkerNetworkAgent::WorkerNetworkAgent(WorkerAgentContext& context)
 
 WorkerNetworkAgent::~WorkerNetworkAgent() = default;
 
-Protocol::Network::LoaderId WorkerNetworkAgent::loaderIdentifier(DocumentLoader*)
+Inspector::Protocol::Network::LoaderId WorkerNetworkAgent::loaderIdentifier(DocumentLoader*)
 {
     return { };
 }
 
-Protocol::Network::FrameId WorkerNetworkAgent::frameIdentifier(DocumentLoader*)
+Inspector::Protocol::Network::FrameId WorkerNetworkAgent::frameIdentifier(DocumentLoader*)
 {
     return { };
 }
@@ -66,9 +66,23 @@ void WorkerNetworkAgent::setResourceCachingDisabledInternal(bool disabled)
         workerDebuggerProxy->setResourceCachingDisabledByWebInspector(disabled);
 }
 
-ScriptExecutionContext* WorkerNetworkAgent::scriptExecutionContext(Protocol::ErrorString&, const Protocol::Network::FrameId&)
+#if ENABLE(INSPECTOR_NETWORK_THROTTLING)
+
+bool WorkerNetworkAgent::setEmulatedConditionsInternal(std::optional<int>&& /* bytesPerSecondLimit */)
+{
+    return false;
+}
+
+#endif // ENABLE(INSPECTOR_NETWORK_THROTTLING)
+
+ScriptExecutionContext* WorkerNetworkAgent::scriptExecutionContext(Inspector::Protocol::ErrorString&, const Inspector::Protocol::Network::FrameId&)
 {
     return &m_globalScope;
+}
+
+void WorkerNetworkAgent::addConsoleMessage(std::unique_ptr<Inspector::ConsoleMessage>&& message)
+{
+    m_globalScope.addConsoleMessage(WTFMove(message));
 }
 
 } // namespace WebCore

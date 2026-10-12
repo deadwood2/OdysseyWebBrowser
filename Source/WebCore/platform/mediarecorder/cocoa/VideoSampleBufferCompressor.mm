@@ -25,15 +25,16 @@
 #import "config.h"
 #import "VideoSampleBufferCompressor.h"
 
-#if ENABLE(MEDIA_STREAM) && USE(AVFOUNDATION)
+#if ENABLE(MEDIA_RECORDER) && USE(AVFOUNDATION)
 
 #import "ContentType.h"
 #import "Logging.h"
 #import <CoreMedia/CoreMedia.h>
 #import <Foundation/Foundation.h>
-#import <VideoToolbox/VTCompressionSession.h>
+#import <wtf/EnumTraits.h>
 #import <wtf/SoftLinking.h>
 
+#import "VideoToolboxSoftLink.h"
 #import <pal/cf/CoreMediaSoftLink.h>
 #import <pal/cf/VideoToolboxSoftLink.h>
 
@@ -43,7 +44,7 @@ std::unique_ptr<VideoSampleBufferCompressor> VideoSampleBufferCompressor::create
 {
     auto profile = Profile::Baseline;
     for (auto codec : ContentType(mimeType).codecs()) {
-        if (startsWithLettersIgnoringASCIICase(codec, "avc1.") && codec.length() >= 11) {
+        if (startsWithLettersIgnoringASCIICase(codec, "avc1."_s) && codec.length() >= 11) {
             if (codec[5] == '6' && codec[6] == '4')
                 profile = Profile::High;
             else if (codec[5] == '4' && (codec[6] == 'd' || codec[6] == 'D'))
@@ -59,7 +60,7 @@ std::unique_ptr<VideoSampleBufferCompressor> VideoSampleBufferCompressor::create
 }
 
 VideoSampleBufferCompressor::VideoSampleBufferCompressor(CMVideoCodecType outputCodecType, Profile profile)
-    : m_serialDispatchQueue { WorkQueue::create("com.apple.VideoSampleBufferCompressor") }
+    : m_serialDispatchQueue { WorkQueue::create("com.apple.VideoSampleBufferCompressor"_s) }
     , m_outputCodecType { outputCodecType }
     , m_profile { profile }
 {
@@ -67,6 +68,9 @@ VideoSampleBufferCompressor::VideoSampleBufferCompressor(CMVideoCodecType output
 
 VideoSampleBufferCompressor::~VideoSampleBufferCompressor()
 {
+    if (m_outputBufferQueue)
+        PAL::CMBufferQueueRemoveTrigger(m_outputBufferQueue.get(), m_triggerToken);
+
     if (m_vtSession) {
         PAL::VTCompressionSessionInvalidate(m_vtSession.get());
         m_vtSession = nullptr;
@@ -81,7 +85,7 @@ bool VideoSampleBufferCompressor::initialize(CMBufferQueueTriggerCallback callba
         return false;
     }
     m_outputBufferQueue = adoptCF(outputBufferQueue);
-    PAL::CMBufferQueueInstallTrigger(m_outputBufferQueue.get(), callback, callbackObject, kCMBufferQueueTrigger_WhenDataBecomesReady, PAL::kCMTimeZero, NULL);
+    PAL::CMBufferQueueInstallTrigger(m_outputBufferQueue.get(), callback, callbackObject, kCMBufferQueueTrigger_WhenDataBecomesReady, PAL::kCMTimeZero, &m_triggerToken);
 
     m_isEncoding = true;
     return true;
@@ -92,11 +96,14 @@ void VideoSampleBufferCompressor::setBitsPerSecond(unsigned bitRate)
     m_outputBitRate = bitRate;
 }
 
-void VideoSampleBufferCompressor::finish()
+void VideoSampleBufferCompressor::flushInternal(bool isFinished)
 {
-    m_serialDispatchQueue->dispatchSync([this] {
+    m_serialDispatchQueue->dispatchSync([this, isFinished] {
         auto error = PAL::VTCompressionSessionCompleteFrames(m_vtSession.get(), PAL::kCMTimeInvalid);
         RELEASE_LOG_ERROR_IF(error, MediaStream, "VideoSampleBufferCompressor VTCompressionSessionCompleteFrames failed with %d", error);
+
+        if (!isFinished)
+            return;
 
         error = PAL::CMBufferQueueMarkEndOfData(m_outputBufferQueue.get());
         RELEASE_LOG_ERROR_IF(error, MediaStream, "VideoSampleBufferCompressor CMBufferQueueMarkEndOfData failed with %d", error);
@@ -140,7 +147,7 @@ CFStringRef VideoSampleBufferCompressor::vtProfileLevel() const
 bool VideoSampleBufferCompressor::initCompressionSession(CMVideoFormatDescriptionRef formatDescription)
 {
     CMVideoDimensions dimensions = PAL::CMVideoFormatDescriptionGetDimensions(formatDescription);
-#if PLATFORM(IOS)
+#if PLATFORM(IOS) || PLATFORM(VISION)
     NSDictionary *encoderSpecifications = nil;
 #else
     NSDictionary *encoderSpecifications = @{(__bridge NSString *)PAL::kVTVideoEncoderSpecification_EnableHardwareAcceleratedVideoEncoder:@YES};
@@ -165,7 +172,7 @@ bool VideoSampleBufferCompressor::initCompressionSession(CMVideoFormatDescriptio
 
     error = VTSessionSetProperty(m_vtSession.get(), PAL::kVTCompressionPropertyKey_ProfileLevel, vtProfileLevel());
     if (error) {
-        RELEASE_LOG_ERROR(MediaStream, "VideoSampleBufferCompressor VTSessionSetProperty kVTCompressionPropertyKey_ProfileLevel failed with %d for profile %d", error, m_profile);
+        RELEASE_LOG_ERROR(MediaStream, "VideoSampleBufferCompressor VTSessionSetProperty kVTCompressionPropertyKey_ProfileLevel failed with %d for profile %hhu", error, enumToUnderlyingType(m_profile));
         if (m_profile != Profile::Baseline) {
             error = VTSessionSetProperty(m_vtSession.get(), PAL::kVTCompressionPropertyKey_ProfileLevel, PAL::kVTProfileLevel_H264_Baseline_AutoLevel);
             RELEASE_LOG_ERROR_IF(error, MediaStream, "VideoSampleBufferCompressor VTSessionSetProperty kVTCompressionPropertyKey_ProfileLevel failed with %d for default profile", error);

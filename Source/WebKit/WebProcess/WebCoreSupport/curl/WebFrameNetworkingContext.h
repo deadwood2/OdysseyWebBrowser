@@ -31,7 +31,7 @@
 namespace WebKit {
 
 class WebFrame;
-class WebFrameLoaderClient;
+class WebLocalFrameLoaderClient;
 struct WebsiteDataStoreParameters;
 
 class WebFrameNetworkingContext : public WebCore::FrameNetworkingContext {
@@ -41,9 +41,9 @@ public:
         return adoptRef(*new WebFrameNetworkingContext(frame));
     }
 
-    static void ensureWebsiteDataStoreSession(WebsiteDataStoreParameters&&);
+    static void ensureWebsiteDataStoreSession(const WebsiteDataStoreParameters&);
 
-    WebFrameLoaderClient* webFrameLoaderClient() const;
+    WebLocalFrameLoaderClient* webFrameLoaderClient() const;
 
 #if PLATFORM(WIN)
     WebCore::ResourceError blockedError(const WebCore::ResourceRequest&) const override;

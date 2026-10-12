@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,7 +28,6 @@
 #if ENABLE(RESOURCE_USAGE)
 
 #include "FloatRect.h"
-#include "GraphicsLayer.h"
 #include "IntRect.h"
 #include "PageOverlay.h"
 #include <wtf/Noncopyable.h>
@@ -38,13 +37,17 @@
 #include "PlatformCALayer.h"
 #endif
 
+#if OS(LINUX)
+#include "GraphicsLayer.h"
+#endif
+
 namespace WebCore {
 
 class FloatRect;
 class IntPoint;
 class IntRect;
 
-class ResourceUsageOverlay final : public PageOverlay::Client {
+class ResourceUsageOverlay final : public PageOverlayClient {
     WTF_MAKE_FAST_ALLOCATED;
     WTF_MAKE_NONCOPYABLE(ResourceUsageOverlay);
 public:
@@ -65,7 +68,7 @@ private:
     void didMoveToPage(PageOverlay&, Page*) override { }
     void drawRect(PageOverlay&, GraphicsContext&, const IntRect&) override { }
     bool mouseEvent(PageOverlay&, const PlatformMouseEvent&) override;
-    void didScrollFrame(PageOverlay&, Frame&) override { }
+    void didScrollFrame(PageOverlay&, LocalFrame&) override { }
 
     void initialize();
 

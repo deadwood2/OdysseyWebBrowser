@@ -27,12 +27,18 @@
 
 #include "APIObject.h"
 #include "WebBackForwardListItem.h"
-#include "WebPageProxy.h"
 #include <WebCore/BackForwardItemIdentifier.h>
 #include <wtf/Ref.h>
 #include <wtf/Vector.h>
+#include <wtf/WeakPtr.h>
+
+namespace API {
+class Array;
+}
 
 namespace WebKit {
+
+class WebPageProxy;
 
 struct BackForwardListState;
 struct WebBackForwardListCounts;
@@ -55,9 +61,13 @@ public:
     void clear();
 
     WebBackForwardListItem* currentItem() const;
+    RefPtr<WebBackForwardListItem> protectedCurrentItem() const;
     WebBackForwardListItem* backItem() const;
     WebBackForwardListItem* forwardItem() const;
     WebBackForwardListItem* itemAtIndex(int) const;
+
+    WebBackForwardListItem* goBackItemSkippingItemsWithoutUserGesture() const;
+    WebBackForwardListItem* goForwardItemSkippingItemsWithoutUserGesture() const;
 
     const BackForwardListItemVector& entries() const { return m_entries; }
 
@@ -77,8 +87,10 @@ public:
     Vector<BackForwardListItemState> itemStates() const;
     Vector<BackForwardListItemState> filteredItemStates(Function<bool(WebBackForwardListItem&)>&&) const;
 
+    void addRootChildFrameItem(Ref<WebBackForwardListItem>&&) const;
+
 #if !LOG_DISABLED
-    const char* loggingString();
+    String loggingString();
 #endif
 
 private:
@@ -86,7 +98,9 @@ private:
 
     void didRemoveItem(WebBackForwardListItem&);
 
-    WebPageProxy* m_page;
+    RefPtr<WebPageProxy> protectedPage();
+
+    WeakPtr<WebPageProxy> m_page;
     BackForwardListItemVector m_entries;
     std::optional<size_t> m_currentIndex;
 };

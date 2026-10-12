@@ -16,7 +16,7 @@
 *   04/17/97    aliu        Changed DigitCount to int per code review.
 *    07/20/98    stephen        JDK 1.2 sync up. Added scientific support.
 *                            Changed naming conventions to match C++ guidelines
-*                            Derecated Java style constants (eg, INTEGER_FIELD)
+*                            Deprecated Java style constants (eg, INTEGER_FIELD)
 ********************************************************************************
 */
 
@@ -25,6 +25,8 @@
 
 
 #include "unicode/utypes.h"
+
+#if U_SHOW_CPLUSPLUS_API
 
 /**
  * \file
@@ -56,7 +58,6 @@ class StringEnumeration;
  * <p><strong>IMPORTANT:</strong> New users are strongly encouraged to see if
  * numberformatter.h fits their use case.  Although not deprecated, this header
  * is provided for backwards compatibility only.
- * <hr/>
  *
  * Abstract base class for all number formats.  Provides interface for
  * formatting and parsing a number.  Also provides methods for
@@ -178,7 +179,7 @@ public:
      *
      * <p>
      * For more detail on rounding modes, see:
-     * http://userguide.icu-project.org/formatparse/numbers/rounding-modes
+     * https://unicode-org.github.io/icu/userguide/format_parse/numbers/rounding-modes
      *
      * @stable ICU 2.4
      */
@@ -238,6 +239,10 @@ public:
         kPermillField = UNUM_PERMILL_FIELD,
         /** @stable ICU 2.0 */
         kSignField = UNUM_SIGN_FIELD,
+        /** @stable ICU 64 */
+        kMeasureUnitField = UNUM_MEASURE_UNIT_FIELD,
+        /** @stable ICU 64 */
+        kCompactField = UNUM_COMPACT_FIELD,
 
     /**
      * These constants are provided for backwards compatibility only.
@@ -256,12 +261,20 @@ public:
     virtual ~NumberFormat();
 
     /**
+     * Clones this object polymorphically.
+     * The caller owns the result and should delete it when done.
+     * @return clone, or nullptr if an error occurred
+     * @stable ICU 2.0
+     */
+    virtual NumberFormat* clone() const override = 0;
+
+    /**
      * Return true if the given Format objects are semantically equal.
      * Objects of different subclasses are considered unequal.
      * @return    true if the given Format objects are semantically equal.
      * @stable ICU 2.0
      */
-    virtual UBool operator==(const Format& other) const;
+    virtual bool operator==(const Format& other) const override;
 
 
     using Format::format;
@@ -284,7 +297,7 @@ public:
     virtual UnicodeString& format(const Formattable& obj,
                                   UnicodeString& appendTo,
                                   FieldPosition& pos,
-                                  UErrorCode& status) const;
+                                  UErrorCode& status) const override;
 
     /**
      * Format an object to produce a string.  This method handles
@@ -305,7 +318,7 @@ public:
     virtual UnicodeString& format(const Formattable& obj,
                                   UnicodeString& appendTo,
                                   FieldPositionIterator* posIter,
-                                  UErrorCode& status) const;
+                                  UErrorCode& status) const override;
 
     /**
      * Parse a string to produce an object.  This methods handles
@@ -337,7 +350,7 @@ public:
      */
     virtual void parseObject(const UnicodeString& source,
                              Formattable& result,
-                             ParsePosition& parse_pos) const;
+                             ParsePosition& parse_pos) const override;
 
     /**
      * Format a double number. These methods call the NumberFormat
@@ -634,7 +647,9 @@ public:
      * @param result        Formattable to be set to the parse result.
      *                      If parse fails, return contents are undefined.
      * @param status        Output parameter set to a failure error code
-     *                      when a failure occurs.
+     *                      when a failure occurs. The error code when the
+     *                      string fails to parse is U_INVALID_FORMAT_ERROR,
+     *                      unless overridden by a subclass.
      * @see                 NumberFormat::isParseIntegerOnly
      * @stable ICU 2.0
      */
@@ -670,7 +685,7 @@ public:
      * true, the string "1234." would be parsed as the integer value
      * 1234 and parsing would stop at the "." character.  Of course,
      * the exact format accepted by the parse operation is locale
-     * dependant and determined by sub-classes of NumberFormat.
+     * dependent and determined by sub-classes of NumberFormat.
      * @return    true if this format will parse numbers as integers
      *            only.
      * @stable ICU 2.0
@@ -689,8 +704,8 @@ public:
     /**
      * Sets whether lenient parsing should be enabled (it is off by default).
      *
-     * @param enable \c TRUE if lenient parsing should be used,
-     *               \c FALSE otherwise.
+     * @param enable \c true if lenient parsing should be used,
+     *               \c false otherwise.
      * @stable ICU 4.8
      */
     virtual void setLenient(UBool enable);
@@ -698,8 +713,8 @@ public:
     /**
      * Returns whether lenient parsing is enabled (it is off by default).
      *
-     * @return \c TRUE if lenient parsing is enabled,
-     *         \c FALSE otherwise.
+     * @return \c true if lenient parsing is enabled,
+     *         \c false otherwise.
      * @see #setLenient
      * @stable ICU 4.8
      */
@@ -710,7 +725,7 @@ public:
      * The default formatting style is locale dependent.
      * <p>
      * <strong>NOTE:</strong> New users are strongly encouraged to use
-     * {@link NumberFormatter} instead of NumberFormat.
+     * {@link icu::number::NumberFormatter} instead of NumberFormat.
      * @stable ICU 2.0
      */
     static NumberFormat* U_EXPORT2 createInstance(UErrorCode&);
@@ -721,7 +736,7 @@ public:
      * @param inLocale    the given locale.
      * <p>
      * <strong>NOTE:</strong> New users are strongly encouraged to use
-     * {@link NumberFormatter} instead of NumberFormat.
+     * {@link icu::number::NumberFormatter} instead of NumberFormat.
      * @stable ICU 2.0
      */
     static NumberFormat* U_EXPORT2 createInstance(const Locale& inLocale,
@@ -731,7 +746,7 @@ public:
      * Create a specific style NumberFormat for the specified locale.
      * <p>
      * <strong>NOTE:</strong> New users are strongly encouraged to use
-     * {@link NumberFormatter} instead of NumberFormat.
+     * {@link icu::number::NumberFormatter} instead of NumberFormat.
      * @param desiredLocale    the given locale.
      * @param style            the given style.
      * @param errorCode        Output param filled with success/failure status.
@@ -770,7 +785,7 @@ public:
      * Returns a currency format for the current default locale.
      * <p>
      * <strong>NOTE:</strong> New users are strongly encouraged to use
-     * {@link NumberFormatter} instead of NumberFormat.
+     * {@link icu::number::NumberFormatter} instead of NumberFormat.
      * @stable ICU 2.0
      */
     static NumberFormat* U_EXPORT2 createCurrencyInstance(UErrorCode&);
@@ -779,7 +794,7 @@ public:
      * Returns a currency format for the specified locale.
      * <p>
      * <strong>NOTE:</strong> New users are strongly encouraged to use
-     * {@link NumberFormatter} instead of NumberFormat.
+     * {@link icu::number::NumberFormatter} instead of NumberFormat.
      * @param inLocale    the given locale.
      * @stable ICU 2.0
      */
@@ -790,7 +805,7 @@ public:
      * Returns a percentage format for the current default locale.
      * <p>
      * <strong>NOTE:</strong> New users are strongly encouraged to use
-     * {@link NumberFormatter} instead of NumberFormat.
+     * {@link icu::number::NumberFormatter} instead of NumberFormat.
      * @stable ICU 2.0
      */
     static NumberFormat* U_EXPORT2 createPercentInstance(UErrorCode&);
@@ -799,7 +814,7 @@ public:
      * Returns a percentage format for the specified locale.
      * <p>
      * <strong>NOTE:</strong> New users are strongly encouraged to use
-     * {@link NumberFormatter} instead of NumberFormat.
+     * {@link icu::number::NumberFormatter} instead of NumberFormat.
      * @param inLocale    the given locale.
      * @stable ICU 2.0
      */
@@ -810,7 +825,7 @@ public:
      * Returns a scientific format for the current default locale.
      * <p>
      * <strong>NOTE:</strong> New users are strongly encouraged to use
-     * {@link NumberFormatter} instead of NumberFormat.
+     * {@link icu::number::NumberFormatter} instead of NumberFormat.
      * @stable ICU 2.0
      */
     static NumberFormat* U_EXPORT2 createScientificInstance(UErrorCode&);
@@ -819,7 +834,7 @@ public:
      * Returns a scientific format for the specified locale.
      * <p>
      * <strong>NOTE:</strong> New users are strongly encouraged to use
-     * {@link NumberFormatter} instead of NumberFormat.
+     * {@link icu::number::NumberFormatter} instead of NumberFormat.
      * @param inLocale    the given locale.
      * @stable ICU 2.0
      */
@@ -855,7 +870,7 @@ public:
      * NumberFormat::createInstance to avoid undefined behavior.
      * @param key the registry key returned by a previous call to registerFactory
      * @param status the in/out status code, no special meanings are assigned
-     * @return TRUE if the factory for the key was successfully unregistered
+     * @return true if the factory for the key was successfully unregistered
      * @stable ICU 2.6
      */
     static UBool U_EXPORT2 unregister(URegistryKey key, UErrorCode& status);
@@ -1028,14 +1043,14 @@ public:
      * Get the rounding mode. This will always return NumberFormat::ERoundingMode::kRoundUnnecessary
      * if the subclass does not support rounding. 
      * @return A rounding mode
-     * @draft ICU 60
+     * @stable ICU 60
      */
     virtual ERoundingMode getRoundingMode(void) const;
 
     /**
      * Set the rounding mode. If a subclass does not support rounding, this will do nothing.
      * @param roundingMode A rounding mode
-     * @draft ICU 60
+     * @stable ICU 60
      */
     virtual void setRoundingMode(ERoundingMode roundingMode);
 
@@ -1062,7 +1077,7 @@ public:
      * other classes have different class IDs.
      * @stable ICU 2.0
      */
-    virtual UClassID getDynamicClassID(void) const = 0;
+    virtual UClassID getDynamicClassID(void) const override = 0;
 
 protected:
 
@@ -1097,7 +1112,7 @@ protected:
 #ifndef U_HIDE_INTERNAL_API
     /**
      * Creates the specified number format style of the desired locale.
-     * If mustBeDecimalFormat is TRUE, then the returned pointer is
+     * If mustBeDecimalFormat is true, then the returned pointer is
      * either a DecimalFormat or it is NULL.
      * @internal
      */
@@ -1136,7 +1151,7 @@ private:
 
   private:
     UBool      fParseIntegerOnly;
-    UBool      fLenient; // TRUE => lenient parse is enabled
+    UBool      fLenient; // true => lenient parse is enabled
 
     // ISO currency code
     char16_t      fCurrency[4];
@@ -1213,7 +1228,7 @@ public:
     /**
      * @stable ICU 2.6
      */
-    SimpleNumberFormatFactory(const Locale& locale, UBool visible = TRUE);
+    SimpleNumberFormatFactory(const Locale& locale, UBool visible = true);
 
     /**
      * @stable ICU 3.0
@@ -1223,12 +1238,12 @@ public:
     /**
      * @stable ICU 2.6
      */
-    virtual UBool visible(void) const;
+    virtual UBool visible(void) const override;
 
     /**
      * @stable ICU 2.6
      */
-    virtual const UnicodeString * getSupportedIDs(int32_t &count, UErrorCode& status) const;
+    virtual const UnicodeString * getSupportedIDs(int32_t &count, UErrorCode& status) const override;
 };
 #endif /* #if !UCONFIG_NO_SERVICE */
 
@@ -1249,6 +1264,8 @@ NumberFormat::isLenient() const
 U_NAMESPACE_END
 
 #endif /* #if !UCONFIG_NO_FORMATTING */
+
+#endif /* U_SHOW_CPLUSPLUS_API */
 
 #endif // _NUMFMT
 //eof

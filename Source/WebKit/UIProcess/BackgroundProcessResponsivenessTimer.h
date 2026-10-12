@@ -27,6 +27,7 @@
 
 #include "ResponsivenessTimer.h"
 #include <wtf/RunLoop.h>
+#include <wtf/WeakRef.h>
 
 namespace WebKit {
 
@@ -45,6 +46,7 @@ public:
     void processTerminated();
 
 private:
+    Ref<WebProcessProxy> protectedWebProcessProxy() const;
     void responsivenessCheckTimerFired();
     void timeoutTimerFired();
     void setResponsive(bool);
@@ -54,10 +56,10 @@ private:
     void scheduleNextResponsivenessCheck();
     ResponsivenessTimer::Client& client() const;
 
-    WebProcessProxy& m_webProcessProxy;
+    WeakRef<WebProcessProxy> m_webProcessProxy;
     Seconds m_checkingInterval;
-    RunLoop::Timer<BackgroundProcessResponsivenessTimer> m_responsivenessCheckTimer;
-    RunLoop::Timer<BackgroundProcessResponsivenessTimer> m_timeoutTimer;
+    RunLoop::Timer m_responsivenessCheckTimer;
+    RunLoop::Timer m_timeoutTimer;
     bool m_isResponsive { true };
 };
 

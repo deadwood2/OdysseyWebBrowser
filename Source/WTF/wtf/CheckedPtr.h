@@ -29,6 +29,14 @@
 
 namespace WTF {
 
+// CheckedPtr is used to verify that the object being pointed to outlives the CheckedPtr.
+// It does not affect the lifetime of the object being pointed to; it simply adds a runtime
+// check (via RELEASE_ASSERT) that when the object being pointed to is destroyed, there are
+// no outstanding CheckedPtrs that reference it.
+//
+// Use is similar to WeakPtr, but CheckedPtr is used in cases where the target is never
+// expected to become null, and CheckedPtr has less overhead.
+
 template<typename T, typename PtrTraits>
 class CheckedPtr {
     WTF_MAKE_FAST_ALLOCATED;
@@ -56,7 +64,8 @@ public:
 
     ALWAYS_INLINE CheckedPtr(CheckedPtr&& other)
         : m_ptr { PtrTraits::exchange(other.m_ptr, nullptr) }
-    { }
+    {
+    }
 
     ALWAYS_INLINE ~CheckedPtr()
     {
@@ -68,8 +77,9 @@ public:
     { }
 
     template<typename OtherType, typename OtherPtrTraits> CheckedPtr(CheckedPtr<OtherType, OtherPtrTraits>&& other)
-        : m_ptr { PtrTraits::exchange(other.m_ptr, nullptr) }
-    { }
+        : m_ptr { OtherPtrTraits::exchange(other.m_ptr, nullptr) }
+    {
+    }
 
     CheckedPtr(CheckedRef<T, PtrTraits>& other)
         : CheckedPtr(PtrTraits::unwrap(other.m_ptr))
@@ -97,18 +107,18 @@ public:
 
     bool isHashTableDeletedValue() const { return PtrTraits::isHashTableDeletedValue(m_ptr); }
 
-    // This conversion operator allows implicit conversion to bool but not to other integer types.
-    using UnspecifiedBoolType = void (CheckedPtr::*)() const;
-    operator UnspecifiedBoolType() const { return m_ptr ? &CheckedPtr::unspecifiedBoolTypeInstance : nullptr; }
+    ALWAYS_INLINE explicit operator bool() const { return PtrTraits::unwrap(m_ptr); }
 
-    ALWAYS_INLINE bool operator!() const { return !PtrTraits::unwrap(m_ptr); }
+    ALWAYS_INLINE T* get() const { return PtrTraits::unwrap(m_ptr); }
+    ALWAYS_INLINE T& operator*() const { ASSERT(m_ptr); return *get(); }
+    ALWAYS_INLINE T* operator->() const { return get(); }
 
-    ALWAYS_INLINE const T* get() const { return PtrTraits::unwrap(m_ptr); }
-    ALWAYS_INLINE T* get() { return PtrTraits::unwrap(m_ptr); }
-    ALWAYS_INLINE const T& operator*() const { ASSERT(this); return *get(); }
-    ALWAYS_INLINE T& operator*() { ASSERT(this); return *get(); }
-    ALWAYS_INLINE const T* operator->() const { return get(); }
-    ALWAYS_INLINE T* operator->() { return get(); }
+    CheckedRef<T> releaseNonNull()
+    {
+        ASSERT(m_ptr);
+        auto& ptr = *PtrTraits::unwrap(std::exchange(m_ptr, nullptr));
+        return CheckedRef { ptr, CheckedRef<T>::Adopt };
+    }
 
     bool operator==(const T* other) const { return m_ptr == other; }
     template<typename U> bool operator==(U* other) const { return m_ptr == other; }
@@ -163,8 +173,6 @@ public:
 private:
     template<typename OtherType, typename OtherPtrTraits> friend class CheckedPtr;
 
-    void unspecifiedBoolTypeInstance() const { }
-
     ALWAYS_INLINE void refIfNotNull()
     {
         if (T* ptr = PtrTraits::unwrap(m_ptr); LIKELY(ptr))
@@ -182,7 +190,8 @@ private:
 
 template <typename T, typename PtrTraits>
 struct GetPtrHelper<CheckedPtr<T, PtrTraits>> {
-    typedef T* PtrType;
+    using PtrType = T*;
+    using UnderlyingType = T;
     static T* getPtr(const CheckedPtr<T, PtrTraits>& p) { return const_cast<T*>(p.get()); }
 };
 
@@ -221,7 +230,11 @@ template<typename P> struct HashTraits<CheckedPtr<P>> : SimpleClassHashTraits<Ch
 
 template<typename P> struct DefaultHash<CheckedPtr<P>> : PtrHash<CheckedPtr<P>> { };
 
+template<typename> struct PackedPtrTraits;
+template<typename T> using PackedCheckedPtr = CheckedPtr<T, PackedPtrTraits<T>>;
+
 } // namespace WTF
 
 using WTF::CheckedPtr;
+using WTF::PackedCheckedPtr;
 

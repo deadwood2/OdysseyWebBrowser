@@ -39,11 +39,16 @@ WI.ElementsTabContentView = class ElementsTabContentView extends WI.ContentBrows
         // COMPATIBILITY (iOS 14.0): `CSS.getFontDataForNode` did not exist yet.
         if (InspectorBackend.hasCommand("CSS.getFontDataForNode"))
             detailsSidebarPanelConstructors.push(WI.FontDetailsSidebarPanel);
+
+        // COMPATIBILITY (iOS 18.0, macOS 15.0): `DOM.getMediaStats` did not exist yet.
+        if (InspectorBackend.hasCommand("DOM.getMediaStats"))
+            detailsSidebarPanelConstructors.push(WI.MediaDetailsSidebarPanel)
+
         detailsSidebarPanelConstructors.push(WI.ChangesDetailsSidebarPanel, WI.DOMNodeDetailsSidebarPanel);
         if (InspectorBackend.hasDomain("LayerTree"))
             detailsSidebarPanelConstructors.push(WI.LayerTreeDetailsSidebarPanel);
 
-        super(ElementsTabContentView.tabInfo(), {detailsSidebarPanelConstructors, disableBackForward: true});
+        super(ElementsTabContentView.tabInfo(), {detailsSidebarPanelConstructors, hideBackForwardButtons: true, disableBackForwardNavigation: true});
     }
 
     static tabInfo()
@@ -115,6 +120,13 @@ WI.ElementsTabContentView = class ElementsTabContentView extends WI.ContentBrows
         WI.Frame.removeEventListener(WI.Frame.Event.MainResourceDidChange, this._mainResourceDidChange, this);
 
         super.detached();
+    }
+
+    initialLayout()
+    {
+        super.initialLayout();
+
+        this.element.appendChild(WI.ReferencePage.ElementsTab.DOMTree.createLinkElement());
     }
 
     closed()

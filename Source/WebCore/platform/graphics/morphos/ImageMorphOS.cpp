@@ -34,16 +34,16 @@ RefPtr<WebCore::SharedBuffer> loadResourceIntoBuffer(const char*);
 
 namespace WebCore {
 
-void BitmapImage::invalidatePlatformData()
-{
-}
-
-Ref<Image> Image::loadPlatformResource(const char *name)
+Ref<Image> ImageAdapter::loadPlatformResource(const char *name)
 {
     auto buffer = loadResourceIntoBuffer(name);
     auto img = BitmapImage::create();
     img->setData(WTFMove(buffer), true);
     return img;
+}
+
+void ImageAdapter::invalidate()
+{
 }
 
 } // namespace WebCore

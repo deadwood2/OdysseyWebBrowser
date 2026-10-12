@@ -22,7 +22,8 @@
 #include "JSTestReportExtraMemoryCost.h"
 
 #include "ActiveDOMObject.h"
-#include "DOMIsoSubspaces.h"
+#include "ExtendedDOMClientIsoSubspaces.h"
+#include "ExtendedDOMIsoSubspaces.h"
 #include "JSDOMBinding.h"
 #include "JSDOMConstructorNotConstructable.h"
 #include "JSDOMExceptionHandling.h"
@@ -39,6 +40,7 @@
 #include <wtf/GetPtr.h>
 #include <wtf/PointerPreparations.h>
 #include <wtf/URL.h>
+#include <wtf/text/MakeString.h>
 
 
 namespace WebCore {
@@ -53,17 +55,17 @@ public:
     using Base = JSC::JSNonFinalObject;
     static JSTestReportExtraMemoryCostPrototype* create(JSC::VM& vm, JSDOMGlobalObject* globalObject, JSC::Structure* structure)
     {
-        JSTestReportExtraMemoryCostPrototype* ptr = new (NotNull, JSC::allocateCell<JSTestReportExtraMemoryCostPrototype>(vm.heap)) JSTestReportExtraMemoryCostPrototype(vm, globalObject, structure);
+        JSTestReportExtraMemoryCostPrototype* ptr = new (NotNull, JSC::allocateCell<JSTestReportExtraMemoryCostPrototype>(vm)) JSTestReportExtraMemoryCostPrototype(vm, globalObject, structure);
         ptr->finishCreation(vm);
         return ptr;
     }
 
     DECLARE_INFO;
     template<typename CellType, JSC::SubspaceAccess>
-    static JSC::IsoSubspace* subspaceFor(JSC::VM& vm)
+    static JSC::GCClient::IsoSubspace* subspaceFor(JSC::VM& vm)
     {
         STATIC_ASSERT_ISO_SUBSPACE_SHARABLE(JSTestReportExtraMemoryCostPrototype, Base);
-        return &vm.plainObjectSpace;
+        return &vm.plainObjectSpace();
     }
     static JSC::Structure* createStructure(JSC::VM& vm, JSC::JSGlobalObject* globalObject, JSC::JSValue prototype)
     {
@@ -82,7 +84,7 @@ STATIC_ASSERT_ISO_SUBSPACE_SHARABLE(JSTestReportExtraMemoryCostPrototype, JSTest
 
 using JSTestReportExtraMemoryCostDOMConstructor = JSDOMConstructorNotConstructable<JSTestReportExtraMemoryCost>;
 
-template<> const ClassInfo JSTestReportExtraMemoryCostDOMConstructor::s_info = { "TestReportExtraMemoryCost", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSTestReportExtraMemoryCostDOMConstructor) };
+template<> const ClassInfo JSTestReportExtraMemoryCostDOMConstructor::s_info = { "TestReportExtraMemoryCost"_s, &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSTestReportExtraMemoryCostDOMConstructor) };
 
 template<> JSValue JSTestReportExtraMemoryCostDOMConstructor::prototypeForStructure(JSC::VM& vm, const JSDOMGlobalObject& globalObject)
 {
@@ -92,19 +94,21 @@ template<> JSValue JSTestReportExtraMemoryCostDOMConstructor::prototypeForStruct
 
 template<> void JSTestReportExtraMemoryCostDOMConstructor::initializeProperties(VM& vm, JSDOMGlobalObject& globalObject)
 {
-    putDirect(vm, vm.propertyNames->prototype, JSTestReportExtraMemoryCost::prototype(vm, globalObject), JSC::PropertyAttribute::DontDelete | JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
-    putDirect(vm, vm.propertyNames->name, jsNontrivialString(vm, "TestReportExtraMemoryCost"_s), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
     putDirect(vm, vm.propertyNames->length, jsNumber(0), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
+    JSString* nameString = jsNontrivialString(vm, "TestReportExtraMemoryCost"_s);
+    m_originalName.set(vm, this, nameString);
+    putDirect(vm, vm.propertyNames->name, nameString, JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
+    putDirect(vm, vm.propertyNames->prototype, JSTestReportExtraMemoryCost::prototype(vm, globalObject), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum | JSC::PropertyAttribute::DontDelete);
 }
 
 /* Hash table for prototype */
 
 static const HashTableValue JSTestReportExtraMemoryCostPrototypeTableValues[] =
 {
-    { "constructor", static_cast<unsigned>(JSC::PropertyAttribute::DontEnum), NoIntrinsic, { (intptr_t)static_cast<PropertySlot::GetValueFunc>(jsTestReportExtraMemoryCostConstructor), (intptr_t) static_cast<PutPropertySlot::PutValueFunc>(0) } },
+    { "constructor"_s, static_cast<unsigned>(PropertyAttribute::DontEnum), NoIntrinsic, { HashTableValue::GetterSetterType, jsTestReportExtraMemoryCostConstructor, 0 } },
 };
 
-const ClassInfo JSTestReportExtraMemoryCostPrototype::s_info = { "TestReportExtraMemoryCost", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSTestReportExtraMemoryCostPrototype) };
+const ClassInfo JSTestReportExtraMemoryCostPrototype::s_info = { "TestReportExtraMemoryCost"_s, &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSTestReportExtraMemoryCostPrototype) };
 
 void JSTestReportExtraMemoryCostPrototype::finishCreation(VM& vm)
 {
@@ -113,26 +117,28 @@ void JSTestReportExtraMemoryCostPrototype::finishCreation(VM& vm)
     JSC_TO_STRING_TAG_WITHOUT_TRANSITION();
 }
 
-const ClassInfo JSTestReportExtraMemoryCost::s_info = { "TestReportExtraMemoryCost", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSTestReportExtraMemoryCost) };
+const ClassInfo JSTestReportExtraMemoryCost::s_info = { "TestReportExtraMemoryCost"_s, &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSTestReportExtraMemoryCost) };
 
 JSTestReportExtraMemoryCost::JSTestReportExtraMemoryCost(Structure* structure, JSDOMGlobalObject& globalObject, Ref<TestReportExtraMemoryCost>&& impl)
     : JSDOMWrapper<TestReportExtraMemoryCost>(structure, globalObject, WTFMove(impl))
 {
 }
 
+static_assert(!std::is_base_of<ActiveDOMObject, TestReportExtraMemoryCost>::value, "Interface is not marked as [ActiveDOMObject] even though implementation class subclasses ActiveDOMObject.");
+
 void JSTestReportExtraMemoryCost::finishCreation(VM& vm)
 {
     Base::finishCreation(vm);
-    ASSERT(inherits(vm, info()));
+    ASSERT(inherits(info()));
 
-    static_assert(!std::is_base_of<ActiveDOMObject, TestReportExtraMemoryCost>::value, "Interface is not marked as [ActiveDOMObject] even though implementation class subclasses ActiveDOMObject.");
-
-    vm.heap.reportExtraMemoryAllocated(wrapped().memoryCost());
+    vm.heap.reportExtraMemoryAllocated(this, wrapped().memoryCost());
 }
 
 JSObject* JSTestReportExtraMemoryCost::createPrototype(VM& vm, JSDOMGlobalObject& globalObject)
 {
-    return JSTestReportExtraMemoryCostPrototype::create(vm, &globalObject, JSTestReportExtraMemoryCostPrototype::createStructure(vm, &globalObject, globalObject.objectPrototype()));
+    auto* structure = JSTestReportExtraMemoryCostPrototype::createStructure(vm, &globalObject, globalObject.objectPrototype());
+    structure->setMayBePrototype(true);
+    return JSTestReportExtraMemoryCostPrototype::create(vm, &globalObject, structure);
 }
 
 JSObject* JSTestReportExtraMemoryCost::prototype(VM& vm, JSDOMGlobalObject& globalObject)
@@ -153,35 +159,22 @@ void JSTestReportExtraMemoryCost::destroy(JSC::JSCell* cell)
 
 JSC_DEFINE_CUSTOM_GETTER(jsTestReportExtraMemoryCostConstructor, (JSGlobalObject* lexicalGlobalObject, EncodedJSValue thisValue, PropertyName))
 {
-    VM& vm = JSC::getVM(lexicalGlobalObject);
+    auto& vm = JSC::getVM(lexicalGlobalObject);
     auto throwScope = DECLARE_THROW_SCOPE(vm);
-    auto* prototype = jsDynamicCast<JSTestReportExtraMemoryCostPrototype*>(vm, JSValue::decode(thisValue));
+    auto* prototype = jsDynamicCast<JSTestReportExtraMemoryCostPrototype*>(JSValue::decode(thisValue));
     if (UNLIKELY(!prototype))
         return throwVMTypeError(lexicalGlobalObject, throwScope);
-    return JSValue::encode(JSTestReportExtraMemoryCost::getConstructor(JSC::getVM(lexicalGlobalObject), prototype->globalObject()));
+    return JSValue::encode(JSTestReportExtraMemoryCost::getConstructor(vm, prototype->globalObject()));
 }
 
-JSC::IsoSubspace* JSTestReportExtraMemoryCost::subspaceForImpl(JSC::VM& vm)
+JSC::GCClient::IsoSubspace* JSTestReportExtraMemoryCost::subspaceForImpl(JSC::VM& vm)
 {
-    auto& clientData = *static_cast<JSVMClientData*>(vm.clientData);
-    auto& spaces = clientData.subspaces();
-    if (auto* space = spaces.m_subspaceForTestReportExtraMemoryCost.get())
-        return space;
-    static_assert(std::is_base_of_v<JSC::JSDestructibleObject, JSTestReportExtraMemoryCost> || !JSTestReportExtraMemoryCost::needsDestruction);
-    if constexpr (std::is_base_of_v<JSC::JSDestructibleObject, JSTestReportExtraMemoryCost>)
-        spaces.m_subspaceForTestReportExtraMemoryCost = makeUnique<IsoSubspace> ISO_SUBSPACE_INIT(vm.heap, vm.destructibleObjectHeapCellType.get(), JSTestReportExtraMemoryCost);
-    else
-        spaces.m_subspaceForTestReportExtraMemoryCost = makeUnique<IsoSubspace> ISO_SUBSPACE_INIT(vm.heap, vm.cellHeapCellType.get(), JSTestReportExtraMemoryCost);
-    auto* space = spaces.m_subspaceForTestReportExtraMemoryCost.get();
-IGNORE_WARNINGS_BEGIN("unreachable-code")
-IGNORE_WARNINGS_BEGIN("tautological-compare")
-    void (*myVisitOutputConstraint)(JSC::JSCell*, JSC::SlotVisitor&) = JSTestReportExtraMemoryCost::visitOutputConstraints;
-    void (*jsCellVisitOutputConstraint)(JSC::JSCell*, JSC::SlotVisitor&) = JSC::JSCell::visitOutputConstraints;
-    if (myVisitOutputConstraint != jsCellVisitOutputConstraint)
-        clientData.outputConstraintSpaces().append(space);
-IGNORE_WARNINGS_END
-IGNORE_WARNINGS_END
-    return space;
+    return WebCore::subspaceForImpl<JSTestReportExtraMemoryCost, UseCustomHeapCellType::No>(vm,
+        [] (auto& spaces) { return spaces.m_clientSubspaceForTestReportExtraMemoryCost.get(); },
+        [] (auto& spaces, auto&& space) { spaces.m_clientSubspaceForTestReportExtraMemoryCost = std::forward<decltype(space)>(space); },
+        [] (auto& spaces) { return spaces.m_subspaceForTestReportExtraMemoryCost.get(); },
+        [] (auto& spaces, auto&& space) { spaces.m_subspaceForTestReportExtraMemoryCost = std::forward<decltype(space)>(space); }
+    );
 }
 
 template<typename Visitor>
@@ -206,11 +199,11 @@ void JSTestReportExtraMemoryCost::analyzeHeap(JSCell* cell, HeapAnalyzer& analyz
     auto* thisObject = jsCast<JSTestReportExtraMemoryCost*>(cell);
     analyzer.setWrappedObjectForCell(cell, &thisObject->wrapped());
     if (thisObject->scriptExecutionContext())
-        analyzer.setLabelForCell(cell, "url " + thisObject->scriptExecutionContext()->url().string());
+        analyzer.setLabelForCell(cell, makeString("url "_s, thisObject->scriptExecutionContext()->url().string()));
     Base::analyzeHeap(cell, analyzer);
 }
 
-bool JSTestReportExtraMemoryCostOwner::isReachableFromOpaqueRoots(JSC::Handle<JSC::Unknown> handle, void*, AbstractSlotVisitor& visitor, const char** reason)
+bool JSTestReportExtraMemoryCostOwner::isReachableFromOpaqueRoots(JSC::Handle<JSC::Unknown> handle, void*, AbstractSlotVisitor& visitor, ASCIILiteral* reason)
 {
     UNUSED_PARAM(handle);
     UNUSED_PARAM(visitor);
@@ -222,7 +215,7 @@ void JSTestReportExtraMemoryCostOwner::finalize(JSC::Handle<JSC::Unknown> handle
 {
     auto* jsTestReportExtraMemoryCost = static_cast<JSTestReportExtraMemoryCost*>(handle.slot()->asCell());
     auto& world = *static_cast<DOMWrapperWorld*>(context);
-    uncacheWrapper(world, &jsTestReportExtraMemoryCost->wrapped(), jsTestReportExtraMemoryCost);
+    uncacheWrapper(world, jsTestReportExtraMemoryCost->protectedWrapped().ptr(), jsTestReportExtraMemoryCost);
 }
 
 #if ENABLE(BINDING_INTEGRITY)
@@ -232,28 +225,27 @@ extern "C" { extern void (*const __identifier("??_7TestReportExtraMemoryCost@Web
 #else
 extern "C" { extern void* _ZTVN7WebCore25TestReportExtraMemoryCostE[]; }
 #endif
+template<typename T, typename = std::enable_if_t<std::is_same_v<T, TestReportExtraMemoryCost>, void>> static inline void verifyVTable(TestReportExtraMemoryCost* ptr) {
+    if constexpr (std::is_polymorphic_v<T>) {
+        const void* actualVTablePointer = getVTablePointer<T>(ptr);
+#if PLATFORM(WIN)
+        void* expectedVTablePointer = __identifier("??_7TestReportExtraMemoryCost@WebCore@@6B@");
+#else
+        void* expectedVTablePointer = &_ZTVN7WebCore25TestReportExtraMemoryCostE[2];
 #endif
 
+        // If you hit this assertion you either have a use after free bug, or
+        // TestReportExtraMemoryCost has subclasses. If TestReportExtraMemoryCost has subclasses that get passed
+        // to toJS() we currently require TestReportExtraMemoryCost you to opt out of binding hardening
+        // by adding the SkipVTableValidation attribute to the interface IDL definition
+        RELEASE_ASSERT(actualVTablePointer == expectedVTablePointer);
+    }
+}
+#endif
 JSC::JSValue toJSNewlyCreated(JSC::JSGlobalObject*, JSDOMGlobalObject* globalObject, Ref<TestReportExtraMemoryCost>&& impl)
 {
-
 #if ENABLE(BINDING_INTEGRITY)
-    const void* actualVTablePointer = getVTablePointer(impl.ptr());
-#if PLATFORM(WIN)
-    void* expectedVTablePointer = __identifier("??_7TestReportExtraMemoryCost@WebCore@@6B@");
-#else
-    void* expectedVTablePointer = &_ZTVN7WebCore25TestReportExtraMemoryCostE[2];
-#endif
-
-    // If this fails TestReportExtraMemoryCost does not have a vtable, so you need to add the
-    // ImplementationLacksVTable attribute to the interface definition
-    static_assert(std::is_polymorphic<TestReportExtraMemoryCost>::value, "TestReportExtraMemoryCost is not polymorphic");
-
-    // If you hit this assertion you either have a use after free bug, or
-    // TestReportExtraMemoryCost has subclasses. If TestReportExtraMemoryCost has subclasses that get passed
-    // to toJS() we currently require TestReportExtraMemoryCost you to opt out of binding hardening
-    // by adding the SkipVTableValidation attribute to the interface IDL definition
-    RELEASE_ASSERT(actualVTablePointer == expectedVTablePointer);
+    verifyVTable<TestReportExtraMemoryCost>(impl.ptr());
 #endif
     return createWrapper<TestReportExtraMemoryCost>(globalObject, WTFMove(impl));
 }
@@ -263,9 +255,9 @@ JSC::JSValue toJS(JSC::JSGlobalObject* lexicalGlobalObject, JSDOMGlobalObject* g
     return wrap(lexicalGlobalObject, globalObject, impl);
 }
 
-TestReportExtraMemoryCost* JSTestReportExtraMemoryCost::toWrapped(JSC::VM& vm, JSC::JSValue value)
+TestReportExtraMemoryCost* JSTestReportExtraMemoryCost::toWrapped(JSC::VM&, JSC::JSValue value)
 {
-    if (auto* wrapper = jsDynamicCast<JSTestReportExtraMemoryCost*>(vm, value))
+    if (auto* wrapper = jsDynamicCast<JSTestReportExtraMemoryCost*>(value))
         return &wrapper->wrapped();
     return nullptr;
 }

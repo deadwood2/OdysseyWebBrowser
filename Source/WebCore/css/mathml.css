@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Apple Inc.  All rights reserved.
+ * Copyright (C) 2020-2024 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -22,6 +22,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
+ /* https://w3c.github.io/mathml-core/#user-agent-stylesheet */
+
 #if defined(ENABLE_MATHML) && ENABLE_MATHML
 
 @namespace "http://www.w3.org/1998/Math/MathML";
@@ -39,7 +41,20 @@
     outline: auto 5px -webkit-focus-ring-color
 }
 
+/* Universal rules */
+* {
+    writing-mode: horizontal-tb !important;
+}
+
+/* The <math> element */
 math {
+    direction: ltr;
+    text-indent: 0;
+    letter-spacing: normal;
+    line-height: normal;
+    word-spacing: normal;
+    font-style: normal;
+    font-weight: normal;
     display: inline;
     math-style: compact;
 
@@ -50,30 +65,6 @@ math {
     http://www.mathml-association.org/MathMLinHTML5/S3.html#SS1.SSS1
     */
     -webkit-line-box-contain: glyphs replaced;
-
-    /*
-    Inheriting the following properties can cause excessive spacing of mathematical formulas so we
-    just reset them to their default values.
-    */
-    text-indent: 0;
-    line-height: normal;
-    word-spacing: normal;
-    letter-spacing: normal;
-
-    /*
-    In some countries and languages, text is written from right-to-left while mathematical formulas
-    are written from left-to-write. Hence it is wrong to inherit the direction and we reset that
-    property to left-to-write. Per the MathML specification, authors should explicitly use the "dir"
-    attribute on the <math> element if they want to force the overall direction of the mathematical
-    formulas.
-    */
-    direction: ltr;
-
-    /*
-    Mathematical formula inside an italic paragraph should not inherit the font-style as this gives
-    poor rendering and is confusing with the mathvariant italic.
-    */
-    font-style: normal;
 
     /* Fonts with appropriate Unicode coverage and OpenType features are required for good math
     rendering. These requirements as well as the up-to-date list of known math fonts to fulfill
@@ -145,8 +136,6 @@ math {
        /* Mathematical fonts generally use "serif" style. Hence we append the generic "serif" family
        as a fallback in order to increase our chance to find a mathematical font. */
        serif;
-
-    /* FIXME: Should we reset more CSS properties (http://webkit.org/b/156839)? */
 }
 
 math[display="block" i] {
@@ -166,6 +155,11 @@ ms, mtext, mi, mn, mo, annotation, mtd {
     white-space: nowrap !important;
 }
 
+/* Fractions */
+mfrac {
+    padding-inline: 1px;
+}
+
 mfrac > * {
     math-style: compact;
 }
@@ -178,25 +172,15 @@ mroot > *:last-child {
     font-size: 0.5625em; /* This 0.75^2 since the scriptlevel is incremented by 2 in the index. */
     math-style: compact;
 }
-mi {
-    padding-inline-end: 0.1em;
-}
-msub > mi:first-child, msubsup > mi:first-child {
-    padding-inline-end: 0;
-}
-msubsup > mi:first-child + * + * {
-    margin-inline-start: 0.14em; /* This is larger than 0.1em because the child's font-size is smaller than the <msubsup>'s. */
-}
 
 mphantom {
     visibility: hidden;
 }
 
 /* This is a special style for erroneous markup. */
+/* https://w3c.github.io/mathml-core/#error-message-merror */
 merror {
-    outline: solid thin red;
-    font-weight: bold;
-    font-family: sans-serif;
+    border: 1px solid red;
     background-color: lightYellow;
 }
 
@@ -265,6 +249,14 @@ mtable[columnlines="solid"] > mtr > mtd + mtd {
 
 mtable[columnlines="dashed"] > mtr > mtd + mtd {
     border-left: dashed thin;
+}
+
+/* Other rules for scriptlevel, displaystyle and math-shift */
+munder[accentunder="true" i] > :nth-child(2),
+mover[accent="true" i] > :nth-child(2),
+munderover[accentunder="true" i] > :nth-child(2),
+munderover[accent="true" i] > :nth-child(3) {
+  font-size: inherit;
 }
 
 #endif

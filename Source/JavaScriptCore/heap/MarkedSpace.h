@@ -22,13 +22,13 @@
 #pragma once
 
 #include "BlockDirectory.h"
-#include "IterationStatus.h"
 #include "MarkedBlock.h"
 #include "MarkedBlockSet.h"
 #include "PreciseAllocation.h"
 #include <array>
 #include <wtf/Bag.h>
 #include <wtf/HashSet.h>
+#include <wtf/IterationStatus.h>
 #include <wtf/Noncopyable.h>
 #include <wtf/RetainPtr.h>
 #include <wtf/SentinelLinkedList.h>
@@ -57,7 +57,7 @@ public:
     // Sizes up to this amount get a size class for each size step.
     static constexpr size_t preciseCutoff = 80;
     
-    // The amount of available payload in a block is the block's size minus the footer.
+    // The amount of available payload in a block is the block's size minus the header.
     static constexpr size_t blockPayload = MarkedBlock::payloadSize;
     
     // The largest cell we're willing to allocate in a MarkedBlock the "normal way" (i.e. using size
@@ -96,7 +96,7 @@ public:
     MarkedSpace(Heap*);
     ~MarkedSpace();
     
-    Heap& heap() const;
+    JSC::Heap& heap() const;
     
     void lastChanceToFinalize(); // Must call stopAllocatingForGood first.
     void freeMemory();
@@ -105,8 +105,10 @@ public:
     
     void prepareForAllocation();
 
-    template<typename Visitor> void visitWeakSets(Visitor&);
     void reapWeakSets();
+
+    template<typename Visitor>
+    Ref<SharedTask<void(Visitor&)>> forEachWeakInParallel();
 
     MarkedBlockSet& blocks() { return m_blocks; }
 
@@ -152,6 +154,7 @@ public:
     
     HeapVersion markingVersion() const { return m_markingVersion; }
     HeapVersion newlyAllocatedVersion() const { return m_newlyAllocatedVersion; }
+    HeapVersion edenVersion() const { return m_edenVersion; }
 
     const Vector<PreciseAllocation*>& preciseAllocations() const { return m_preciseAllocations; }
     unsigned preciseAllocationsNurseryOffset() const { return m_preciseAllocationsNurseryOffset; }
@@ -212,6 +215,7 @@ private:
     size_t m_capacity { 0 };
     HeapVersion m_markingVersion { initialVersion };
     HeapVersion m_newlyAllocatedVersion { initialVersion };
+    HeapVersion m_edenVersion { initialVersion };
     bool m_isIterating { false };
     bool m_isMarking { false };
     Lock m_directoryLock;

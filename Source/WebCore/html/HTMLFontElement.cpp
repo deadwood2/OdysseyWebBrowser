@@ -2,7 +2,7 @@
  * Copyright (C) 1999 Lars Knoll (knoll@kde.org)
  *           (C) 1999 Antti Koivisto (koivisto@kde.org)
  *           (C) 2000 Simon Hausmann <hausmann@kde.org>
- * Copyright (C) 2003, 2006, 2008, 2010 Apple Inc. All rights reserved.
+ * Copyright (C) 2003-2022 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -29,15 +29,16 @@
 #include "CSSValueList.h"
 #include "CSSValuePool.h"
 #include "HTMLNames.h"
-#include "HTMLParserIdioms.h"
+#include "MutableStyleProperties.h"
+#include "NodeName.h"
 #include "StyleProperties.h"
-#include <wtf/IsoMallocInlines.h>
+#include <wtf/TZoneMallocInlines.h>
 #include <wtf/text/StringBuilder.h>
 #include <wtf/text/StringToIntegerConversion.h>
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(HTMLFontElement);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(HTMLFontElement);
 
 using namespace HTMLNames;
 
@@ -54,17 +55,17 @@ Ref<HTMLFontElement> HTMLFontElement::create(const QualifiedName& tagName, Docum
 
 // http://www.whatwg.org/specs/web-apps/current-work/multipage/rendering.html#fonts-and-colors
 template <typename CharacterType>
-static bool parseFontSize(const CharacterType* characters, unsigned length, int& size)
+static bool parseFontSize(std::span<const CharacterType> characters, int& size)
 {
 
     // Step 1
     // Step 2
-    const CharacterType* position = characters;
-    const CharacterType* end = characters + length;
+    const CharacterType* position = characters.data();
+    const CharacterType* end = characters.data() + characters.size();
 
     // Step 3
     while (position < end) {
-        if (!isHTMLSpace(*position))
+        if (!isASCIIWhitespace(*position))
             break;
         ++position;
     }
@@ -135,9 +136,9 @@ static bool parseFontSize(const String& input, int& size)
         return false;
 
     if (input.is8Bit())
-        return parseFontSize(input.characters8(), input.length(), size);
+        return parseFontSize(input.span8(), size);
 
-    return parseFontSize(input.characters16(), input.length(), size);
+    return parseFontSize(input.span16(), size);
 }
 
 bool HTMLFontElement::cssValueFromFontSizeNumber(const String& s, CSSValueID& size)
@@ -167,7 +168,7 @@ bool HTMLFontElement::cssValueFromFontSizeNumber(const String& s, CSSValueID& si
         size = CSSValueXxLarge;
         break;
     case 7:
-        size = CSSValueWebkitXxxLarge;
+        size = CSSValueXxxLarge;
         break;
     default:
         ASSERT_NOT_REACHED();
@@ -177,24 +178,39 @@ bool HTMLFontElement::cssValueFromFontSizeNumber(const String& s, CSSValueID& si
 
 bool HTMLFontElement::hasPresentationalHintsForAttribute(const QualifiedName& name) const
 {
-    if (name == sizeAttr || name == colorAttr || name == faceAttr)
+    switch (name.nodeName()) {
+    case AttributeNames::sizeAttr:
+    case AttributeNames::colorAttr:
+    case AttributeNames::faceAttr:
         return true;
+    default:
+        break;
+    }
     return HTMLElement::hasPresentationalHintsForAttribute(name);
 }
 
 void HTMLFontElement::collectPresentationalHintsForAttribute(const QualifiedName& name, const AtomString& value, MutableStyleProperties& style)
 {
-    if (name == sizeAttr) {
+    switch (name.nodeName()) {
+    case AttributeNames::sizeAttr: {
         CSSValueID size = CSSValueInvalid;
         if (cssValueFromFontSizeNumber(value, size))
             addPropertyToPresentationalHintStyle(style, CSSPropertyFontSize, size);
-    } else if (name == colorAttr)
+        break;
+    }
+    case AttributeNames::colorAttr:
         addHTMLColorToStyle(style, CSSPropertyColor, value);
-    else if (name == faceAttr) {
-        if (auto fontFaceValue = CSSValuePool::singleton().createFontFaceValue(value))
-            style.setProperty(CSSProperty(CSSPropertyFontFamily, WTFMove(fontFaceValue)));
-    } else
+        break;
+    case AttributeNames::faceAttr:
+        if (!value.isEmpty()) {
+            if (auto fontFaceValue = CSSValuePool::singleton().createFontFaceValue(value))
+                style.setProperty(CSSProperty(CSSPropertyFontFamily, WTFMove(fontFaceValue)));
+        }
+        break;
+    default:
         HTMLElement::collectPresentationalHintsForAttribute(name, value, style);
+        break;
+    }
 }
 
 }

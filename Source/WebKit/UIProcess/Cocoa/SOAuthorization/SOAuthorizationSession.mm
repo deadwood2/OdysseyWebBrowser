@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019-2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2019-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,33 +28,41 @@
 
 #if HAVE(APP_SSO)
 
+#import "APIFrameHandle.h"
 #import "APIHTTPCookieStore.h"
 #import "APINavigation.h"
 #import "APINavigationAction.h"
 #import "APIUIClient.h"
 #import "Logging.h"
 #import "SOAuthorizationLoadPolicy.h"
-#import <WebKit/WKUIDelegatePrivate.h>
+#import "UIKitUtilities.h"
+#import "WKSOAuthorizationDelegate.h"
+#import "WKUIDelegatePrivate.h"
 #import "WKWebViewInternal.h"
+#import "WebFrameProxy.h"
 #import "WebPageProxy.h"
 #import "WebsiteDataStore.h"
+#import <WebCore/ContentSecurityPolicy.h>
+#import <WebCore/HTTPParsers.h>
 #import <WebCore/ResourceResponse.h>
+#import <WebCore/RuntimeApplicationChecks.h>
 #import <WebCore/SecurityOrigin.h>
 #import <pal/cocoa/AppSSOSoftLink.h>
 #import <wtf/BlockPtr.h>
 #import <wtf/Vector.h>
 
-#define AUTHORIZATIONSESSION_RELEASE_LOG(fmt, ...) RELEASE_LOG(AppSSO, "%p - [InitiatingAction=%s][State=%s] SOAuthorizationSession::" fmt, this, toString(m_action), stateString(), ##__VA_ARGS__)
+#define AUTHORIZATIONSESSION_RELEASE_LOG(fmt, ...) RELEASE_LOG(AppSSO, "%p - [InitiatingAction=%s][State=%s] SOAuthorizationSession::" fmt, this, toString(m_action).characters(), stateString().characters(), ##__VA_ARGS__)
 
 namespace WebKit {
+using namespace WebCore;
 
 namespace {
 
-static const char* Redirect = "Redirect";
-static const char* PopUp = "PopUp";
-static const char* SubFrame = "SubFrame";
+static constexpr auto Redirect = "Redirect"_s;
+static constexpr auto PopUp = "PopUp"_s;
+static constexpr auto SubFrame = "SubFrame"_s;
 
-static const char* toString(const SOAuthorizationSession::InitiatingAction& action)
+static ASCIILiteral toString(const SOAuthorizationSession::InitiatingAction& action)
 {
     switch (action) {
     case SOAuthorizationSession::InitiatingAction::Redirect:
@@ -66,16 +74,14 @@ static const char* toString(const SOAuthorizationSession::InitiatingAction& acti
     }
 
     ASSERT_NOT_REACHED();
-    return nullptr;
+    return { };
 }
 
 static Vector<WebCore::Cookie> toCookieVector(NSArray<NSHTTPCookie *> *cookies)
 {
-    Vector<WebCore::Cookie> result;
-    result.reserveInitialCapacity(cookies.count);
-    for (id cookie in cookies)
-        result.uncheckedAppend(cookie);
-    return result;
+    return Vector<WebCore::Cookie>(cookies.count, [cookies](size_t i) {
+        return WebCore::Cookie { cookies[i] };
+    });
 }
 
 static bool isSameOrigin(const WebCore::ResourceRequest& request, const WebCore::ResourceResponse& response)
@@ -86,12 +92,13 @@ static bool isSameOrigin(const WebCore::ResourceRequest& request, const WebCore:
 
 } // namespace
 
-SOAuthorizationSession::SOAuthorizationSession(SOAuthorization *soAuthorization, Ref<API::NavigationAction>&& navigationAction, WebPageProxy& page, InitiatingAction action)
-    : m_soAuthorization(soAuthorization)
+SOAuthorizationSession::SOAuthorizationSession(RetainPtr<WKSOAuthorizationDelegate> delegate, Ref<API::NavigationAction>&& navigationAction, WebPageProxy& page, InitiatingAction action)
+    : m_soAuthorization(adoptNS([PAL::allocSOAuthorizationInstance() init]))
     , m_navigationAction(WTFMove(navigationAction))
-    , m_page(makeWeakPtr(page))
+    , m_page(page)
     , m_action(action)
 {
+    m_soAuthorization.get().delegate = delegate.get();
 }
 
 SOAuthorizationSession::~SOAuthorizationSession()
@@ -100,6 +107,7 @@ SOAuthorizationSession::~SOAuthorizationSession()
 #if PLATFORM(MAC)
     AUTHORIZATIONSESSION_RELEASE_LOG("~SOAuthorizationSession: m_sheetWindow=%p", m_sheetWindow.get());
 #endif
+    m_isInDestructor = true;
 
     if (m_state == State::Active && !!m_soAuthorization)
         [m_soAuthorization cancelAuthorization];
@@ -109,17 +117,17 @@ SOAuthorizationSession::~SOAuthorizationSession()
         dismissViewController();
 }
 
-const char* SOAuthorizationSession::initiatingActionString() const
+ASCIILiteral SOAuthorizationSession::initiatingActionString() const
 {
     return toString(m_action);
 }
 
-const char* SOAuthorizationSession::stateString() const
+ASCIILiteral SOAuthorizationSession::stateString() const
 {
-    static const char* Idle = "Idle";
-    static const char* Active = "Active";
-    static const char* Waiting = "Waiting";
-    static const char* Completed = "Completed";
+    static constexpr auto Idle = "Idle"_s;
+    static constexpr auto Active = "Active"_s;
+    static constexpr auto Waiting = "Waiting"_s;
+    static constexpr auto Completed = "Completed"_s;
 
     switch (m_state) {
     case State::Idle:
@@ -171,10 +179,11 @@ void SOAuthorizationSession::start()
     ASSERT((m_state == State::Idle || m_state == State::Waiting) && m_navigationAction);
     m_state = State::Active;
     AUTHORIZATIONSESSION_RELEASE_LOG("start: Moving m_state to Active.");
-    [m_soAuthorization getAuthorizationHintsWithURL:m_navigationAction->request().url() responseCode:0 completion:makeBlockPtr([this, weakThis = makeWeakPtr(*this)] (SOAuthorizationHints *authorizationHints, NSError *error) {
+    [m_soAuthorization getAuthorizationHintsWithURL:m_navigationAction->request().url() responseCode:0 completion:makeBlockPtr([this, weakThis = ThreadSafeWeakPtr { *this }] (SOAuthorizationHints *authorizationHints, NSError *error) {
         AUTHORIZATIONSESSION_RELEASE_LOG("start: Receive SOAuthorizationHints (error=%ld)", error ? error.code : 0);
 
-        if (!weakThis) {
+        auto protectedThis = weakThis.get();
+        if (!protectedThis) {
             RELEASE_LOG_ERROR(AppSSO, "SOAuthorizationSession::start (getAuthorizationHintsWithURL completion handler): Returning early because weakThis is now null.");
             return;
         }
@@ -200,10 +209,9 @@ void SOAuthorizationSession::continueStartAfterGetAuthorizationHints(const Strin
     }
 
     AUTHORIZATIONSESSION_RELEASE_LOG("continueStartAfterGetAuthorizationHints: Checking page for policy choice.");
-    m_page->decidePolicyForSOAuthorizationLoad(hints, [this, weakThis = makeWeakPtr(*this)] (SOAuthorizationLoadPolicy policy) {
-        if (!weakThis)
-            return;
-        continueStartAfterDecidePolicy(policy);
+    m_page->decidePolicyForSOAuthorizationLoad(hints, [weakThis = ThreadSafeWeakPtr { *this }] (SOAuthorizationLoadPolicy policy) {
+        if (auto protectedThis = weakThis.get())
+            protectedThis->continueStartAfterDecidePolicy(policy);
     });
 }
 
@@ -232,10 +240,23 @@ void SOAuthorizationSession::continueStartAfterDecidePolicy(const SOAuthorizatio
         SOAuthorizationOptionInitiatorOrigin: (NSString *)initiatorOrigin,
         SOAuthorizationOptionInitiatingAction: @(static_cast<NSInteger>(m_action))
     };
+#if PLATFORM(IOS_FAMILY)
+    RetainPtr<WKWebView> webView = m_page->cocoaView();
+    id webViewUIDelegate = [webView UIDelegate];
+    if ([webViewUIDelegate respondsToSelector:@selector(_hostSceneIdentifierForWebView:)]) {
+        NSString *callerSceneID = [webViewUIDelegate _hostSceneIdentifierForWebView:webView.get()];
+        if (callerSceneID) {
+            NSMutableDictionary *mutableAuthorizationOptions = [authorizationOptions mutableCopy];
+            mutableAuthorizationOptions[@"callerSceneIdentifier"] = callerSceneID;
+            authorizationOptions = mutableAuthorizationOptions;
+        }
+    }
+#endif
     [m_soAuthorization setAuthorizationOptions:authorizationOptions];
 
-#if PLATFORM(IOS)
-    if (![[m_page->cocoaView() UIDelegate] respondsToSelector:@selector(_presentingViewControllerForWebView:)])
+#if PLATFORM(VISION)
+    // rdar://130904577 - Investigate supporting embedded authorization view controller on visionOS.
+    if (![[m_page->cocoaView() UIDelegate] respondsToSelector:@selector(_presentingViewControllerForWebView:)] || IOSApplication::isSafariViewService())
         [m_soAuthorization setEnableEmbeddedAuthorizationViewController:NO];
 #endif
 
@@ -292,6 +313,13 @@ void SOAuthorizationSession::complete(NSHTTPURLResponse *httpResponse, NSData *d
     becomeCompleted();
 
     auto response = WebCore::ResourceResponse(httpResponse);
+
+    if (shouldInterruptLoadForCSPFrameAncestorsOrXFrameOptions(response)) {
+        AUTHORIZATIONSESSION_RELEASE_LOG("complete: CSP failed. Falling back to web path.");
+        fallBackToWebPathInternal();
+        return;
+    }
+
     if (!isSameOrigin(m_navigationAction->request(), response)) {
         AUTHORIZATIONSESSION_RELEASE_LOG("complete:  Origins don't match. Falling back to web path.");
         fallBackToWebPathInternal();
@@ -314,8 +342,9 @@ void SOAuthorizationSession::complete(NSHTTPURLResponse *httpResponse, NSData *d
         return;
     }
 
-    m_page->websiteDataStore().cookieStore().setCookies(WTFMove(cookies), [this, weakThis = makeWeakPtr(*this), response = WTFMove(response), data = adoptNS([[NSData alloc] initWithData:data])] () mutable {
-        if (!weakThis)
+    m_page->websiteDataStore().cookieStore().setCookies(WTFMove(cookies), [this, weakThis = ThreadSafeWeakPtr { *this }, response = WTFMove(response), data = adoptNS([[NSData alloc] initWithData:data])] () mutable {
+        auto protectedThis = weakThis.get();
+        if (!protectedThis)
             return;
 
         AUTHORIZATIONSESSION_RELEASE_LOG("complete: Cookies are set.");
@@ -348,11 +377,12 @@ void SOAuthorizationSession::presentViewController(SOAuthorizationViewController
 
     m_sheetWindow = [NSWindow windowWithContentViewController:m_viewController.get()];
 
-    m_sheetWindowWillCloseObserver = [[NSNotificationCenter defaultCenter] addObserverForName:NSWindowWillCloseNotification object:m_sheetWindow.get() queue:nil usingBlock:[weakThis = makeWeakPtr(*this)] (NSNotification *) {
-        if (!weakThis)
+    m_sheetWindowWillCloseObserver = [[NSNotificationCenter defaultCenter] addObserverForName:NSWindowWillCloseNotification object:m_sheetWindow.get() queue:nil usingBlock:[weakThis = ThreadSafeWeakPtr { *this }] (NSNotification *) {
+        auto protectedThis = weakThis.get();
+        if (!protectedThis)
             return;
         RELEASE_LOG(AppSSO, "presentViewController: Received NSWindowWillCloseNotification. Dismissing the view controller.");
-        weakThis->dismissViewController();
+        protectedThis->dismissViewController();
     }];
     AUTHORIZATIONSESSION_RELEASE_LOG("presentViewController: Added m_sheetWindowWillCloseObserver (%p)", m_sheetWindowWillCloseObserver.get());
 
@@ -365,8 +395,15 @@ void SOAuthorizationSession::presentViewController(SOAuthorizationViewController
 
     AUTHORIZATIONSESSION_RELEASE_LOG("presentViewController: Calling beginSheet on %p for sheet %p.", presentingWindow, m_sheetWindow.get());
     [presentingWindow beginSheet:m_sheetWindow.get() completionHandler:nil];
-#elif PLATFORM(IOS)
+#elif PLATFORM(IOS) || PLATFORM(VISION)
+    // FIXME: When in element fullscreen, UIClient::presentingViewController() may not return the
+    // WKFullScreenViewController even though that is the presenting view controller of the WKWebView.
+    // We should call PageClientImpl::presentingViewController() instead.
     UIViewController *presentingViewController = m_page->uiClient().presentingViewController();
+#if !PLATFORM(VISION)
+    if (!presentingViewController)
+        presentingViewController = [m_page->cocoaView() _wk_viewControllerForFullScreenPresentation];
+#endif
     if (!presentingViewController) {
         uiCallback(NO, adoptNS([[NSError alloc] initWithDomain:SOErrorDomain code:kSOErrorAuthorizationPresentationFailed userInfo:nil]).get());
         return;
@@ -414,7 +451,7 @@ void SOAuthorizationSession::dismissViewController()
 
     // This is a workaround for an AppKit issue: <rdar://problem/59125329>.
     // [m_sheetWindow sheetParent] is null if the parent is minimized or the host app is hidden.
-    if (m_page && m_page->platformWindow()) {
+    if (!m_isInDestructor && m_page && m_page->platformWindow()) {
         auto *presentingWindow = m_page->platformWindow();
         if (presentingWindow.miniaturized) {
             AUTHORIZATIONSESSION_RELEASE_LOG("dismissViewController: Page's window is miniaturized. Waiting to dismiss until active.");
@@ -422,7 +459,7 @@ void SOAuthorizationSession::dismissViewController()
                 AUTHORIZATIONSESSION_RELEASE_LOG("dismissViewController: [Miniaturized] Already has a deminiaturized observer (%p). Hidden observer is %p", m_presentingWindowDidDeminiaturizeObserver.get(), m_applicationDidUnhideObserver.get());
                 return;
             }
-            m_presentingWindowDidDeminiaturizeObserver = [[NSNotificationCenter defaultCenter] addObserverForName:NSWindowDidDeminiaturizeNotification object:presentingWindow queue:nil usingBlock:[protectedThis = makeRefPtr(this), this] (NSNotification *) {
+            m_presentingWindowDidDeminiaturizeObserver = [[NSNotificationCenter defaultCenter] addObserverForName:NSWindowDidDeminiaturizeNotification object:presentingWindow queue:nil usingBlock:[protectedThis = Ref { *this }, this] (NSNotification *) {
                 AUTHORIZATIONSESSION_RELEASE_LOG("dismissViewController: Window has deminiaturized. Completing the dismissal.");
                 dismissViewController();
                 [[NSNotificationCenter defaultCenter] removeObserver:m_presentingWindowDidDeminiaturizeObserver.get()];
@@ -432,13 +469,13 @@ void SOAuthorizationSession::dismissViewController()
         }
     }
 
-    if (NSApp.hidden) {
+    if (!m_isInDestructor && NSApp.hidden) {
         AUTHORIZATIONSESSION_RELEASE_LOG("dismissViewController: Application is hidden. Waiting to dismiss until active.");
         if (m_applicationDidUnhideObserver) {
             AUTHORIZATIONSESSION_RELEASE_LOG("dismissViewController: [Hidden] Already has an Unhide observer (%p). Deminiaturized observer is %p", m_presentingWindowDidDeminiaturizeObserver.get(), m_applicationDidUnhideObserver.get());
             return;
         }
-        m_applicationDidUnhideObserver = [[NSNotificationCenter defaultCenter] addObserverForName:NSApplicationDidUnhideNotification object:NSApp queue:nil usingBlock:[protectedThis = makeRefPtr(this), this] (NSNotification *) {
+        m_applicationDidUnhideObserver = [[NSNotificationCenter defaultCenter] addObserverForName:NSApplicationDidUnhideNotification object:NSApp queue:nil usingBlock:[protectedThis = Ref { *this }, this] (NSNotification *) {
             AUTHORIZATIONSESSION_RELEASE_LOG("dismissViewController: Application is no longer hidden. Completing the dismissal.");
             dismissViewController();
             [[NSNotificationCenter defaultCenter] removeObserver:m_applicationDidUnhideObserver.get()];
@@ -449,7 +486,7 @@ void SOAuthorizationSession::dismissViewController()
 
     dismissModalSheetIfNecessary();
     AUTHORIZATIONSESSION_RELEASE_LOG("dismissViewController: Finished call with deminiaturized observer (%p) and Hidden observer (%p)", m_presentingWindowDidDeminiaturizeObserver.get(), m_applicationDidUnhideObserver.get());
-#elif PLATFORM(IOS)
+#elif PLATFORM(IOS) || PLATFORM(VISION)
     [[m_viewController presentingViewController] dismissViewControllerAnimated:YES completion:nil];
 #endif
 

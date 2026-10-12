@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2011 Google, Inc. All rights reserved.
- * Copyright (C) 2016-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,11 +30,12 @@
 #include "ContentSecurityPolicyHash.h"
 #include "ContentSecurityPolicyMediaListDirective.h"
 #include "ContentSecurityPolicySourceListDirective.h"
+#include "ContentSecurityPolicyTrustedTypesDirective.h"
 #include <wtf/URL.h>
 
 namespace WebCore {
 
-class Frame;
+class LocalFrame;
 
 class ContentSecurityPolicyDirectiveList {
     WTF_MAKE_FAST_ALLOCATED;
@@ -46,11 +47,12 @@ public:
     ContentSecurityPolicyHeaderType headerType() const { return m_headerType; }
 
     const ContentSecurityPolicyDirective* violatedDirectiveForUnsafeEval() const;
-    const ContentSecurityPolicyDirective* violatedDirectiveForUnsafeInlineScript() const;
-    const ContentSecurityPolicyDirective* violatedDirectiveForUnsafeInlineStyle() const;
-
-    const ContentSecurityPolicyDirective* violatedDirectiveForScriptHash(const ContentSecurityPolicyHash&) const;
-    const ContentSecurityPolicyDirective* violatedDirectiveForStyleHash(const ContentSecurityPolicyHash&) const;
+    const ContentSecurityPolicyDirective* violatedDirectiveForInlineJavascriptURL(const Vector<ContentSecurityPolicyHash>&) const;
+    const ContentSecurityPolicyDirective* violatedDirectiveForInlineEventHandlers(const Vector<ContentSecurityPolicyHash>&) const;
+    const ContentSecurityPolicyDirective* violatedDirectiveForUnsafeInlineScriptElement(const String&, const Vector<ContentSecurityPolicyHash>&) const;
+    const ContentSecurityPolicyDirective* violatedDirectiveForNonParserInsertedScripts(const String&, const Vector<ContentSecurityPolicyHash>&, const URL&, ParserInserted) const;
+    const ContentSecurityPolicyDirective* violatedDirectiveForUnsafeInlineStyleElement(const String&, const Vector<ContentSecurityPolicyHash>&) const;
+    const ContentSecurityPolicyDirective* violatedDirectiveForUnsafeInlineStyleAttribute(const String&, const Vector<ContentSecurityPolicyHash>&) const;
 
     const ContentSecurityPolicyDirective* violatedDirectiveForScriptNonce(const String&) const;
     const ContentSecurityPolicyDirective* violatedDirectiveForStyleNonce(const String&) const;
@@ -61,30 +63,38 @@ public:
     const ContentSecurityPolicyDirective* violatedDirectiveForFont(const URL&, bool didReceiveRedirectResponse) const;
     const ContentSecurityPolicyDirective* violatedDirectiveForFormAction(const URL&, bool didReceiveRedirectResponse) const;
     const ContentSecurityPolicyDirective* violatedDirectiveForFrame(const URL&, bool didReceiveRedirectResponse) const;
-    const ContentSecurityPolicyDirective* violatedDirectiveForFrameAncestor(const Frame&) const;
-    const ContentSecurityPolicyDirective* violatedDirectiveForFrameAncestorOrigins(const Vector<RefPtr<SecurityOrigin>>&) const;
+    const ContentSecurityPolicyDirective* violatedDirectiveForFrameAncestor(const LocalFrame&) const;
+    const ContentSecurityPolicyDirective* violatedDirectiveForFrameAncestorOrigins(const Vector<Ref<SecurityOrigin>>&) const;
     const ContentSecurityPolicyDirective* violatedDirectiveForImage(const URL&, bool didReceiveRedirectResponse) const;
+    const ContentSecurityPolicyDirective* violatedDirectiveForPrefetch(const URL&, bool didReceiveRedirectResponse) const;
 #if ENABLE(APPLICATION_MANIFEST)
     const ContentSecurityPolicyDirective* violatedDirectiveForManifest(const URL&, bool didReceiveRedirectResponse) const;
 #endif
     const ContentSecurityPolicyDirective* violatedDirectiveForMedia(const URL&, bool didReceiveRedirectResponse) const;
     const ContentSecurityPolicyDirective* violatedDirectiveForObjectSource(const URL&, bool didReceiveRedirectResponse, ContentSecurityPolicySourceListDirective::ShouldAllowEmptyURLIfSourceListIsNotNone) const;
     const ContentSecurityPolicyDirective* violatedDirectiveForPluginType(const String& type, const String& typeAttribute) const;
-    const ContentSecurityPolicyDirective* violatedDirectiveForScript(const URL&, bool didReceiveRedirectResponse) const;
-    const ContentSecurityPolicyDirective* violatedDirectiveForStyle(const URL&, bool didReceiveRedirectResponse) const;
+    const ContentSecurityPolicyDirective* violatedDirectiveForScript(const URL&, bool didReceiveRedirectResponse, const Vector<ResourceCryptographicDigest>&, const String&) const;
+    const ContentSecurityPolicyDirective* violatedDirectiveForStyle(const URL&, bool didReceiveRedirectResponse, const String&) const;
+    const ContentSecurityPolicyDirective* violatedDirectiveForWorker(const URL&, bool didReceiveRedirectResponse);
+    const ContentSecurityPolicyDirective* violatedDirectiveForTrustedTypesPolicy(const String&, bool isDuplicate, AllowTrustedTypePolicy&) const;
 
     const ContentSecurityPolicyDirective* defaultSrc() const { return m_defaultSrc.get(); }
 
     bool hasBlockAllMixedContentDirective() const { return m_hasBlockAllMixedContentDirective; }
     bool hasFrameAncestorsDirective() const { return !!m_frameAncestors; }
+    bool requiresTrustedTypesForScript() const { return m_requireTrustedTypesForScript; }
 
     const String& evalDisabledErrorMessage() const { return m_evalDisabledErrorMessage; }
     const String& webAssemblyDisabledErrorMessage() const { return m_webAssemblyDisabledErrorMessage; }
     bool isReportOnly() const { return m_reportOnly; }
+    bool shouldReportSample(const String&) const;
+    const Vector<String>& reportToTokens() const { return m_reportToTokens; }
     const Vector<String>& reportURIs() const { return m_reportURIs; }
 
     // FIXME: Remove this once we teach ContentSecurityPolicyDirectiveList how to log an arbitrary console message.
     const ContentSecurityPolicy& policy() const { return m_policy; }
+
+    bool strictDynamicIncluded() const;
 
 private:
     void parse(const String&, ContentSecurityPolicy::PolicyFrom);
@@ -93,8 +103,10 @@ private:
         String name;
         String value;
     };
-    template<typename CharacterType> std::optional<ParsedDirective> parseDirective(StringParsingBuffer<CharacterType>);
+    template<typename CharacterType> std::optional<ParsedDirective> parseDirective(std::span<const CharacterType>);
+    void parseReportTo(ParsedDirective&&);
     void parseReportURI(ParsedDirective&&);
+    void parseRequireTrustedTypesFor(ParsedDirective&&);
     void addDirective(ParsedDirective&&);
     void applySandboxPolicy(ParsedDirective&&);
     void setUpgradeInsecureRequests(ParsedDirective&&);
@@ -103,7 +115,10 @@ private:
     template <class CSPDirectiveType>
     void setCSPDirective(ParsedDirective&&, std::unique_ptr<CSPDirectiveType>&);
 
-    ContentSecurityPolicySourceListDirective* operativeDirective(ContentSecurityPolicySourceListDirective*) const;
+    ContentSecurityPolicySourceListDirective* operativeDirective(ContentSecurityPolicySourceListDirective*, const String&) const;
+    ContentSecurityPolicySourceListDirective* operativeDirectiveScript(ContentSecurityPolicySourceListDirective*, const String&) const;
+    ContentSecurityPolicySourceListDirective* operativeDirectiveStyle(ContentSecurityPolicySourceListDirective*, const String&) const;
+    ContentSecurityPolicySourceListDirective* operativeDirectiveForWorkerSrc(ContentSecurityPolicySourceListDirective*, const String&) const;
 
     void setEvalDisabledErrorMessage(const String& errorMessage) { m_evalDisabledErrorMessage = errorMessage; }
     void setWebAssemblyDisabledErrorMessage(const String& errorMessage) { m_webAssemblyDisabledErrorMessage = errorMessage; }
@@ -118,6 +133,7 @@ private:
     bool m_haveSandboxPolicy { false };
     bool m_upgradeInsecureRequests { false };
     bool m_hasBlockAllMixedContentDirective { false };
+    bool m_requireTrustedTypesForScript { false };
 
     std::unique_ptr<ContentSecurityPolicyMediaListDirective> m_pluginTypes;
     std::unique_ptr<ContentSecurityPolicySourceListDirective> m_baseURI;
@@ -134,9 +150,17 @@ private:
 #endif
     std::unique_ptr<ContentSecurityPolicySourceListDirective> m_mediaSrc;
     std::unique_ptr<ContentSecurityPolicySourceListDirective> m_objectSrc;
+    std::unique_ptr<ContentSecurityPolicySourceListDirective> m_prefetchSrc;
     std::unique_ptr<ContentSecurityPolicySourceListDirective> m_scriptSrc;
     std::unique_ptr<ContentSecurityPolicySourceListDirective> m_styleSrc;
-    
+    std::unique_ptr<ContentSecurityPolicySourceListDirective> m_scriptSrcElem;
+    std::unique_ptr<ContentSecurityPolicySourceListDirective> m_scriptSrcAttr;
+    std::unique_ptr<ContentSecurityPolicySourceListDirective> m_styleSrcElem;
+    std::unique_ptr<ContentSecurityPolicySourceListDirective> m_styleSrcAttr;
+    std::unique_ptr<ContentSecurityPolicyTrustedTypesDirective> m_trustedTypes;
+    std::unique_ptr<ContentSecurityPolicySourceListDirective> m_workerSrc;
+
+    Vector<String> m_reportToTokens;
     Vector<String> m_reportURIs;
     
     String m_evalDisabledErrorMessage;

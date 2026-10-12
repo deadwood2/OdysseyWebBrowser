@@ -25,7 +25,6 @@
 
 #pragma once
 
-#include <wtf/EnumTraits.h>
 #include <wtf/Forward.h>
 
 #if PLATFORM(MAC)
@@ -48,6 +47,12 @@ OBJC_CLASS UIScreen;
 typedef struct CGColorSpace *CGColorSpaceRef;
 #endif
 
+// X11 headers define a bunch of macros with common terms, interfering with WebCore and WTF enum values.
+// As a workaround, we explicitly undef them here.
+#if defined(None)
+#undef None
+#endif
+
 namespace WebCore {
 
 class DestinationColorSpace;
@@ -57,11 +62,7 @@ class Widget;
 
 using PlatformDisplayID = uint32_t;
 
-#if PLATFORM(MAC)
-
-using IORegistryGPUID = int64_t; // Global IOKit I/O registryID that can match a GPU across process boundaries.
-
-#endif
+using PlatformGPUID = uint64_t; // On MAC, global IOKit registryID that can identify a GPU across process boundaries.
 
 int screenDepth(Widget*);
 int screenDepthPerComponent(Widget*);
@@ -71,8 +72,8 @@ WEBCORE_EXPORT DestinationColorSpace screenColorSpace(Widget* = nullptr);
 bool screenHasInvertedColors();
 
 #if USE(GLIB)
-double screenDPI();
-void setScreenDPIObserverHandler(Function<void()>&&, void*);
+double fontDPI(); // dpi to use for font scaling
+double screenDPI(PlatformDisplayID); // dpi of the display device, corrected for device scaling
 #endif
 
 FloatRect screenRect(Widget*);
@@ -105,7 +106,7 @@ struct ScreenData;
 WEBCORE_EXPORT ScreenProperties collectScreenProperties();
 WEBCORE_EXPORT void setScreenProperties(const ScreenProperties&);
 const ScreenProperties& getScreenProperties();
-const ScreenData* screenData(PlatformDisplayID screendisplayID);
+WEBCORE_EXPORT const ScreenData* screenData(PlatformDisplayID screendisplayID);
 WEBCORE_EXPORT PlatformDisplayID primaryScreenDisplayID();
     
 #if PLATFORM(MAC)
@@ -130,11 +131,11 @@ WEBCORE_EXPORT void setShouldOverrideScreenSupportsHighDynamicRange(bool shouldO
 uint32_t primaryOpenGLDisplayMask();
 uint32_t displayMaskForDisplay(PlatformDisplayID);
 
-IORegistryGPUID primaryGPUID();
-IORegistryGPUID gpuIDForDisplay(PlatformDisplayID);
-IORegistryGPUID gpuIDForDisplayMask(uint32_t);
+PlatformGPUID primaryGPUID();
+PlatformGPUID gpuIDForDisplay(PlatformDisplayID);
+PlatformGPUID gpuIDForDisplayMask(uint32_t);
 
-WEBCORE_EXPORT FloatRect screenRectAvoidingMenuBar(NSScreen *);
+WEBCORE_EXPORT FloatRect safeScreenFrame(NSScreen *);
 
 #endif // !PLATFORM(MAC)
 
@@ -144,6 +145,7 @@ float screenPPIFactor();
 WEBCORE_EXPORT FloatSize screenSize();
 WEBCORE_EXPORT FloatSize availableScreenSize();
 WEBCORE_EXPORT FloatSize overrideScreenSize();
+WEBCORE_EXPORT FloatSize overrideAvailableScreenSize();
 WEBCORE_EXPORT float screenScaleFactor(UIScreen * = nullptr);
 
 #endif
@@ -159,18 +161,3 @@ constexpr bool screenIsTouchPrimaryInputDevice() { return true; }
 #endif
 
 } // namespace WebCore
-
-namespace WTF {
-
-template<> struct EnumTraits<WebCore::DynamicRangeMode> {
-    using values = EnumValues<
-        WebCore::DynamicRangeMode,
-        WebCore::DynamicRangeMode::None,
-        WebCore::DynamicRangeMode::Standard,
-        WebCore::DynamicRangeMode::HLG,
-        WebCore::DynamicRangeMode::HDR10,
-        WebCore::DynamicRangeMode::DolbyVisionPQ
-    >;
-};
-
-} // namespace WTF

@@ -21,8 +21,10 @@ extern "C" void dprintf(const char *,...);
 		_tracks = [OBMutableArray new];
 		_audioTrack = [audioTrack retain];
 		_videoTrack = [videoTrack retain];
-		[_tracks addObject:audioTrack];
-		[_tracks addObject:videoTrack];
+        if (audioTrack)
+            [_tracks addObject:audioTrack];
+        if (videoTrack)
+            [_tracks addObject:videoTrack];
 		_identifier = [(id<WkMediaObjectComms>)identifier retain];
 		_type = type;
 		_url = [url retain];
@@ -368,6 +370,33 @@ extern "C" void dprintf(const char *,...);
 - (int)bitrate
 {
 	return _bitrate;
+}
+
+- (LONG)compareByHeightAndBitRate:(WkHLSStreamPrivate *)other
+{
+	if (_height != 0)
+	{
+		int otherHeight = [other height];
+
+		if (_height < otherHeight)
+			return OBLesser;
+
+		if (_height > otherHeight)
+			return OBGreater;
+	}
+
+	if (_bitrate != 0)
+	{
+		int otherBitRate = [other bitrate];
+		
+		if (_bitrate < otherBitRate)
+			return OBLesser;
+
+		if (_bitrate > otherBitRate)
+			return OBGreater;
+	}
+
+	return OBSame;
 }
 
 @end

@@ -22,16 +22,19 @@
 #include "config.h"
 #include "SVGEllipseElement.h"
 
+#include "LegacyRenderSVGEllipse.h"
+#include "LegacyRenderSVGResource.h"
+#include "NodeName.h"
 #include "RenderSVGEllipse.h"
-#include "RenderSVGResource.h"
-#include <wtf/IsoMallocInlines.h>
+#include "SVGElementInlines.h"
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(SVGEllipseElement);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(SVGEllipseElement);
 
 inline SVGEllipseElement::SVGEllipseElement(const QualifiedName& tagName, Document& document)
-    : SVGGeometryElement(tagName, document)
+    : SVGGeometryElement(tagName, document, makeUniqueRef<PropertyRegistry>(*this))
 {
     ASSERT(hasTagName(SVGNames::ellipseTag));
 
@@ -49,29 +52,36 @@ Ref<SVGEllipseElement> SVGEllipseElement::create(const QualifiedName& tagName, D
     return adoptRef(*new SVGEllipseElement(tagName, document));
 }
 
-void SVGEllipseElement::parseAttribute(const QualifiedName& name, const AtomString& value)
+void SVGEllipseElement::attributeChanged(const QualifiedName& name, const AtomString& oldValue, const AtomString& newValue, AttributeModificationReason attributeModificationReason)
 {
     SVGParsingError parseError = NoError;
 
-    if (name == SVGNames::cxAttr)
-        m_cx->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Width, value, parseError));
-    else if (name == SVGNames::cyAttr)
-        m_cy->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Height, value, parseError));
-    else if (name == SVGNames::rxAttr)
-        m_rx->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Width, value, parseError, SVGLengthNegativeValuesMode::Forbid));
-    else if (name == SVGNames::ryAttr)
-        m_ry->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Height, value, parseError, SVGLengthNegativeValuesMode::Forbid));
-
-    reportAttributeParsingError(parseError, name, value);
-
-    SVGGeometryElement::parseAttribute(name, value);
+    switch (name.nodeName()) {
+    case AttributeNames::cxAttr:
+        Ref { m_cx }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Width, newValue, parseError));
+        break;
+    case AttributeNames::cyAttr:
+        Ref { m_cy }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Height, newValue, parseError));
+        break;
+    case AttributeNames::rxAttr:
+        Ref { m_rx }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Width, newValue, parseError, SVGLengthNegativeValuesMode::Forbid));
+        break;
+    case AttributeNames::ryAttr:
+        Ref { m_ry }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Height, newValue, parseError, SVGLengthNegativeValuesMode::Forbid));
+        break;
+    default:
+        break;
+    }
+    reportAttributeParsingError(parseError, name, newValue);
+    SVGGeometryElement::attributeChanged(name, oldValue, newValue, attributeModificationReason);
 }
 
 void SVGEllipseElement::svgAttributeChanged(const QualifiedName& attrName)
 {
     if (PropertyRegistry::isKnownAttribute(attrName)) {
         InstanceInvalidationGuard guard(*this);
-        invalidateSVGPresentationalHintStyle();
+        setPresentationalHintStyleIsDirty();
+        invalidateResourceImageBuffersIfNeeded();
         return;
     }
 
@@ -80,7 +90,9 @@ void SVGEllipseElement::svgAttributeChanged(const QualifiedName& attrName)
 
 RenderPtr<RenderElement> SVGEllipseElement::createElementRenderer(RenderStyle&& style, const RenderTreePosition&)
 {
-    return createRenderer<RenderSVGEllipse>(*this, WTFMove(style));
+    if (document().settings().layerBasedSVGEngineEnabled())
+        return createRenderer<RenderSVGEllipse>(*this, WTFMove(style));
+    return createRenderer<LegacyRenderSVGEllipse>(*this, WTFMove(style));
 }
 
 }

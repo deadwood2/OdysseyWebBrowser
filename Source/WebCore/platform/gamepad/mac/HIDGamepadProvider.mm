@@ -32,7 +32,6 @@
 #import "GamepadProviderClient.h"
 #import "Logging.h"
 #import "PlatformGamepad.h"
-#import <pal/spi/mac/IOKitSPIMac.h>
 #import <wtf/NeverDestroyed.h>
 
 #if HAVE(GCCONTROLLER_HID_DEVICE_CHECK)
@@ -166,19 +165,19 @@ void HIDGamepadProvider::closeAndUnscheduleManager()
 
 void HIDGamepadProvider::startMonitoringGamepads(GamepadProviderClient& client)
 {
-    bool shouldOpenAndScheduleManager = m_clients.isEmpty();
+    bool shouldOpenAndScheduleManager = m_clients.isEmptyIgnoringNullReferences();
 
-    ASSERT(!m_clients.contains(&client));
-    m_clients.add(&client);
+    ASSERT(!m_clients.contains(client));
+    m_clients.add(client);
 
     if (shouldOpenAndScheduleManager)
         openAndScheduleManager();
 }
 void HIDGamepadProvider::stopMonitoringGamepads(GamepadProviderClient& client)
 {
-    ASSERT(m_clients.contains(&client));
+    ASSERT(m_clients.contains(client));
 
-    bool shouldCloseAndUnscheduleManager = m_clients.remove(&client) && m_clients.isEmpty();
+    bool shouldCloseAndUnscheduleManager = m_clients.remove(client) && m_clients.isEmptyIgnoringNullReferences();
 
     if (shouldCloseAndUnscheduleManager)
         closeAndUnscheduleManager();
@@ -258,7 +257,7 @@ void HIDGamepadProvider::deviceAdded(IOHIDDeviceRef device)
 
     auto eventVisibility = m_initialGamepadsConnected ? EventMakesGamepadsVisible::Yes : EventMakesGamepadsVisible::No;
     for (auto& client : m_clients)
-        client->platformGamepadConnected(*m_gamepadVector[index], eventVisibility);
+        client.platformGamepadConnected(*m_gamepadVector[index], eventVisibility);
 
     // If we are working together with the GameController provider, let it know
     // that gamepads should now be visible.
@@ -282,7 +281,7 @@ void HIDGamepadProvider::deviceRemoved(IOHIDDeviceRef device)
     LOG(Gamepad, "HIDGamepadProvider device %p removed", device);
 
     for (auto& client : m_clients)
-        client->platformGamepadDisconnected(*removedGamepad);
+        client.platformGamepadDisconnected(*removedGamepad);
 }
 
 void HIDGamepadProvider::valuesChanged(IOHIDValueRef value)
@@ -326,6 +325,18 @@ std::unique_ptr<HIDGamepad> HIDGamepadProvider::removeGamepadForDevice(IOHIDDevi
         m_gamepadVector[i] = nullptr;
 
     return result;
+}
+
+void HIDGamepadProvider::playEffect(unsigned, const String&, GamepadHapticEffectType, const GamepadEffectParameters&, CompletionHandler<void(bool)>&& completionHandler)
+{
+    // Not supported by this provider.
+    completionHandler(false);
+}
+
+void HIDGamepadProvider::stopEffects(unsigned, const String&, CompletionHandler<void()>&& completionHandler)
+{
+    // Not supported by this provider.
+    completionHandler();
 }
 
 } // namespace WebCore

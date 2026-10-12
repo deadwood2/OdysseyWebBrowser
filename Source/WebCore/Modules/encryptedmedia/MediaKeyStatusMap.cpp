@@ -34,6 +34,7 @@
 #include "JSMediaKeyStatusMap.h"
 #include "MediaKeySession.h"
 #include "SharedBuffer.h"
+#include <wtf/StdLibExtras.h>
 
 namespace WebCore {
 
@@ -58,10 +59,9 @@ unsigned long MediaKeyStatusMap::size()
 
 static bool keyIdsMatch(const SharedBuffer& a, const BufferSource& b)
 {
-    auto length = a.size();
-    if (!length || length != b.length())
+    if (a.isEmpty())
         return false;
-    return !std::memcmp(a.data(), b.data(), length);
+    return equalSpans(a.span(), b.span());
 }
 
 bool MediaKeyStatusMap::has(const BufferSource& keyId)
@@ -85,7 +85,7 @@ JSC::JSValue MediaKeyStatusMap::get(JSC::JSGlobalObject& state, const BufferSour
 
     if (it == statuses.end())
         return JSC::jsUndefined();
-    return convertEnumerationToJS(state, it->second);
+    return convertEnumerationToJS(state.vm(), it->second);
 }
 
 MediaKeyStatusMap::Iterator::Iterator(MediaKeyStatusMap& map)
@@ -93,7 +93,7 @@ MediaKeyStatusMap::Iterator::Iterator(MediaKeyStatusMap& map)
 {
 }
 
-std::optional<WTF::KeyValuePair<BufferSource::VariantType, MediaKeyStatus>> MediaKeyStatusMap::Iterator::next()
+std::optional<KeyValuePair<BufferSource::VariantType, MediaKeyStatus>> MediaKeyStatusMap::Iterator::next()
 {
     if (!m_map->m_session)
         return std::nullopt;
@@ -103,8 +103,8 @@ std::optional<WTF::KeyValuePair<BufferSource::VariantType, MediaKeyStatus>> Medi
         return std::nullopt;
 
     auto& pair = statuses[m_index++];
-    auto buffer = ArrayBuffer::create(pair.first->data(), pair.first->size());
-    return WTF::KeyValuePair<BufferSource::VariantType, MediaKeyStatus> { RefPtr<ArrayBuffer>(WTFMove(buffer)), pair.second };
+    auto buffer = ArrayBuffer::create(pair.first->makeContiguous()->span());
+    return KeyValuePair<BufferSource::VariantType, MediaKeyStatus> { RefPtr<ArrayBuffer>(WTFMove(buffer)), pair.second };
 }
 
 } // namespace WebCore

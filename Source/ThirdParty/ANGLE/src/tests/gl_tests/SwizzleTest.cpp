@@ -13,7 +13,7 @@ using namespace angle;
 namespace
 {
 
-class SwizzleTest : public ANGLETest
+class SwizzleTest : public ANGLETest<>
 {
   protected:
     SwizzleTest()
@@ -293,6 +293,16 @@ TEST_P(SwizzleTest, RGB10_A2_2D)
     runTest2D();
 }
 
+TEST_P(SwizzleTest, RGB10_2D)
+{
+    ANGLE_SKIP_TEST_IF(!isTextureSwizzleAvailable());
+    ANGLE_SKIP_TEST_IF(!EnsureGLExtensionEnabled("GL_EXT_texture_type_2_10_10_10_REV"));
+
+    GLuint data[] = {20u | (40u << 10) | (60u << 20) | (2u << 30)};
+    init2DTexture(GL_RGB, GL_RGB, GL_UNSIGNED_INT_2_10_10_10_REV, data);
+    runTest2D();
+}
+
 TEST_P(SwizzleTest, RGBA32F_2D)
 {
     ANGLE_SKIP_TEST_IF(!isTextureSwizzleAvailable());
@@ -306,7 +316,6 @@ TEST_P(SwizzleTest, RGB32F_2D)
 {
     ANGLE_SKIP_TEST_IF(!isTextureSwizzleAvailable());
 
-    ANGLE_SKIP_TEST_IF(IsVulkan());  // anglebug.com/2898 - float textures
     GLfloat data[] = {0.1f, 0.2f, 0.3f};
     init2DTexture(GL_RGB32F, GL_RGB, GL_FLOAT, data);
     runTest2D();
@@ -352,7 +361,7 @@ TEST_P(SwizzleTest, D24_2D)
 {
     ANGLE_SKIP_TEST_IF(!isTextureSwizzleAvailable());
 
-    ANGLE_SKIP_TEST_IF(IsVulkan() && IsAMD() && IsWindows());  // anglebug.com/3545
+    ANGLE_SKIP_TEST_IF(IsVulkan() && IsAMD() && IsWindows());  // anglebug.com/42262208
     GLuint data[] = {0xFFFF};
     init2DTexture(GL_DEPTH_COMPONENT24, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, data);
     runTest2D();
@@ -451,7 +460,7 @@ TEST_P(SwizzleIntegerTest, RGB8UI_2D)
 {
     ANGLE_SKIP_TEST_IF(!isTextureSwizzleAvailable());
 
-    ANGLE_SKIP_TEST_IF(IsVulkan());  // anglebug.com/3196 - integer textures
+    ANGLE_SKIP_TEST_IF(IsVulkan());  // anglebug.com/42261870 - integer textures
     GLubyte data[] = {77, 66, 55};
     init2DTexture(GL_RGB8UI, GL_RGB_INTEGER, GL_UNSIGNED_BYTE, data);
     runTest2D();
@@ -490,7 +499,10 @@ TEST_P(SwizzleTest, SubUpdate)
     EXPECT_PIXEL_COLOR_EQ(0, 0, expectedUpdateData);
 }
 
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(SwizzleTest);
 ANGLE_INSTANTIATE_TEST_ES3_AND(SwizzleTest);
+
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(SwizzleIntegerTest);
 ANGLE_INSTANTIATE_TEST_ES3_AND(SwizzleIntegerTest);
 
 }  // namespace

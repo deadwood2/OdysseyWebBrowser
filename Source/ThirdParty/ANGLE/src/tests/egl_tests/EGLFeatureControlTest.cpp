@@ -7,25 +7,18 @@
 // extension EGL_ANGLE_feature_control.
 
 #include <gtest/gtest.h>
+#include <optional>
 
+#include "common/string_utils.h"
 #include "libANGLE/Display.h"
 #include "test_utils/ANGLETest.h"
 
 using namespace angle;
 
-class EGLFeatureControlTest : public ANGLETest
+class EGLFeatureControlTest : public ANGLETest<>
 {
   public:
-    void testSetUp() override
-    {
-        // All tests are skipped on old AMD Linux Vulkan driver. See http://crbug.com/1097750
-        if (IsLinux() && IsAMD() && IsVulkan())
-        {
-            GTEST_SKIP();
-        }
-
-        mDisplay = EGL_NO_DISPLAY;
-    }
+    void testSetUp() override { mDisplay = EGL_NO_DISPLAY; }
 
     void testTearDown() override
     {
@@ -40,13 +33,13 @@ class EGLFeatureControlTest : public ANGLETest
 
     bool initTest()
     {
-        // http://anglebug.com/3629 This test sporadically times out on Win10/Intel
+        // http://anglebug.com/42262291 This test sporadically times out on Win10/Intel
         if (IsWindows() && IsIntel())
             return false;
 
         EGLAttrib dispattrs[] = {EGL_PLATFORM_ANGLE_TYPE_ANGLE, GetParam().getRenderer(), EGL_NONE};
         mDisplay              = eglGetPlatformDisplay(EGL_PLATFORM_ANGLE_ANGLE,
-                                         reinterpret_cast<void *>(EGL_DEFAULT_DISPLAY), dispattrs);
+                                                      reinterpret_cast<void *>(EGL_DEFAULT_DISPLAY), dispattrs);
         EXPECT_NE(mDisplay, EGL_NO_DISPLAY);
 
         EXPECT_EQ(eglInitialize(mDisplay, nullptr, nullptr), static_cast<EGLBoolean>(EGL_TRUE));
@@ -55,6 +48,9 @@ class EGLFeatureControlTest : public ANGLETest
 
         return true;
     }
+
+    using FeatureNameModifier = std::function<std::string(const std::string &)>;
+    void testOverrideFeatures(FeatureNameModifier modifyName);
 };
 
 // Ensure eglQueryStringiANGLE generates EGL_BAD_DISPLAY if the display passed in is invalid.
@@ -129,9 +125,7 @@ TEST_P(EGLFeatureControlTest, FeatureCount)
     ASSERT_EGL_SUCCESS();
 }
 
-// Submit a list of features to override when creating the display with eglGetPlatformDisplay, and
-// ensure that the features are correctly overridden.
-TEST_P(EGLFeatureControlTest, OverrideFeatures)
+void EGLFeatureControlTest::testOverrideFeatures(FeatureNameModifier modifyName)
 {
     ANGLE_SKIP_TEST_IF(!initTest());
     egl::Display *display       = static_cast<egl::Display *>(mDisplay);
@@ -139,29 +133,38 @@ TEST_P(EGLFeatureControlTest, OverrideFeatures)
 
     // Build lists of features to enable/disabled. Toggle features we know are ok to toggle based
     // from this list.
-    std::vector<const char *> enabled       = std::vector<const char *>();
-    std::vector<const char *> disabled      = std::vector<const char *>();
-    std::vector<bool> shouldBe              = std::vector<bool>();
+    std::vector<const char *> enabled;
+    std::vector<const char *> disabled;
+    std::vector<std::string> modifiedNameStorage;
+    std::vector<bool> shouldBe;
     std::vector<std::string> testedFeatures = {
-        "add_and_true_to_loop_condition",  // Safe to toggle GL
-        "clamp_frag_depth",                // Safe to toggle GL
-        "clamp_point_size",                // Safe to toggle GL and Vulkan
-        "flip_viewport_y",                 // Safe to toggle on Vulkan
-        "zero_max_lod",                    // Safe to toggle on D3D
-        "expand_integer_pow_expressions",  // Safe to toggle on D3D
-        "rewrite_unary_minus_operator",    // Safe to toggle on D3D
+        // Safe to toggle on GL
+        angle::GetFeatureName(angle::Feature::AddAndTrueToLoopCondition),
+        angle::GetFeatureName(angle::Feature::ClampFragDepth),
+        // Safe to toggle on GL and Vulkan
+        angle::GetFeatureName(angle::Feature::ClampPointSize),
+        // Safe to toggle on D3D
+        angle::GetFeatureName(angle::Feature::ZeroMaxLodWorkaround),
+        angle::GetFeatureName(angle::Feature::ExpandIntegerPowExpressions),
+        angle::GetFeatureName(angle::Feature::RewriteUnaryMinusOperator),
     };
+
+    modifiedNameStorage.reserve(features.size());
+    shouldBe.reserve(features.size());
+
     for (size_t i = 0; i < features.size(); i++)
     {
+        modifiedNameStorage.push_back(modifyName(features[i]->name));
+
         bool toggle = std::find(testedFeatures.begin(), testedFeatures.end(),
                                 std::string(features[i]->name)) != testedFeatures.end();
         if (features[i]->enabled ^ toggle)
         {
-            enabled.push_back(features[i]->name);
+            enabled.push_back(modifiedNameStorage[i].c_str());
         }
         else
         {
-            disabled.push_back(features[i]->name);
+            disabled.push_back(modifiedNameStorage[i].c_str());
         }
         // Save what we expect the feature status will be when checking later.
         shouldBe.push_back(features[i]->enabled ^ toggle);
@@ -173,24 +176,185 @@ TEST_P(EGLFeatureControlTest, OverrideFeatures)
     eglTerminate(mDisplay);
 
     // Create a new display with these overridden features.
-    EGLAttrib dispattrs[]   = {EGL_PLATFORM_ANGLE_TYPE_ANGLE,
+    EGLAttrib dispattrs[] = {EGL_PLATFORM_ANGLE_TYPE_ANGLE,
                              GetParam().getRenderer(),
                              EGL_FEATURE_OVERRIDES_ENABLED_ANGLE,
                              reinterpret_cast<EGLAttrib>(enabled.data()),
                              EGL_FEATURE_OVERRIDES_DISABLED_ANGLE,
                              reinterpret_cast<EGLAttrib>(disabled.data()),
                              EGL_NONE};
-    EGLDisplay dpy_override = eglGetPlatformDisplay(
-        EGL_PLATFORM_ANGLE_ANGLE, reinterpret_cast<void *>(EGL_DEFAULT_DISPLAY), dispattrs);
+    mDisplay              = eglGetPlatformDisplay(EGL_PLATFORM_ANGLE_ANGLE,
+                                                  reinterpret_cast<void *>(EGL_DEFAULT_DISPLAY), dispattrs);
     ASSERT_EGL_SUCCESS();
-    ASSERT_TRUE(dpy_override != EGL_NO_DISPLAY);
-    ASSERT_TRUE(eglInitialize(dpy_override, nullptr, nullptr) == EGL_TRUE);
+    ASSERT_NE(mDisplay, EGL_NO_DISPLAY);
+    ASSERT_EQ(eglInitialize(mDisplay, nullptr, nullptr), EGLBoolean(EGL_TRUE));
 
     // Check that all features have the correct status (even the ones we toggled).
     for (size_t i = 0; i < features.size(); i++)
     {
         EXPECT_STREQ(FeatureStatusToString(shouldBe[i]),
-                     eglQueryStringiANGLE(dpy_override, EGL_FEATURE_STATUS_ANGLE, i));
+                     eglQueryStringiANGLE(mDisplay, EGL_FEATURE_STATUS_ANGLE, i))
+            << modifiedNameStorage[i];
+    }
+}
+
+// Submit a list of features to override when creating the display with eglGetPlatformDisplay, and
+// ensure that the features are correctly overridden.
+TEST_P(EGLFeatureControlTest, OverrideFeatures)
+{
+    testOverrideFeatures([](const std::string &featureName) { return featureName; });
+}
+
+// Similar to OverrideFeatures, but ensures that camelCase variants of the name match as well.
+TEST_P(EGLFeatureControlTest, OverrideFeaturesCamelCase)
+{
+    testOverrideFeatures(
+        [](const std::string &featureName) { return angle::ToCamelCase(featureName); });
+}
+
+// Similar to OverrideFeatures, but ensures wildcard matching works
+TEST_P(EGLFeatureControlTest, OverrideFeaturesWildcard)
+{
+    for (int j = 0; j < 2; j++)
+    {
+        const bool testEnableOverride = (j != 0);
+
+        ANGLE_SKIP_TEST_IF(!initTest());
+
+        egl::Display *display       = static_cast<egl::Display *>(mDisplay);
+        angle::FeatureList features = display->getFeatures();
+
+        // Note that we don't use the broader 'prefer_*' here because
+        // prefer_monolithic_pipelines_over_libraries may affect other feature
+        // flags.
+        std::vector<const char *> featuresToOverride = {"prefer_d*", nullptr};
+
+        std::vector<std::string> featureNameStorage;
+        std::vector<bool> shouldBe;
+
+        shouldBe.reserve(features.size());
+        featureNameStorage.reserve(features.size());
+
+        for (size_t i = 0; i < features.size(); i++)
+        {
+            std::string featureName = std::string(features[i]->name);
+            std::transform(featureName.begin(), featureName.end(), featureName.begin(),
+                           [](unsigned char c) { return std::tolower(c); });
+
+            const bool featureMatch = strncmp(featureName.c_str(), "preferd", 7) == 0;
+
+            std::optional<bool> overrideState;
+            if (featureMatch)
+            {
+                overrideState = testEnableOverride;
+            }
+
+            // Save what we expect the feature status will be when checking later.
+            shouldBe.push_back(overrideState.value_or(features[i]->enabled));
+            featureNameStorage.push_back(features[i]->name);
+        }
+
+        // Terminate the old display (we just used it to collect features)
+        eglTerminate(mDisplay);
+        mDisplay = nullptr;
+
+        // Create a new display with these overridden features.
+        EGLAttrib dispattrs[] = {EGL_PLATFORM_ANGLE_TYPE_ANGLE, GetParam().getRenderer(),
+                                 testEnableOverride ? EGL_FEATURE_OVERRIDES_ENABLED_ANGLE
+                                                    : EGL_FEATURE_OVERRIDES_DISABLED_ANGLE,
+                                 reinterpret_cast<EGLAttrib>(featuresToOverride.data()), EGL_NONE};
+        mDisplay              = eglGetPlatformDisplay(EGL_PLATFORM_ANGLE_ANGLE,
+                                                      reinterpret_cast<void *>(EGL_DEFAULT_DISPLAY), dispattrs);
+        ASSERT_EGL_SUCCESS();
+        ASSERT_NE(mDisplay, EGL_NO_DISPLAY);
+        ASSERT_EQ(eglInitialize(mDisplay, nullptr, nullptr), EGLBoolean(EGL_TRUE));
+
+        // Check that all features have the correct status (even the ones we toggled).
+        for (size_t i = 0; i < features.size(); i++)
+        {
+            EXPECT_STREQ(FeatureStatusToString(shouldBe[i]),
+                         eglQueryStringiANGLE(mDisplay, EGL_FEATURE_STATUS_ANGLE, i))
+                << featureNameStorage[i];
+        }
+
+        // Clean up display for next iteration.
+        eglTerminate(mDisplay);
+        mDisplay = nullptr;
+    }
+}
+
+// Ensure that dependent features are affected properly by overrides
+TEST_P(EGLFeatureControlTest, OverrideFeaturesDependent)
+{
+    ANGLE_SKIP_TEST_IF(!initTest());
+
+    egl::Display *display       = static_cast<egl::Display *>(mDisplay);
+    angle::FeatureList features = display->getFeatures();
+
+    const std::vector<const char *> featuresDisabled = {
+        GetFeatureName(Feature::SupportsRenderpass2),
+        GetFeatureName(Feature::SupportsImage2dViewOf3d), nullptr};
+
+    const std::vector<const char *> featuresExpectDisabled = {
+        // Features we changed
+        GetFeatureName(Feature::SupportsRenderpass2),
+        GetFeatureName(Feature::SupportsImage2dViewOf3d),
+
+        // Features that must become disabled as a result of the above
+        GetFeatureName(Feature::SupportsDepthStencilResolve),
+        GetFeatureName(Feature::SupportsDepthStencilIndependentResolveNone),
+        GetFeatureName(Feature::SupportsSampler2dViewOf3d),
+        GetFeatureName(Feature::SupportsFragmentShadingRate),
+    };
+
+    std::vector<std::string> featureNameStorage;
+    std::vector<bool> shouldBe;
+
+    shouldBe.reserve(features.size());
+    featureNameStorage.reserve(features.size());
+
+    for (size_t i = 0; i < features.size(); i++)
+    {
+        bool featureMatch = false;
+        for (auto *ptr : featuresExpectDisabled)
+        {
+            if (strcmp(ptr, features[i]->name) == 0)
+            {
+                featureMatch = true;
+                break;
+            }
+        }
+
+        std::string featureName = std::string(features[i]->name);
+        std::transform(featureName.begin(), featureName.end(), featureName.begin(),
+                       [](unsigned char c) { return std::tolower(c); });
+
+        // Save what we expect the feature status will be when checking later.
+        shouldBe.push_back(features[i]->enabled && !featureMatch);
+
+        // Store copy of the feature name string, in case we need to print for a test failure
+        featureNameStorage.push_back(features[i]->name);
+    }
+
+    // Terminate the old display (we just used it to collect features)
+    eglTerminate(mDisplay);
+
+    // Create a new display with these overridden features.
+    EGLAttrib dispattrs[] = {EGL_PLATFORM_ANGLE_TYPE_ANGLE, GetParam().getRenderer(),
+                             EGL_FEATURE_OVERRIDES_DISABLED_ANGLE,
+                             reinterpret_cast<EGLAttrib>(featuresDisabled.data()), EGL_NONE};
+    mDisplay              = eglGetPlatformDisplay(EGL_PLATFORM_ANGLE_ANGLE,
+                                                  reinterpret_cast<void *>(EGL_DEFAULT_DISPLAY), dispattrs);
+    ASSERT_EGL_SUCCESS();
+    ASSERT_NE(mDisplay, EGL_NO_DISPLAY);
+    ASSERT_EQ(eglInitialize(mDisplay, nullptr, nullptr), EGLBoolean(EGL_TRUE));
+
+    // Check that all features have the correct status (even the ones we toggled).
+    for (size_t i = 0; i < features.size(); i++)
+    {
+        EXPECT_STREQ(FeatureStatusToString(shouldBe[i]),
+                     eglQueryStringiANGLE(mDisplay, EGL_FEATURE_STATUS_ANGLE, i))
+            << featureNameStorage[i];
     }
 }
 

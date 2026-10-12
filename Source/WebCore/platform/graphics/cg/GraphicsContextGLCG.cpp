@@ -31,7 +31,6 @@
 #include "BitmapImage.h"
 #include "GraphicsContextCG.h"
 #include "GraphicsContextGLImageExtractor.h"
-#include "GraphicsContextGLOpenGL.h"
 #include "Image.h"
 #include "ImageBufferUtilitiesCG.h"
 #include "PixelBuffer.h"
@@ -323,21 +322,15 @@ GraphicsContextGLImageExtractor::~GraphicsContextGLImageExtractor() = default;
 
 bool GraphicsContextGLImageExtractor::extractImage(bool premultiplyAlpha, bool ignoreGammaAndColorProfile, bool ignoreNativeImageAlphaPremultiplication)
 {
-    if (!m_image)
-        return false;
-
     RefPtr<NativeImage> decodedImage;
     bool hasAlpha = !m_image->currentFrameKnownToBeOpaque();
 
     if ((ignoreGammaAndColorProfile || (hasAlpha && !premultiplyAlpha)) && m_image->data()) {
-        auto source = ImageSource::create(nullptr, AlphaOption::NotPremultiplied, ignoreGammaAndColorProfile ? GammaAndColorProfileOption::Ignored : GammaAndColorProfileOption::Applied);
-        source->setData(m_image->data(), true);
-        if (!source->frameCount())
-            return false;
-
-        decodedImage = source->createFrameImageAtIndex(0);
+        auto image = BitmapImage::create(nullptr, AlphaOption::NotPremultiplied, ignoreGammaAndColorProfile ? GammaAndColorProfileOption::Ignored : GammaAndColorProfileOption::Applied);
+        image->setData(m_image->data(), true);
+        decodedImage = image->primaryNativeImage();
     } else
-        decodedImage = m_image->nativeImageForCurrentFrame();
+        decodedImage = m_image->currentNativeImage();
 
     if (!decodedImage)
         return false;
@@ -360,7 +353,7 @@ bool GraphicsContextGLImageExtractor::extractImage(bool premultiplyAlpha, bool i
         // alpha channel. Creation of a bitmap context with an alpha channel
         // doesn't seem to work unless it's premultiplied.
         bitmapContext = adoptCF(CGBitmapContextCreate(0, m_imageWidth, m_imageHeight, 8, m_imageWidth * 4,
-            sRGBColorSpaceRef(), kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Host));
+            sRGBColorSpaceRef(), static_cast<uint32_t>(kCGImageAlphaPremultipliedFirst) | static_cast<uint32_t>(kCGBitmapByteOrder32Host)));
         if (!bitmapContext)
             return false;
 
@@ -506,11 +499,9 @@ bool GraphicsContextGLImageExtractor::extractImage(bool premultiplyAlpha, bool i
     return true;
 }
 
-void GraphicsContextGLOpenGL::paintToCanvas(const GraphicsContextGLAttributes& sourceContextAttributes, PixelBuffer&& pixelBuffer, const IntSize& canvasSize, GraphicsContext& context)
+RefPtr<NativeImage> GraphicsContextGL::createNativeImageFromPixelBuffer(const GraphicsContextGLAttributes& sourceContextAttributes, Ref<PixelBuffer>&& pixelBuffer)
 {
-    ASSERT(!pixelBuffer.size().isEmpty());
-    if (canvasSize.isEmpty())
-        return;
+    ASSERT(!pixelBuffer->size().isEmpty());
     // Input is GL_RGBA == kCGBitmapByteOrder32Big | kCGImageAlpha*Last.
     // GL_BGRA would be kCGBitmapByteOrder32Little | kCGImageAlpha*First.
     CGBitmapInfo bitmapInfo = kCGBitmapByteOrder32Big;
@@ -521,31 +512,17 @@ void GraphicsContextGLOpenGL::paintToCanvas(const GraphicsContextGLAttributes& s
     else
         bitmapInfo |= kCGImageAlphaLast;
 
-    auto pixelArray = makeRef(pixelBuffer.data());
-    auto dataSize = pixelArray->byteLength();
-    auto data = pixelArray->data();
+    Ref protectedPixelBuffer = pixelBuffer;
+    auto data = pixelBuffer->bytes();
 
-    verifyImageBufferIsBigEnough(data, dataSize);
+    verifyImageBufferIsBigEnough(data);
 
-    auto dataProvider = adoptCF(CGDataProviderCreateWithData(&pixelArray.leakRef(), data, dataSize, [] (void* context, const void*, size_t) {
-        static_cast<JSC::Uint8ClampedArray*>(context)->deref();
+    auto dataProvider = adoptCF(CGDataProviderCreateWithData(&protectedPixelBuffer.leakRef(), data.data(), data.size(), [] (void* context, const void*, size_t) {
+        static_cast<PixelBuffer*>(context)->deref();
     }));
 
-    auto imageSize = pixelBuffer.size();
-    auto image = NativeImage::create(adoptCF(CGImageCreate(imageSize.width(), imageSize.height(), 8, 32, 4 * imageSize.width(), pixelBuffer.format().colorSpace.platformColorSpace(), bitmapInfo, dataProvider.get(), 0, false, kCGRenderingIntentDefault)));
-
-    // CSS styling may cause the canvas's content to be resized on
-    // the page. Go back to the Canvas to figure out the correct
-    // width and height to draw.
-    FloatRect canvasRect(FloatPoint(), canvasSize);
-    // We want to completely overwrite the previous frame's
-    // rendering results.
-
-    GraphicsContextStateSaver stateSaver(context);
-    context.scale(FloatSize(1, -1));
-    context.translate(0, -imageSize.height());
-    context.setImageInterpolationQuality(InterpolationQuality::DoNotInterpolate);
-    context.drawNativeImage(*image, imageSize, canvasRect, FloatRect(FloatPoint(), imageSize), { CompositeOperator::Copy });
+    auto imageSize = pixelBuffer->size();
+    return NativeImage::create(adoptCF(CGImageCreate(imageSize.width(), imageSize.height(), 8, 32, 4 * imageSize.width(), pixelBuffer->format().colorSpace.platformColorSpace(), bitmapInfo, dataProvider.get(), 0, false, kCGRenderingIntentDefault)));
 }
 
 } // namespace WebCore

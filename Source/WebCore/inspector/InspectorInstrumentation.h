@@ -35,17 +35,20 @@
 #include "CanvasBase.h"
 #include "CanvasRenderingContext.h"
 #include "Database.h"
-#include "DeclarativeAnimation.h"
 #include "DocumentThreadableLoader.h"
 #include "Element.h"
+#include "Event.h"
 #include "EventTarget.h"
 #include "FormData.h"
-#include "Frame.h"
 #include "HitTestResult.h"
 #include "InspectorInstrumentationPublic.h"
+#include "LocalFrame.h"
+#include "LocalFrameView.h"
 #include "Page.h"
 #include "ResourceLoader.h"
+#include "ResourceLoaderIdentifier.h"
 #include "StorageArea.h"
+#include "StyleOriginatedAnimation.h"
 #include "WebAnimation.h"
 #include "WorkerInspectorProxy.h"
 #include <JavaScriptCore/ConsoleMessage.h>
@@ -53,6 +56,7 @@
 #include <wtf/CompletionHandler.h>
 #include <wtf/Function.h>
 #include <wtf/MemoryPressureHandler.h>
+#include <wtf/ObjectIdentifier.h>
 #include <wtf/RefPtr.h>
 
 #if ENABLE(WEBGL)
@@ -69,7 +73,7 @@ namespace WebCore {
 
 class CachedResource;
 class CharacterData;
-class DOMWindow;
+class LocalDOMWindow;
 class DOMWrapperWorld;
 class Document;
 class DocumentLoader;
@@ -89,16 +93,21 @@ class ResourceRequest;
 class ResourceResponse;
 class ScriptExecutionContext;
 class SecurityOrigin;
+class ServiceWorkerGlobalScope;
 class ShadowRoot;
-class SharedBuffer;
+class FragmentedSharedBuffer;
 class TimerBase;
 class WebKitNamedFlow;
+class WebSocketChannel;
 class WorkerOrWorkletGlobalScope;
+
+struct Styleable;
 
 #if ENABLE(WEBGL)
 class WebGLProgram;
 #endif
 
+using WebSocketChannelIdentifier = LegacyNullableAtomicObjectIdentifier<WebSocketChannel>;
 enum class StorageType : uint8_t;
 
 struct ComputedEffectTiming;
@@ -106,8 +115,8 @@ struct WebSocketFrame;
 
 class InspectorInstrumentation {
 public:
-    static void didClearWindowObjectInWorld(Frame&, DOMWrapperWorld&);
-    static bool isDebuggerPaused(Frame*);
+    static void didClearWindowObjectInWorld(LocalFrame&, DOMWrapperWorld&);
+    static bool isDebuggerPaused(LocalFrame*);
 
     static int identifierForNode(Node&);
     static void addEventListenersToNode(Node&);
@@ -116,7 +125,9 @@ public:
     static void willRemoveDOMNode(Document&, Node&);
     static void didRemoveDOMNode(Document&, Node&);
     static void willDestroyDOMNode(Node&);
-    static void nodeLayoutContextChanged(Node&, RenderObject*);
+    static void didChangeRendererForDOMNode(Node&);
+    static void didAddOrRemoveScrollbars(LocalFrameView&);
+    static void didAddOrRemoveScrollbars(RenderObject&);
     static void willModifyDOMAttr(Document&, Element&, const AtomString& oldValue, const AtomString& newValue);
     static void didModifyDOMAttr(Document&, Element&, const AtomString& name, const AtomString& value);
     static void didRemoveDOMAttr(Document&, Element&, const AtomString& name);
@@ -124,7 +135,7 @@ public:
     static void willInvalidateStyleAttr(Element&);
     static void didInvalidateStyleAttr(Element&);
     static void documentDetached(Document&);
-    static void frameWindowDiscarded(Frame&, DOMWindow*);
+    static void frameWindowDiscarded(LocalFrame&, LocalDOMWindow*);
     static void mediaQueryResultChanged(Document&);
     static void activeStyleSheetsUpdated(Document&);
     static void didPushShadowRoot(Element& host, ShadowRoot&);
@@ -138,21 +149,21 @@ public:
     static void didRegisterNamedFlowContentElement(Document&, WebKitNamedFlow&, Node& contentElement, Node* nextContentElement = nullptr);
     static void didUnregisterNamedFlowContentElement(Document&, WebKitNamedFlow&, Node& contentElement);
 
-    static void mouseDidMoveOverElement(Page&, const HitTestResult&, unsigned modifierFlags);
-    static bool handleMousePress(Frame&);
-    static bool handleTouchEvent(Frame&, Node&);
-    static bool forcePseudoState(const Element&, CSSSelector::PseudoClassType);
+    static void mouseDidMoveOverElement(Page&, const HitTestResult&, OptionSet<PlatformEventModifier>);
+    static bool handleMousePress(LocalFrame&);
+    static bool handleTouchEvent(LocalFrame&, Node&);
+    static bool forcePseudoState(const Element&, CSSSelector::PseudoClass);
 
     static void willSendXMLHttpRequest(ScriptExecutionContext*, const String& url);
     static void willFetch(ScriptExecutionContext&, const String& url);
     static void didInstallTimer(ScriptExecutionContext&, int timerId, Seconds timeout, bool singleShot);
     static void didRemoveTimer(ScriptExecutionContext&, int timerId);
 
-    static int willPostMessage(Frame&);
-    static void didPostMessage(Frame&, int postTimerIdentifier, JSC::JSGlobalObject&);
-    static void didFailPostMessage(Frame&, int postTimerIdentifier);
-    static void willDispatchPostMessage(Frame&, int postTimerIdentifier);
-    static void didDispatchPostMessage(Frame&, int postTimerIdentifier);
+    static int willPostMessage(LocalFrame&);
+    static void didPostMessage(LocalFrame&, int postTimerIdentifier, JSC::JSGlobalObject&);
+    static void didFailPostMessage(LocalFrame&, int postTimerIdentifier);
+    static void willDispatchPostMessage(LocalFrame&, int postTimerIdentifier);
+    static void didDispatchPostMessage(LocalFrame&, int postTimerIdentifier);
 
     static void willCallFunction(ScriptExecutionContext*, const String& scriptName, int scriptLine, int scriptColumn);
     static void didCallFunction(ScriptExecutionContext*);
@@ -163,75 +174,80 @@ public:
     static void didDispatchEvent(Document&, const Event&);
     static void willHandleEvent(ScriptExecutionContext&, Event&, const RegisteredEventListener&);
     static void didHandleEvent(ScriptExecutionContext&, Event&, const RegisteredEventListener&);
-    static void willDispatchEventOnWindow(Frame*, const Event&, DOMWindow&);
-    static void didDispatchEventOnWindow(Frame*, const Event&);
+    static void willDispatchEventOnWindow(LocalFrame*, const Event&, LocalDOMWindow&);
+    static void didDispatchEventOnWindow(LocalFrame*, const Event&);
     static void eventDidResetAfterDispatch(const Event&);
-    static void willEvaluateScript(Frame&, const String& url, int lineNumber, int columnNumber);
-    static void didEvaluateScript(Frame&);
+    static void willEvaluateScript(LocalFrame&, const String& url, int lineNumber, int columnNumber);
+    static void didEvaluateScript(LocalFrame&);
     static void willFireTimer(ScriptExecutionContext&, int timerId, bool oneShot);
     static void didFireTimer(ScriptExecutionContext&, int timerId, bool oneShot);
-    static void didInvalidateLayout(Frame&);
-    static void willLayout(Frame&);
-    static void didLayout(Frame&, RenderObject&);
+    static void didInvalidateLayout(LocalFrame&);
+    static void willLayout(LocalFrame&);
+    static void didLayout(LocalFrame&, RenderObject&);
     static void didScroll(Page&);
-    static void willComposite(Frame&);
-    static void didComposite(Frame&);
+    static void willComposite(LocalFrame&);
+    static void didComposite(LocalFrame&);
     static void willPaint(RenderObject&);
     static void didPaint(RenderObject&, const LayoutRect&);
     static void willRecalculateStyle(Document&);
     static void didRecalculateStyle(Document&);
     static void didScheduleStyleRecalculation(Document&);
-    static void applyUserAgentOverride(Frame&, String&);
-    static void applyEmulatedMedia(Frame&, String&);
+    static void applyUserAgentOverride(LocalFrame&, String&);
+    static void applyEmulatedMedia(LocalFrame&, AtomString&);
 
-    static void willSendRequest(Frame*, unsigned long identifier, DocumentLoader*, ResourceRequest&, const ResourceResponse& redirectResponse, const CachedResource*);
+    static void flexibleBoxRendererBeganLayout(const RenderObject&);
+    static void flexibleBoxRendererWrappedToNextLine(const RenderObject&, size_t lineStartItemIndex);
+
+    static void willSendRequest(LocalFrame*, ResourceLoaderIdentifier, DocumentLoader*, ResourceRequest&, const ResourceResponse& redirectResponse, const CachedResource*, ResourceLoader*);
     static void didLoadResourceFromMemoryCache(Page&, DocumentLoader*, CachedResource*);
-    static void didReceiveResourceResponse(Frame&, unsigned long identifier, DocumentLoader*, const ResourceResponse&, ResourceLoader*);
-    static void didReceiveThreadableLoaderResponse(DocumentThreadableLoader&, unsigned long identifier);
-    static void didReceiveData(Frame*, unsigned long identifier, const uint8_t* data, int dataLength, int encodedDataLength);
-    static void didFinishLoading(Frame*, DocumentLoader*, unsigned long identifier, const NetworkLoadMetrics&, ResourceLoader*);
-    static void didFailLoading(Frame*, DocumentLoader*, unsigned long identifier, const ResourceError&);
+    static void didReceiveResourceResponse(LocalFrame&, ResourceLoaderIdentifier, DocumentLoader*, const ResourceResponse&, ResourceLoader*);
+    static void didReceiveThreadableLoaderResponse(DocumentThreadableLoader&, ResourceLoaderIdentifier);
+    static void didReceiveData(LocalFrame*, ResourceLoaderIdentifier, const SharedBuffer*, int encodedDataLength);
+    static void didFinishLoading(LocalFrame*, DocumentLoader*, ResourceLoaderIdentifier, const NetworkLoadMetrics&, ResourceLoader*);
+    static void didFailLoading(LocalFrame*, DocumentLoader*, ResourceLoaderIdentifier, const ResourceError&);
 
-    static void willSendRequest(WorkerOrWorkletGlobalScope&, unsigned long identifier, ResourceRequest&);
-    static void didReceiveResourceResponse(WorkerOrWorkletGlobalScope&, unsigned long identifier, const ResourceResponse&);
-    static void didReceiveData(WorkerOrWorkletGlobalScope&, unsigned long identifier, const uint8_t* data, int dataLength);
-    static void didFinishLoading(WorkerOrWorkletGlobalScope&, unsigned long identifier, const NetworkLoadMetrics&);
-    static void didFailLoading(WorkerOrWorkletGlobalScope&, unsigned long identifier, const ResourceError&);
+    static void willSendRequest(ServiceWorkerGlobalScope&, ResourceLoaderIdentifier, ResourceRequest&);
+    static void didReceiveResourceResponse(ServiceWorkerGlobalScope&, ResourceLoaderIdentifier, const ResourceResponse&);
+    static void didReceiveData(ServiceWorkerGlobalScope&, ResourceLoaderIdentifier, const SharedBuffer&);
+    static void didFinishLoading(ServiceWorkerGlobalScope&, ResourceLoaderIdentifier, const NetworkLoadMetrics&);
+    static void didFailLoading(ServiceWorkerGlobalScope&, ResourceLoaderIdentifier, const ResourceError&);
 
     // Some network requests do not go through the normal network loading path.
     // These network requests have to issue their own willSendRequest / didReceiveResponse / didFinishLoading / didFailLoading
     // instrumentation calls. Some of these loads are for resources that lack a CachedResource::Type.
     enum class LoadType { Ping, Beacon };
-    static void willSendRequestOfType(Frame*, unsigned long identifier, DocumentLoader*, ResourceRequest&, LoadType);
+    static void willSendRequestOfType(LocalFrame*, ResourceLoaderIdentifier, DocumentLoader*, ResourceRequest&, LoadType);
 
-    static void continueAfterXFrameOptionsDenied(Frame&, unsigned long identifier, DocumentLoader&, const ResourceResponse&);
-    static void continueWithPolicyDownload(Frame&, unsigned long identifier, DocumentLoader&, const ResourceResponse&);
-    static void continueWithPolicyIgnore(Frame&, unsigned long identifier, DocumentLoader&, const ResourceResponse&);
+    static void continueAfterXFrameOptionsDenied(LocalFrame&, ResourceLoaderIdentifier, DocumentLoader&, const ResourceResponse&);
+    static void continueWithPolicyDownload(LocalFrame&, ResourceLoaderIdentifier, DocumentLoader&, const ResourceResponse&);
+    static void continueWithPolicyIgnore(LocalFrame&, ResourceLoaderIdentifier, DocumentLoader&, const ResourceResponse&);
     static void willLoadXHRSynchronously(ScriptExecutionContext*);
     static void didLoadXHRSynchronously(ScriptExecutionContext*);
-    static void scriptImported(ScriptExecutionContext&, unsigned long identifier, const String& sourceString);
+    static void scriptImported(ScriptExecutionContext&, ResourceLoaderIdentifier, const String& sourceString);
     static void scriptExecutionBlockedByCSP(ScriptExecutionContext*, const String& directiveText);
-    static void didReceiveScriptResponse(ScriptExecutionContext*, unsigned long identifier);
-    static void domContentLoadedEventFired(Frame&);
-    static void loadEventFired(Frame*);
-    static void frameDetachedFromParent(Frame&);
-    static void didCommitLoad(Frame&, DocumentLoader*);
-    static void frameDocumentUpdated(Frame&);
-    static void loaderDetachedFromFrame(Frame&, DocumentLoader&);
-    static void frameStartedLoading(Frame&);
-    static void frameStoppedLoading(Frame&);
+    static void didReceiveScriptResponse(ScriptExecutionContext&, ResourceLoaderIdentifier);
+    static void domContentLoadedEventFired(LocalFrame&);
+    static void loadEventFired(LocalFrame*);
+    static void frameDetachedFromParent(LocalFrame&);
+    static void didCommitLoad(LocalFrame&, DocumentLoader*);
+    static void frameDocumentUpdated(LocalFrame&);
+    static void loaderDetachedFromFrame(LocalFrame&, DocumentLoader&);
+    static void frameStartedLoading(LocalFrame&);
+    static void frameStoppedLoading(LocalFrame&);
+    static void didCompleteRenderingFrame(Frame&);
     static void frameScheduledNavigation(Frame&, Seconds delay);
     static void frameClearedScheduledNavigation(Frame&);
+    static void accessibilitySettingsDidChange(Page&);
 #if ENABLE(DARK_MODE_CSS) || HAVE(OS_DARK_MODE_SUPPORT)
-    static void defaultAppearanceDidChange(Page&, bool useDarkAppearance);
+    static void defaultAppearanceDidChange(Page&);
 #endif
     static void willDestroyCachedResource(CachedResource&);
 
-    static bool willIntercept(const Frame*, const ResourceRequest&);
-    static bool shouldInterceptRequest(const Frame&, const ResourceRequest&);
-    static bool shouldInterceptResponse(const Frame&, const ResourceResponse&);
+    static bool willIntercept(const LocalFrame*, const ResourceRequest&);
+    static bool shouldInterceptRequest(const ResourceLoader&);
+    static bool shouldInterceptResponse(const LocalFrame&, const ResourceResponse&);
     static void interceptRequest(ResourceLoader&, Function<void(const ResourceRequest&)>&&);
-    static void interceptResponse(const Frame&, const ResourceResponse&, unsigned long identifier, CompletionHandler<void(const ResourceResponse&, RefPtr<SharedBuffer>)>&&);
+    static void interceptResponse(const LocalFrame&, const ResourceResponse&, ResourceLoaderIdentifier, CompletionHandler<void(const ResourceResponse&, RefPtr<FragmentedSharedBuffer>)>&&);
 
     static void addMessageToConsole(Page&, std::unique_ptr<Inspector::ConsoleMessage>);
     static void addMessageToConsole(WorkerOrWorkletGlobalScope&, std::unique_ptr<Inspector::ConsoleMessage>);
@@ -254,29 +270,31 @@ public:
     static void consoleStartRecordingCanvas(CanvasRenderingContext&, JSC::JSGlobalObject&, JSC::JSObject* options);
     static void consoleStopRecordingCanvas(CanvasRenderingContext&);
 
+    static void performanceMark(ScriptExecutionContext&, const String&, std::optional<MonotonicTime>, LocalFrame*);
+
     static void didRequestAnimationFrame(Document&, int callbackId);
     static void didCancelAnimationFrame(Document&, int callbackId);
     static void willFireAnimationFrame(Document&, int callbackId);
-    static void didFireAnimationFrame(Document&);
+    static void didFireAnimationFrame(Document&, int callbackId);
 
     static void willFireObserverCallback(ScriptExecutionContext&, const String& callbackType);
     static void didFireObserverCallback(ScriptExecutionContext&);
 
     static void didOpenDatabase(Database&);
 
-    static void didDispatchDOMStorageEvent(Page&, const String& key, const String& oldValue, const String& newValue, StorageType, SecurityOrigin*);
+    static void didDispatchDOMStorageEvent(Page&, const String& key, const String& oldValue, const String& newValue, StorageType, const SecurityOrigin&);
 
     static bool shouldWaitForDebuggerOnStart(ScriptExecutionContext&);
     static void workerStarted(WorkerInspectorProxy&);
     static void workerTerminated(WorkerInspectorProxy&);
 
-    static void didCreateWebSocket(Document*, unsigned long identifier, const URL& requestURL);
-    static void willSendWebSocketHandshakeRequest(Document*, unsigned long identifier, const ResourceRequest&);
-    static void didReceiveWebSocketHandshakeResponse(Document*, unsigned long identifier, const ResourceResponse&);
-    static void didCloseWebSocket(Document*, unsigned long identifier);
-    static void didReceiveWebSocketFrame(Document*, unsigned long identifier, const WebSocketFrame&);
-    static void didSendWebSocketFrame(Document*, unsigned long identifier, const WebSocketFrame&);
-    static void didReceiveWebSocketFrameError(Document*, unsigned long identifier, const String& errorMessage);
+    static void didCreateWebSocket(Document*, WebSocketChannelIdentifier, const URL& requestURL);
+    static void willSendWebSocketHandshakeRequest(Document*, WebSocketChannelIdentifier, const ResourceRequest&);
+    static void didReceiveWebSocketHandshakeResponse(Document*, WebSocketChannelIdentifier, const ResourceResponse&);
+    static void didCloseWebSocket(Document*, WebSocketChannelIdentifier);
+    static void didReceiveWebSocketFrame(Document*, WebSocketChannelIdentifier, const WebSocketFrame&);
+    static void didSendWebSocketFrame(Document*, WebSocketChannelIdentifier, const WebSocketFrame&);
+    static void didReceiveWebSocketFrameError(Document*, WebSocketChannelIdentifier, const String& errorMessage);
 
 #if ENABLE(RESOURCE_USAGE)
     static void didHandleMemoryPressure(Page&, Critical);
@@ -284,6 +302,7 @@ public:
 
     static void didChangeCSSCanvasClientNodes(CanvasBase&);
     static void didCreateCanvasRenderingContext(CanvasRenderingContext&);
+    static void didChangeCanvasSize(CanvasRenderingContext&);
     static void didChangeCanvasMemory(CanvasRenderingContext&);
     static void didFinishRecordingCanvasFrame(CanvasRenderingContext&, bool forceDispatch = false);
 #if ENABLE(WEBGL)
@@ -294,7 +313,7 @@ public:
     static bool isWebGLProgramHighlighted(WebGLRenderingContextBase&, WebGLProgram&);
 #endif
 
-    static void willApplyKeyframeEffect(Element&, KeyframeEffect&, ComputedEffectTiming);
+    static void willApplyKeyframeEffect(const Styleable&, KeyframeEffect&, const ComputedEffectTiming&);
     static void didChangeWebAnimationName(WebAnimation&);
     static void didSetWebAnimationEffect(WebAnimation&);
     static void didChangeWebAnimationEffectTiming(WebAnimation&);
@@ -303,7 +322,7 @@ public:
     static void willDestroyWebAnimation(WebAnimation&);
 
     static void networkStateChanged(Page&);
-    static void updateApplicationCacheStatus(Frame*);
+    static void updateApplicationCacheStatus(LocalFrame*);
 
     static void layerTreeDidChange(Page*);
     static void renderLayerDestroyed(Page*, const RenderLayer&);
@@ -325,7 +344,7 @@ public:
     static void unregisterInstrumentingAgents(InstrumentingAgents&);
 
 private:
-    static void didClearWindowObjectInWorldImpl(InstrumentingAgents&, Frame&, DOMWrapperWorld&);
+    static void didClearWindowObjectInWorldImpl(InstrumentingAgents&, LocalFrame&, DOMWrapperWorld&);
     static bool isDebuggerPausedImpl(InstrumentingAgents&);
 
     static int identifierForNodeImpl(InstrumentingAgents&, Node&);
@@ -335,7 +354,9 @@ private:
     static void willRemoveDOMNodeImpl(InstrumentingAgents&, Node&);
     static void didRemoveDOMNodeImpl(InstrumentingAgents&, Node&);
     static void willDestroyDOMNodeImpl(InstrumentingAgents&, Node&);
-    static void nodeLayoutContextChangedImpl(InstrumentingAgents&, Node&, RenderObject*);
+    static void didChangeRendererForDOMNodeImpl(InstrumentingAgents&, Node&);
+    static void didAddOrRemoveScrollbarsImpl(InstrumentingAgents&, LocalFrameView&);
+    static void didAddOrRemoveScrollbarsImpl(InstrumentingAgents&, RenderObject&);
     static void willModifyDOMAttrImpl(InstrumentingAgents&, Element&, const AtomString& oldValue, const AtomString& newValue);
     static void didModifyDOMAttrImpl(InstrumentingAgents&, Element&, const AtomString& name, const AtomString& value);
     static void didRemoveDOMAttrImpl(InstrumentingAgents&, Element&, const AtomString& name);
@@ -343,7 +364,7 @@ private:
     static void willInvalidateStyleAttrImpl(InstrumentingAgents&, Element&);
     static void didInvalidateStyleAttrImpl(InstrumentingAgents&, Element&);
     static void documentDetachedImpl(InstrumentingAgents&, Document&);
-    static void frameWindowDiscardedImpl(InstrumentingAgents&, DOMWindow*);
+    static void frameWindowDiscardedImpl(InstrumentingAgents&, LocalDOMWindow*);
     static void mediaQueryResultChangedImpl(InstrumentingAgents&);
     static void activeStyleSheetsUpdatedImpl(InstrumentingAgents&, Document&);
     static void didPushShadowRootImpl(InstrumentingAgents&, Element& host, ShadowRoot&);
@@ -357,10 +378,10 @@ private:
     static void didRegisterNamedFlowContentElementImpl(InstrumentingAgents&, Document&, WebKitNamedFlow&, Node& contentElement, Node* nextContentElement = nullptr);
     static void didUnregisterNamedFlowContentElementImpl(InstrumentingAgents&, Document&, WebKitNamedFlow&, Node& contentElement);
 
-    static void mouseDidMoveOverElementImpl(InstrumentingAgents&, const HitTestResult&, unsigned modifierFlags);
+    static void mouseDidMoveOverElementImpl(InstrumentingAgents&, const HitTestResult&, OptionSet<PlatformEventModifier>);
     static bool handleMousePressImpl(InstrumentingAgents&);
     static bool handleTouchEventImpl(InstrumentingAgents&, Node&);
-    static bool forcePseudoStateImpl(InstrumentingAgents&, const Element&, CSSSelector::PseudoClassType);
+    static bool forcePseudoStateImpl(InstrumentingAgents&, const Element&, CSSSelector::PseudoClass);
 
     static void willSendXMLHttpRequestImpl(InstrumentingAgents&, const String& url);
     static void willFetchImpl(InstrumentingAgents&, const String& url);
@@ -379,21 +400,21 @@ private:
     static void willRemoveEventListenerImpl(InstrumentingAgents&, EventTarget&, const AtomString& eventType, EventListener&, bool capture);
     static bool isEventListenerDisabledImpl(InstrumentingAgents&, EventTarget&, const AtomString& eventType, EventListener&, bool capture);
     static void willDispatchEventImpl(InstrumentingAgents&, Document&, const Event&);
-    static void willHandleEventImpl(InstrumentingAgents&, Event&, const RegisteredEventListener&);
-    static void didHandleEventImpl(InstrumentingAgents&, Event&, const RegisteredEventListener&);
+    static void willHandleEventImpl(InstrumentingAgents&, ScriptExecutionContext&, Event&, const RegisteredEventListener&);
+    static void didHandleEventImpl(InstrumentingAgents&, ScriptExecutionContext&, Event&, const RegisteredEventListener&);
     static void didDispatchEventImpl(InstrumentingAgents&, const Event&);
-    static void willDispatchEventOnWindowImpl(InstrumentingAgents&, const Event&, DOMWindow&);
+    static void willDispatchEventOnWindowImpl(InstrumentingAgents&, const Event&, LocalDOMWindow&);
     static void didDispatchEventOnWindowImpl(InstrumentingAgents&, const Event&);
     static void eventDidResetAfterDispatchImpl(InstrumentingAgents&, const Event&);
-    static void willEvaluateScriptImpl(InstrumentingAgents&, Frame&, const String& url, int lineNumber, int columnNumber);
-    static void didEvaluateScriptImpl(InstrumentingAgents&, Frame&);
+    static void willEvaluateScriptImpl(InstrumentingAgents&, LocalFrame&, const String& url, int lineNumber, int columnNumber);
+    static void didEvaluateScriptImpl(InstrumentingAgents&, LocalFrame&);
     static void willFireTimerImpl(InstrumentingAgents&, int timerId, bool oneShot, ScriptExecutionContext&);
     static void didFireTimerImpl(InstrumentingAgents&, int timerId, bool oneShot);
-    static void didInvalidateLayoutImpl(InstrumentingAgents&, Frame&);
-    static void willLayoutImpl(InstrumentingAgents&, Frame&);
+    static void didInvalidateLayoutImpl(InstrumentingAgents&, LocalFrame&);
+    static void willLayoutImpl(InstrumentingAgents&, LocalFrame&);
     static void didLayoutImpl(InstrumentingAgents&, RenderObject&);
     static void didScrollImpl(InstrumentingAgents&);
-    static void willCompositeImpl(InstrumentingAgents&, Frame&);
+    static void willCompositeImpl(InstrumentingAgents&, LocalFrame&);
     static void didCompositeImpl(InstrumentingAgents&);
     static void willPaintImpl(InstrumentingAgents&, RenderObject&);
     static void didPaintImpl(InstrumentingAgents&, RenderObject&, const LayoutRect&);
@@ -401,42 +422,47 @@ private:
     static void didRecalculateStyleImpl(InstrumentingAgents&);
     static void didScheduleStyleRecalculationImpl(InstrumentingAgents&, Document&);
     static void applyUserAgentOverrideImpl(InstrumentingAgents&, String&);
-    static void applyEmulatedMediaImpl(InstrumentingAgents&, String&);
+    static void applyEmulatedMediaImpl(InstrumentingAgents&, AtomString&);
 
-    static void willSendRequestImpl(InstrumentingAgents&, unsigned long identifier, DocumentLoader*, ResourceRequest&, const ResourceResponse& redirectResponse, const CachedResource*);
-    static void willSendRequestOfTypeImpl(InstrumentingAgents&, unsigned long identifier, DocumentLoader*, ResourceRequest&, LoadType);
-    static void markResourceAsCachedImpl(InstrumentingAgents&, unsigned long identifier);
+    static void flexibleBoxRendererBeganLayoutImpl(InstrumentingAgents&, const RenderObject&);
+    static void flexibleBoxRendererWrappedToNextLineImpl(InstrumentingAgents&, const RenderObject&, size_t lineStartItemIndex);
+
+    static void willSendRequestImpl(InstrumentingAgents&, ResourceLoaderIdentifier, DocumentLoader*, ResourceRequest&, const ResourceResponse& redirectResponse, const CachedResource*, ResourceLoader*);
+    static void willSendRequestOfTypeImpl(InstrumentingAgents&, ResourceLoaderIdentifier, DocumentLoader*, ResourceRequest&, LoadType);
+    static void markResourceAsCachedImpl(InstrumentingAgents&, ResourceLoaderIdentifier);
     static void didLoadResourceFromMemoryCacheImpl(InstrumentingAgents&, DocumentLoader*, CachedResource*);
-    static void didReceiveResourceResponseImpl(InstrumentingAgents&, unsigned long identifier, DocumentLoader*, const ResourceResponse&, ResourceLoader*);
-    static void didReceiveThreadableLoaderResponseImpl(InstrumentingAgents&, DocumentThreadableLoader&, unsigned long identifier);
-    static void didReceiveDataImpl(InstrumentingAgents&, unsigned long identifier, const uint8_t* data, int dataLength, int encodedDataLength);
-    static void didFinishLoadingImpl(InstrumentingAgents&, unsigned long identifier, DocumentLoader*, const NetworkLoadMetrics&, ResourceLoader*);
-    static void didFailLoadingImpl(InstrumentingAgents&, unsigned long identifier, DocumentLoader*, const ResourceError&);
+    static void didReceiveResourceResponseImpl(InstrumentingAgents&, ResourceLoaderIdentifier, DocumentLoader*, const ResourceResponse&, ResourceLoader*);
+    static void didReceiveThreadableLoaderResponseImpl(InstrumentingAgents&, DocumentThreadableLoader&, ResourceLoaderIdentifier);
+    static void didReceiveDataImpl(InstrumentingAgents&, ResourceLoaderIdentifier, const SharedBuffer*, int encodedDataLength);
+    static void didFinishLoadingImpl(InstrumentingAgents&, ResourceLoaderIdentifier, DocumentLoader*, const NetworkLoadMetrics&, ResourceLoader*);
+    static void didFailLoadingImpl(InstrumentingAgents&, ResourceLoaderIdentifier, DocumentLoader*, const ResourceError&);
     static void willLoadXHRSynchronouslyImpl(InstrumentingAgents&);
     static void didLoadXHRSynchronouslyImpl(InstrumentingAgents&);
-    static void scriptImportedImpl(InstrumentingAgents&, unsigned long identifier, const String& sourceString);
+    static void scriptImportedImpl(InstrumentingAgents&, ResourceLoaderIdentifier, const String& sourceString);
     static void scriptExecutionBlockedByCSPImpl(InstrumentingAgents&, const String& directiveText);
-    static void didReceiveScriptResponseImpl(InstrumentingAgents&, unsigned long identifier);
-    static void domContentLoadedEventFiredImpl(InstrumentingAgents&, Frame&);
-    static void loadEventFiredImpl(InstrumentingAgents&, Frame*);
-    static void frameDetachedFromParentImpl(InstrumentingAgents&, Frame&);
-    static void didCommitLoadImpl(InstrumentingAgents&, Frame&, DocumentLoader*);
-    static void frameDocumentUpdatedImpl(InstrumentingAgents&, Frame&);
+    static void didReceiveScriptResponseImpl(InstrumentingAgents&, ResourceLoaderIdentifier);
+    static void domContentLoadedEventFiredImpl(InstrumentingAgents&, LocalFrame&);
+    static void loadEventFiredImpl(InstrumentingAgents&, LocalFrame*);
+    static void frameDetachedFromParentImpl(InstrumentingAgents&, LocalFrame&);
+    static void didCommitLoadImpl(InstrumentingAgents&, LocalFrame&, DocumentLoader*);
+    static void frameDocumentUpdatedImpl(InstrumentingAgents&, LocalFrame&);
     static void loaderDetachedFromFrameImpl(InstrumentingAgents&, DocumentLoader&);
-    static void frameStartedLoadingImpl(InstrumentingAgents&, Frame&);
-    static void frameStoppedLoadingImpl(InstrumentingAgents&, Frame&);
+    static void frameStartedLoadingImpl(InstrumentingAgents&, LocalFrame&);
+    static void didCompleteRenderingFrameImpl(InstrumentingAgents&);
+    static void frameStoppedLoadingImpl(InstrumentingAgents&, LocalFrame&);
     static void frameScheduledNavigationImpl(InstrumentingAgents&, Frame&, Seconds delay);
     static void frameClearedScheduledNavigationImpl(InstrumentingAgents&, Frame&);
+    static void accessibilitySettingsDidChangeImpl(InstrumentingAgents&);
 #if ENABLE(DARK_MODE_CSS) || HAVE(OS_DARK_MODE_SUPPORT)
-    static void defaultAppearanceDidChangeImpl(InstrumentingAgents&, bool useDarkAppearance);
+    static void defaultAppearanceDidChangeImpl(InstrumentingAgents&);
 #endif
     static void willDestroyCachedResourceImpl(CachedResource&);
 
     static bool willInterceptImpl(InstrumentingAgents&, const ResourceRequest&);
-    static bool shouldInterceptRequestImpl(InstrumentingAgents&, const ResourceRequest&);
+    static bool shouldInterceptRequestImpl(InstrumentingAgents&, const ResourceLoader&);
     static bool shouldInterceptResponseImpl(InstrumentingAgents&, const ResourceResponse&);
     static void interceptRequestImpl(InstrumentingAgents&, ResourceLoader&, Function<void(const ResourceRequest&)>&&);
-    static void interceptResponseImpl(InstrumentingAgents&, const ResourceResponse&, unsigned long identifier, CompletionHandler<void(const ResourceResponse&, RefPtr<SharedBuffer>)>&&);
+    static void interceptResponseImpl(InstrumentingAgents&, const ResourceResponse&, ResourceLoaderIdentifier, CompletionHandler<void(const ResourceResponse&, RefPtr<FragmentedSharedBuffer>)>&&);
 
     static void addMessageToConsoleImpl(InstrumentingAgents&, std::unique_ptr<Inspector::ConsoleMessage>);
 
@@ -454,39 +480,42 @@ private:
     static void consoleStartRecordingCanvasImpl(InstrumentingAgents&, CanvasRenderingContext&, JSC::JSGlobalObject&, JSC::JSObject* options);
     static void consoleStopRecordingCanvasImpl(InstrumentingAgents&, CanvasRenderingContext&);
 
+    static void performanceMarkImpl(InstrumentingAgents&, const String& label, std::optional<MonotonicTime>, LocalFrame*);
+
     static void didRequestAnimationFrameImpl(InstrumentingAgents&, int callbackId, Document&);
     static void didCancelAnimationFrameImpl(InstrumentingAgents&, int callbackId, Document&);
     static void willFireAnimationFrameImpl(InstrumentingAgents&, int callbackId, Document&);
-    static void didFireAnimationFrameImpl(InstrumentingAgents&);
+    static void didFireAnimationFrameImpl(InstrumentingAgents&, int callbackId);
 
     static void willFireObserverCallbackImpl(InstrumentingAgents&, const String&, ScriptExecutionContext&);
     static void didFireObserverCallbackImpl(InstrumentingAgents&);
 
     static void didOpenDatabaseImpl(InstrumentingAgents&, Database&);
 
-    static void didDispatchDOMStorageEventImpl(InstrumentingAgents&, const String& key, const String& oldValue, const String& newValue, StorageType, SecurityOrigin*);
+    static void didDispatchDOMStorageEventImpl(InstrumentingAgents&, const String& key, const String& oldValue, const String& newValue, StorageType, const SecurityOrigin&);
 
     static bool shouldWaitForDebuggerOnStartImpl(InstrumentingAgents&);
     static void workerStartedImpl(InstrumentingAgents&, WorkerInspectorProxy&);
     static void workerTerminatedImpl(InstrumentingAgents&, WorkerInspectorProxy&);
 
-    static void didCreateWebSocketImpl(InstrumentingAgents&, unsigned long identifier, const URL& requestURL);
-    static void willSendWebSocketHandshakeRequestImpl(InstrumentingAgents&, unsigned long identifier, const ResourceRequest&);
-    static void didReceiveWebSocketHandshakeResponseImpl(InstrumentingAgents&, unsigned long identifier, const ResourceResponse&);
-    static void didCloseWebSocketImpl(InstrumentingAgents&, unsigned long identifier);
-    static void didReceiveWebSocketFrameImpl(InstrumentingAgents&, unsigned long identifier, const WebSocketFrame&);
-    static void didSendWebSocketFrameImpl(InstrumentingAgents&, unsigned long identifier, const WebSocketFrame&);
-    static void didReceiveWebSocketFrameErrorImpl(InstrumentingAgents&, unsigned long identifier, const String&);
+    static void didCreateWebSocketImpl(InstrumentingAgents&, WebSocketChannelIdentifier, const URL& requestURL);
+    static void willSendWebSocketHandshakeRequestImpl(InstrumentingAgents&, WebSocketChannelIdentifier, const ResourceRequest&);
+    static void didReceiveWebSocketHandshakeResponseImpl(InstrumentingAgents&, WebSocketChannelIdentifier, const ResourceResponse&);
+    static void didCloseWebSocketImpl(InstrumentingAgents&, WebSocketChannelIdentifier);
+    static void didReceiveWebSocketFrameImpl(InstrumentingAgents&, WebSocketChannelIdentifier, const WebSocketFrame&);
+    static void didSendWebSocketFrameImpl(InstrumentingAgents&, WebSocketChannelIdentifier, const WebSocketFrame&);
+    static void didReceiveWebSocketFrameErrorImpl(InstrumentingAgents&, WebSocketChannelIdentifier, const String&);
 
 #if ENABLE(RESOURCE_USAGE)
     static void didHandleMemoryPressureImpl(InstrumentingAgents&, Critical);
 #endif
 
     static void networkStateChangedImpl(InstrumentingAgents&);
-    static void updateApplicationCacheStatusImpl(InstrumentingAgents&, Frame&);
+    static void updateApplicationCacheStatusImpl(InstrumentingAgents&, LocalFrame&);
 
     static void didChangeCSSCanvasClientNodesImpl(InstrumentingAgents&, CanvasBase&);
     static void didCreateCanvasRenderingContextImpl(InstrumentingAgents&, CanvasRenderingContext&);
+    static void didChangeCanvasSizeImpl(InstrumentingAgents&, CanvasRenderingContext&);
     static void didChangeCanvasMemoryImpl(InstrumentingAgents&, CanvasRenderingContext&);
     static void didFinishRecordingCanvasFrameImpl(InstrumentingAgents&, CanvasRenderingContext&, bool forceDispatch = false);
 #if ENABLE(WEBGL)
@@ -497,7 +526,7 @@ private:
     static bool isWebGLProgramHighlightedImpl(InstrumentingAgents&, WebGLProgram&);
 #endif
 
-    static void willApplyKeyframeEffectImpl(InstrumentingAgents&, Element&, KeyframeEffect&, ComputedEffectTiming);
+    static void willApplyKeyframeEffectImpl(InstrumentingAgents&, const Styleable&, KeyframeEffect&, const ComputedEffectTiming&);
     static void didChangeWebAnimationNameImpl(InstrumentingAgents&, WebAnimation&);
     static void didSetWebAnimationEffectImpl(InstrumentingAgents&, WebAnimation&);
     static void didChangeWebAnimationEffectTimingImpl(InstrumentingAgents&, WebAnimation&);
@@ -510,24 +539,25 @@ private:
 
     static InstrumentingAgents& instrumentingAgents(Page&);
     static InstrumentingAgents& instrumentingAgents(WorkerOrWorkletGlobalScope&);
+    static InstrumentingAgents& instrumentingAgents(ServiceWorkerGlobalScope&);
 
     static InstrumentingAgents* instrumentingAgents(const Frame&);
     static InstrumentingAgents* instrumentingAgents(const Frame*);
     static InstrumentingAgents* instrumentingAgents(ScriptExecutionContext&);
     static InstrumentingAgents* instrumentingAgents(Document&);
     static InstrumentingAgents* instrumentingAgents(Document*);
-    static InstrumentingAgents* instrumentingAgents(RenderObject&);
+    static InstrumentingAgents* instrumentingAgents(const RenderObject&);
     static InstrumentingAgents* instrumentingAgents(WorkerOrWorkletGlobalScope*);
 };
 
-inline void InspectorInstrumentation::didClearWindowObjectInWorld(Frame& frame, DOMWrapperWorld& world)
+inline void InspectorInstrumentation::didClearWindowObjectInWorld(LocalFrame& frame, DOMWrapperWorld& world)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (auto* agents = instrumentingAgents(frame))
         didClearWindowObjectInWorldImpl(*agents, frame, world);
 }
 
-inline bool InspectorInstrumentation::isDebuggerPaused(Frame* frame)
+inline bool InspectorInstrumentation::isDebuggerPaused(LocalFrame* frame)
 {
     FAST_RETURN_IF_NO_FRONTENDS(false);
     if (auto* agents = instrumentingAgents(frame))
@@ -585,11 +615,25 @@ inline void InspectorInstrumentation::willDestroyDOMNode(Node& node)
         willDestroyDOMNodeImpl(*agents, node);
 }
 
-inline void InspectorInstrumentation::nodeLayoutContextChanged(Node& node, RenderObject* newRenderer)
+inline void InspectorInstrumentation::didChangeRendererForDOMNode(Node& node)
+{
+    ASSERT(InspectorInstrumentationPublic::hasFrontends());
+    if (auto* agents = instrumentingAgents(node.document()))
+        didChangeRendererForDOMNodeImpl(*agents, node);
+}
+
+inline void InspectorInstrumentation::didAddOrRemoveScrollbars(LocalFrameView& frameView)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
-    if (auto* agents = instrumentingAgents(node.document()))
-        nodeLayoutContextChangedImpl(*agents, node, newRenderer);
+    if (auto* agents = instrumentingAgents(frameView.frame().document()))
+        didAddOrRemoveScrollbarsImpl(*agents, frameView);
+}
+
+inline void InspectorInstrumentation::didAddOrRemoveScrollbars(RenderObject& renderer)
+{
+    FAST_RETURN_IF_NO_FRONTENDS(void());
+    if (auto* agents = instrumentingAgents(renderer))
+        didAddOrRemoveScrollbarsImpl(*agents, renderer);
 }
 
 inline void InspectorInstrumentation::willModifyDOMAttr(Document& document, Element& element, const AtomString& oldValue, const AtomString& newValue)
@@ -634,7 +678,7 @@ inline void InspectorInstrumentation::documentDetached(Document& document)
         documentDetachedImpl(*agents, document);
 }
 
-inline void InspectorInstrumentation::frameWindowDiscarded(Frame& frame, DOMWindow* domWindow)
+inline void InspectorInstrumentation::frameWindowDiscarded(LocalFrame& frame, LocalDOMWindow* domWindow)
 {
     if (auto* agents = instrumentingAgents(frame))
         frameWindowDiscardedImpl(*agents, domWindow);
@@ -724,13 +768,13 @@ inline void InspectorInstrumentation::didUnregisterNamedFlowContentElement(Docum
         didUnregisterNamedFlowContentElementImpl(*agents, document, namedFlow, contentElement);
 }
 
-inline void InspectorInstrumentation::mouseDidMoveOverElement(Page& page, const HitTestResult& result, unsigned modifierFlags)
+inline void InspectorInstrumentation::mouseDidMoveOverElement(Page& page, const HitTestResult& result, OptionSet<PlatformEventModifier> modifiers)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
-    mouseDidMoveOverElementImpl(instrumentingAgents(page), result, modifierFlags);
+    mouseDidMoveOverElementImpl(instrumentingAgents(page), result, modifiers);
 }
 
-inline bool InspectorInstrumentation::handleTouchEvent(Frame& frame, Node& node)
+inline bool InspectorInstrumentation::handleTouchEvent(LocalFrame& frame, Node& node)
 {
     FAST_RETURN_IF_NO_FRONTENDS(false);
     if (auto* agents = instrumentingAgents(frame))
@@ -738,7 +782,7 @@ inline bool InspectorInstrumentation::handleTouchEvent(Frame& frame, Node& node)
     return false;
 }
 
-inline bool InspectorInstrumentation::handleMousePress(Frame& frame)
+inline bool InspectorInstrumentation::handleMousePress(LocalFrame& frame)
 {
     FAST_RETURN_IF_NO_FRONTENDS(false);
     if (auto* agents = instrumentingAgents(frame))
@@ -746,7 +790,7 @@ inline bool InspectorInstrumentation::handleMousePress(Frame& frame)
     return false;
 }
 
-inline bool InspectorInstrumentation::forcePseudoState(const Element& element, CSSSelector::PseudoClassType pseudoState)
+inline bool InspectorInstrumentation::forcePseudoState(const Element& element, CSSSelector::PseudoClass pseudoState)
 {
     FAST_RETURN_IF_NO_FRONTENDS(false);
     if (auto* agents = instrumentingAgents(element.document()))
@@ -811,7 +855,7 @@ inline bool InspectorInstrumentation::isEventListenerDisabled(EventTarget& targe
     return false;
 }
 
-inline int InspectorInstrumentation::willPostMessage(Frame& frame)
+inline int InspectorInstrumentation::willPostMessage(LocalFrame& frame)
 {
     FAST_RETURN_IF_NO_FRONTENDS(0);
     if (auto* agents = instrumentingAgents(frame))
@@ -819,28 +863,28 @@ inline int InspectorInstrumentation::willPostMessage(Frame& frame)
     return 0;
 }
 
-inline void InspectorInstrumentation::didPostMessage(Frame& frame, int postMessageIdentifier, JSC::JSGlobalObject& state)
+inline void InspectorInstrumentation::didPostMessage(LocalFrame& frame, int postMessageIdentifier, JSC::JSGlobalObject& state)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (auto* agents = instrumentingAgents(frame))
         didPostMessageImpl(*agents, postMessageIdentifier, state);
 }
 
-inline void InspectorInstrumentation::didFailPostMessage(Frame& frame, int postMessageIdentifier)
+inline void InspectorInstrumentation::didFailPostMessage(LocalFrame& frame, int postMessageIdentifier)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (auto* agents = instrumentingAgents(frame))
         didFailPostMessageImpl(*agents, postMessageIdentifier);
 }
 
-inline void InspectorInstrumentation::willDispatchPostMessage(Frame& frame, int postMessageIdentifier)
+inline void InspectorInstrumentation::willDispatchPostMessage(LocalFrame& frame, int postMessageIdentifier)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (auto* agents = instrumentingAgents(frame))
         willDispatchPostMessageImpl(*agents, postMessageIdentifier);
 }
 
-inline void InspectorInstrumentation::didDispatchPostMessage(Frame& frame, int postMessageIdentifier)
+inline void InspectorInstrumentation::didDispatchPostMessage(LocalFrame& frame, int postMessageIdentifier)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (auto* agents = instrumentingAgents(frame))
@@ -879,24 +923,24 @@ inline void InspectorInstrumentation::willHandleEvent(ScriptExecutionContext& co
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (auto* agents = instrumentingAgents(context))
-        return willHandleEventImpl(*agents, event, listener);
+        return willHandleEventImpl(*agents, context, event, listener);
 }
 
 inline void InspectorInstrumentation::didHandleEvent(ScriptExecutionContext& context, Event& event, const RegisteredEventListener& listener)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (auto* agents = instrumentingAgents(context))
-        return didHandleEventImpl(*agents, event, listener);
+        return didHandleEventImpl(*agents, context, event, listener);
 }
 
-inline void InspectorInstrumentation::willDispatchEventOnWindow(Frame* frame, const Event& event, DOMWindow& window)
+inline void InspectorInstrumentation::willDispatchEventOnWindow(LocalFrame* frame, const Event& event, LocalDOMWindow& window)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (auto* agents = instrumentingAgents(frame))
         willDispatchEventOnWindowImpl(*agents, event, window);
 }
 
-inline void InspectorInstrumentation::didDispatchEventOnWindow(Frame* frame, const Event& event)
+inline void InspectorInstrumentation::didDispatchEventOnWindow(LocalFrame* frame, const Event& event)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (auto* agents = instrumentingAgents(frame))
@@ -915,14 +959,14 @@ inline void InspectorInstrumentation::eventDidResetAfterDispatch(const Event& ev
         return eventDidResetAfterDispatchImpl(*agents, event);
 }
 
-inline void InspectorInstrumentation::willEvaluateScript(Frame& frame, const String& url, int lineNumber, int columnNumber)
+inline void InspectorInstrumentation::willEvaluateScript(LocalFrame& frame, const String& url, int lineNumber, int columnNumber)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (auto* agents = instrumentingAgents(frame))
         willEvaluateScriptImpl(*agents, frame, url, lineNumber, columnNumber);
 }
 
-inline void InspectorInstrumentation::didEvaluateScript(Frame& frame)
+inline void InspectorInstrumentation::didEvaluateScript(LocalFrame& frame)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (auto* agents = instrumentingAgents(frame))
@@ -943,21 +987,21 @@ inline void InspectorInstrumentation::didFireTimer(ScriptExecutionContext& conte
         didFireTimerImpl(*agents, timerId, oneShot);
 }
 
-inline void InspectorInstrumentation::didInvalidateLayout(Frame& frame)
+inline void InspectorInstrumentation::didInvalidateLayout(LocalFrame& frame)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (auto* agents = instrumentingAgents(frame))
         didInvalidateLayoutImpl(*agents, frame);
 }
 
-inline void InspectorInstrumentation::willLayout(Frame& frame)
+inline void InspectorInstrumentation::willLayout(LocalFrame& frame)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (auto* agents = instrumentingAgents(frame))
         willLayoutImpl(*agents, frame);
 }
 
-inline void InspectorInstrumentation::didLayout(Frame& frame, RenderObject& root)
+inline void InspectorInstrumentation::didLayout(LocalFrame& frame, RenderObject& root)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (auto* agents = instrumentingAgents(frame))
@@ -970,14 +1014,14 @@ inline void InspectorInstrumentation::didScroll(Page& page)
     didScrollImpl(instrumentingAgents(page));
 }
 
-inline void InspectorInstrumentation::willComposite(Frame& frame)
+inline void InspectorInstrumentation::willComposite(LocalFrame& frame)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (auto* agents = instrumentingAgents(frame))
         willCompositeImpl(*agents, frame);
 }
 
-inline void InspectorInstrumentation::didComposite(Frame& frame)
+inline void InspectorInstrumentation::didComposite(LocalFrame& frame)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (auto* agents = instrumentingAgents(frame))
@@ -1019,34 +1063,48 @@ inline void InspectorInstrumentation::didScheduleStyleRecalculation(Document& do
         didScheduleStyleRecalculationImpl(*agents, document);
 }
 
-inline void InspectorInstrumentation::applyUserAgentOverride(Frame& frame, String& userAgent)
+inline void InspectorInstrumentation::applyUserAgentOverride(LocalFrame& frame, String& userAgent)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (auto* agents = instrumentingAgents(frame))
         applyUserAgentOverrideImpl(*agents, userAgent);
 }
 
-inline void InspectorInstrumentation::applyEmulatedMedia(Frame& frame, String& media)
+inline void InspectorInstrumentation::applyEmulatedMedia(LocalFrame& frame, AtomString& media)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (auto* agents = instrumentingAgents(frame))
         applyEmulatedMediaImpl(*agents, media);
 }
 
-inline void InspectorInstrumentation::willSendRequest(Frame* frame, unsigned long identifier, DocumentLoader* loader, ResourceRequest& request, const ResourceResponse& redirectResponse, const CachedResource* cachedResource)
+inline void InspectorInstrumentation::flexibleBoxRendererBeganLayout(const RenderObject& renderer)
+{
+    FAST_RETURN_IF_NO_FRONTENDS(void());
+    if (auto* agents = instrumentingAgents(renderer))
+        flexibleBoxRendererBeganLayoutImpl(*agents, renderer);
+}
+
+inline void InspectorInstrumentation::flexibleBoxRendererWrappedToNextLine(const RenderObject& renderer, size_t lineStartItemIndex)
+{
+    FAST_RETURN_IF_NO_FRONTENDS(void());
+    if (auto* agents = instrumentingAgents(renderer))
+        flexibleBoxRendererWrappedToNextLineImpl(*agents, renderer, lineStartItemIndex);
+}
+
+inline void InspectorInstrumentation::willSendRequest(LocalFrame* frame, ResourceLoaderIdentifier identifier, DocumentLoader* loader, ResourceRequest& request, const ResourceResponse& redirectResponse, const CachedResource* cachedResource, ResourceLoader* resourceLoader)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (auto* agents = instrumentingAgents(frame))
-        willSendRequestImpl(*agents, identifier, loader, request, redirectResponse, cachedResource);
+        willSendRequestImpl(*agents, identifier, loader, request, redirectResponse, cachedResource, resourceLoader);
 }
 
-inline void InspectorInstrumentation::willSendRequest(WorkerOrWorkletGlobalScope& globalScope, unsigned long identifier, ResourceRequest& request)
+inline void InspectorInstrumentation::willSendRequest(ServiceWorkerGlobalScope& globalScope, ResourceLoaderIdentifier identifier, ResourceRequest& request)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
-    willSendRequestImpl(instrumentingAgents(globalScope), identifier, nullptr, request, ResourceResponse { }, nullptr);
+    willSendRequestImpl(instrumentingAgents(globalScope), identifier, nullptr, request, ResourceResponse { }, nullptr, nullptr);
 }
 
-inline void InspectorInstrumentation::willSendRequestOfType(Frame* frame, unsigned long identifier, DocumentLoader* loader, ResourceRequest& request, LoadType loadType)
+inline void InspectorInstrumentation::willSendRequestOfType(LocalFrame* frame, ResourceLoaderIdentifier identifier, DocumentLoader* loader, ResourceRequest& request, LoadType loadType)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (auto* agents = instrumentingAgents(frame))
@@ -1059,76 +1117,76 @@ inline void InspectorInstrumentation::didLoadResourceFromMemoryCache(Page& page,
     didLoadResourceFromMemoryCacheImpl(instrumentingAgents(page), loader, resource);
 }
 
-inline void InspectorInstrumentation::didReceiveResourceResponse(Frame& frame, unsigned long identifier, DocumentLoader* loader, const ResourceResponse& response, ResourceLoader* resourceLoader)
+inline void InspectorInstrumentation::didReceiveResourceResponse(LocalFrame& frame, ResourceLoaderIdentifier identifier, DocumentLoader* loader, const ResourceResponse& response, ResourceLoader* resourceLoader)
 {
     if (auto* agents = instrumentingAgents(frame))
         didReceiveResourceResponseImpl(*agents, identifier, loader, response, resourceLoader);
 }
 
-inline void InspectorInstrumentation::didReceiveResourceResponse(WorkerOrWorkletGlobalScope& globalScope, unsigned long identifier, const ResourceResponse& response)
+inline void InspectorInstrumentation::didReceiveResourceResponse(ServiceWorkerGlobalScope& globalScope, ResourceLoaderIdentifier identifier, const ResourceResponse& response)
 {
     didReceiveResourceResponseImpl(instrumentingAgents(globalScope), identifier, nullptr, response, nullptr);
 }
 
-inline void InspectorInstrumentation::didReceiveThreadableLoaderResponse(DocumentThreadableLoader& documentThreadableLoader, unsigned long identifier)
+inline void InspectorInstrumentation::didReceiveThreadableLoaderResponse(DocumentThreadableLoader& documentThreadableLoader, ResourceLoaderIdentifier identifier)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (auto* agents = instrumentingAgents(documentThreadableLoader.document()))
         didReceiveThreadableLoaderResponseImpl(*agents, documentThreadableLoader, identifier);
 }
-    
-inline void InspectorInstrumentation::didReceiveData(Frame* frame, unsigned long identifier, const uint8_t* data, int dataLength, int encodedDataLength)
+
+inline void InspectorInstrumentation::didReceiveData(LocalFrame* frame, ResourceLoaderIdentifier identifier, const SharedBuffer* buffer, int encodedDataLength)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (auto* agents = instrumentingAgents(frame))
-        didReceiveDataImpl(*agents, identifier, data, dataLength, encodedDataLength);
+        didReceiveDataImpl(*agents, identifier, buffer, encodedDataLength);
 }
 
-inline void InspectorInstrumentation::didReceiveData(WorkerOrWorkletGlobalScope& globalScope, unsigned long identifier, const uint8_t* data, int dataLength)
+inline void InspectorInstrumentation::didReceiveData(ServiceWorkerGlobalScope& globalScope, ResourceLoaderIdentifier identifier, const SharedBuffer& buffer)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
-    didReceiveDataImpl(instrumentingAgents(globalScope), identifier, data, dataLength, dataLength);
+    didReceiveDataImpl(instrumentingAgents(globalScope), identifier, &buffer, buffer.size());
 }
 
-inline void InspectorInstrumentation::didFinishLoading(Frame* frame, DocumentLoader* loader, unsigned long identifier, const NetworkLoadMetrics& networkLoadMetrics, ResourceLoader* resourceLoader)
+inline void InspectorInstrumentation::didFinishLoading(LocalFrame* frame, DocumentLoader* loader, ResourceLoaderIdentifier identifier, const NetworkLoadMetrics& networkLoadMetrics, ResourceLoader* resourceLoader)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (auto* agents = instrumentingAgents(frame))
         didFinishLoadingImpl(*agents, identifier, loader, networkLoadMetrics, resourceLoader);
 }
 
-inline void InspectorInstrumentation::didFinishLoading(WorkerOrWorkletGlobalScope& globalScope, unsigned long identifier, const NetworkLoadMetrics& networkLoadMetrics)
+inline void InspectorInstrumentation::didFinishLoading(ServiceWorkerGlobalScope& globalScope, ResourceLoaderIdentifier identifier, const NetworkLoadMetrics& networkLoadMetrics)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
     didFinishLoadingImpl(instrumentingAgents(globalScope), identifier, nullptr, networkLoadMetrics, nullptr);
 }
 
-inline void InspectorInstrumentation::didFailLoading(Frame* frame, DocumentLoader* loader, unsigned long identifier, const ResourceError& error)
+inline void InspectorInstrumentation::didFailLoading(LocalFrame* frame, DocumentLoader* loader, ResourceLoaderIdentifier identifier, const ResourceError& error)
 {
     if (auto* agents = instrumentingAgents(frame))
         didFailLoadingImpl(*agents, identifier, loader, error);
 }
 
-inline void InspectorInstrumentation::didFailLoading(WorkerOrWorkletGlobalScope& globalScope, unsigned long identifier, const ResourceError& error)
+inline void InspectorInstrumentation::didFailLoading(ServiceWorkerGlobalScope& globalScope, ResourceLoaderIdentifier identifier, const ResourceError& error)
 {
     didFailLoadingImpl(instrumentingAgents(globalScope), identifier, nullptr, error);
 }
 
-inline void InspectorInstrumentation::continueAfterXFrameOptionsDenied(Frame& frame, unsigned long identifier, DocumentLoader& loader, const ResourceResponse& response)
+inline void InspectorInstrumentation::continueAfterXFrameOptionsDenied(LocalFrame& frame, ResourceLoaderIdentifier identifier, DocumentLoader& loader, const ResourceResponse& response)
 {
     // Treat the same as didReceiveResponse.
     if (auto* agents = instrumentingAgents(frame))
         didReceiveResourceResponseImpl(*agents, identifier, &loader, response, nullptr);
 }
 
-inline void InspectorInstrumentation::continueWithPolicyDownload(Frame& frame, unsigned long identifier, DocumentLoader& loader, const ResourceResponse& response)
+inline void InspectorInstrumentation::continueWithPolicyDownload(LocalFrame& frame, ResourceLoaderIdentifier identifier, DocumentLoader& loader, const ResourceResponse& response)
 {
     // Treat the same as didReceiveResponse.
     if (auto* agents = instrumentingAgents(frame))
         didReceiveResourceResponseImpl(*agents, identifier, &loader, response, nullptr);
 }
 
-inline void InspectorInstrumentation::continueWithPolicyIgnore(Frame& frame, unsigned long identifier, DocumentLoader& loader, const ResourceResponse& response)
+inline void InspectorInstrumentation::continueWithPolicyIgnore(LocalFrame& frame, ResourceLoaderIdentifier identifier, DocumentLoader& loader, const ResourceResponse& response)
 {
     // Treat the same as didReceiveResponse.
     if (auto* agents = instrumentingAgents(frame))
@@ -1149,7 +1207,7 @@ inline void InspectorInstrumentation::didLoadXHRSynchronously(ScriptExecutionCon
         didLoadXHRSynchronouslyImpl(*agents);
 }
 
-inline void InspectorInstrumentation::scriptImported(ScriptExecutionContext& context, unsigned long identifier, const String& sourceString)
+inline void InspectorInstrumentation::scriptImported(ScriptExecutionContext& context, ResourceLoaderIdentifier identifier, const String& sourceString)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (auto* agents = instrumentingAgents(context))
@@ -1163,62 +1221,69 @@ inline void InspectorInstrumentation::scriptExecutionBlockedByCSP(ScriptExecutio
         scriptExecutionBlockedByCSPImpl(*agents, directiveText);
 }
 
-inline void InspectorInstrumentation::didReceiveScriptResponse(ScriptExecutionContext* context, unsigned long identifier)
+inline void InspectorInstrumentation::didReceiveScriptResponse(ScriptExecutionContext& context, ResourceLoaderIdentifier identifier)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (auto* agents = instrumentingAgents(context))
         didReceiveScriptResponseImpl(*agents, identifier);
 }
 
-inline void InspectorInstrumentation::domContentLoadedEventFired(Frame& frame)
+inline void InspectorInstrumentation::domContentLoadedEventFired(LocalFrame& frame)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (auto* agents = instrumentingAgents(frame))
         domContentLoadedEventFiredImpl(*agents, frame);
 }
 
-inline void InspectorInstrumentation::loadEventFired(Frame* frame)
+inline void InspectorInstrumentation::loadEventFired(LocalFrame* frame)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (auto* agents = instrumentingAgents(frame))
         loadEventFiredImpl(*agents, frame);
 }
 
-inline void InspectorInstrumentation::frameDetachedFromParent(Frame& frame)
+inline void InspectorInstrumentation::frameDetachedFromParent(LocalFrame& frame)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (auto* agents = instrumentingAgents(frame))
         frameDetachedFromParentImpl(*agents, frame);
 }
 
-inline void InspectorInstrumentation::didCommitLoad(Frame& frame, DocumentLoader* loader)
+inline void InspectorInstrumentation::didCommitLoad(LocalFrame& frame, DocumentLoader* loader)
 {
     if (auto* agents = instrumentingAgents(frame))
         didCommitLoadImpl(*agents, frame, loader);
 }
 
-inline void InspectorInstrumentation::frameDocumentUpdated(Frame& frame)
+inline void InspectorInstrumentation::frameDocumentUpdated(LocalFrame& frame)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (auto* agents = instrumentingAgents(frame))
         frameDocumentUpdatedImpl(*agents, frame);
 }
 
-inline void InspectorInstrumentation::loaderDetachedFromFrame(Frame& frame, DocumentLoader& loader)
+inline void InspectorInstrumentation::loaderDetachedFromFrame(LocalFrame& frame, DocumentLoader& loader)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (auto* agents = instrumentingAgents(frame))
         loaderDetachedFromFrameImpl(*agents, loader);
 }
 
-inline void InspectorInstrumentation::frameStartedLoading(Frame& frame)
+inline void InspectorInstrumentation::frameStartedLoading(LocalFrame& frame)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (auto* agents = instrumentingAgents(frame))
         frameStartedLoadingImpl(*agents, frame);
 }
 
-inline void InspectorInstrumentation::frameStoppedLoading(Frame& frame)
+inline void InspectorInstrumentation::didCompleteRenderingFrame(Frame& frame)
+{
+    FAST_RETURN_IF_NO_FRONTENDS(void());
+    if (auto* agents = instrumentingAgents(frame))
+        didCompleteRenderingFrameImpl(*agents);
+}
+
+inline void InspectorInstrumentation::frameStoppedLoading(LocalFrame& frame)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (auto* agents = instrumentingAgents(frame))
@@ -1239,11 +1304,17 @@ inline void InspectorInstrumentation::frameClearedScheduledNavigation(Frame& fra
         frameClearedScheduledNavigationImpl(*agents, frame);
 }
 
-#if ENABLE(DARK_MODE_CSS) || HAVE(OS_DARK_MODE_SUPPORT)
-inline void InspectorInstrumentation::defaultAppearanceDidChange(Page& page, bool useDarkAppearance)
+inline void InspectorInstrumentation::accessibilitySettingsDidChange(Page& page)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
-    defaultAppearanceDidChangeImpl(instrumentingAgents(page), useDarkAppearance);
+    accessibilitySettingsDidChangeImpl(instrumentingAgents(page));
+}
+
+#if ENABLE(DARK_MODE_CSS) || HAVE(OS_DARK_MODE_SUPPORT)
+inline void InspectorInstrumentation::defaultAppearanceDidChange(Page& page)
+{
+    FAST_RETURN_IF_NO_FRONTENDS(void());
+    defaultAppearanceDidChangeImpl(instrumentingAgents(page));
 }
 #endif
 
@@ -1253,7 +1324,7 @@ inline void InspectorInstrumentation::willDestroyCachedResource(CachedResource& 
     willDestroyCachedResourceImpl(cachedResource);
 }
 
-inline bool InspectorInstrumentation::willIntercept(const Frame* frame, const ResourceRequest& request)
+inline bool InspectorInstrumentation::willIntercept(const LocalFrame* frame, const ResourceRequest& request)
 {
     FAST_RETURN_IF_NO_FRONTENDS(false);
     if (auto* agents = instrumentingAgents(frame))
@@ -1261,15 +1332,15 @@ inline bool InspectorInstrumentation::willIntercept(const Frame* frame, const Re
     return false;
 }
 
-inline bool InspectorInstrumentation::shouldInterceptRequest(const Frame& frame, const ResourceRequest& request)
+inline bool InspectorInstrumentation::shouldInterceptRequest(const ResourceLoader& loader)
 {
     ASSERT(InspectorInstrumentationPublic::hasFrontends());
-    if (auto* agents = instrumentingAgents(frame))
-        return shouldInterceptRequestImpl(*agents, request);
+    if (auto* agents = instrumentingAgents(loader.frame()))
+        return shouldInterceptRequestImpl(*agents, loader);
     return false;
 }
 
-inline bool InspectorInstrumentation::shouldInterceptResponse(const Frame& frame, const ResourceResponse& response)
+inline bool InspectorInstrumentation::shouldInterceptResponse(const LocalFrame& frame, const ResourceResponse& response)
 {
     ASSERT(InspectorInstrumentationPublic::hasFrontends());
     if (auto* agents = instrumentingAgents(frame))
@@ -1279,12 +1350,12 @@ inline bool InspectorInstrumentation::shouldInterceptResponse(const Frame& frame
 
 inline void InspectorInstrumentation::interceptRequest(ResourceLoader& loader, Function<void(const ResourceRequest&)>&& handler)
 {
-    ASSERT(InspectorInstrumentation::shouldInterceptRequest(*loader.frame(), loader.request()));
+    ASSERT(InspectorInstrumentation::shouldInterceptRequest(loader));
     if (auto* agents = instrumentingAgents(loader.frame()))
         interceptRequestImpl(*agents, loader, WTFMove(handler));
 }
 
-inline void InspectorInstrumentation::interceptResponse(const Frame& frame, const ResourceResponse& response, unsigned long identifier, CompletionHandler<void(const ResourceResponse&, RefPtr<SharedBuffer>)>&& handler)
+inline void InspectorInstrumentation::interceptResponse(const LocalFrame& frame, const ResourceResponse& response, ResourceLoaderIdentifier identifier, CompletionHandler<void(const ResourceResponse&, RefPtr<FragmentedSharedBuffer>)>&& handler)
 {
     ASSERT(InspectorInstrumentation::shouldInterceptResponse(frame, response));
     if (auto* agents = instrumentingAgents(frame))
@@ -1298,7 +1369,7 @@ inline void InspectorInstrumentation::didOpenDatabase(Database& database)
         didOpenDatabaseImpl(*agents, database);
 }
 
-inline void InspectorInstrumentation::didDispatchDOMStorageEvent(Page& page, const String& key, const String& oldValue, const String& newValue, StorageType storageType, SecurityOrigin* securityOrigin)
+inline void InspectorInstrumentation::didDispatchDOMStorageEvent(Page& page, const String& key, const String& oldValue, const String& newValue, StorageType storageType, const SecurityOrigin& securityOrigin)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
     didDispatchDOMStorageEventImpl(instrumentingAgents(page), key, oldValue, newValue, storageType, securityOrigin);
@@ -1326,49 +1397,49 @@ inline void InspectorInstrumentation::workerTerminated(WorkerInspectorProxy& pro
         workerTerminatedImpl(*agents, proxy);
 }
 
-inline void InspectorInstrumentation::didCreateWebSocket(Document* document, unsigned long identifier, const URL& requestURL)
+inline void InspectorInstrumentation::didCreateWebSocket(Document* document, WebSocketChannelIdentifier identifier, const URL& requestURL)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (auto* agents = instrumentingAgents(document))
         didCreateWebSocketImpl(*agents, identifier, requestURL);
 }
 
-inline void InspectorInstrumentation::willSendWebSocketHandshakeRequest(Document* document, unsigned long identifier, const ResourceRequest& request)
+inline void InspectorInstrumentation::willSendWebSocketHandshakeRequest(Document* document, WebSocketChannelIdentifier identifier, const ResourceRequest& request)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (auto* agents = instrumentingAgents(document))
         willSendWebSocketHandshakeRequestImpl(*agents, identifier, request);
 }
 
-inline void InspectorInstrumentation::didReceiveWebSocketHandshakeResponse(Document* document, unsigned long identifier, const ResourceResponse& response)
+inline void InspectorInstrumentation::didReceiveWebSocketHandshakeResponse(Document* document, WebSocketChannelIdentifier identifier, const ResourceResponse& response)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (auto* agents = instrumentingAgents(document))
         didReceiveWebSocketHandshakeResponseImpl(*agents, identifier, response);
 }
 
-inline void InspectorInstrumentation::didCloseWebSocket(Document* document, unsigned long identifier)
+inline void InspectorInstrumentation::didCloseWebSocket(Document* document, WebSocketChannelIdentifier identifier)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (auto* agents = instrumentingAgents(document))
         didCloseWebSocketImpl(*agents, identifier);
 }
 
-inline void InspectorInstrumentation::didReceiveWebSocketFrame(Document* document, unsigned long identifier, const WebSocketFrame& frame)
+inline void InspectorInstrumentation::didReceiveWebSocketFrame(Document* document, WebSocketChannelIdentifier identifier, const WebSocketFrame& frame)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (auto* agents = instrumentingAgents(document))
         didReceiveWebSocketFrameImpl(*agents, identifier, frame);
 }
 
-inline void InspectorInstrumentation::didReceiveWebSocketFrameError(Document* document, unsigned long identifier, const String& errorMessage)
+inline void InspectorInstrumentation::didReceiveWebSocketFrameError(Document* document, WebSocketChannelIdentifier identifier, const String& errorMessage)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (auto* agents = instrumentingAgents(document))
         didReceiveWebSocketFrameErrorImpl(*agents, identifier, errorMessage);
 }
 
-inline void InspectorInstrumentation::didSendWebSocketFrame(Document* document, unsigned long identifier, const WebSocketFrame& frame)
+inline void InspectorInstrumentation::didSendWebSocketFrame(Document* document, WebSocketChannelIdentifier identifier, const WebSocketFrame& frame)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (auto* agents = instrumentingAgents(document))
@@ -1395,6 +1466,13 @@ inline void InspectorInstrumentation::didCreateCanvasRenderingContext(CanvasRend
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (auto* agents = instrumentingAgents(context.canvasBase().scriptExecutionContext()))
         didCreateCanvasRenderingContextImpl(*agents, context);
+}
+
+inline void InspectorInstrumentation::didChangeCanvasSize(CanvasRenderingContext& context)
+{
+    FAST_RETURN_IF_NO_FRONTENDS(void());
+    if (auto* agents = instrumentingAgents(context.canvasBase().scriptExecutionContext()))
+        didChangeCanvasSizeImpl(*agents, context);
 }
 
 inline void InspectorInstrumentation::didChangeCanvasMemory(CanvasRenderingContext& context)
@@ -1450,10 +1528,10 @@ inline bool InspectorInstrumentation::isWebGLProgramHighlighted(WebGLRenderingCo
 }
 #endif
 
-inline void InspectorInstrumentation::willApplyKeyframeEffect(Element& target, KeyframeEffect& effect, ComputedEffectTiming computedTiming)
+inline void InspectorInstrumentation::willApplyKeyframeEffect(const Styleable& target, KeyframeEffect& effect, const ComputedEffectTiming& computedTiming)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
-    if (auto* agents = instrumentingAgents(target.document()))
+    if (auto* agents = instrumentingAgents(target.element.document()))
         willApplyKeyframeEffectImpl(*agents, target, effect, computedTiming);
 }
 
@@ -1505,7 +1583,7 @@ inline void InspectorInstrumentation::networkStateChanged(Page& page)
     networkStateChangedImpl(instrumentingAgents(page));
 }
 
-inline void InspectorInstrumentation::updateApplicationCacheStatus(Frame* frame)
+inline void InspectorInstrumentation::updateApplicationCacheStatus(LocalFrame* frame)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (auto* agents = instrumentingAgents(frame))
@@ -1613,6 +1691,13 @@ inline void InspectorInstrumentation::consoleStopRecordingCanvas(CanvasRendering
         consoleStopRecordingCanvasImpl(*agents, context);
 }
 
+inline void InspectorInstrumentation::performanceMark(ScriptExecutionContext& context, const String& label, std::optional<MonotonicTime> startTime, LocalFrame* frame)
+{
+    FAST_RETURN_IF_NO_FRONTENDS(void());
+    if (auto* agents = instrumentingAgents(context))
+        performanceMarkImpl(*agents, label, WTFMove(startTime), frame);
+}
+
 inline void InspectorInstrumentation::didRequestAnimationFrame(Document& document, int callbackId)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
@@ -1634,11 +1719,11 @@ inline void InspectorInstrumentation::willFireAnimationFrame(Document& document,
         willFireAnimationFrameImpl(*agents, callbackId, document);
 }
 
-inline void InspectorInstrumentation::didFireAnimationFrame(Document& document)
+inline void InspectorInstrumentation::didFireAnimationFrame(Document& document, int callbackId)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (auto* agents = instrumentingAgents(document))
-        didFireAnimationFrameImpl(*agents);
+        didFireAnimationFrameImpl(*agents, callbackId);
 }
 
 inline void InspectorInstrumentation::willFireObserverCallback(ScriptExecutionContext& context, const String& callbackType)
@@ -1710,18 +1795,18 @@ inline InstrumentingAgents* InspectorInstrumentation::instrumentingAgents(Worker
 inline void InspectorInstrumentation::frontendCreated()
 {
     ASSERT(isMainThread());
-    ++InspectorInstrumentationPublic::s_frontendCounter;
+    int frontendCount = ++InspectorInstrumentationPublic::s_frontendCounter;
 
-    if (InspectorInstrumentationPublic::s_frontendCounter == 1)
+    if (frontendCount == 1)
         InspectorInstrumentation::firstFrontendCreated();
 }
 
 inline void InspectorInstrumentation::frontendDeleted()
 {
     ASSERT(isMainThread());
-    --InspectorInstrumentationPublic::s_frontendCounter;
+    int frontendCount = --InspectorInstrumentationPublic::s_frontendCounter;
 
-    if (!InspectorInstrumentationPublic::s_frontendCounter)
+    if (!frontendCount)
         InspectorInstrumentation::lastFrontendDeleted();
 }
 

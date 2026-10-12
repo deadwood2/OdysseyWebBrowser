@@ -32,17 +32,22 @@
 #include <JavaScriptCore/InspectorFrontendDispatchers.h>
 #include <JavaScriptCore/InspectorProtocolObjects.h>
 #include <wtf/Forward.h>
+#include <wtf/RobinHoodHashMap.h>
+#include <wtf/WeakHashMap.h>
 
 namespace WebCore {
 
 class AnimationEffect;
-class DeclarativeAnimation;
 class Element;
 class Event;
-class Frame;
 class KeyframeEffect;
+class LocalFrame;
 class Page;
+class StyleOriginatedAnimation;
 class WebAnimation;
+class WeakPtrImplWithEventTargetData;
+
+struct Styleable;
 
 class InspectorAnimationAgent final : public InspectorAgentBase, public Inspector::AnimationBackendDispatcherHandler {
     WTF_MAKE_NONCOPYABLE(InspectorAnimationAgent);
@@ -58,30 +63,31 @@ public:
     // AnimationBackendDispatcherHandler
     Inspector::Protocol::ErrorStringOr<void> enable();
     Inspector::Protocol::ErrorStringOr<void> disable();
-    Inspector::Protocol::ErrorStringOr<Inspector::Protocol::DOM::NodeId> requestEffectTarget(const Inspector::Protocol::Animation::AnimationId&);
+    Inspector::Protocol::ErrorStringOr<Ref<Inspector::Protocol::DOM::Styleable>> requestEffectTarget(const Inspector::Protocol::Animation::AnimationId&);
     Inspector::Protocol::ErrorStringOr<Ref<Inspector::Protocol::Runtime::RemoteObject>> resolveAnimation(const Inspector::Protocol::Animation::AnimationId&, const String& objectGroup);
     Inspector::Protocol::ErrorStringOr<void> startTracking();
     Inspector::Protocol::ErrorStringOr<void> stopTracking();
 
     // InspectorInstrumentation
-    void willApplyKeyframeEffect(Element&, KeyframeEffect&, ComputedEffectTiming);
+    void willApplyKeyframeEffect(const Styleable&, KeyframeEffect&, const ComputedEffectTiming&);
     void didChangeWebAnimationName(WebAnimation&);
     void didSetWebAnimationEffect(WebAnimation&);
     void didChangeWebAnimationEffectTiming(WebAnimation&);
     void didChangeWebAnimationEffectTarget(WebAnimation&);
     void didCreateWebAnimation(WebAnimation&);
     void willDestroyWebAnimation(WebAnimation&);
-    void frameNavigated(Frame&);
+    void frameNavigated(LocalFrame&);
 
 private:
     String findAnimationId(WebAnimation&);
     WebAnimation* assertAnimation(Inspector::Protocol::ErrorString&, const String& animationId);
-    void bindAnimation(WebAnimation&, bool captureBacktrace);
+    void bindAnimation(WebAnimation&, RefPtr<Inspector::Protocol::Console::StackTrace> backtrace);
+    void animationBindingTimerFired();
     void unbindAnimation(const String& animationId);
     void animationDestroyedTimerFired();
     void reset();
 
-    void stopTrackingDeclarativeAnimation(DeclarativeAnimation&);
+    void stopTrackingStyleOriginatedAnimation(StyleOriginatedAnimation&);
 
     std::unique_ptr<Inspector::AnimationFrontendDispatcher> m_frontendDispatcher;
     RefPtr<Inspector::AnimationBackendDispatcher> m_backendDispatcher;
@@ -89,16 +95,20 @@ private:
     Inspector::InjectedScriptManager& m_injectedScriptManager;
     Page& m_inspectedPage;
 
-    HashMap<String, WebAnimation*> m_animationIdMap;
+    MemoryCompactRobinHoodHashMap<String, WebAnimation*> m_animationIdMap;
+
+    WeakHashMap<WebAnimation, Ref<Inspector::Protocol::Console::StackTrace>, WeakPtrImplWithEventTargetData> m_animationsPendingBinding;
+    Timer m_animationBindingTimer;
+
     Vector<String> m_removedAnimationIds;
     Timer m_animationDestroyedTimer;
 
-    struct TrackedDeclarativeAnimationData {
+    struct TrackedStyleOriginatedAnimationData {
         WTF_MAKE_STRUCT_FAST_ALLOCATED;
         String trackingAnimationId;
         ComputedEffectTiming lastComputedTiming;
     };
-    HashMap<DeclarativeAnimation*, UniqueRef<TrackedDeclarativeAnimationData>> m_trackedDeclarativeAnimationData;
+    HashMap<StyleOriginatedAnimation*, UniqueRef<TrackedStyleOriginatedAnimationData>> m_trackedStyleOriginatedAnimationData;
 };
 
 } // namespace WebCore

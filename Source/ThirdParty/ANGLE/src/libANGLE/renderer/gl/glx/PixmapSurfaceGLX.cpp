@@ -6,13 +6,14 @@
 
 // PixmapSurfaceGLX.cpp: GLX implementation of egl::Surface for Pixmaps
 
-#include "libANGLE/renderer/gl/glx/PixmapSurfaceGLX.h"
-
 #include "common/debug.h"
 #include "libANGLE/Display.h"
 #include "libANGLE/Surface.h"
+
 #include "libANGLE/renderer/gl/glx/DisplayGLX.h"
+
 #include "libANGLE/renderer/gl/glx/FunctionsGLX.h"
+#include "libANGLE/renderer/gl/glx/PixmapSurfaceGLX.h"
 #include "libANGLE/renderer/gl/glx/glx_utils.h"
 
 #include <iostream>
@@ -132,7 +133,7 @@ egl::Error PixmapSurfaceGLX::initialize(const egl::Display *display)
     }
 
     XFlush(mDisplay);
-    displayGLX->syncXCommands();
+    displayGLX->syncXCommands(false);
 
     return egl::NoError();
 }

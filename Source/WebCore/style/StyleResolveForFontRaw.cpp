@@ -35,6 +35,7 @@
 #include "CSSHelper.h"
 #include "CSSPropertyParserHelpers.h"
 #include "Document.h"
+#include "DocumentInlines.h"
 #include "FontCascade.h"
 #include "FontCascadeDescription.h"
 #include "RenderStyle.h"
@@ -66,28 +67,32 @@ std::optional<FontCascade> resolveForFontRaw(const FontRaw& fontRaw, FontCascade
     // Before mapping in a new font-family property, we should reset the generic family.
     bool oldFamilyUsedFixedDefaultSize = useFixedDefaultSize(fontDescription);
 
-    Vector<AtomString> families;
-    families.reserveInitialCapacity(fontRaw.family.size());
-
-    for (auto& item : fontRaw.family) {
+    bool isFirstFont = true;
+    auto families = WTF::compactMap(fontRaw.family, [&](auto& item) -> std::optional<AtomString> {
         AtomString family;
         bool isGenericFamily = false;
         switchOn(item, [&] (CSSValueID ident) {
             isGenericFamily = ident != CSSValueWebkitBody;
-            if (isGenericFamily)
-                family = familyNamesData->at(CSSPropertyParserHelpers::genericFontFamilyIndex(ident));
-            else
+            if (isGenericFamily) {
+                // FIXME: Treat system-ui like other generic font families
+                if (ident == CSSValueSystemUi)
+                    family = nameString(CSSValueSystemUi);
+                else
+                    family = familyNamesData->at(CSSPropertyParserHelpers::genericFontFamilyIndex(ident));
+            } else
                 family = AtomString(context.settingsValues().fontGenericFamilies.standardFontFamily());
-        }, [&] (const String& familyString) {
+        }, [&] (const AtomString& familyString) {
             family = familyString;
         });
 
         if (family.isEmpty())
-            continue;
-        if (families.isEmpty())
+            return std::nullopt;
+        if (isFirstFont) {
             fontDescription.setIsSpecifiedFont(!isGenericFamily);
-        families.uncheckedAppend(family);
-    }
+            isFirstFont = false;
+        }
+        return family;
+    });
 
     if (families.isEmpty())
         return std::nullopt;
@@ -158,7 +163,7 @@ std::optional<FontCascade> resolveForFontRaw(const FontRaw& fontRaw, FontCascade
     }
 
     if (fontRaw.weight) {
-        auto weight = switchOn(*fontRaw.weight, [&] (CSSValueID ident) {
+        auto weight = WTF::switchOn(*fontRaw.weight, [&] (CSSValueID ident) {
             switch (ident) {
             case CSSValueNormal:
                 return normalWeightValue();
@@ -179,7 +184,7 @@ std::optional<FontCascade> resolveForFontRaw(const FontRaw& fontRaw, FontCascade
     }
 
     fontDescription.setKeywordSizeFromIdentifier(CSSValueInvalid);
-    float size = switchOn(fontRaw.size, [&] (CSSValueID ident) {
+    float size = WTF::switchOn(fontRaw.size, [&] (CSSValueID ident) {
         switch (ident) {
         case CSSValueXxSmall:
         case CSSValueXSmall:
@@ -188,7 +193,7 @@ std::optional<FontCascade> resolveForFontRaw(const FontRaw& fontRaw, FontCascade
         case CSSValueLarge:
         case CSSValueXLarge:
         case CSSValueXxLarge:
-        case CSSValueWebkitXxxLarge:
+        case CSSValueXxxLarge:
             fontDescription.setKeywordSizeFromIdentifier(ident);
             return Style::fontSizeForKeyword(ident, fontDescription.useFixedDefaultSize(), context.settingsValues());
         case CSSValueLarger:
@@ -198,8 +203,8 @@ std::optional<FontCascade> resolveForFontRaw(const FontRaw& fontRaw, FontCascade
         default:
             return 0.f;
         }
-    }, [&] (const CSSPropertyParserHelpers::LengthOrPercentRaw& lengthOrPercent) {
-        return switchOn(lengthOrPercent, [&] (const CSSPropertyParserHelpers::LengthRaw& length) {
+    }, [&] (const LengthOrPercentRaw& lengthOrPercent) {
+        return WTF::switchOn(lengthOrPercent, [&] (const LengthRaw& length) {
             auto fontCascade = FontCascade(FontCascadeDescription(fontDescription));
             fontCascade.update(context.cssFontSelector());
             // FIXME: Passing null for the RenderView parameter means that vw and vh units will evaluate to
@@ -207,9 +212,11 @@ std::optional<FontCascade> resolveForFontRaw(const FontRaw& fontRaw, FontCascade
             //        It's unclear in the specification if they're expected to work on OffscreenCanvas, given
             //        that it's off-screen and therefore doesn't strictly have an associated viewport.
             //        This needs clarification and possibly fixing.
-            return static_cast<float>(CSSPrimitiveValue::computeUnzoomedNonCalcLengthDouble(length.type, length.value, CSSPropertyFontSize, &fontCascade.fontMetrics(), &fontCascade.fontDescription(), &fontCascade.fontDescription(), is<Document>(context) ? downcast<Document>(context).renderView() : nullptr));
-        }, [&] (double percentage) {
-            return static_cast<float>((parentSize * percentage) / 100.0);
+            // FIXME: How should root font units work in OffscreenCanvas?
+            auto* document = dynamicDowncast<Document>(context);
+            return static_cast<float>(CSSPrimitiveValue::computeUnzoomedNonCalcLengthDouble(length.type, length.value, CSSPropertyFontSize, &fontCascade, document ? document->renderView() : nullptr));
+        }, [&] (const PercentRaw& percentage) {
+            return static_cast<float>((parentSize * percentage.value) / 100.0);
         });
     });
 

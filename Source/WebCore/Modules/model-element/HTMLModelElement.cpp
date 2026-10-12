@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2020-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,37 +29,60 @@
 #if ENABLE(MODEL_ELEMENT)
 
 #include "CachedResourceLoader.h"
+#include "DOMMatrixReadOnly.h"
+#include "DOMPointReadOnly.h"
 #include "DOMPromiseProxy.h"
-#include "ElementChildIterator.h"
+#include "Document.h"
+#include "DocumentInlines.h"
+#include "ElementChildIteratorInlines.h"
+#include "ElementInlines.h"
+#include "EventHandler.h"
+#include "EventNames.h"
+#include "FloatPoint3D.h"
+#include "GraphicsLayer.h"
+#include "GraphicsLayerCA.h"
+#include "HTMLModelElementCamera.h"
 #include "HTMLNames.h"
 #include "HTMLParserIdioms.h"
 #include "HTMLSourceElement.h"
+#include "JSDOMPromiseDeferred.h"
 #include "JSEventTarget.h"
 #include "JSHTMLModelElement.h"
+#include "JSHTMLModelElementCamera.h"
+#include "LayoutRect.h"
+#include "LayoutSize.h"
+#include "MIMETypeRegistry.h"
 #include "Model.h"
-#include "RenderLayerModelObject.h"
-#include "RenderModel.h"
-#include <wtf/IsoMallocInlines.h>
-#include <wtf/URL.h>
-
-#if HAVE(ARKIT_INLINE_PREVIEW_IOS)
-#include "Chrome.h"
-#include "ChromeClient.h"
-#include "Document.h"
-#include "GraphicsLayer.h"
-#include "GraphicsLayerCA.h"
+#include "ModelPlayer.h"
+#include "ModelPlayerProvider.h"
+#include "MouseEvent.h"
 #include "Page.h"
+#include "PlatformMouseEvent.h"
+#include "RenderBoxInlines.h"
 #include "RenderLayer.h"
 #include "RenderLayerBacking.h"
-#endif
+#include "RenderLayerModelObject.h"
+#include "RenderModel.h"
+#include "RenderReplaced.h"
+#include <wtf/Seconds.h>
+#include <wtf/TZoneMallocInlines.h>
+#include <wtf/URL.h>
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(HTMLModelElement);
+using namespace HTMLNames;
+
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(HTMLModelElement);
 
 HTMLModelElement::HTMLModelElement(const QualifiedName& tagName, Document& document)
-    : HTMLElement(tagName, document)
+    : HTMLElement(tagName, document, { TypeFlag::HasCustomStyleResolveCallbacks, TypeFlag::HasDidMoveToNewDocument })
+    , ActiveDOMObject(document)
     , m_readyPromise { makeUniqueRef<ReadyPromise>(*this, &HTMLModelElement::readyPromiseResolve) }
+#if ENABLE(MODEL_PROCESS)
+    , m_entityTransform(DOMMatrixReadOnly::create(TransformationMatrix::identity, DOMMatrixReadOnly::Is2D::No))
+    , m_boundingBoxCenter(DOMPointReadOnly::create({ }))
+    , m_boundingBoxExtents(DOMPointReadOnly::create({ }))
+#endif
 {
 }
 
@@ -69,23 +92,13 @@ HTMLModelElement::~HTMLModelElement()
         m_resource->removeClient(*this);
         m_resource = nullptr;
     }
-
-#if HAVE(ARKIT_INLINE_PREVIEW_MAC)
-    clearFile();
-#endif
 }
 
 Ref<HTMLModelElement> HTMLModelElement::create(const QualifiedName& tagName, Document& document)
 {
-    return adoptRef(*new HTMLModelElement(tagName, document));
-}
-
-RefPtr<SharedBuffer> HTMLModelElement::modelData() const
-{
-    if (!m_dataComplete)
-        return nullptr;
-
-    return m_data;
+    auto model = adoptRef(*new HTMLModelElement(tagName, document));
+    model->suspendIfNeeded();
+    return model;
 }
 
 RefPtr<Model> HTMLModelElement::model() const
@@ -96,23 +109,37 @@ RefPtr<Model> HTMLModelElement::model() const
     return m_model;
 }
 
-void HTMLModelElement::sourcesChanged()
+static bool isSupportedModelType(const AtomString& type)
 {
-    if (!document().hasBrowsingContext()) {
-        setSourceURL(URL { });
-        return;
-    }
+    return type.isEmpty() || MIMETypeRegistry::isSupportedModelMIMEType(type);
+}
+
+URL HTMLModelElement::selectModelSource() const
+{
+    // FIXME: This should probably work more like media element resource
+    // selection, where if a <source> element fails to load, an error event
+    // is dispatched to it, and we continue to try subsequent <source>s.
+
+    if (!document().hasBrowsingContext())
+        return { };
+
+    if (auto src = getNonEmptyURLAttribute(srcAttr); src.isValid())
+        return src;
 
     for (auto& element : childrenOfType<HTMLSourceElement>(*this)) {
-        // FIXME: for now we use the first valid URL without looking at the mime-type.
-        auto url = element.getNonEmptyURLAttribute(HTMLNames::srcAttr);
-        if (url.isValid()) {
-            setSourceURL(url);
-            return;
-        }
+        if (!isSupportedModelType(element.attributeWithoutSynchronization(typeAttr)))
+            continue;
+
+        if (auto src = element.getNonEmptyURLAttribute(srcAttr); src.isValid())
+            return src;
     }
 
-    setSourceURL(URL { });
+    return { };
+}
+
+void HTMLModelElement::sourcesChanged()
+{
+    setSourceURL(selectModelSource());
 }
 
 void HTMLModelElement::setSourceURL(const URL& url)
@@ -122,7 +149,7 @@ void HTMLModelElement::setSourceURL(const URL& url)
 
     m_sourceURL = url;
 
-    m_data = nullptr;
+    m_data.reset();
     m_dataComplete = false;
 
     if (m_resource) {
@@ -130,15 +157,23 @@ void HTMLModelElement::setSourceURL(const URL& url)
         m_resource = nullptr;
     }
 
+    if (m_modelPlayer)
+        m_modelPlayer = nullptr;
+
+#if ENABLE(MODEL_PROCESS)
+    m_entityTransform = DOMMatrixReadOnly::create(TransformationMatrix::identity, DOMMatrixReadOnly::Is2D::No);
+    m_boundingBoxCenter = DOMPointReadOnly::create({ });
+    m_boundingBoxExtents = DOMPointReadOnly::create({ });
+#endif
+
     if (!m_readyPromise->isFulfilled())
-        m_readyPromise->reject(Exception { AbortError });
+        m_readyPromise->reject(Exception { ExceptionCode::AbortError });
 
     m_readyPromise = makeUniqueRef<ReadyPromise>(*this, &HTMLModelElement::readyPromiseResolve);
+    m_shouldCreateModelPlayerUponRendererAttachment = false;
 
     if (m_sourceURL.isEmpty()) {
-#if HAVE(ARKIT_INLINE_PREVIEW_MAC)
-        clearFile();
-#endif
+        ActiveDOMObject::queueTaskToDispatchEvent(*this, TaskSource::DOMManipulation, Event::create(eventNames().errorEvent, Event::CanBubble::No, Event::IsCancelable::No));
         return;
     }
 
@@ -150,13 +185,15 @@ void HTMLModelElement::setSourceURL(const URL& url)
     auto request = createPotentialAccessControlRequest(ResourceRequest { m_sourceURL }, WTFMove(options), document(), crossOriginAttribute);
     request.setInitiator(*this);
 
-    auto resource = document().cachedResourceLoader().requestModelResource(WTFMove(request));
+    auto resource = document().protectedCachedResourceLoader()->requestModelResource(WTFMove(request));
     if (!resource.has_value()) {
-        m_readyPromise->reject(Exception { NetworkError });
+        ActiveDOMObject::queueTaskToDispatchEvent(*this, TaskSource::DOMManipulation, Event::create(eventNames().errorEvent, Event::CanBubble::No, Event::IsCancelable::No));
+        if (!m_readyPromise->isFulfilled())
+            m_readyPromise->reject(Exception { ExceptionCode::NetworkError });
         return;
     }
 
-    m_data = SharedBuffer::create();
+    m_data.empty();
 
     m_resource = resource.value();
     m_resource->addClient(*this);
@@ -166,24 +203,6 @@ HTMLModelElement& HTMLModelElement::readyPromiseResolve()
 {
     return *this;
 }
-
-#if HAVE(ARKIT_INLINE_PREVIEW)
-static String& sharedModelElementCacheDirectory()
-{
-    static NeverDestroyed<String> sharedModelElementCacheDirectory;
-    return sharedModelElementCacheDirectory;
-}
-
-void HTMLModelElement::setModelElementCacheDirectory(const String& path)
-{
-    sharedModelElementCacheDirectory() = path;
-}
-
-const String& HTMLModelElement::modelElementCacheDirectory()
-{
-    return sharedModelElementCacheDirectory();
-}
-#endif
 
 // MARK: - DOM overrides.
 
@@ -200,67 +219,592 @@ RenderPtr<RenderElement> HTMLModelElement::createElementRenderer(RenderStyle&& s
     return createRenderer<RenderModel>(*this, WTFMove(style));
 }
 
-// MARK: - CachedRawResourceClient
-
-void HTMLModelElement::dataReceived(CachedResource& resource, const uint8_t* data, int dataLength)
+void HTMLModelElement::didAttachRenderers()
 {
-    ASSERT_UNUSED(resource, &resource == m_resource);
-    ASSERT(m_data);
-    m_data->append(data, dataLength);
+    if (!m_shouldCreateModelPlayerUponRendererAttachment)
+        return;
+
+    m_shouldCreateModelPlayerUponRendererAttachment = false;
+    createModelPlayer();
 }
 
-void HTMLModelElement::notifyFinished(CachedResource& resource, const NetworkLoadMetrics&)
+// MARK: - CachedRawResourceClient
+
+void HTMLModelElement::dataReceived(CachedResource& resource, const SharedBuffer& buffer)
+{
+    ASSERT_UNUSED(resource, &resource == m_resource);
+    m_data.append(buffer);
+}
+
+void HTMLModelElement::notifyFinished(CachedResource& resource, const NetworkLoadMetrics&, LoadWillContinueInAnotherProcess)
 {
     auto invalidateResourceHandleAndUpdateRenderer = [&] {
         m_resource->removeClient(*this);
         m_resource = nullptr;
 
-        if (auto* renderer = this->renderer())
+        if (CheckedPtr renderer = this->renderer())
             renderer->updateFromElement();
     };
 
     if (resource.loadFailedOrCanceled()) {
-        m_data = nullptr;
+        m_data.reset();
+
+        ActiveDOMObject::queueTaskToDispatchEvent(*this, TaskSource::DOMManipulation, Event::create(eventNames().errorEvent, Event::CanBubble::No, Event::IsCancelable::No));
 
         invalidateResourceHandleAndUpdateRenderer();
 
-        m_readyPromise->reject(Exception { NetworkError });
+        if (!m_readyPromise->isFulfilled())
+            m_readyPromise->reject(Exception { ExceptionCode::NetworkError });
         return;
     }
 
     m_dataComplete = true;
-    m_model = Model::create(*m_data);
+    m_model = Model::create(m_data.takeAsContiguous().get(), resource.mimeType(), resource.url());
+
+    ActiveDOMObject::queueTaskToDispatchEvent(*this, TaskSource::DOMManipulation, Event::create(eventNames().loadEvent, Event::CanBubble::No, Event::IsCancelable::No));
 
     invalidateResourceHandleAndUpdateRenderer();
 
-    m_readyPromise->resolve(*this);
-
-#if HAVE(ARKIT_INLINE_PREVIEW_MAC)
     modelDidChange();
-#endif
 }
+
+// MARK: - ModelPlayer support
+
+void HTMLModelElement::modelDidChange()
+{
+    auto* page = document().page();
+    if (!page) {
+        if (!m_readyPromise->isFulfilled())
+            m_readyPromise->reject(Exception { ExceptionCode::AbortError });
+        return;
+    }
+
+    auto* renderer = this->renderer();
+    if (!renderer) {
+        m_shouldCreateModelPlayerUponRendererAttachment = true;
+        return;
+    }
+
+    createModelPlayer();
+}
+
+void HTMLModelElement::createModelPlayer()
+{
+    if (!m_model)
+        return;
+
+    auto size = contentSize();
+    if (size.isEmpty())
+        return;
+
+    ASSERT(document().page());
+#if ENABLE(MODEL_PROCESS)
+    m_entityTransform = DOMMatrixReadOnly::create(TransformationMatrix::identity, DOMMatrixReadOnly::Is2D::No);
+    m_boundingBoxCenter = DOMPointReadOnly::create({ });
+    m_boundingBoxExtents = DOMPointReadOnly::create({ });
+#endif
+    m_modelPlayer = document().page()->modelPlayerProvider().createModelPlayer(*this);
+    if (!m_modelPlayer) {
+        if (!m_readyPromise->isFulfilled())
+            m_readyPromise->reject(Exception { ExceptionCode::AbortError });
+        return;
+    }
+
+    // FIXME: We need to tell the player if the size changes as well, so passing this
+    // in with load probably doesn't make sense.
+    m_modelPlayer->load(*m_model, size);
+}
+
+bool HTMLModelElement::usesPlatformLayer() const
+{
+    return m_modelPlayer && m_modelPlayer->layer();
+}
+
+PlatformLayer* HTMLModelElement::platformLayer() const
+{
+    if (m_modelPlayer)
+        return m_modelPlayer->layer();
+    return nullptr;
+}
+
+std::optional<LayerHostingContextIdentifier> HTMLModelElement::layerHostingContextIdentifier() const
+{
+    if (m_modelPlayer)
+        return m_modelPlayer->layerHostingContextIdentifier();
+    return std::nullopt;
+}
+
+void HTMLModelElement::sizeMayHaveChanged()
+{
+    if (m_modelPlayer)
+        m_modelPlayer->sizeDidChange(contentSize());
+    else
+        createModelPlayer();
+}
+
+void HTMLModelElement::didUpdateLayerHostingContextIdentifier(ModelPlayer& modelPlayer, LayerHostingContextIdentifier identifier)
+{
+    ASSERT_UNUSED(modelPlayer, &modelPlayer == m_modelPlayer);
+    ASSERT_UNUSED(identifier, identifier.toUInt64() > 0);
+
+    if (CheckedPtr renderer = this->renderer())
+        renderer->updateFromElement();
+}
+
+void HTMLModelElement::didFinishLoading(ModelPlayer& modelPlayer)
+{
+    ASSERT_UNUSED(modelPlayer, &modelPlayer == m_modelPlayer);
+
+    if (CheckedPtr renderer = this->renderer())
+        renderer->updateFromElement();
+
+    m_readyPromise->resolve(*this);
+}
+
+void HTMLModelElement::didFailLoading(ModelPlayer& modelPlayer, const ResourceError&)
+{
+    ASSERT_UNUSED(modelPlayer, &modelPlayer == m_modelPlayer);
+    if (!m_readyPromise->isFulfilled())
+        m_readyPromise->reject(Exception { ExceptionCode::AbortError });
+}
+
+PlatformLayerIdentifier HTMLModelElement::platformLayerID()
+{
+    auto* page = document().page();
+    if (!page)
+        return { };
+
+    auto* renderLayerModelObject = dynamicDowncast<RenderLayerModelObject>(this->renderer());
+    if (!renderLayerModelObject)
+        return { };
+
+    if (!renderLayerModelObject->isComposited() || !renderLayerModelObject->layer() || !renderLayerModelObject->layer()->backing())
+        return { };
+
+    RefPtr graphicsLayer = renderLayerModelObject->layer()->backing()->graphicsLayer();
+    if (!graphicsLayer)
+        return { };
+
+    return graphicsLayer->contentsLayerIDForModel();
+}
+
+// MARK: - Background Color support.
+
+void HTMLModelElement::applyBackgroundColor(Color color)
+{
+    if (m_modelPlayer)
+        m_modelPlayer->setBackgroundColor(color);
+}
+
+#if ENABLE(MODEL_PROCESS)
+const DOMMatrixReadOnly& HTMLModelElement::entityTransform() const
+{
+    return m_entityTransform.get();
+}
+
+ExceptionOr<void> HTMLModelElement::setEntityTransform(const DOMMatrixReadOnly& transform)
+{
+    auto player = m_modelPlayer;
+    if (!player) {
+        ASSERT_NOT_REACHED();
+        return Exception { ExceptionCode::UnknownError };
+    }
+
+    TransformationMatrix matrix = transform.transformationMatrix();
+
+    if (!player->supportsTransform(matrix))
+        return Exception { ExceptionCode::NotSupportedError };
+
+    m_entityTransform = DOMMatrixReadOnly::create(matrix, DOMMatrixReadOnly::Is2D::No);
+    player->setEntityTransform(matrix);
+
+    return { };
+}
+
+void HTMLModelElement::didUpdateEntityTransform(ModelPlayer&, const TransformationMatrix& transform)
+{
+    m_entityTransform = DOMMatrixReadOnly::create(transform, DOMMatrixReadOnly::Is2D::No);
+}
+
+const DOMPointReadOnly& HTMLModelElement::boundingBoxCenter() const
+{
+    return m_boundingBoxCenter;
+}
+
+const DOMPointReadOnly& HTMLModelElement::boundingBoxExtents() const
+{
+    return m_boundingBoxExtents;
+}
+
+void HTMLModelElement::didUpdateBoundingBox(ModelPlayer&, const FloatPoint3D& center, const FloatPoint3D& extents)
+{
+    m_boundingBoxCenter = DOMPointReadOnly::fromFloatPoint(center);
+    m_boundingBoxExtents = DOMPointReadOnly::fromFloatPoint(extents);
+}
+#endif // ENABLE(MODEL_PROCESS)
+
+// MARK: - Fullscreen support.
 
 void HTMLModelElement::enterFullscreen()
 {
-#if HAVE(ARKIT_INLINE_PREVIEW_IOS)
-    auto* page = document().page();
-    if (!page)
+    if (m_modelPlayer)
+        m_modelPlayer->enterFullscreen();
+}
+
+// MARK: - Interaction support.
+
+bool HTMLModelElement::supportsDragging() const
+{
+    if (!m_modelPlayer)
+        return true;
+
+    return m_modelPlayer->supportsDragging();
+}
+
+bool HTMLModelElement::isDraggableIgnoringAttributes() const
+{
+    return supportsDragging();
+}
+
+bool HTMLModelElement::isInteractive() const
+{
+    return hasAttributeWithoutSynchronization(HTMLNames::interactiveAttr);
+}
+
+void HTMLModelElement::attributeChanged(const QualifiedName& name, const AtomString& oldValue, const AtomString& newValue, AttributeModificationReason attributeModificationReason)
+{
+    if (name == srcAttr)
+        sourcesChanged();
+    else if (name == interactiveAttr) {
+        if (m_modelPlayer)
+            m_modelPlayer->setInteractionEnabled(isInteractive());
+    } else
+        HTMLElement::attributeChanged(name, oldValue, newValue, attributeModificationReason);
+}
+
+void HTMLModelElement::defaultEventHandler(Event& event)
+{
+    HTMLElement::defaultEventHandler(event);
+
+    if (!m_modelPlayer || !m_modelPlayer->supportsMouseInteraction())
         return;
 
-    if (!is<RenderLayerModelObject>(this->renderer()))
+    auto type = event.type();
+    if (type != eventNames().mousedownEvent && type != eventNames().mousemoveEvent && type != eventNames().mouseupEvent)
         return;
 
-    auto& renderLayerModelObject = downcast<RenderLayerModelObject>(*this->renderer());
-    if (!renderLayerModelObject.isComposited() || !renderLayerModelObject.layer() || !renderLayerModelObject.layer()->backing())
+    auto& mouseEvent = downcast<MouseEvent>(event);
+
+    if (mouseEvent.button() != MouseButton::Left)
         return;
 
-    auto* graphicsLayer = renderLayerModelObject.layer()->backing()->graphicsLayer();
-    if (!graphicsLayer)
+    if (type == eventNames().mousedownEvent && !m_isDragging && !event.defaultPrevented() && isInteractive())
+        dragDidStart(mouseEvent);
+    else if (type == eventNames().mousemoveEvent && m_isDragging)
+        dragDidChange(mouseEvent);
+    else if (type == eventNames().mouseupEvent && m_isDragging)
+        dragDidEnd(mouseEvent);
+}
+
+LayoutPoint HTMLModelElement::flippedLocationInElementForMouseEvent(MouseEvent& event)
+{
+    LayoutUnit flippedY { event.offsetY() };
+    if (auto* renderModel = dynamicDowncast<RenderModel>(renderer()))
+        flippedY = renderModel->paddingBoxHeight() - flippedY;
+    return { LayoutUnit(event.offsetX()), flippedY };
+}
+
+void HTMLModelElement::dragDidStart(MouseEvent& event)
+{
+    ASSERT(!m_isDragging);
+
+    RefPtr frame = document().frame();
+    if (!frame)
         return;
 
-    if (auto contentLayerId = graphicsLayer->contentsLayerIDForModel())
-        page->chrome().client().takeModelElementFullscreen(contentLayerId);
+    frame->eventHandler().setCapturingMouseEventsElement(this);
+    event.setDefaultHandled();
+    m_isDragging = true;
+
+    if (m_modelPlayer)
+        m_modelPlayer->handleMouseDown(flippedLocationInElementForMouseEvent(event), event.timeStamp());
+}
+
+void HTMLModelElement::dragDidChange(MouseEvent& event)
+{
+    ASSERT(m_isDragging);
+
+    event.setDefaultHandled();
+
+    if (m_modelPlayer)
+        m_modelPlayer->handleMouseMove(flippedLocationInElementForMouseEvent(event), event.timeStamp());
+}
+
+void HTMLModelElement::dragDidEnd(MouseEvent& event)
+{
+    ASSERT(m_isDragging);
+
+    RefPtr frame = document().frame();
+    if (!frame)
+        return;
+
+    frame->eventHandler().setCapturingMouseEventsElement(nullptr);
+    event.setDefaultHandled();
+    m_isDragging = false;
+
+    if (m_modelPlayer)
+        m_modelPlayer->handleMouseUp(flippedLocationInElementForMouseEvent(event), event.timeStamp());
+}
+
+// MARK: - Camera support.
+
+void HTMLModelElement::getCamera(CameraPromise&& promise)
+{
+    if (!m_modelPlayer) {
+        promise.reject(Exception { ExceptionCode::AbortError });
+        return;
+    }
+
+    m_modelPlayer->getCamera([promise = WTFMove(promise)] (std::optional<HTMLModelElementCamera> camera) mutable {
+        if (!camera)
+            promise.reject();
+        else
+            promise.resolve(*camera);
+    });
+}
+
+void HTMLModelElement::setCamera(HTMLModelElementCamera camera, DOMPromiseDeferred<void>&& promise)
+{
+    if (!m_modelPlayer) {
+        promise.reject(Exception { ExceptionCode::AbortError });
+        return;
+    }
+
+    m_modelPlayer->setCamera(camera, [promise = WTFMove(promise)] (bool success) mutable {
+        if (success)
+            promise.resolve();
+        else
+            promise.reject();
+    });
+}
+
+// MARK: - Animations support.
+
+void HTMLModelElement::isPlayingAnimation(IsPlayingAnimationPromise&& promise)
+{
+    if (!m_modelPlayer) {
+        promise.reject();
+        return;
+    }
+
+    m_modelPlayer->isPlayingAnimation([promise = WTFMove(promise)] (std::optional<bool> isPlaying) mutable {
+        if (!isPlaying)
+            promise.reject();
+        else
+            promise.resolve(*isPlaying);
+    });
+}
+
+void HTMLModelElement::setAnimationIsPlaying(bool isPlaying, DOMPromiseDeferred<void>&& promise)
+{
+    if (!m_modelPlayer) {
+        promise.reject();
+        return;
+    }
+
+    m_modelPlayer->setAnimationIsPlaying(isPlaying, [promise = WTFMove(promise)] (bool success) mutable {
+        if (success)
+            promise.resolve();
+        else
+            promise.reject();
+    });
+}
+
+void HTMLModelElement::playAnimation(DOMPromiseDeferred<void>&& promise)
+{
+    setAnimationIsPlaying(true, WTFMove(promise));
+}
+
+void HTMLModelElement::pauseAnimation(DOMPromiseDeferred<void>&& promise)
+{
+    setAnimationIsPlaying(false, WTFMove(promise));
+}
+
+void HTMLModelElement::isLoopingAnimation(IsLoopingAnimationPromise&& promise)
+{
+    if (!m_modelPlayer) {
+        promise.reject();
+        return;
+    }
+
+    m_modelPlayer->isLoopingAnimation([promise = WTFMove(promise)] (std::optional<bool> isLooping) mutable {
+        if (!isLooping)
+            promise.reject();
+        else
+            promise.resolve(*isLooping);
+    });
+}
+
+void HTMLModelElement::setIsLoopingAnimation(bool isLooping, DOMPromiseDeferred<void>&& promise)
+{
+    if (!m_modelPlayer) {
+        promise.reject();
+        return;
+    }
+
+    m_modelPlayer->setIsLoopingAnimation(isLooping, [promise = WTFMove(promise)] (bool success) mutable {
+        if (success)
+            promise.resolve();
+        else
+            promise.reject();
+    });
+}
+
+void HTMLModelElement::animationDuration(DurationPromise&& promise)
+{
+    if (!m_modelPlayer) {
+        promise.reject();
+        return;
+    }
+
+    m_modelPlayer->animationDuration([promise = WTFMove(promise)] (std::optional<Seconds> duration) mutable {
+        if (!duration)
+            promise.reject();
+        else
+            promise.resolve(duration->seconds());
+    });
+}
+
+void HTMLModelElement::animationCurrentTime(CurrentTimePromise&& promise)
+{
+    if (!m_modelPlayer) {
+        promise.reject();
+        return;
+    }
+
+    m_modelPlayer->animationCurrentTime([promise = WTFMove(promise)] (std::optional<Seconds> currentTime) mutable {
+        if (!currentTime)
+            promise.reject();
+        else
+            promise.resolve(currentTime->seconds());
+    });
+}
+
+void HTMLModelElement::setAnimationCurrentTime(double currentTime, DOMPromiseDeferred<void>&& promise)
+{
+    if (!m_modelPlayer) {
+        promise.reject();
+        return;
+    }
+
+    m_modelPlayer->setAnimationCurrentTime(Seconds(currentTime), [promise = WTFMove(promise)] (bool success) mutable {
+        if (success)
+            promise.resolve();
+        else
+            promise.reject();
+    });
+}
+
+// MARK: - Audio support.
+
+void HTMLModelElement::hasAudio(HasAudioPromise&& promise)
+{
+    if (!m_modelPlayer) {
+        promise.reject();
+        return;
+    }
+
+    m_modelPlayer->isPlayingAnimation([promise = WTFMove(promise)] (std::optional<bool> hasAudio) mutable {
+        if (!hasAudio)
+            promise.reject();
+        else
+            promise.resolve(*hasAudio);
+    });
+}
+
+void HTMLModelElement::isMuted(IsMutedPromise&& promise)
+{
+    if (!m_modelPlayer) {
+        promise.reject();
+        return;
+    }
+
+    m_modelPlayer->isPlayingAnimation([promise = WTFMove(promise)] (std::optional<bool> isMuted) mutable {
+        if (!isMuted)
+            promise.reject();
+        else
+            promise.resolve(*isMuted);
+    });
+}
+
+void HTMLModelElement::setIsMuted(bool isMuted, DOMPromiseDeferred<void>&& promise)
+{
+    if (!m_modelPlayer) {
+        promise.reject();
+        return;
+    }
+
+    m_modelPlayer->setIsMuted(isMuted, [promise = WTFMove(promise)] (bool success) mutable {
+        if (success)
+            promise.resolve();
+        else
+            promise.reject();
+    });
+}
+
+bool HTMLModelElement::virtualHasPendingActivity() const
+{
+    // We need to ensure the JS wrapper is kept alive if a load is in progress and we may yet dispatch
+    // "load" or "error" events, ie. as long as we have a resource, meaning we are in the process of loading.
+    return m_resource;
+}
+
+#if PLATFORM(COCOA)
+Vector<RetainPtr<id>> HTMLModelElement::accessibilityChildren()
+{
+    if (!m_modelPlayer)
+        return { };
+    return m_modelPlayer->accessibilityChildren();
+}
 #endif
+
+LayoutSize HTMLModelElement::contentSize() const
+{
+    ASSERT(renderer());
+    return downcast<RenderReplaced>(*renderer()).replacedContentRect().size();
+}
+
+#if ENABLE(ARKIT_INLINE_PREVIEW_MAC)
+String HTMLModelElement::inlinePreviewUUIDForTesting() const
+{
+    if (!m_modelPlayer)
+        return emptyString();
+    return m_modelPlayer->inlinePreviewUUIDForTesting();
+}
+#endif
+
+void HTMLModelElement::collectPresentationalHintsForAttribute(const QualifiedName& name, const AtomString& value, MutableStyleProperties& style)
+{
+    if (name == widthAttr) {
+        addHTMLLengthToStyle(style, CSSPropertyWidth, value);
+        applyAspectRatioFromWidthAndHeightAttributesToStyle(value, attributeWithoutSynchronization(heightAttr), style);
+    } else if (name == heightAttr) {
+        addHTMLLengthToStyle(style, CSSPropertyHeight, value);
+        applyAspectRatioFromWidthAndHeightAttributesToStyle(attributeWithoutSynchronization(widthAttr), value, style);
+    } else
+        HTMLElement::collectPresentationalHintsForAttribute(name, value, style);
+}
+
+bool HTMLModelElement::hasPresentationalHintsForAttribute(const QualifiedName& name) const
+{
+    if (name == widthAttr || name == heightAttr)
+        return true;
+    return HTMLElement::hasPresentationalHintsForAttribute(name);
+}
+
+bool HTMLModelElement::isURLAttribute(const Attribute& attribute) const
+{
+    return attribute.name() == srcAttr || HTMLElement::isURLAttribute(attribute);
 }
 
 }

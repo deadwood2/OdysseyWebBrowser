@@ -29,10 +29,12 @@
 #if OS(LINUX)
 
 #include "WebProcessPool.h"
+#include <mutex>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <wtf/PageBlock.h>
 #include <wtf/Threading.h>
 #include <wtf/UniStdExtras.h>
 #include <wtf/text/CString.h>
@@ -65,6 +67,7 @@ static const unsigned maxCgroupPath = 4096; // PATH_MAX = 4096 from (Linux) incl
 #define MEMINFO_TOKEN_BUFFER_SIZE 50
 #define STRINGIFY_EXPANDED(val) #val
 #define STRINGIFY(val) STRINGIFY_EXPANDED(val)
+#define VALUE_BUFFER_SIZE 128
 #define ZONEINFO_TOKEN_BUFFER_SIZE 128
 
 // The lowWatermark is the sum of the low watermarks across all zones as the
@@ -132,14 +135,6 @@ static size_t lowWatermarkPages(FILE* zoneInfoFile)
     return sumLow;
 }
 
-static inline size_t systemPageSize()
-{
-    static size_t pageSize = 0;
-    if (!pageSize)
-        pageSize = sysconf(_SC_PAGE_SIZE);
-    return pageSize;
-}
-
 // If MemAvailable was not present in /proc/meminfo, because it's an old kernel version,
 // we can do the same calculation with the information we have from meminfo and the low watermaks.
 // See https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/commit/?id=34e431b0ae398fc54ea69ff85ec700722c9da773
@@ -152,11 +147,11 @@ static size_t calculateMemoryAvailable(size_t memoryFree, size_t activeFile, siz
     if (lowWatermark == notSet)
         return notSet;
 
-    lowWatermark *= systemPageSize() / KB;
+    lowWatermark *= pageSize() / KB;
 
     // Estimate the amount of memory available for userspace allocations, without causing swapping.
     // Free memory cannot be taken below the low watermark, before the system starts swapping.
-    lowWatermark *= systemPageSize() / KB;
+    lowWatermark *= pageSize() / KB;
     size_t memoryAvailable = memoryFree - lowWatermark;
 
     // Not all the page cache can be freed, otherwise the system will start swapping. Assume at least
@@ -353,7 +348,7 @@ void MemoryPressureMonitor::start()
 
     m_started = true;
 
-    Thread::create("MemoryPressureMonitor", [] {
+    Thread::create("MemoryPressureMonitor"_s, [] {
         FileHandle memInfoFile, zoneInfoFile, cgroupControllerFile;
         CGroupMemoryController memoryController = CGroupMemoryController();
         Seconds pollInterval = s_maxPollingInterval;
@@ -389,6 +384,18 @@ void MemoryPressureMonitor::start()
     })->detach();
 }
 
+bool MemoryPressureMonitor::s_disabled = false;
+
+bool MemoryPressureMonitor::disabled()
+{
+    static std::once_flag flag;
+    std::call_once(flag, []() {
+        auto envvar = getenv("WEBKIT_DISABLE_MEMORY_PRESSURE_MONITOR");
+        s_disabled = envvar && !strcmp(envvar, "1");
+    });
+    return s_disabled;
+}
+
 void CGroupMemoryController::setMemoryControllerPath(CString memoryControllerPath)
 {
     if (memoryControllerPath == m_cgroupMemoryControllerPath)
@@ -403,12 +410,15 @@ void CGroupMemoryController::setMemoryControllerPath(CString memoryControllerPat
     m_cgroupV2MemoryHighFile = getCgroupFile("/", memoryControllerPath, CString("memory.high"));
 
     m_cgroupMemoryMemswLimitInBytesFile = getCgroupFile("memory", memoryControllerPath, CString("memory.memsw.limit_in_bytes"));
+    m_cgroupMemoryMemswUsageInBytesFile = getCgroupFile("memory", memoryControllerPath, CString("memory.memsw.usage_in_bytes"));
     m_cgroupMemoryLimitInBytesFile = getCgroupFile("memory", memoryControllerPath, CString("memory.limit_in_bytes"));
     m_cgroupMemoryUsageInBytesFile = getCgroupFile("memory", memoryControllerPath, CString("memory.usage_in_bytes"));
 }
 
 void CGroupMemoryController::disposeMemoryController()
 {
+    if (m_cgroupMemoryMemswUsageInBytesFile)
+        fclose(m_cgroupMemoryMemswUsageInBytesFile);
     if (m_cgroupMemoryMemswLimitInBytesFile)
         fclose(m_cgroupMemoryMemswLimitInBytesFile);
     if (m_cgroupMemoryLimitInBytesFile)
@@ -429,8 +439,18 @@ size_t CGroupMemoryController::getCgroupFileValue(FILE *file)
     if (!file || fseek(file, 0, SEEK_SET))
         return notSet;
 
-    size_t value;
-    return (fscanf(file, "%zu", &value) == 1) ? value : notSet;
+    char rawValue[VALUE_BUFFER_SIZE + 1];
+    if (fscanf(file, "%" STRINGIFY(VALUE_BUFFER_SIZE) "[^\n]", rawValue) < 1)
+        return notSet;
+
+    errno = 0;
+    char* endptr;
+    long value = strtol(rawValue, &endptr, 10);
+
+    if (errno == ERANGE || value < 0 || *endptr != '\0')
+        return notSet;
+
+    return static_cast<size_t>(value);
 }
 
 size_t CGroupMemoryController::getMemoryTotalWithCgroup()
@@ -458,6 +478,7 @@ size_t CGroupMemoryController::getMemoryTotalWithCgroup()
     if (value != notSet)
         return value;
 
+    // Check memory limits in cgroupV1 (fallback)
     value = getCgroupFileValue(m_cgroupMemoryLimitInBytesFile);
     if (value != notSet)
         return value;
@@ -469,12 +490,18 @@ size_t CGroupMemoryController::getMemoryUsageWithCgroup()
 {
     size_t value = notSet;
 
-    // Check memory limits in cgroupV2
+    // Get the total amount of memory currently being used by the cgroup
+    // and its descendants in cgroupV2
     value = getCgroupFileValue(m_cgroupV2MemoryCurrentFile);
     if (value != notSet)
         return value;
 
-    // Check memory limits in cgroupV1
+    // Get current memory used (memory+Swap) in cgroupV1
+    value = getCgroupFileValue(m_cgroupMemoryMemswUsageInBytesFile);
+    if (value != notSet)
+        return value;
+
+    // Get current memory used in cgroupV1 (fallback)
     value = getCgroupFileValue(m_cgroupMemoryUsageInBytesFile);
     if (value != notSet)
         return value;

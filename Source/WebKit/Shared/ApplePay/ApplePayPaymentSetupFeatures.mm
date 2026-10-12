@@ -37,17 +37,16 @@
 
 namespace WebKit {
 
-static NSArray<PKPaymentSetupFeature *> *toPlatformFeatures(Vector<RefPtr<WebCore::ApplePaySetupFeature>>&& features)
+static NSArray<PKPaymentSetupFeature *> *toPlatformFeatures(Vector<Ref<WebCore::ApplePaySetupFeature>>&& features)
 {
     NSMutableArray *platformFeatures = [NSMutableArray arrayWithCapacity:features.size()];
     for (auto& feature : features) {
-        if (feature)
-            [platformFeatures addObject:feature->platformFeature()];
+        [platformFeatures addObject:feature->platformFeature()];
     }
     return platformFeatures;
 }
 
-PaymentSetupFeatures::PaymentSetupFeatures(Vector<RefPtr<WebCore::ApplePaySetupFeature>>&& features)
+PaymentSetupFeatures::PaymentSetupFeatures(Vector<Ref<WebCore::ApplePaySetupFeature>>&& features)
     : m_platformFeatures { toPlatformFeatures(WTFMove(features)) }
 {
 }
@@ -57,36 +56,14 @@ PaymentSetupFeatures::PaymentSetupFeatures(RetainPtr<NSArray>&& platformFeatures
 {
 }
 
-void PaymentSetupFeatures::encode(IPC::Encoder& encoder) const
-{
-    encoder << m_platformFeatures;
-}
-
-std::optional<PaymentSetupFeatures> PaymentSetupFeatures::decode(IPC::Decoder& decoder)
-{
-    static NeverDestroyed<RetainPtr<NSArray>> allowedClasses;
-    static std::once_flag onceFlag;
-    std::call_once(onceFlag, [] {
-        auto allowed = adoptNS([[NSMutableArray alloc] initWithCapacity:2]);
-        [allowed addObject:[NSArray class]];
-        if (auto pkPaymentSetupFeatureClass = PAL::getPKPaymentSetupFeatureClass())
-            [allowed addObject:pkPaymentSetupFeatureClass];
-        allowedClasses.get() = adoptNS([allowed copy]);
-    });
-
-    auto platformFeatures = IPC::decode<NSArray<PKPaymentSetupFeature *>>(decoder, allowedClasses.get().get());
-    if (!platformFeatures)
-        return std::nullopt;
-
-    return PaymentSetupFeatures { WTFMove(*platformFeatures) };
-}
-
 PaymentSetupFeatures::operator Vector<Ref<WebCore::ApplePaySetupFeature>>() const
 {
     Vector<Ref<WebCore::ApplePaySetupFeature>> features;
     features.reserveInitialCapacity([m_platformFeatures count]);
-    for (PKPaymentSetupFeature *platformFeature in m_platformFeatures.get())
-        features.uncheckedAppend(WebCore::ApplePaySetupFeature::create(platformFeature));
+    for (PKPaymentSetupFeature *platformFeature in m_platformFeatures.get()) {
+        if (WebCore::ApplePaySetupFeature::supportsFeature(platformFeature))
+            features.append(WebCore::ApplePaySetupFeature::create(platformFeature));
+    }
     return features;
 }
 

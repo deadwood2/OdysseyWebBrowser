@@ -48,11 +48,6 @@
 #include <CommonCrypto/CommonRandom.h>
 #endif
 
-#if BOS(MORPHOS)
-#include <proto/exec.h>
-#include <proto/random.h>
-#endif
-
 namespace bmalloc {
 
 class ARC4Stream {
@@ -80,7 +75,9 @@ private:
     ARC4Stream m_stream;
     int m_count;
 };
-DECLARE_STATIC_PER_PROCESS_STORAGE(ARC4RandomNumberGenerator);
+BALLOW_DEPRECATED_DECLARATIONS_BEGIN
+DECLARE_STATIC_PER_PROCESS_STORAGE_WITH_LINKAGE(ARC4RandomNumberGenerator, BNOEXPORT);
+BALLOW_DEPRECATED_DECLARATIONS_END
 DEFINE_STATIC_PER_PROCESS_STORAGE(ARC4RandomNumberGenerator);
 
 ARC4Stream::ARC4Stream()
@@ -116,12 +113,6 @@ void ARC4RandomNumberGenerator::stir()
 
 #if BOS(DARWIN)
     RELEASE_BASSERT(!CCRandomGenerateBytes(randomness, length));
-#elif BOS(MORPHOS)
-    RandomBase = OpenLibrary("random.library", 2);
-    RELEASE_BASSERT(RandomBase != NULL);
-    RandomBytes(randomness, length);
-    addRandomData(randomness, length);
-    CloseLibrary(RandomBase);
 #else
     static std::once_flag onceFlag;
     static int fd;

@@ -55,7 +55,7 @@ OpaqueJSString::~OpaqueJSString()
     if (!characters)
         return;
 
-    if (!m_string.is8Bit() && m_string.characters16() == characters)
+    if (!m_string.is8Bit() && m_string.span16().data() == characters)
         return;
 
     fastFree(characters);
@@ -71,14 +71,11 @@ Identifier OpaqueJSString::identifier(VM* vm) const
 {
     if (m_string.isNull())
         return Identifier();
-
     if (m_string.isEmpty())
         return Identifier(Identifier::EmptyIdentifier);
-
     if (m_string.is8Bit())
-        return Identifier::fromString(*vm, m_string.characters8(), m_string.length());
-
-    return Identifier::fromString(*vm, m_string.characters16(), m_string.length());
+        return Identifier::fromString(*vm, m_string.span8());
+    return Identifier::fromString(*vm, m_string.span16());
 }
 
 const UChar* OpaqueJSString::characters()
@@ -91,9 +88,8 @@ const UChar* OpaqueJSString::characters()
     if (m_string.isNull())
         return nullptr;
 
-    unsigned length = m_string.length();
-    UChar* newCharacters = static_cast<UChar*>(fastMalloc(length * sizeof(UChar)));
-    StringView(m_string).getCharactersWithUpconvert(newCharacters);
+    UChar* newCharacters = static_cast<UChar*>(fastMalloc(m_string.length() * sizeof(UChar)));
+    StringView { m_string }.getCharacters(newCharacters);
 
     if (!m_characters.compare_exchange_strong(characters, newCharacters)) {
         fastFree(newCharacters);

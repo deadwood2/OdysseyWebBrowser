@@ -26,13 +26,29 @@
 
 #pragma once
 
-#include "FragmentScriptingPermission.h"
+#include "Document.h"
 #include "HTMLElementStack.h"
 #include "HTMLFormattingElementList.h"
+#include "ParserContentPolicy.h"
+#include <wtf/CheckedRef.h>
+#include <wtf/FixedVector.h>
 #include <wtf/Noncopyable.h>
 #include <wtf/RefPtr.h>
 #include <wtf/SetForScope.h>
 #include <wtf/Vector.h>
+
+namespace WebCore {
+
+struct AtomStringWithCode {
+    AtomString string;
+    uint64_t code { 0 };
+};
+
+}
+
+namespace WTF {
+template<> struct VectorTraits<WebCore::AtomStringWithCode> : SimpleClassVectorTraits { };
+}
 
 namespace WebCore {
 
@@ -57,6 +73,10 @@ struct HTMLConstructionSiteTask {
         // object in the common case of the Insert operation.
         return downcast<ContainerNode>(child.get());
     }
+
+    Ref<ContainerNode> protectedNonNullParent() const { return *parent; }
+    Ref<Node> protectedNonNullChild() const { return *child; }
+    Ref<Node> protectedNonNullNextChild() const { return *nextChild; }
 
     Operation operation;
     RefPtr<ContainerNode> parent;
@@ -84,14 +104,14 @@ struct CustomElementConstructionData;
 class Document;
 class Element;
 class HTMLFormElement;
+class HTMLTemplateElement;
 class JSCustomElementInterface;
-class WhitespaceCache;
 
 class HTMLConstructionSite {
     WTF_MAKE_NONCOPYABLE(HTMLConstructionSite);
 public:
-    HTMLConstructionSite(Document&, ParserContentPolicy, unsigned maximumDOMTreeDepth);
-    HTMLConstructionSite(DocumentFragment&, ParserContentPolicy, unsigned maximumDOMTreeDepth);
+    HTMLConstructionSite(Document&, OptionSet<ParserContentPolicy>, unsigned maximumDOMTreeDepth);
+    HTMLConstructionSite(DocumentFragment&, OptionSet<ParserContentPolicy>, unsigned maximumDOMTreeDepth);
     ~HTMLConstructionSite();
 
     void executeQueuedTasks();
@@ -104,15 +124,16 @@ public:
     void insertCommentOnDocument(AtomHTMLToken&&);
     void insertCommentOnHTMLHtmlElement(AtomHTMLToken&&);
     void insertHTMLElement(AtomHTMLToken&&);
+    void insertHTMLTemplateElement(AtomHTMLToken&&);
     std::unique_ptr<CustomElementConstructionData> insertHTMLElementOrFindCustomElementInterface(AtomHTMLToken&&);
-    void insertCustomElement(Ref<Element>&&, const AtomString& localName, Vector<Attribute>&&);
+    void insertCustomElement(Ref<Element>&&, Vector<Attribute>&&);
     void insertSelfClosingHTMLElement(AtomHTMLToken&&);
     void insertFormattingElement(AtomHTMLToken&&);
     void insertHTMLHeadElement(AtomHTMLToken&&);
     void insertHTMLBodyElement(AtomHTMLToken&&);
-    void insertHTMLFormElement(AtomHTMLToken&&, bool isDemoted = false);
+    void insertHTMLFormElement(AtomHTMLToken&&);
     void insertScriptElement(AtomHTMLToken&&);
-    void insertTextNode(const String&, WhitespaceMode = WhitespaceUnknown);
+    void insertTextNode(const String&);
     void insertForeignElement(AtomHTMLToken&&, const AtomString& namespaceURI);
 
     void insertHTMLHtmlStartTagBeforeHTML(AtomHTMLToken&&);
@@ -126,7 +147,7 @@ public:
     void insertAlreadyParsedChild(HTMLStackItem& newParent, HTMLElementStack::ElementRecord& child);
     void takeAllChildrenAndReparent(HTMLStackItem& newParent, HTMLElementStack::ElementRecord& oldParent);
 
-    Ref<HTMLStackItem> createElementFromSavedToken(HTMLStackItem&);
+    HTMLStackItem createElementFromSavedToken(const HTMLStackItem&);
 
     bool shouldFosterParent() const;
     void fosterParent(Ref<Node>&&);
@@ -135,6 +156,7 @@ public:
     void reconstructTheActiveFormattingElements();
 
     void generateImpliedEndTags();
+    void generateImpliedEndTagsWithExclusion(ElementName);
     void generateImpliedEndTagsWithExclusion(const AtomString& tagName);
 
     bool inQuirksMode() { return m_inQuirksMode; }
@@ -142,24 +164,27 @@ public:
     bool isEmpty() const { return !m_openElements.stackDepth(); }
     Element& currentElement() const { return m_openElements.top(); }
     ContainerNode& currentNode() const { return m_openElements.topNode(); }
+    Ref<ContainerNode> protectedCurrentNode() const { return m_openElements.topNode(); }
+    ElementName currentElementName() const { return m_openElements.topElementName(); }
     HTMLStackItem& currentStackItem() const { return m_openElements.topStackItem(); }
     HTMLStackItem* oneBelowTop() const { return m_openElements.oneBelowTop(); }
     Document& ownerDocumentForCurrentNode();
+    Ref<Document> protectedOwnerDocumentForCurrentNode() { return ownerDocumentForCurrentNode(); }
     HTMLElementStack& openElements() const { return m_openElements; }
     HTMLFormattingElementList& activeFormattingElements() const { return m_activeFormattingElements; }
     bool currentIsRootNode() { return &m_openElements.topNode() == &m_openElements.rootNode(); }
 
-    Element& head() const { return m_head->element(); }
-    HTMLStackItem* headStackItem() const { return m_head.get(); }
+    Element& head() const { return m_head.element(); }
+    HTMLStackItem& headStackItem() { return m_head; }
 
     void setForm(HTMLFormElement*);
     HTMLFormElement* form() const { return m_form.get(); }
     RefPtr<HTMLFormElement> takeForm();
 
-    ParserContentPolicy parserContentPolicy() { return m_parserContentPolicy; }
+    OptionSet<ParserContentPolicy> parserContentPolicy() { return m_parserContentPolicy; }
 
 #if ENABLE(TELEPHONE_NUMBER_DETECTION)
-    bool isTelephoneNumberParsingEnabled() { return m_document.isTelephoneNumberParsingEnabled(); }
+    bool isTelephoneNumberParsingEnabled() { return document().isTelephoneNumberParsingEnabled(); }
 #endif
 
     class RedirectToFosterParentGuard {
@@ -173,42 +198,49 @@ public:
         SetForScope<bool> m_redirectAttachToFosterParentChange;
     };
 
-    static bool isFormattingTag(const AtomString&);
+    static bool isFormattingTag(TagName);
 
 private:
+    Document& document() const { return m_document.get(); }
+
     // In the common case, this queue will have only one task because most
     // tokens produce only one DOM mutation.
     typedef Vector<HTMLConstructionSiteTask, 1> TaskQueue;
 
     void setCompatibilityMode(DocumentCompatibilityMode);
-    void setCompatibilityModeFromDoctype(const String& name, const String& publicId, const String& systemId);
+    void setCompatibilityModeFromDoctype(const AtomString& name, const String& publicId, const String& systemId);
 
-    void attachLater(ContainerNode& parent, Ref<Node>&& child, bool selfClosing = false);
+    void attachLater(Ref<ContainerNode>&& parent, Ref<Node>&& child, bool selfClosing = false);
 
     void findFosterSite(HTMLConstructionSiteTask&);
 
-    RefPtr<Element> createHTMLElementOrFindCustomElementInterface(AtomHTMLToken&, JSCustomElementInterface**);
-    Ref<Element> createHTMLElement(AtomHTMLToken&);
+    RefPtr<HTMLElement> createHTMLElementOrFindCustomElementInterface(AtomHTMLToken&, JSCustomElementInterface**);
+    Ref<HTMLElement> createHTMLElement(AtomHTMLToken&);
     Ref<Element> createElement(AtomHTMLToken&, const AtomString& namespaceURI);
 
     void mergeAttributesFromTokenIntoElement(AtomHTMLToken&&, Element&);
     void dispatchDocumentElementAvailableIfNeeded();
 
-    Document& m_document;
+    Ref<Document> protectedDocument() const;
+    Ref<ContainerNode> protectedAttachmentRoot() const;
+
+    // m_head has to be destroyed after destroying CheckedRef of m_document and m_attachmentRoot
+    HTMLStackItem m_head;
+
+    WeakRef<Document, WeakPtrImplWithEventTargetData> m_document;
     
     // This is the root ContainerNode to which the parser attaches all newly
     // constructed nodes. It points to a DocumentFragment when parsing fragments
     // and a Document in all other cases.
-    ContainerNode& m_attachmentRoot;
+    WeakRef<ContainerNode, WeakPtrImplWithEventTargetData> m_attachmentRoot;
     
-    RefPtr<HTMLStackItem> m_head;
     RefPtr<HTMLFormElement> m_form;
     mutable HTMLElementStack m_openElements;
     mutable HTMLFormattingElementList m_activeFormattingElements;
 
     TaskQueue m_taskQueue;
 
-    ParserContentPolicy m_parserContentPolicy;
+    OptionSet<ParserContentPolicy> m_parserContentPolicy;
     bool m_isParsingFragment;
 
     // http://www.whatwg.org/specs/web-apps/current-work/multipage/tokenization.html#parsing-main-intable
@@ -220,31 +252,6 @@ private:
     unsigned m_maximumDOMTreeDepth;
 
     bool m_inQuirksMode;
-
-    WhitespaceCache& m_whitespaceCache;
-};
-
-class WhitespaceCache {
-    WTF_MAKE_FAST_ALLOCATED;
-public:
-    WhitespaceCache() = default;
-
-    AtomString lookup(const String&, WhitespaceMode);
-
-private:
-    template<WhitespaceMode> uint64_t codeForString(const String&);
-
-    constexpr static uint64_t overflowWhitespaceCode = static_cast<uint64_t>(-1);
-    constexpr static size_t maximumCachedStringLength = 128;
-
-    // Parallel arrays storing a 64 bit code and an index into m_atoms for the
-    // most recently atomized whitespace-only string of a given length. The
-    // indices into these two arrays are the string length minus 1, so the code
-    // for a whitespace-only string of length 2 is stored at m_codes[1], etc.
-    uint64_t m_codes[maximumCachedStringLength] { 0 };
-    uint8_t m_indexes[maximumCachedStringLength] { 0 };
-
-    Vector<AtomString, maximumCachedStringLength> m_atoms;
 };
 
 } // namespace WebCore

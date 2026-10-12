@@ -30,7 +30,7 @@ namespace WebKit {
 
 class WebFrameNetworkingContext : public WebCore::FrameNetworkingContext {
 public:
-    static Ref<WebFrameNetworkingContext> create(WebCore::Frame* frame)
+    static Ref<WebFrameNetworkingContext> create(WebCore::LocalFrame* frame)
     {
         return adoptRef(*new WebFrameNetworkingContext(frame));
     }
@@ -40,7 +40,7 @@ public:
     static void destroyPrivateBrowsingSession();
 
 private:
-    explicit WebFrameNetworkingContext(WebCore::Frame* frame)
+    explicit WebFrameNetworkingContext(WebCore::LocalFrame* frame)
         : WebCore::FrameNetworkingContext(frame)
     {
     }

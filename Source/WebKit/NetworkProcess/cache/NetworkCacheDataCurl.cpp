@@ -26,21 +26,22 @@
 #include "config.h"
 #include "NetworkCacheData.h"
 
-#include "SharedMemory.h"
+#include <WebCore/SharedMemory.h>
+#include <wtf/StdLibExtras.h>
 
 namespace WebKit {
 namespace NetworkCache {
 
-Data::Data(const uint8_t* data, size_t size)
-    : m_buffer(Box<Variant<Vector<uint8_t>, FileSystem::MappedFileData>>::create(Vector<uint8_t>(size)))
-    , m_size(size)
+Data::Data(std::span<const uint8_t> data)
+    : m_buffer(Box<std::variant<Vector<uint8_t>, FileSystem::MappedFileData>>::create(Vector<uint8_t>(data.size())))
+    , m_size(data.size())
 {
-    memcpy(WTF::get<Vector<uint8_t>>(*m_buffer).data(), data, size);
+    memcpy(std::get<Vector<uint8_t>>(*m_buffer).data(), data.data(), data.size());
 }
 
-Data::Data(Variant<Vector<uint8_t>, FileSystem::MappedFileData>&& data)
-    : m_buffer(Box<Variant<Vector<uint8_t>, FileSystem::MappedFileData>>::create(WTFMove(data)))
-    , m_isMap(WTF::holds_alternative<FileSystem::MappedFileData>(*m_buffer))
+Data::Data(std::variant<Vector<uint8_t>, FileSystem::MappedFileData>&& data)
+    : m_buffer(Box<std::variant<Vector<uint8_t>, FileSystem::MappedFileData>>::create(WTFMove(data)))
+    , m_isMap(std::holds_alternative<FileSystem::MappedFileData>(*m_buffer))
 {
     m_size = WTF::switchOn(*m_buffer,
         [](const Vector<uint8_t>& buffer) -> size_t { return buffer.size(); },
@@ -54,14 +55,14 @@ Data Data::empty()
     return { WTFMove(buffer) };
 }
 
-const uint8_t* Data::data() const
+std::span<const uint8_t> Data::span() const
 {
     if (!m_buffer)
-        return nullptr;
+        return { };
 
     return WTF::switchOn(*m_buffer,
-        [](const Vector<uint8_t>& buffer) -> const uint8_t* { return buffer.data(); },
-        [](const FileSystem::MappedFileData& mappedFile) -> const uint8_t* { return static_cast<const uint8_t*>(mappedFile.data()); }
+        [](const Vector<uint8_t>& buffer) { return buffer.span(); },
+        [](const FileSystem::MappedFileData& mappedFile) { return mappedFile.span(); }
     );
 }
 
@@ -70,12 +71,12 @@ bool Data::isNull() const
     return !m_buffer;
 }
 
-bool Data::apply(const Function<bool(Span<const uint8_t>)>& applier) const
+bool Data::apply(const Function<bool(std::span<const uint8_t>)>& applier) const
 {
     if (isEmpty())
         return false;
 
-    return applier({ data(), size() });
+    return applier(span());
 }
 
 Data Data::subrange(size_t offset, size_t size) const
@@ -83,7 +84,7 @@ Data Data::subrange(size_t offset, size_t size) const
     if (!m_buffer)
         return { };
 
-    return { data() + offset, size };
+    return span().subspan(offset, size);
 }
 
 Data concatenate(const Data& a, const Data& b)
@@ -94,31 +95,30 @@ Data concatenate(const Data& a, const Data& b)
         return a;
 
     Vector<uint8_t> buffer(a.size() + b.size());
-    memcpy(buffer.data(), a.data(), a.size());
-    memcpy(buffer.data() + a.size(), b.data(), b.size());
+    memcpySpan(buffer.mutableSpan(), a.span());
+    memcpySpan(buffer.mutableSpan().subspan(a.size()), b.span());
     return Data(WTFMove(buffer));
 }
 
 Data Data::adoptMap(FileSystem::MappedFileData&& mappedFile, FileSystem::PlatformFileHandle fd)
 {
-    ASSERT(mappedFile.data());
+    ASSERT(mappedFile);
     FileSystem::closeFile(fd);
 
     return { WTFMove(mappedFile) };
 }
 
 #if ENABLE(SHAREABLE_RESOURCE) && OS(WINDOWS)
-RefPtr<SharedMemory> Data::tryCreateSharedMemory() const
+RefPtr<WebCore::SharedMemory> Data::tryCreateSharedMemory() const
 {
     if (isNull() || !isMap())
         return nullptr;
 
-    HANDLE handle = WTF::get<FileSystem::MappedFileData>(*m_buffer).fileMapping();
-    HANDLE newHandle;
-    if (!DuplicateHandle(GetCurrentProcess(), handle, GetCurrentProcess(), &newHandle, 0, false, DUPLICATE_SAME_ACCESS))
+    auto newHandle = Win32Handle { std::get<FileSystem::MappedFileData>(*m_buffer).fileMapping() };
+    if (!newHandle)
         return nullptr;
 
-    return SharedMemory::adopt(newHandle, m_size, SharedMemory::Protection::ReadOnly);
+    return WebCore::SharedMemory::map({ WTFMove(newHandle), m_size }, WebCore::SharedMemory::Protection::ReadOnly);
 }
 #endif
 

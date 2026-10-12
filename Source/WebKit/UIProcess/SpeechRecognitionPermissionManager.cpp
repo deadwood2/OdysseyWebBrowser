@@ -29,8 +29,13 @@
 #include "APISecurityOrigin.h"
 #include "APIUIClient.h"
 #include "MediaPermissionUtilities.h"
+#include "WebPageProxy.h"
+#include "WebPreferences.h"
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebKit {
+
+WTF_MAKE_TZONE_ALLOCATED_IMPL(SpeechRecognitionPermissionManager);
 
 static SpeechRecognitionPermissionManager::CheckResult computeMicrophoneAccess()
 {
@@ -74,7 +79,12 @@ SpeechRecognitionPermissionManager::~SpeechRecognitionPermissionManager()
     for (auto& request : m_requests)
         request->complete(WebCore::SpeechRecognitionError { WebCore::SpeechRecognitionErrorType::NotAllowed, "Permission manager has exited"_s });
 }
-    
+
+Ref<WebPageProxy> SpeechRecognitionPermissionManager::protectedPage() const
+{
+    return m_page.get();
+}
+
 void SpeechRecognitionPermissionManager::request(WebCore::SpeechRecognitionRequest& request, SpeechRecognitionPermissionRequestCallback&& completiontHandler)
 {
     m_requests.append(SpeechRecognitionPermissionRequest::create(request, WTFMove(completiontHandler)));
@@ -95,15 +105,9 @@ void SpeechRecognitionPermissionManager::startNextRequest()
 
 void SpeechRecognitionPermissionManager::startProcessingRequest()
 {
-#if PLATFORM(COOCA)
-    if (!checkSandboxRequirementForType(MediaPermissionType::Audio)) {
-        completeCurrentRequest(WebCore::SpeechRecognitionError { WebCore::SpeechRecognitionErrorType::NotAllowed, "Sandbox check has failed"_s });
-        return;
-    }
-#endif
-
-    m_page.syncIfMockDevicesEnabledChanged();
-    if (m_page.preferences().mockCaptureDevicesEnabled()) {
+    auto page = protectedPage();
+    page->syncIfMockDevicesEnabledChanged();
+    if (page->preferences().mockCaptureDevicesEnabled()) {
         m_microphoneCheck = CheckResult::Granted;
         m_speechRecognitionServiceCheck = CheckResult::Granted;
     } else {
@@ -163,7 +167,7 @@ void SpeechRecognitionPermissionManager::continueProcessingRequest()
     }
     ASSERT(m_userPermissionCheck == CheckResult::Granted);
 
-    if (!m_page.isViewVisible()) {
+    if (!protectedPage()->isViewVisible()) {
         completeCurrentRequest(WebCore::SpeechRecognitionError { WebCore::SpeechRecognitionErrorType::NotAllowed, "Page is not visible to user"_s });
         return;
     }
@@ -185,7 +189,7 @@ void SpeechRecognitionPermissionManager::requestSpeechRecognitionServiceAccess()
     ASSERT(m_speechRecognitionServiceCheck == CheckResult::Unknown);
 
 #if HAVE(SPEECHRECOGNIZER)
-    requestSpeechRecognitionAccess([this, weakThis = makeWeakPtr(this)](bool authorized) mutable {
+    requestSpeechRecognitionAccess([this, weakThis = WeakPtr { *this }](bool authorized) mutable {
         if (!weakThis)
             return;
 
@@ -205,7 +209,7 @@ void SpeechRecognitionPermissionManager::requestMicrophoneAccess()
     ASSERT(m_microphoneCheck == CheckResult::Unknown);
 
 #if HAVE(AVCAPTUREDEVICE)
-    requestAVCaptureAccessForType(MediaPermissionType::Audio, [this, weakThis = makeWeakPtr(this)](bool authorized) {
+    requestAVCaptureAccessForType(MediaPermissionType::Audio, [this, weakThis = WeakPtr { *this }](bool authorized) {
         if (!weakThis)
             return;
 
@@ -225,7 +229,7 @@ void SpeechRecognitionPermissionManager::requestUserPermission(WebCore::SpeechRe
     auto clientOrigin = recognitionRequest.clientOrigin();
     auto requestingOrigin = clientOrigin.clientOrigin.securityOrigin();
     auto topOrigin = clientOrigin.topOrigin.securityOrigin();
-    auto decisionHandler = [this, weakThis = makeWeakPtr(*this)](bool granted) {
+    auto decisionHandler = [this, weakThis = WeakPtr { *this }](bool granted) {
         if (!weakThis)
             return;
 
@@ -237,13 +241,13 @@ void SpeechRecognitionPermissionManager::requestUserPermission(WebCore::SpeechRe
 
         continueProcessingRequest();
     };
-    m_page.requestUserMediaPermissionForSpeechRecognition(recognitionRequest.frameIdentifier(), requestingOrigin, topOrigin, WTFMove(decisionHandler));
+    protectedPage()->requestUserMediaPermissionForSpeechRecognition(recognitionRequest.frameIdentifier(), requestingOrigin, topOrigin, WTFMove(decisionHandler));
 }
 
 void SpeechRecognitionPermissionManager::decideByDefaultAction(const WebCore::SecurityOriginData& origin, CompletionHandler<void(bool)>&& completionHandler)
 {
 #if PLATFORM(COCOA)
-    alertForPermission(m_page, MediaPermissionReason::SpeechRecognition, origin, WTFMove(completionHandler));
+    alertForPermission(protectedPage(), MediaPermissionReason::SpeechRecognition, origin, WTFMove(completionHandler));
 #else
     completionHandler(false);
 #endif

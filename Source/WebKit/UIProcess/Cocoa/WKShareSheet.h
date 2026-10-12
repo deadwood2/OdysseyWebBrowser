@@ -25,7 +25,7 @@
 
 #import "WKAPICast.h"
 
-#if PLATFORM(COCOA) && !PLATFORM(WATCHOS) && !PLATFORM(APPLETV)
+#if HAVE(SHARE_SHEET_UI)
 
 @class WKWebView;
 @protocol WKShareSheetDelegate;
@@ -34,12 +34,17 @@ namespace WebCore {
 struct ShareDataWithParsedURL;
 }
 
+namespace WebKit {
+enum class PickerDismissalReason : uint8_t;
+}
+
 @interface WKShareSheet : NSObject
 
 - (instancetype)initWithView:(WKWebView *)view;
 
 - (void)presentWithParameters:(const WebCore::ShareDataWithParsedURL&)data inRect:(std::optional<WebCore::FloatRect>)rect completionHandler:(WTF::CompletionHandler<void(bool)>&&)completionHandler;
-- (void)dismiss;
+
+- (BOOL)dismissIfNeededWithReason:(WebKit::PickerDismissalReason)reason;
 
 @property (nonatomic, weak) id <WKShareSheetDelegate> delegate;
 @end
@@ -50,4 +55,4 @@ struct ShareDataWithParsedURL;
 - (void)shareSheet:(WKShareSheet *)shareSheet willShowActivityItems:(NSArray *)activityItems;
 @end
 
-#endif // PLATFORM(COCOA) && !PLATFORM(WATCHOS) && !PLATFORM(APPLETV)
+#endif // HAVE(SHARE_SHEET_UI)

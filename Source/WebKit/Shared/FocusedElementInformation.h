@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -32,16 +32,16 @@
 #include <WebCore/Color.h>
 #include <WebCore/ElementContext.h>
 #include <WebCore/EnterKeyHint.h>
-#include <WebCore/GraphicsLayer.h>
+#include <WebCore/FrameIdentifier.h>
 #include <WebCore/InputMode.h>
 #include <WebCore/IntRect.h>
-#include <wtf/EnumTraits.h>
+#include <WebCore/ScrollTypes.h>
 #include <wtf/URL.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebKit {
 
-enum class InputType {
+enum class InputType : uint8_t {
     None,
     ContentEditable,
     Text,
@@ -69,7 +69,7 @@ enum class InputType {
 struct OptionItem {
     OptionItem() = default;
 
-    OptionItem(const String& text, bool isGroup, int parentID, bool selected, bool disabled)
+    OptionItem(const String& text, bool isGroup, bool selected, bool disabled, int parentID)
         : text(text)
         , isGroup(isGroup)
         , isSelected(selected)
@@ -83,9 +83,6 @@ struct OptionItem {
     bool isSelected { false };
     bool disabled { false };
     int parentGroupID { 0 };
-
-    void encode(IPC::Encoder&) const;
-    static std::optional<OptionItem> decode(IPC::Decoder&);
 };
 
 struct FocusedElementInformation {
@@ -107,6 +104,7 @@ struct FocusedElementInformation {
     bool allowsUserScaling { false };
     bool allowsUserScalingIgnoringAlwaysScalable { false };
     bool insideFixedPosition { false };
+    bool hasPlainText { false };
     WebCore::AutocapitalizeType autocapitalizeType { WebCore::AutocapitalizeType::Default };
     InputType elementType { InputType::None };
     WebCore::InputMode inputMode { WebCore::InputMode::Unspecified };
@@ -121,6 +119,7 @@ struct FocusedElementInformation {
     bool isAutofillableUsernameField { false };
     URL representingPageURL;
     WebCore::AutofillFieldName autofillFieldName { WebCore::AutofillFieldName::None };
+    WebCore::NonAutofillCredentialType nonAutofillCredentialType { WebCore::NonAutofillCredentialType::None };
     String placeholder;
     String label;
     String ariaLabel;
@@ -132,50 +131,21 @@ struct FocusedElementInformation {
     Vector<WebCore::Color> suggestedColors;
 #endif
 #endif
+    bool hasEverBeenPasswordField { false };
     bool shouldSynthesizeKeyEventsForEditing { false };
     bool isSpellCheckingEnabled { true };
+    bool isWritingSuggestionsEnabled { false };
     bool shouldAvoidResizingWhenInputViewBoundsChange { false };
     bool shouldAvoidScrollingWhenFocusedContentIsVisible { false };
     bool shouldUseLegacySelectPopoverDismissalBehaviorInDataActivation { false };
     bool isFocusingWithValidationMessage { false };
+    bool preventScroll { false };
 
     FocusedElementInformationIdentifier identifier;
-    WebCore::ScrollingNodeID containerScrollingNodeID { 0 };
+    Markable<WebCore::ScrollingNodeID> containerScrollingNodeID;
 
-    void encode(IPC::Encoder&) const;
-    static WARN_UNUSED_RETURN bool decode(IPC::Decoder&, FocusedElementInformation&);
+    WebCore::FrameIdentifier frameID;
 };
 #endif
 
 } // namespace WebKit
-
-namespace WTF {
-
-template<> struct EnumTraits<WebKit::InputType> {
-    using values = EnumValues<
-        WebKit::InputType,
-        WebKit::InputType::None,
-        WebKit::InputType::ContentEditable,
-        WebKit::InputType::Text,
-        WebKit::InputType::Password,
-        WebKit::InputType::TextArea,
-        WebKit::InputType::Search,
-        WebKit::InputType::Email,
-        WebKit::InputType::URL,
-        WebKit::InputType::Phone,
-        WebKit::InputType::Number,
-        WebKit::InputType::NumberPad,
-        WebKit::InputType::Date,
-        WebKit::InputType::DateTimeLocal,
-        WebKit::InputType::Month,
-        WebKit::InputType::Week,
-        WebKit::InputType::Time,
-        WebKit::InputType::Select,
-        WebKit::InputType::Drawing
-#if ENABLE(INPUT_TYPE_COLOR)
-        , WebKit::InputType::Color
-#endif
-    >;
-};
-
-} // namespace WTF

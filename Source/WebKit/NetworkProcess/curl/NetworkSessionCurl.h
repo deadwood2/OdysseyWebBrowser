@@ -25,20 +25,29 @@
 
 #pragma once
 
+#include "AuthenticationChallengeDisposition.h"
 #include "NetworkSession.h"
 
 namespace WebKit {
 
 struct NetworkSessionCreationParameters;
+class WebSocketTask;
 
 class NetworkSessionCurl final : public NetworkSession {
 public:
-    static std::unique_ptr<NetworkSession> create(NetworkProcess& networkProcess, NetworkSessionCreationParameters&& parameters)
+    static std::unique_ptr<NetworkSession> create(NetworkProcess& networkProcess, const NetworkSessionCreationParameters& parameters)
     {
-        return makeUnique<NetworkSessionCurl>(networkProcess, WTFMove(parameters));
+        return makeUnique<NetworkSessionCurl>(networkProcess, parameters);
     }
-    NetworkSessionCurl(NetworkProcess&, NetworkSessionCreationParameters&&);
+    NetworkSessionCurl(NetworkProcess&, const NetworkSessionCreationParameters&);
     ~NetworkSessionCurl();
+
+    void clearAlternativeServices(WallTime) override;
+
+    void didReceiveChallenge(WebSocketTask&, WebCore::AuthenticationChallenge&&, CompletionHandler<void(WebKit::AuthenticationChallengeDisposition, const WebCore::Credential&)>&&);
+
+private:
+    std::unique_ptr<WebSocketTask> createWebSocketTask(WebPageProxyIdentifier, std::optional<WebCore::FrameIdentifier>, std::optional<WebCore::PageIdentifier>, NetworkSocketChannel&, const WebCore::ResourceRequest&, const String& protocol, const WebCore::ClientOrigin&, bool, bool, OptionSet<WebCore::AdvancedPrivacyProtections>, WebCore::ShouldRelaxThirdPartyCookieBlocking, WebCore::StoredCredentialsPolicy) final;
 };
 
 } // namespace WebKit

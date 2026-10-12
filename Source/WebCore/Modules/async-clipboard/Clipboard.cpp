@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2019-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,13 +28,15 @@
 
 #include "ClipboardImageReader.h"
 #include "ClipboardItem.h"
+#include "CommonAtomStrings.h"
 #include "Document.h"
 #include "Editor.h"
-#include "Frame.h"
 #include "JSBlob.h"
 #include "JSClipboardItem.h"
 #include "JSDOMPromiseDeferred.h"
+#include "LocalFrame.h"
 #include "Navigator.h"
+#include "Page.h"
 #include "PagePasteboardContext.h"
 #include "Pasteboard.h"
 #include "Settings.h"
@@ -42,13 +44,13 @@
 #include "UserGestureIndicator.h"
 #include "WebContentReader.h"
 #include <wtf/CompletionHandler.h>
-#include <wtf/IsoMallocInlines.h>
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(Clipboard);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(Clipboard);
 
-static bool shouldProceedWithClipboardWrite(const Frame& frame)
+static bool shouldProceedWithClipboardWrite(const LocalFrame& frame)
 {
     auto& settings = frame.settings();
     if (settings.javaScriptCanAccessClipboard() || frame.editor().isCopyingFromMenuOrKeyBinding())
@@ -73,7 +75,7 @@ Ref<Clipboard> Clipboard::create(Navigator& navigator)
 }
 
 Clipboard::Clipboard(Navigator& navigator)
-    : m_navigator(makeWeakPtr(navigator))
+    : m_navigator(navigator)
 {
 }
 
@@ -88,9 +90,9 @@ Navigator* Clipboard::navigator()
     return m_navigator.get();
 }
 
-EventTargetInterface Clipboard::eventTargetInterface() const
+enum EventTargetInterfaceType Clipboard::eventTargetInterface() const
 {
-    return ClipboardEventTargetInterfaceType;
+    return EventTargetInterfaceType::Clipboard;
 }
 
 ScriptExecutionContext* Clipboard::scriptExecutionContext() const
@@ -100,28 +102,28 @@ ScriptExecutionContext* Clipboard::scriptExecutionContext() const
 
 void Clipboard::readText(Ref<DeferredPromise>&& promise)
 {
-    auto frame = makeRefPtr(this->frame());
+    RefPtr frame = this->frame();
     if (!frame) {
-        promise->reject(NotAllowedError);
+        promise->reject(ExceptionCode::NotAllowedError);
         return;
     }
 
     auto pasteboard = Pasteboard::createForCopyAndPaste(PagePasteboardContext::create(frame->pageID()));
     auto changeCountAtStart = pasteboard->changeCount();
     if (!frame->requestDOMPasteAccess()) {
-        promise->reject(NotAllowedError);
+        promise->reject(ExceptionCode::NotAllowedError);
         return;
     }
 
     auto allInfo = pasteboard->allPasteboardItemInfo();
     if (!allInfo) {
-        promise->reject(NotAllowedError);
+        promise->reject(ExceptionCode::NotAllowedError);
         return;
     }
 
     String text;
     for (size_t index = 0; index < allInfo->size(); ++index) {
-        if (allInfo->at(index).webSafeTypesByFidelity.contains("text/plain"_s)) {
+        if (allInfo->at(index).webSafeTypesByFidelity.contains(textPlainContentTypeAtom())) {
             PasteboardPlainText plainTextReader;
             pasteboard->read(plainTextReader, PlainTextURLReadingPolicy::IgnoreURL, index);
             text = WTFMove(plainTextReader.text);
@@ -132,20 +134,20 @@ void Clipboard::readText(Ref<DeferredPromise>&& promise)
     if (changeCountAtStart == pasteboard->changeCount())
         promise->resolve<IDLDOMString>(WTFMove(text));
     else
-        promise->reject(NotAllowedError);
+        promise->reject(ExceptionCode::NotAllowedError);
 }
 
 void Clipboard::writeText(const String& data, Ref<DeferredPromise>&& promise)
 {
-    auto frame = makeRefPtr(this->frame());
-    auto document = makeRefPtr(frame ? frame->document() : nullptr);
+    RefPtr frame = this->frame();
+    RefPtr document = frame ? frame->document() : nullptr;
     if (!document || !shouldProceedWithClipboardWrite(*frame)) {
-        promise->reject(NotAllowedError);
+        promise->reject(ExceptionCode::NotAllowedError);
         return;
     }
 
     PasteboardCustomData customData;
-    customData.writeString("text/plain"_s, data);
+    customData.writeString(textPlainContentTypeAtom(), data);
     customData.setOrigin(document->originIdentifierForPasteboard());
     Pasteboard::createForCopyAndPaste(PagePasteboardContext::create(frame->pageID()))->writeCustomData({ WTFMove(customData) });
     promise->resolve();
@@ -155,10 +157,10 @@ void Clipboard::read(Ref<DeferredPromise>&& promise)
 {
     auto rejectPromiseAndClearActiveSession = [&] {
         m_activeSession = std::nullopt;
-        promise->reject(NotAllowedError);
+        promise->reject(ExceptionCode::NotAllowedError);
     };
 
-    auto frame = makeRefPtr(this->frame());
+    RefPtr frame = this->frame();
     if (!frame) {
         rejectPromiseAndClearActiveSession();
         return;
@@ -179,10 +181,9 @@ void Clipboard::read(Ref<DeferredPromise>&& promise)
             return;
         }
 
-        Vector<Ref<ClipboardItem>> clipboardItems;
-        clipboardItems.reserveInitialCapacity(allInfo->size());
-        for (auto& itemInfo : *allInfo)
-            clipboardItems.uncheckedAppend(ClipboardItem::create(*this, itemInfo));
+        auto clipboardItems = allInfo->map([this](auto& itemInfo) {
+            return ClipboardItem::create(*this, itemInfo);
+        });
         m_activeSession = {{ WTFMove(pasteboard), WTFMove(clipboardItems), changeCountAtStart }};
     }
 
@@ -192,28 +193,28 @@ void Clipboard::read(Ref<DeferredPromise>&& promise)
 void Clipboard::getType(ClipboardItem& item, const String& type, Ref<DeferredPromise>&& promise)
 {
     if (!m_activeSession) {
-        promise->reject(NotAllowedError);
+        promise->reject(ExceptionCode::NotAllowedError);
         return;
     }
 
-    auto frame = makeRefPtr(this->frame());
+    RefPtr frame = this->frame();
     if (!frame) {
         m_activeSession = std::nullopt;
-        promise->reject(NotAllowedError);
+        promise->reject(ExceptionCode::NotAllowedError);
         return;
     }
 
-    auto itemIndex = m_activeSession->items.findMatching([&] (auto& activeItem) {
+    auto itemIndex = m_activeSession->items.findIf([&] (auto& activeItem) {
         return activeItem.ptr() == &item;
     });
 
     if (itemIndex == notFound) {
-        promise->reject(NotAllowedError);
+        promise->reject(ExceptionCode::NotAllowedError);
         return;
     }
 
     if (!item.types().contains(type)) {
-        promise->reject(NotAllowedError);
+        promise->reject(ExceptionCode::NotAllowedError);
         return;
     }
 
@@ -224,7 +225,7 @@ void Clipboard::getType(ClipboardItem& item, const String& type, Ref<DeferredPro
         if (updateSessionValidity() == SessionIsValid::Yes && imageBlob)
             promise->resolve<IDLInterface<Blob>>(imageBlob.releaseNonNull());
         else
-            promise->reject(NotAllowedError);
+            promise->reject(ExceptionCode::NotAllowedError);
         return;
     }
 
@@ -235,23 +236,26 @@ void Clipboard::getType(ClipboardItem& item, const String& type, Ref<DeferredPro
         resultAsString = activePasteboard().readURL(itemIndex, title).string();
     }
 
-    if (type == "text/plain"_s) {
+    if (type == textPlainContentTypeAtom()) {
         PasteboardPlainText plainTextReader;
         activePasteboard().read(plainTextReader, PlainTextURLReadingPolicy::IgnoreURL, itemIndex);
         resultAsString = WTFMove(plainTextReader.text);
     }
 
-    if (type == "text/html"_s) {
+    if (type == textHTMLContentTypeAtom()) {
         WebContentMarkupReader markupReader { *frame };
         activePasteboard().read(markupReader, WebContentReadingPolicy::OnlyRichTextTypes, itemIndex);
-        resultAsString = WTFMove(markupReader.markup);
+        resultAsString = markupReader.takeMarkup();
     }
 
     // FIXME: Support reading custom data.
     if (updateSessionValidity() == SessionIsValid::No || resultAsString.isNull()) {
-        promise->reject(NotAllowedError);
+        promise->reject(ExceptionCode::NotAllowedError);
         return;
     }
+
+    if (auto* page = frame->page())
+        resultAsString = page->applyLinkDecorationFiltering(resultAsString, LinkDecorationFilteringTrigger::Paste);
 
     promise->resolve<IDLInterface<Blob>>(ClipboardItem::blobFromString(frame->document(), resultAsString, type));
 }
@@ -269,11 +273,11 @@ Clipboard::SessionIsValid Clipboard::updateSessionValidity()
     return SessionIsValid::Yes;
 }
 
-void Clipboard::write(const Vector<RefPtr<ClipboardItem>>& items, Ref<DeferredPromise>&& promise)
+void Clipboard::write(const Vector<Ref<ClipboardItem>>& items, Ref<DeferredPromise>&& promise)
 {
-    auto frame = makeRefPtr(this->frame());
+    RefPtr frame = this->frame();
     if (!frame || !shouldProceedWithClipboardWrite(*frame)) {
-        promise->reject(NotAllowedError);
+        promise->reject(ExceptionCode::NotAllowedError);
         return;
     }
 
@@ -289,7 +293,7 @@ void Clipboard::didResolveOrReject(Clipboard::ItemWriter& writer)
         m_activeItemWriter = nullptr;
 }
 
-Frame* Clipboard::frame() const
+LocalFrame* Clipboard::frame() const
 {
     return m_navigator ? m_navigator->frame() : nullptr;
 }
@@ -302,7 +306,7 @@ Pasteboard& Clipboard::activePasteboard()
 }
 
 Clipboard::ItemWriter::ItemWriter(Clipboard& clipboard, Ref<DeferredPromise>&& promise)
-    : m_clipboard(makeWeakPtr(clipboard))
+    : m_clipboard(clipboard)
     , m_promise(WTFMove(promise))
     , m_pasteboard(Pasteboard::createForCopyAndPaste(PagePasteboardContext::create(clipboard.frame()->pageID())))
 {
@@ -310,17 +314,15 @@ Clipboard::ItemWriter::ItemWriter(Clipboard& clipboard, Ref<DeferredPromise>&& p
 
 Clipboard::ItemWriter::~ItemWriter() = default;
 
-void Clipboard::ItemWriter::write(const Vector<RefPtr<ClipboardItem>>& items)
+void Clipboard::ItemWriter::write(const Vector<Ref<ClipboardItem>>& items)
 {
     ASSERT(m_promise);
     ASSERT(m_clipboard);
-#if PLATFORM(COCOA)
     m_changeCountAtStart = m_pasteboard->changeCount();
-#endif
     m_dataToWrite.fill(std::nullopt, items.size());
     m_pendingItemCount = items.size();
     for (size_t index = 0; index < items.size(); ++index) {
-        items[index]->collectDataForWriting(*m_clipboard, [this, protectedThis = makeRef(*this), index] (auto data) {
+        items[index]->collectDataForWriting(*m_clipboard, [this, protectedThis = Ref { *this }, index] (auto data) {
             protectedThis->setData(WTFMove(data), index);
             if (!--m_pendingItemCount)
                 didSetAllData();
@@ -351,7 +353,6 @@ void Clipboard::ItemWriter::didSetAllData()
     if (!m_promise)
         return;
 
-#if PLATFORM(COCOA)
     auto newChangeCount = m_pasteboard->changeCount();
     if (m_changeCountAtStart != newChangeCount) {
         // FIXME: Instead of checking the changeCount here, send it over to the client (e.g. the UI process
@@ -359,7 +360,7 @@ void Clipboard::ItemWriter::didSetAllData()
         reject();
         return;
     }
-#endif // PLATFORM(COCOA)
+
     auto dataToWrite = std::exchange(m_dataToWrite, { });
     Vector<PasteboardCustomData> customData;
     customData.reserveInitialCapacity(dataToWrite.size());
@@ -382,7 +383,7 @@ void Clipboard::ItemWriter::didSetAllData()
 void Clipboard::ItemWriter::reject()
 {
     if (auto promise = std::exchange(m_promise, nullptr))
-        promise->reject(NotAllowedError);
+        promise->reject(ExceptionCode::NotAllowedError);
 
     if (auto clipboard = std::exchange(m_clipboard, nullptr))
         clipboard->didResolveOrReject(*this);

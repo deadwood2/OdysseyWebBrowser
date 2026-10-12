@@ -29,6 +29,10 @@
 #include <string.h>
 #include <wtf/CheckedArithmetic.h>
 
+#if OS(DARWIN)
+#include <malloc/malloc.h>
+#endif
+
 #if OS(WINDOWS)
 #include <windows.h>
 #else
@@ -99,10 +103,14 @@ void fastSetMaxSingleAllocationSize(size_t size)
     maxSingleAllocationSize = size;
 }
 
+#if ASSERT_ENABLED
 #define ASSERT_IS_WITHIN_LIMIT(size) do { \
         size_t size__ = (size); \
         ASSERT_WITH_MESSAGE((size__) <= maxSingleAllocationSize, "Requested size (%zu) exceeds max single allocation size set for testing (%zu)", (size__), maxSingleAllocationSize); \
     } while (false)
+#else
+#define ASSERT_IS_WITHIN_LIMIT(size)
+#endif // ASSERT_ENABLED
 
 #define FAIL_IF_EXCEEDS_LIMIT(size) do { \
         if (UNLIKELY((size) > maxSingleAllocationSize)) \
@@ -115,13 +123,6 @@ void fastSetMaxSingleAllocationSize(size_t size)
 #define FAIL_IF_EXCEEDS_LIMIT(size)
 
 #endif // !defined(NDEBUG)
-
-void* fastZeroedMalloc(size_t n) 
-{
-    void* result = fastMalloc(n);
-    memset(result, 0, n);
-    return result;
-}
 
 char* fastStrDup(const char* src)
 {
@@ -141,18 +142,27 @@ void* fastMemDup(const void* mem, size_t bytes)
     return result;
 }
 
-TryMallocReturnValue tryFastZeroedMalloc(size_t n) 
+char* fastCompactStrDup(const char* src)
 {
-    void* result;
-    if (!tryFastMalloc(n).getValue(result))
+    size_t len = strlen(src) + 1;
+    char* dup = static_cast<char*>(fastCompactMalloc(len));
+    memcpy(dup, src, len);
+    return dup;
+}
+
+void* fastCompactMemDup(const void* mem, size_t bytes)
+{
+    if (!mem || !bytes)
         return nullptr;
-    memset(result, 0, n);
+
+    void* result = fastCompactMalloc(bytes);
+    memcpy(result, mem, bytes);
     return result;
 }
 
 } // namespace WTF
 
-#if defined(USE_SYSTEM_MALLOC) && USE_SYSTEM_MALLOC
+#if USE(SYSTEM_MALLOC)
 
 #include <wtf/OSAllocator.h>
 
@@ -227,8 +237,7 @@ void fastAlignedFree(void *p)
 void* fastAlignedMalloc(size_t alignment, size_t size) 
 {
     ASSERT_IS_WITHIN_LIMIT(size);
-    void* p = nullptr;
-    posix_memalign(&p, alignment, size);
+    void* p = aligned_alloc(alignment, size);
     if (UNLIKELY(!p))
         CRASH();
     return p;
@@ -237,9 +246,7 @@ void* fastAlignedMalloc(size_t alignment, size_t size)
 void* tryFastAlignedMalloc(size_t alignment, size_t size) 
 {
     FAIL_IF_EXCEEDS_LIMIT(size);
-    void* p = nullptr;
-    posix_memalign(&p, alignment, size);
-    return p;
+    return aligned_alloc(alignment, size);
 }
 
 void fastAlignedFree(void* p) 
@@ -264,6 +271,22 @@ void* fastMalloc(size_t n)
     if (!result)
         CRASH();
 
+    return result;
+}
+
+void* fastZeroedMalloc(size_t n)
+{
+    void* result = fastMalloc(n);
+    memset(result, 0, n);
+    return result;
+}
+
+TryMallocReturnValue tryFastZeroedMalloc(size_t n)
+{
+    void* result;
+    if (!tryFastMalloc(n).getValue(result))
+        return nullptr;
+    memset(result, 0, n);
     return result;
 }
 
@@ -307,8 +330,10 @@ TryMallocReturnValue tryFastRealloc(void* p, size_t n)
     return realloc(p, n);
 }
 
+#if !OS(MORPHOS)
 void releaseFastMallocFreeMemory() { }
 void releaseFastMallocFreeMemoryForThisThread() { }
+#endif
 
 FastMallocStatistics fastMallocStatistics()
 {
@@ -344,9 +369,20 @@ void fastDisableScavenger() { }
 
 void fastMallocDumpMallocStats() { }
 
+void* fastCompactMalloc(size_t size) { return fastMalloc(size); }
+void* fastCompactZeroedMalloc(size_t size) { return fastZeroedMalloc(size); }
+void* fastCompactCalloc(size_t numElements, size_t elementSize) { return fastCalloc(numElements, elementSize); }
+void* fastCompactRealloc(void* ptr, size_t size) { return fastRealloc(ptr, size); }
+TryMallocReturnValue tryFastCompactMalloc(size_t size) { return tryFastMalloc(size); }
+TryMallocReturnValue tryFastCompactZeroedMalloc(size_t size) { return tryFastZeroedMalloc(size); }
+TryMallocReturnValue tryFastCompactCalloc(size_t numElements, size_t elementSize) { return tryFastCalloc(numElements, elementSize); }
+TryMallocReturnValue tryFastCompactRealloc(void* ptr, size_t size) { return tryFastRealloc(ptr, size); }
+void* fastCompactAlignedMalloc(size_t alignment, size_t size) { return fastAlignedMalloc(alignment, size); }
+void* tryFastCompactAlignedMalloc(size_t alignment, size_t size) { return tryFastAlignedMalloc(alignment, size); }
+
 } // namespace WTF
 
-#else // defined(USE_SYSTEM_MALLOC) && USE_SYSTEM_MALLOC
+#else // USE(SYSTEM_MALLOC)
 
 #include <bmalloc/bmalloc.h>
 
@@ -553,11 +589,34 @@ void* fastMalloc(size_t size)
 {
     ASSERT_IS_WITHIN_LIMIT(size);
     ASSERT(!forbidMallocUseScopeCount || disableMallocRestrictionScopeCount);
-    void* result = bmalloc::api::malloc(size);
+    void* result = bmalloc::api::malloc(size, bmalloc::CompactAllocationMode::NonCompact);
 #if ENABLE(MALLOC_HEAP_BREAKDOWN) && TRACK_MALLOC_CALLSTACK
     if (!AvoidRecordingScope::avoidRecordingCount())
         MallocCallTracker::singleton().recordMalloc(result, size);
 #endif
+    BPROFILE_ALLOCATION(NON_JS_CELL, result, size);
+    return result;
+}
+
+void* fastZeroedMalloc(size_t size)
+{
+    ASSERT_IS_WITHIN_LIMIT(size);
+    ASSERT(!forbidMallocUseScopeCount || disableMallocRestrictionScopeCount);
+    void* result = bmalloc::api::zeroedMalloc(size, bmalloc::CompactAllocationMode::NonCompact);
+#if ENABLE(MALLOC_HEAP_BREAKDOWN) && TRACK_MALLOC_CALLSTACK
+    if (!AvoidRecordingScope::avoidRecordingCount())
+        MallocCallTracker::singleton().recordMalloc(result, size);
+#endif
+    BPROFILE_ALLOCATION(NON_JS_CELL, result, size);
+    return result;
+}
+
+TryMallocReturnValue tryFastZeroedMalloc(size_t size)
+{
+    FAIL_IF_EXCEEDS_LIMIT(size);
+    ASSERT(!forbidMallocUseScopeCount || disableMallocRestrictionScopeCount);
+    void* result = bmalloc::api::tryZeroedMalloc(size, bmalloc::CompactAllocationMode::NonCompact);
+    BPROFILE_TRY_ALLOCATION(NON_JS_CELL, result, size);
     return result;
 }
 
@@ -569,6 +628,7 @@ void* fastCalloc(size_t numElements, size_t elementSize)
     void* result = fastZeroedMalloc(checkedSize);
     if (!result)
         CRASH();
+    BPROFILE_ALLOCATION(NON_JS_CELL, result, checkedSize);
     return result;
 }
 
@@ -576,11 +636,12 @@ void* fastRealloc(void* object, size_t size)
 {
     ASSERT_IS_WITHIN_LIMIT(size);
     ASSERT(!forbidMallocUseScopeCount || disableMallocRestrictionScopeCount);
-    void* result = bmalloc::api::realloc(object, size);
+    void* result = bmalloc::api::realloc(object, size, bmalloc::CompactAllocationMode::NonCompact);
 #if ENABLE(MALLOC_HEAP_BREAKDOWN) && TRACK_MALLOC_CALLSTACK
     if (!AvoidRecordingScope::avoidRecordingCount())
         MallocCallTracker::singleton().recordRealloc(object, result, size);
 #endif
+    BPROFILE_ALLOCATION(NON_JS_CELL, result, size);
     return result;
 }
 
@@ -593,28 +654,38 @@ void fastFree(void* object)
 #endif
 }
 
-size_t fastMallocSize(const void*)
+size_t fastMallocSize(const void* p)
 {
+#if BENABLE(MALLOC_SIZE)
+    return bmalloc::api::mallocSize(p);
+#else
     // FIXME: This is incorrect; best fix is probably to remove this function.
     // Caller currently are all using this for assertion, not to actually check
     // the size of the allocation, so maybe we can come up with something for that.
+    UNUSED_PARAM(p);
     return 1;
+#endif
 }
 
 size_t fastMallocGoodSize(size_t size)
 {
+#if BENABLE(MALLOC_GOOD_SIZE)
+    return bmalloc::api::mallocGoodSize(size);
+#else
     return size;
+#endif
 }
 
 void* fastAlignedMalloc(size_t alignment, size_t size)
 {
     ASSERT_IS_WITHIN_LIMIT(size);
     ASSERT(!forbidMallocUseScopeCount || disableMallocRestrictionScopeCount);
-    void* result = bmalloc::api::memalign(alignment, size);
+    void* result = bmalloc::api::memalign(alignment, size, bmalloc::CompactAllocationMode::NonCompact);
 #if ENABLE(MALLOC_HEAP_BREAKDOWN) && TRACK_MALLOC_CALLSTACK
     if (!AvoidRecordingScope::avoidRecordingCount())
         MallocCallTracker::singleton().recordMalloc(result, size);
 #endif
+    BPROFILE_ALLOCATION(NON_JS_CELL, result, size);
     return result;
 }
 
@@ -622,11 +693,12 @@ void* tryFastAlignedMalloc(size_t alignment, size_t size)
 {
     FAIL_IF_EXCEEDS_LIMIT(size);
     ASSERT(!forbidMallocUseScopeCount || disableMallocRestrictionScopeCount);
-    void* result = bmalloc::api::tryMemalign(alignment, size);
+    void* result = bmalloc::api::tryMemalign(alignment, size, bmalloc::CompactAllocationMode::NonCompact);
 #if ENABLE(MALLOC_HEAP_BREAKDOWN) && TRACK_MALLOC_CALLSTACK
     if (!AvoidRecordingScope::avoidRecordingCount())
         MallocCallTracker::singleton().recordMalloc(result, size);
 #endif
+    BPROFILE_TRY_ALLOCATION(NON_JS_CELL, result, size);
     return result;
 }
 
@@ -639,7 +711,9 @@ TryMallocReturnValue tryFastMalloc(size_t size)
 {
     FAIL_IF_EXCEEDS_LIMIT(size);
     ASSERT(!forbidMallocUseScopeCount || disableMallocRestrictionScopeCount);
-    return bmalloc::api::tryMalloc(size);
+    void* result = bmalloc::api::tryMalloc(size, bmalloc::CompactAllocationMode::NonCompact);
+    BPROFILE_TRY_ALLOCATION(NON_JS_CELL, result, size);
+    return result;
 }
 
 TryMallocReturnValue tryFastCalloc(size_t numElements, size_t elementSize)
@@ -656,7 +730,121 @@ TryMallocReturnValue tryFastRealloc(void* object, size_t newSize)
 {
     FAIL_IF_EXCEEDS_LIMIT(newSize);
     ASSERT(!forbidMallocUseScopeCount || disableMallocRestrictionScopeCount);
-    return bmalloc::api::tryRealloc(object, newSize);
+    void* result = bmalloc::api::tryRealloc(object, newSize, bmalloc::CompactAllocationMode::NonCompact);
+    BPROFILE_TRY_ALLOCATION(NON_JS_CELL, result, newSize);
+    return result;
+}
+
+void* fastCompactMalloc(size_t size)
+{
+    ASSERT_IS_WITHIN_LIMIT(size);
+    ASSERT(!forbidMallocUseScopeCount || disableMallocRestrictionScopeCount);
+    void* result = bmalloc::api::malloc(size, bmalloc::CompactAllocationMode::Compact);
+#if ENABLE(MALLOC_HEAP_BREAKDOWN) && TRACK_MALLOC_CALLSTACK
+    if (!AvoidRecordingScope::avoidRecordingCount())
+        MallocCallTracker::singleton().recordMalloc(result, size);
+#endif
+    BPROFILE_ALLOCATION(COMPACTIBLE, result, size);
+    return result;
+}
+
+void* fastCompactZeroedMalloc(size_t size)
+{
+    ASSERT_IS_WITHIN_LIMIT(size);
+    ASSERT(!forbidMallocUseScopeCount || disableMallocRestrictionScopeCount);
+    void* result = bmalloc::api::zeroedMalloc(size, bmalloc::CompactAllocationMode::Compact);
+#if ENABLE(MALLOC_HEAP_BREAKDOWN) && TRACK_MALLOC_CALLSTACK
+    if (!AvoidRecordingScope::avoidRecordingCount())
+        MallocCallTracker::singleton().recordMalloc(result, size);
+#endif
+    BPROFILE_ALLOCATION(COMPACTIBLE, result, size);
+    return result;
+}
+
+TryMallocReturnValue tryFastCompactZeroedMalloc(size_t size)
+{
+    FAIL_IF_EXCEEDS_LIMIT(size);
+    ASSERT(!forbidMallocUseScopeCount || disableMallocRestrictionScopeCount);
+    return bmalloc::api::tryZeroedMalloc(size, bmalloc::CompactAllocationMode::Compact);
+}
+
+void* fastCompactCalloc(size_t numElements, size_t elementSize)
+{
+    ASSERT_IS_WITHIN_LIMIT(numElements * elementSize);
+    Checked<size_t> checkedSize = elementSize;
+    checkedSize *= numElements;
+    void* result = fastZeroedMalloc(checkedSize);
+    if (!result)
+        CRASH();
+    BPROFILE_ALLOCATION(COMPACTIBLE, result, elementSize);
+    return result;
+}
+
+void* fastCompactRealloc(void* object, size_t size)
+{
+    ASSERT_IS_WITHIN_LIMIT(size);
+    ASSERT(!forbidMallocUseScopeCount || disableMallocRestrictionScopeCount);
+    void* result = bmalloc::api::realloc(object, size, bmalloc::CompactAllocationMode::Compact);
+#if ENABLE(MALLOC_HEAP_BREAKDOWN) && TRACK_MALLOC_CALLSTACK
+    if (!AvoidRecordingScope::avoidRecordingCount())
+        MallocCallTracker::singleton().recordRealloc(object, result, size);
+#endif
+    BPROFILE_ALLOCATION(COMPACTIBLE, result, size);
+    return result;
+}
+
+void* fastCompactAlignedMalloc(size_t alignment, size_t size)
+{
+    ASSERT_IS_WITHIN_LIMIT(size);
+    ASSERT(!forbidMallocUseScopeCount || disableMallocRestrictionScopeCount);
+    void* result = bmalloc::api::memalign(alignment, size, bmalloc::CompactAllocationMode::Compact);
+#if ENABLE(MALLOC_HEAP_BREAKDOWN) && TRACK_MALLOC_CALLSTACK
+    if (!AvoidRecordingScope::avoidRecordingCount())
+        MallocCallTracker::singleton().recordMalloc(result, size);
+#endif
+    BPROFILE_ALLOCATION(COMPACTIBLE, result, size);
+    return result;
+}
+
+void* tryFastCompactAlignedMalloc(size_t alignment, size_t size)
+{
+    FAIL_IF_EXCEEDS_LIMIT(size);
+    ASSERT(!forbidMallocUseScopeCount || disableMallocRestrictionScopeCount);
+    void* result = bmalloc::api::tryMemalign(alignment, size, bmalloc::CompactAllocationMode::Compact);
+#if ENABLE(MALLOC_HEAP_BREAKDOWN) && TRACK_MALLOC_CALLSTACK
+    if (!AvoidRecordingScope::avoidRecordingCount())
+        MallocCallTracker::singleton().recordMalloc(result, size);
+#endif
+    BPROFILE_ALLOCATION(COMPACTIBLE, result, size);
+    return result;
+}
+
+TryMallocReturnValue tryFastCompactMalloc(size_t size)
+{
+    FAIL_IF_EXCEEDS_LIMIT(size);
+    ASSERT(!forbidMallocUseScopeCount || disableMallocRestrictionScopeCount);
+    void* result = bmalloc::api::tryMalloc(size, bmalloc::CompactAllocationMode::Compact);
+    BPROFILE_ALLOCATION(COMPACTIBLE, result, size);
+    return result;
+}
+
+TryMallocReturnValue tryFastCompactCalloc(size_t numElements, size_t elementSize)
+{
+    FAIL_IF_EXCEEDS_LIMIT(numElements * elementSize);
+    CheckedSize checkedSize = elementSize;
+    checkedSize *= numElements;
+    if (checkedSize.hasOverflowed())
+        return nullptr;
+    return tryFastCompactZeroedMalloc(checkedSize);
+}
+
+TryMallocReturnValue tryFastCompactRealloc(void* object, size_t newSize)
+{
+    FAIL_IF_EXCEEDS_LIMIT(newSize);
+    ASSERT(!forbidMallocUseScopeCount || disableMallocRestrictionScopeCount);
+    void* result = bmalloc::api::tryRealloc(object, newSize, bmalloc::CompactAllocationMode::Compact);
+    BPROFILE_ALLOCATION(COMPACTIBLE, result, newSize);
+    return result;
 }
 
 void releaseFastMallocFreeMemoryForThisThread()
@@ -715,6 +903,11 @@ void fastDisableScavenger()
     bmalloc::api::disableScavenger();
 }
 
+void forceEnablePGM()
+{
+    bmalloc::api::forceEnablePGM();
+}
+
 } // namespace WTF
 
-#endif // defined(USE_SYSTEM_MALLOC) && USE_SYSTEM_MALLOC
+#endif // USE(SYSTEM_MALLOC)

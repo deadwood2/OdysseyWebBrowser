@@ -1,5 +1,5 @@
 // Copyright 2014 The Chromium Authors. All rights reserved.
-// Copyright (C) 2016-2020 Apple Inc. All rights reserved.
+// Copyright (C) 2016-2022 Apple Inc. All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -29,12 +29,12 @@
 
 #pragma once
 
-#include "CSSDeferredParser.h"
+#include "CSSAtRuleID.h"
 #include "CSSParser.h"
 #include "CSSParserTokenRange.h"
+#include "CSSProperty.h"
 #include "CSSPropertyNames.h"
 #include "StyleRule.h"
-
 #include <memory>
 #include <wtf/Vector.h>
 #include <wtf/text/WTFString.h>
@@ -50,7 +50,11 @@ class StyleRuleKeyframe;
 class StyleRule;
 class StyleRuleBase;
 class StyleRuleCharset;
+class StyleRuleContainer;
 class StyleRuleFontFace;
+class StyleRuleFontFeatureValues;
+class StyleRuleFontFeatureValuesBlock;
+class StyleRuleFontPaletteValues;
 class StyleRuleImport;
 class StyleRuleKeyframes;
 class StyleRuleLayer;
@@ -59,6 +63,7 @@ class StyleRuleNamespace;
 class StyleRulePage;
 class StyleRuleSupports;
 class StyleRuleViewport;
+class StyleRuleViewTransition;
 class StyleSheetContents;
 class ImmutableStyleProperties;
 class Element;
@@ -67,30 +72,33 @@ class MutableStyleProperties;
 class CSSParserImpl {
     WTF_MAKE_NONCOPYABLE(CSSParserImpl);
 public:
-    CSSParserImpl(const CSSParserContext&, const String&, StyleSheetContents* = nullptr, CSSParserObserverWrapper* = nullptr, CSSParser::RuleParsing = CSSParser::RuleParsing::Normal);
+    CSSParserImpl(const CSSParserContext&, const String&, StyleSheetContents* = nullptr, CSSParserObserverWrapper* = nullptr, CSSParserEnum::IsNestedContext = CSSParserEnum::IsNestedContext::No);
+    ~CSSParserImpl();
 
-    enum AllowedRulesType {
+    enum class AllowedRules : uint8_t {
         // As per css-syntax, css-cascade and css-namespaces, @charset rules
         // must come first, followed by @import then @namespace.
-        // AllowImportRules actually means we allow @import and any rules thay
+        // AllowImportRules actually means we allow @import and any rules that
         // may follow it, i.e. @namespace rules and regular rules.
         // AllowCharsetRules and AllowNamespaceRules behave similarly.
-        AllowCharsetRules,
-        AllowImportRules,
-        AllowNamespaceRules,
+        CharsetRules,
+        LayerStatementRules,
+        ImportRules,
+        NamespaceRules,
         RegularRules,
         KeyframeRules,
-        ApplyRules, // For @apply inside style rules
         CounterStyleRules,
-        NoRules, // For parsing at-rules inside declaration lists
+        FontFeatureValuesRules,
+        ViewTransitionRules,
+        NoRules, // For parsing at-rules inside declaration lists (without nesting support)
     };
 
-    static CSSParser::ParseResult parseValue(MutableStyleProperties*, CSSPropertyID, const String&, bool important, const CSSParserContext&);
-    static CSSParser::ParseResult parseCustomPropertyValue(MutableStyleProperties*, const AtomString& propertyName, const String&, bool important, const CSSParserContext&);
-    static Ref<ImmutableStyleProperties> parseInlineStyleDeclaration(const String&, const Element*);
+    static CSSParser::ParseResult parseValue(MutableStyleProperties&, CSSPropertyID, const String&, IsImportant, const CSSParserContext&);
+    static CSSParser::ParseResult parseCustomPropertyValue(MutableStyleProperties&, const AtomString& propertyName, const String&, IsImportant, const CSSParserContext&);
+    static Ref<ImmutableStyleProperties> parseInlineStyleDeclaration(const String&, const Element&);
     static bool parseDeclarationList(MutableStyleProperties*, const String&, const CSSParserContext&);
-    static RefPtr<StyleRuleBase> parseRule(const String&, const CSSParserContext&, StyleSheetContents*, AllowedRulesType);
-    static void parseStyleSheet(const String&, const CSSParserContext&, StyleSheetContents&, CSSParser::RuleParsing);
+    static RefPtr<StyleRuleBase> parseRule(const String&, const CSSParserContext&, StyleSheetContents*, AllowedRules, CSSParserEnum::IsNestedContext = CSSParserEnum::IsNestedContext::No);
+    static void parseStyleSheet(const String&, const CSSParserContext&, StyleSheetContents&);
     static CSSSelectorList parsePageSelector(CSSParserTokenRange, StyleSheetContents*);
 
     static Vector<double> parseKeyframeKeyList(const String&);
@@ -98,33 +106,43 @@ public:
     bool supportsDeclaration(CSSParserTokenRange&);
     const CSSParserContext& context() const { return m_context; }
 
+    // This function updates the range it's given.
+    RefPtr<StyleRuleBase> consumeAtRule(CSSParserTokenRange&, AllowedRules);
+
     static void parseDeclarationListForInspector(const String&, const CSSParserContext&, CSSParserObserver&);
-    static void parseStyleSheetForInspector(const String&, const CSSParserContext&, StyleSheetContents*, CSSParserObserver&);
+    static void parseStyleSheetForInspector(const String&, const CSSParserContext&, StyleSheetContents&, CSSParserObserver&);
 
-    static Ref<ImmutableStyleProperties> parseDeferredDeclaration(CSSParserTokenRange, const CSSParserContext&, StyleSheetContents*);
-    static void parseDeferredRuleList(CSSParserTokenRange, CSSDeferredParser&, Vector<RefPtr<StyleRuleBase>>&);
-    static void parseDeferredKeyframeList(CSSParserTokenRange, CSSDeferredParser&, StyleRuleKeyframes&);
+    static IsImportant consumeTrailingImportantAndWhitespace(CSSParserTokenRange&);
 
-    CSSTokenizer* tokenizer() const { return m_tokenizer.get(); };
-    CSSDeferredParser* deferredParser() const { return m_deferredParser.get(); }
+    CSSTokenizer* tokenizer() const { return m_tokenizer.get(); }
 
 private:
+    struct NestingContext {
+        // FIXME: Can we build StylePropertySets directly?
+        // FIXME: Investigate using a smaller inline buffer
+        ParsedPropertyVector m_parsedProperties;
+        Vector<Ref<StyleRuleBase>> m_parsedRules;
+    };
     CSSParserImpl(const CSSParserContext&, StyleSheetContents*);
-    CSSParserImpl(CSSDeferredParser&);
 
-    enum RuleListType {
-        TopLevelRuleList,
-        RegularRuleList,
-        KeyframesRuleList
+    enum class RuleList : uint8_t {
+        TopLevel,
+        Regular,
+        Keyframes,
+        FontFeatureValues,
     };
 
     // Returns whether the first encountered rule was valid
     template<typename T>
-    bool consumeRuleList(CSSParserTokenRange, RuleListType, T callback);
+    bool consumeRuleList(CSSParserTokenRange, RuleList, T callback);
 
-    // These two functions update the range they're given
-    RefPtr<StyleRuleBase> consumeAtRule(CSSParserTokenRange&, AllowedRulesType);
-    RefPtr<StyleRuleBase> consumeQualifiedRule(CSSParserTokenRange&, AllowedRulesType);
+    // This function updates the range it's given.
+    RefPtr<StyleRuleBase> consumeQualifiedRule(CSSParserTokenRange&, AllowedRules);
+
+    // This function is used for all the nested group rules (@media, @layer, @supports, @scope, @container,..etc)
+    // It handles potentially orphaned declarations (in the context of style nesting)
+    // https://drafts.csswg.org/css-nesting/#conditionals
+    Vector<Ref<StyleRuleBase>> consumeNestedGroupRules(CSSParserTokenRange block);
 
     static RefPtr<StyleRuleCharset> consumeCharsetRule(CSSParserTokenRange prelude);
     RefPtr<StyleRuleImport> consumeImportRule(CSSParserTokenRange prelude);
@@ -133,43 +151,79 @@ private:
     RefPtr<StyleRuleSupports> consumeSupportsRule(CSSParserTokenRange prelude, CSSParserTokenRange block);
     RefPtr<StyleRuleViewport> consumeViewportRule(CSSParserTokenRange prelude, CSSParserTokenRange block);
     RefPtr<StyleRuleFontFace> consumeFontFaceRule(CSSParserTokenRange prelude, CSSParserTokenRange block);
-    RefPtr<StyleRuleKeyframes> consumeKeyframesRule(bool webkitPrefixed, CSSParserTokenRange prelude, CSSParserTokenRange block);
+    RefPtr<StyleRuleFontFeatureValuesBlock> consumeFontFeatureValuesRuleBlock(CSSAtRuleID, CSSParserTokenRange prelude, CSSParserTokenRange block);
+    RefPtr<StyleRuleFontFeatureValues> consumeFontFeatureValuesRule(CSSParserTokenRange prelude, CSSParserTokenRange block);
+    RefPtr<StyleRuleFontPaletteValues> consumeFontPaletteValuesRule(CSSParserTokenRange prelude, CSSParserTokenRange block);
+    RefPtr<StyleRuleKeyframes> consumeKeyframesRule(CSSParserTokenRange prelude, CSSParserTokenRange block);
     RefPtr<StyleRulePage> consumePageRule(CSSParserTokenRange prelude, CSSParserTokenRange block);
     RefPtr<StyleRuleCounterStyle> consumeCounterStyleRule(CSSParserTokenRange prelude, CSSParserTokenRange block);
     RefPtr<StyleRuleLayer> consumeLayerRule(CSSParserTokenRange prelude, std::optional<CSSParserTokenRange> block);
-
-    // FIXME-NEWPARSER: Support "apply"
-    // void consumeApplyRule(CSSParserTokenRange prelude);
+    RefPtr<StyleRuleContainer> consumeContainerRule(CSSParserTokenRange prelude, CSSParserTokenRange block);
+    RefPtr<StyleRuleProperty> consumePropertyRule(CSSParserTokenRange prelude, CSSParserTokenRange block);
+    RefPtr<StyleRuleScope> consumeScopeRule(CSSParserTokenRange prelude, CSSParserTokenRange block);
+    RefPtr<StyleRuleStartingStyle> consumeStartingStyleRule(CSSParserTokenRange prelude, CSSParserTokenRange block);
+    RefPtr<StyleRuleViewTransition> consumeViewTransitionRule(CSSParserTokenRange prelude, CSSParserTokenRange block);
 
     RefPtr<StyleRuleKeyframe> consumeKeyframeStyleRule(CSSParserTokenRange prelude, CSSParserTokenRange block);
-    RefPtr<StyleRule> consumeStyleRule(CSSParserTokenRange prelude, CSSParserTokenRange block);
+    RefPtr<StyleRuleBase> consumeStyleRule(CSSParserTokenRange prelude, CSSParserTokenRange block);
+    ParsedPropertyVector consumeDeclarationListInNewNestingContext(CSSParserTokenRange, StyleRuleType);
 
+    enum class OnlyDeclarations : bool { No, Yes };
+
+    enum class ParsingStyleDeclarationsInRuleList : bool { No, Yes };
+
+    // FIXME: We should return value for all those functions instead of using class member attributes.
+    void consumeBlockContent(CSSParserTokenRange, StyleRuleType, OnlyDeclarations, ParsingStyleDeclarationsInRuleList = ParsingStyleDeclarationsInRuleList::No);
     void consumeDeclarationList(CSSParserTokenRange, StyleRuleType);
-    void consumeDeclaration(CSSParserTokenRange, StyleRuleType);
-    void consumeDeclarationValue(CSSParserTokenRange, CSSPropertyID, bool important, StyleRuleType);
-    void consumeCustomPropertyValue(CSSParserTokenRange, const AtomString& propertyName, bool important);
+    void consumeStyleBlock(CSSParserTokenRange, StyleRuleType, ParsingStyleDeclarationsInRuleList = ParsingStyleDeclarationsInRuleList::No);
+    bool consumeDeclaration(CSSParserTokenRange, StyleRuleType);
+    void consumeDeclarationValue(CSSParserTokenRange, CSSPropertyID, IsImportant, StyleRuleType);
+    void consumeCustomPropertyValue(CSSParserTokenRange, const AtomString& propertyName, IsImportant);
 
     static Vector<double> consumeKeyframeKeyList(CSSParserTokenRange);
 
-    Ref<DeferredStyleProperties> createDeferredStyleProperties(const CSSParserTokenRange& propertyRange);
-    
-    void adoptTokenizerEscapedStrings();
+    RefPtr<StyleSheetContents> protectedStyleSheet() const;
 
-    // FIXME: Can we build StylePropertySets directly?
-    // FIXME: Investigate using a smaller inline buffer
-    ParsedPropertyVector m_parsedProperties;
+    Ref<StyleRuleBase> createNestingParentRule();
+    void runInNewNestingContext(auto&& run);
+    NestingContext& topContext()
+    {
+        ASSERT(!m_nestingContextStack.isEmpty());
+        return m_nestingContextStack.last();
+    }
+
+    bool isStyleNestedContext()
+    {
+        return (m_isAlwaysNestedContext == CSSParserEnum::IsNestedContext::Yes || m_styleRuleNestingLevel) && context().cssNestingEnabled;
+    }
+
+    bool isNestedContext()
+    {
+        return m_scopeRuleNestingLevel || isStyleNestedContext();
+    }
+
+    CSSParserEnum::IsNestedContext m_isAlwaysNestedContext { CSSParserEnum::IsNestedContext::No }; // Do we directly start in a nested context (for CSSOM)
+
+    // FIXME: we could unify all those into a single stack data structure.
+    // https://bugs.webkit.org/show_bug.cgi?id=265566
+    unsigned m_styleRuleNestingLevel { 0 };
+    unsigned m_scopeRuleNestingLevel { 0 };
+    unsigned m_ruleListNestingLevel { 0 };
+    enum class AncestorRuleType : bool {
+        Style,
+        Scope,
+    };
+    Vector<AncestorRuleType, 16> m_ancestorRuleTypeStack;
+    static void appendImplicitSelectorIfNeeded(MutableCSSSelector&, AncestorRuleType);
+
+    Vector<NestingContext> m_nestingContextStack { NestingContext { } };
     const CSSParserContext& m_context;
 
     RefPtr<StyleSheetContents> m_styleSheet;
-
-    // For deferred property parsing.
-    RefPtr<CSSDeferredParser> m_deferredParser;
-    
-    // For normal parsing.
     std::unique_ptr<CSSTokenizer> m_tokenizer;
 
     // For the inspector
-    CSSParserObserverWrapper* m_observerWrapper { nullptr };
+    WeakPtr<CSSParserObserverWrapper> m_observerWrapper;
 };
 
 } // namespace WebCore

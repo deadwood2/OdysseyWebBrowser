@@ -24,7 +24,7 @@
 
 #pragma once
 
-#if ENABLE(MEDIA_STREAM)
+#if ENABLE(MEDIA_RECORDER)
 
 #include "Event.h"
 
@@ -33,7 +33,7 @@ namespace WebCore {
 class Blob;
     
 class BlobEvent final : public Event {
-    WTF_MAKE_ISO_ALLOCATED(BlobEvent);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(BlobEvent);
 public:
     struct Init : EventInit {
         RefPtr<Blob> data;
@@ -48,14 +48,11 @@ public:
 private:
     BlobEvent(const AtomString&, Init&&, IsTrusted);
     BlobEvent(const AtomString&, CanBubble, IsCancelable, Ref<Blob>&&);
-    
-    // Event
-    EventInterface eventInterface() const final;
-    
+
     Ref<Blob> m_blob;
     double m_timecode { 0 };
 };
     
 } // namespace WebCore
 
-#endif // ENABLE(MEDIA_STREAM)
+#endif // ENABLE(MEDIA_RECORDER)

@@ -44,12 +44,12 @@ public:
         return adoptRef(*new AudioTrackPrivateMediaSourceAVFObjC(track));
     }
 
+    virtual ~AudioTrackPrivateMediaSourceAVFObjC();
+
     void setEnabled(bool) final;
 
     void setAssetTrack(AVAssetTrack*);
     AVAssetTrack* assetTrack();
-
-    int trackID() { return m_trackID; }
 
 private:
     explicit AudioTrackPrivateMediaSourceAVFObjC(AVAssetTrack*);
@@ -57,7 +57,6 @@ private:
     void resetPropertiesFromTrack();
 
     std::unique_ptr<AVTrackPrivateAVFObjCImpl> m_impl;
-    int m_trackID;
 };
 
 }

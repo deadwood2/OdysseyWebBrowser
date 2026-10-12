@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2004, 2005, 2007 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) 2004, 2005, 2006 Rob Buis <buis@kde.org>
- * Copyright (C) 2018-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2018-2022 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -53,9 +53,9 @@ struct SVGPropertyTraits<SVGStitchOptions> {
 
     static SVGStitchOptions fromString(const String& value)
     {
-        if (value == "stitch")
+        if (value == "stitch"_s)
             return SVG_STITCHTYPE_STITCH;
-        if (value == "noStitch")
+        if (value == "noStitch"_s)
             return SVG_STITCHTYPE_NOSTITCH;
         return SVG_STITCHTYPE_UNKNOWN;
     }
@@ -82,16 +82,17 @@ struct SVGPropertyTraits<TurbulenceType> {
 
     static TurbulenceType fromString(const String& value)
     {
-        if (value == "fractalNoise")
+        if (value == "fractalNoise"_s)
             return TurbulenceType::FractalNoise;
-        if (value == "turbulence")
+        if (value == "turbulence"_s)
             return TurbulenceType::Turbulence;
         return TurbulenceType::Unknown;
     }
 };
 
 class SVGFETurbulenceElement final : public SVGFilterPrimitiveStandardAttributes {
-    WTF_MAKE_ISO_ALLOCATED(SVGFETurbulenceElement);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(SVGFETurbulenceElement);
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(SVGFETurbulenceElement);
 public:
     static Ref<SVGFETurbulenceElement> create(const QualifiedName&, Document&);
 
@@ -113,15 +114,13 @@ private:
     SVGFETurbulenceElement(const QualifiedName&, Document&);
 
     using PropertyRegistry = SVGPropertyOwnerRegistry<SVGFETurbulenceElement, SVGFilterPrimitiveStandardAttributes>;
-    const SVGPropertyRegistry& propertyRegistry() const final { return m_propertyRegistry; }
 
-    void parseAttribute(const QualifiedName&, const AtomString&) override;
+    void attributeChanged(const QualifiedName&, const AtomString& oldValue, const AtomString& newValue, AttributeModificationReason) override;
     void svgAttributeChanged(const QualifiedName&) override;
 
-    bool setFilterEffectAttribute(FilterEffect*, const QualifiedName& attrName) override;
-    RefPtr<FilterEffect> build(SVGFilterBuilder*, Filter&) const override;
+    bool setFilterEffectAttribute(FilterEffect&, const QualifiedName& attrName) override;
+    RefPtr<FilterEffect> createFilterEffect(const FilterEffectVector&, const GraphicsContext& destinationContext) const override;
 
-    PropertyRegistry m_propertyRegistry { *this };
     Ref<SVGAnimatedNumber> m_baseFrequencyX { SVGAnimatedNumber::create(this) };
     Ref<SVGAnimatedNumber> m_baseFrequencyY { SVGAnimatedNumber::create(this) };
     Ref<SVGAnimatedInteger> m_numOctaves { SVGAnimatedInteger::create(this, 1) };

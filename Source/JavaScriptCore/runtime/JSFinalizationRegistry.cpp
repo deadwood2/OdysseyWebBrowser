@@ -28,12 +28,13 @@
 
 #include "AbstractSlotVisitor.h"
 #include "DeferredWorkTimer.h"
+#include "GlobalObjectMethodTable.h"
 #include "JSCInlines.h"
 #include "JSInternalFieldObjectImplInlines.h"
 
 namespace JSC {
 
-const ClassInfo JSFinalizationRegistry::s_info = { "FinalizationRegistry", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSFinalizationRegistry) };
+const ClassInfo JSFinalizationRegistry::s_info = { "FinalizationRegistry"_s, &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSFinalizationRegistry) };
 
 Structure* JSFinalizationRegistry::createStructure(VM& vm, JSGlobalObject* globalObject, JSValue prototype)
 {
@@ -42,7 +43,7 @@ Structure* JSFinalizationRegistry::createStructure(VM& vm, JSGlobalObject* globa
 
 JSFinalizationRegistry* JSFinalizationRegistry::create(VM& vm, Structure* structure, JSObject* callback)
 {
-    JSFinalizationRegistry* instance = new (NotNull, allocateCell<JSFinalizationRegistry>(vm.heap)) JSFinalizationRegistry(vm, structure);
+    JSFinalizationRegistry* instance = new (NotNull, allocateCell<JSFinalizationRegistry>(vm)) JSFinalizationRegistry(vm, structure);
     instance->finishCreation(vm, structure->globalObject(), callback);
     return instance;
 }
@@ -50,7 +51,7 @@ JSFinalizationRegistry* JSFinalizationRegistry::create(VM& vm, Structure* struct
 void JSFinalizationRegistry::finishCreation(VM& vm, JSGlobalObject* globalObject, JSObject* callback)
 {
     Base::finishCreation(vm);
-    ASSERT(callback->isCallable(vm));
+    ASSERT(callback->isCallable());
     auto values = initialValues();
     for (unsigned index = 0; index < values.size(); ++index)
         Base::internalField(index).setWithoutWriteBarrier(values[index]);
@@ -96,7 +97,7 @@ void JSFinalizationRegistry::destroy(JSCell* table)
     static_cast<JSFinalizationRegistry*>(table)->~JSFinalizationRegistry();
 }
 
-void JSFinalizationRegistry::finalizeUnconditionally(VM& vm)
+void JSFinalizationRegistry::finalizeUnconditionally(VM& vm, CollectionScope)
 {
     Locker locker { cellLock() };
 
@@ -150,7 +151,7 @@ void JSFinalizationRegistry::finalizeUnconditionally(VM& vm)
     });
 
     if (!m_hasAlreadyScheduledWork && (readiedCell || deadCount(locker))) {
-        auto ticket = vm.deferredWorkTimer->addPendingWork(vm, this, { });
+        auto ticket = vm.deferredWorkTimer->addPendingWork(DeferredWorkTimer::WorkType::ImminentlyScheduled, vm, this, { });
         ASSERT(vm.deferredWorkTimer->hasPendingWork(ticket));
         vm.deferredWorkTimer->scheduleWorkSoon(ticket, [this](DeferredWorkTimer::Ticket) {
             JSGlobalObject* globalObject = this->globalObject();
@@ -169,7 +170,7 @@ void JSFinalizationRegistry::runFinalizationCleanup(JSGlobalObject* globalObject
     while (JSValue value = takeDeadHoldingsValue()) {
         MarkedArgumentBuffer args;
         args.append(value);
-        call(globalObject, callback(), args, "This should not be visible: please report a bug to bugs.webkit.org");
+        call(globalObject, callback(), args, "This should not be visible: please report a bug to bugs.webkit.org"_s);
         RETURN_IF_EXCEPTION(scope, void());
     }
 }
@@ -198,7 +199,7 @@ JSValue JSFinalizationRegistry::takeDeadHoldingsValue()
     return result;
 }
 
-void JSFinalizationRegistry::registerTarget(VM& vm, JSObject* target, JSValue holdings, JSValue token)
+void JSFinalizationRegistry::registerTarget(VM& vm, JSCell* target, JSValue holdings, JSValue token)
 {
     Locker locker { cellLock() };
     Registration registration;
@@ -207,13 +208,14 @@ void JSFinalizationRegistry::registerTarget(VM& vm, JSObject* target, JSValue ho
     if (token.isUndefined())
         m_noUnregistrationLive.append(WTFMove(registration));
     else {
-        auto result = m_liveRegistrations.add(jsSecureCast<JSObject*>(vm, token), LiveRegistrations());
+        RELEASE_ASSERT(token.isCell());
+        auto result = m_liveRegistrations.add(token.asCell(), LiveRegistrations());
         result.iterator->value.append(WTFMove(registration));
     }
-    vm.heap.writeBarrier(this);
+    vm.writeBarrier(this);
 }
 
-bool JSFinalizationRegistry::unregister(VM&, JSObject* token)
+bool JSFinalizationRegistry::unregister(VM&, JSCell* token)
 {
     // We don't need to write barrier ourselves here because we will only point to less things after this finishes.
     Locker locker { cellLock() };
@@ -232,6 +234,21 @@ size_t JSFinalizationRegistry::liveCount(const Locker<JSCellLock>&)
     return count;
 }
 
+Vector<JSFinalizationRegistry::LiveRegistration> JSFinalizationRegistry::liveRegistrations(const Locker<JSCellLock>&) const
+{
+    Vector<LiveRegistration> liveRegistrations;
+
+    for (const auto& registration : m_noUnregistrationLive)
+        liveRegistrations.append({ registration.target, registration.holdings.get() });
+
+    for (const auto& [unregisterToken, registrations] : m_liveRegistrations) {
+        for (const auto& registration : registrations)
+            liveRegistrations.append({ registration.target, registration.holdings.get(), unregisterToken });
+    }
+
+    return liveRegistrations;
+}
+
 size_t JSFinalizationRegistry::deadCount(const Locker<JSCellLock>&)
 {
     size_t count = m_noUnregistrationDead.size();
@@ -239,6 +256,21 @@ size_t JSFinalizationRegistry::deadCount(const Locker<JSCellLock>&)
         count += iter.value.size();
 
     return count;
+}
+
+Vector<JSFinalizationRegistry::DeadRegistration> JSFinalizationRegistry::deadRegistrations(const Locker<JSCellLock>&) const
+{
+    Vector<DeadRegistration> deadRegistrations;
+
+    for (const auto& heldValue : m_noUnregistrationDead)
+        deadRegistrations.append({ heldValue.get() });
+
+    for (const auto& [unregisterToken, heldValues] : m_deadRegistrations) {
+        for (const auto& heldValue : heldValues)
+            deadRegistrations.append({ heldValue.get(), unregisterToken });
+    }
+
+    return deadRegistrations;
 }
 
 }

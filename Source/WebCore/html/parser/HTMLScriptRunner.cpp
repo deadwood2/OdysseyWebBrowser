@@ -27,16 +27,18 @@
 #include "config.h"
 #include "HTMLScriptRunner.h"
 
+#include "CSSTokenizerInputStream.h"
 #include "Element.h"
 #include "Event.h"
 #include "EventLoop.h"
 #include "EventNames.h"
-#include "Frame.h"
+#include "FrameDestructionObserverInlines.h"
 #include "HTMLInputStream.h"
 #include "HTMLNames.h"
 #include "HTMLScriptRunnerHost.h"
 #include "IgnoreDestructiveWriteCountIncrementer.h"
 #include "InlineClassicScript.h"
+#include "LocalFrame.h"
 #include "MutationObserver.h"
 #include "NestingLevelIncrementer.h"
 #include "ScriptElement.h"
@@ -47,7 +49,7 @@ namespace WebCore {
 using namespace HTMLNames;
 
 HTMLScriptRunner::HTMLScriptRunner(Document& document, HTMLScriptRunnerHost& host)
-    : m_document(makeWeakPtr(document))
+    : m_document(document)
     , m_host(host)
     , m_scriptNestingLevel(0)
     , m_hasScriptsWaitingForStylesheets(false)
@@ -257,8 +259,12 @@ void HTMLScriptRunner::runScript(ScriptElement& scriptElement, const TextPositio
     else if (scriptElement.readyToBeParserExecuted()) {
         if (m_scriptNestingLevel == 1)
             m_parserBlockingScript = PendingScript::create(scriptElement, scriptStartPosition);
-        else
-            scriptElement.executeClassicScript(ScriptSourceCode(scriptElement.element().textContent(), documentURLForScriptExecution(m_document.get()), scriptStartPosition, JSC::SourceProviderSourceType::Program, InlineClassicScript::create(scriptElement)));
+        else {
+            if (scriptElement.scriptType() == ScriptType::Classic)
+                scriptElement.executeClassicScript(ScriptSourceCode(scriptElement.element().textContent(), scriptElement.sourceTaintedOrigin(), documentURLForScriptExecution(m_document.get()), scriptStartPosition, JSC::SourceProviderSourceType::Program, InlineClassicScript::create(scriptElement)));
+            else
+                scriptElement.registerImportMap(ScriptSourceCode(scriptElement.element().textContent(), scriptElement.sourceTaintedOrigin(), documentURLForScriptExecution(m_document.get()), scriptStartPosition, JSC::SourceProviderSourceType::ImportMap));
+        }
     } else
         requestParsingBlockingScript(scriptElement);
 }

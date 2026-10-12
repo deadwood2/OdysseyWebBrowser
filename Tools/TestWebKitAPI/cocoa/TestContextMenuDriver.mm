@@ -26,7 +26,7 @@
 #import "config.h"
 #import "TestContextMenuDriver.h"
 
-#import "UIKitSPI.h"
+#import "UIKitSPIForTesting.h"
 #import <wtf/BlockPtr.h>
 
 #if USE(UICONTEXTMENU)
@@ -114,6 +114,21 @@
 - (void)end
 {
     [self.delegate clickDriver:(id<_UIClickInteractionDriving>)self didPerformEvent:_UIClickInteractionEventEnded];
+}
+
++ (BOOL)prefersCancelsTouchesInView
+{
+    return NO;
+}
+
+- (BOOL)cancelsTouchesInView
+{
+    return _cancelsTouchesInView;
+}
+
+- (void)setCancelsTouchesInView:(BOOL)cancelsTouchesInView
+{
+    _cancelsTouchesInView = cancelsTouchesInView;
 }
 
 @end

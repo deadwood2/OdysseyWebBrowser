@@ -41,9 +41,11 @@
 #include <algorithm>
 #include <math.h>
 #include <wtf/NeverDestroyed.h>
+#include <wtf/text/MakeString.h>
 
 namespace WebCore {
 
+#if USE(CONCATENATED_IMPULSE_RESPONSES)
 // Total number of components of an HRTF database.
 constexpr size_t TotalNumberOfResponses = 240;
 
@@ -54,30 +56,30 @@ constexpr size_t ResponseFrameSize = 256;
 // The impulse responses may be resampled to a different sample-rate (depending on the audio hardware) when they are loaded.
 constexpr float ResponseSampleRate = 44100;
 
-#if PLATFORM(COCOA) || USE(GSTREAMER)
-#define USE_CONCATENATED_IMPULSE_RESPONSES
-#endif
+static Lock audioBusMapLock;
+static HashMap<String, RefPtr<AudioBus>>& concatenatedImpulseResponsesMap() WTF_REQUIRES_LOCK(audioBusMapLock)
+{
+    static NeverDestroyed<HashMap<String, RefPtr<AudioBus>>> audioBusMap;
+    return audioBusMap;
+}
 
-#ifdef USE_CONCATENATED_IMPULSE_RESPONSES
 // Lazily load a concatenated HRTF database for given subject and store it in a
 // local hash table to ensure quick efficient future retrievals.
-static AudioBus* getConcatenatedImpulseResponsesForSubject(const String& subjectName)
+static RefPtr<AudioBus> getConcatenatedImpulseResponsesForSubject(const String& subjectName)
 {
-    typedef HashMap<String, AudioBus*> AudioBusMap;
-    static NeverDestroyed<AudioBusMap> audioBusMap;
-
-    AudioBus* bus;
-    AudioBusMap::iterator iterator = audioBusMap.get().find(subjectName);
-    if (iterator == audioBusMap.get().end()) {
-        auto concatenatedImpulseResponses = AudioBus::loadPlatformResource(subjectName.utf8().data(), ResponseSampleRate);
-        ASSERT(concatenatedImpulseResponses);
-        if (!concatenatedImpulseResponses)
-            return 0;
-
-        bus = concatenatedImpulseResponses.leakRef();
-        audioBusMap.get().set(subjectName, bus);
-    } else
-        bus = iterator->value;
+    RefPtr<AudioBus> bus;
+    {
+        Locker locker { audioBusMapLock };
+        auto& cache = concatenatedImpulseResponsesMap();
+        bus = cache.get(subjectName);
+        if (!bus) {
+            bus = AudioBus::loadPlatformResource(subjectName.utf8().data(), ResponseSampleRate);
+            ASSERT(bus);
+            if (!bus)
+                return nullptr;
+            cache.add(subjectName.isolatedCopy(), bus.copyRef());
+        }
+    }
 
     size_t responseLength = bus->length();
     size_t expectedLength = static_cast<size_t>(TotalNumberOfResponses * ResponseFrameSize);
@@ -86,37 +88,18 @@ static AudioBus* getConcatenatedImpulseResponsesForSubject(const String& subject
     bool isBusGood = responseLength == expectedLength && bus->numberOfChannels() == 2;
     ASSERT(isBusGood);
     if (!isBusGood)
-        return 0;
+        return nullptr;
 
     return bus;
 }
 #endif
 
-// Takes advantage of the symmetry and creates a composite version of the two measured versions.  For example, we have both azimuth 30 and -30 degrees
-// where the roles of left and right ears are reversed with respect to each other.
-bool HRTFElevation::calculateSymmetricKernelsForAzimuthElevation(int azimuth, int elevation, float sampleRate, const String& subjectName,
-                                                                 RefPtr<HRTFKernel>& kernelL, RefPtr<HRTFKernel>& kernelR)
+void HRTFElevation::clearCache()
 {
-    RefPtr<HRTFKernel> kernelL1;
-    RefPtr<HRTFKernel> kernelR1;
-    bool success = calculateKernelsForAzimuthElevation(azimuth, elevation, sampleRate, subjectName, kernelL1, kernelR1);
-    if (!success)
-        return false;
-        
-    // And symmetric version
-    int symmetricAzimuth = !azimuth ? 0 : 360 - azimuth;
-                                                              
-    RefPtr<HRTFKernel> kernelL2;
-    RefPtr<HRTFKernel> kernelR2;
-    success = calculateKernelsForAzimuthElevation(symmetricAzimuth, elevation, sampleRate, subjectName, kernelL2, kernelR2);
-    if (!success)
-        return false;
-        
-    // Notice L/R reversal in symmetric version.
-    kernelL = HRTFKernel::createInterpolatedKernel(kernelL1.get(), kernelR2.get(), 0.5f);
-    kernelR = HRTFKernel::createInterpolatedKernel(kernelR1.get(), kernelL2.get(), 0.5f);
-    
-    return true;
+#if USE(CONCATENATED_IMPULSE_RESPONSES)
+    Locker locker { audioBusMapLock };
+    concatenatedImpulseResponsesMap().clear();
+#endif
 }
 
 bool HRTFElevation::calculateKernelsForAzimuthElevation(int azimuth, int elevation, float sampleRate, const String& subjectName,
@@ -141,9 +124,8 @@ bool HRTFElevation::calculateKernelsForAzimuthElevation(int azimuth, int elevati
     // It's passed in as an internal ASCII identifier and is an implementation detail.
     int positiveElevation = elevation < 0 ? elevation + 360 : elevation;
 
-#ifdef USE_CONCATENATED_IMPULSE_RESPONSES
-    AudioBus* bus(getConcatenatedImpulseResponsesForSubject(subjectName));
-
+#if USE(CONCATENATED_IMPULSE_RESPONSES)
+    auto bus = getConcatenatedImpulseResponsesForSubject(subjectName);
     if (!bus)
         return false;
 
@@ -166,12 +148,12 @@ bool HRTFElevation::calculateKernelsForAzimuthElevation(int azimuth, int elevati
     // (hardware) sample-rate.
     unsigned startFrame = index * ResponseFrameSize;
     unsigned stopFrame = startFrame + ResponseFrameSize;
-    auto preSampleRateConvertedResponse = AudioBus::createBufferFromRange(bus, startFrame, stopFrame);
+    auto preSampleRateConvertedResponse = AudioBus::createBufferFromRange(bus.get(), startFrame, stopFrame);
     auto response = AudioBus::createBySampleRateConverting(preSampleRateConvertedResponse.get(), false, sampleRate);
     AudioChannel* leftEarImpulseResponse = response->channel(AudioBus::ChannelLeft);
     AudioChannel* rightEarImpulseResponse = response->channel(AudioBus::ChannelRight);
 #else
-    auto resourceName = makeString("IRC_", subjectName, "_C_R0195_T", pad('0', 3, azimuth), "_P", pad('0', 3, positiveElevation)).utf8();
+    auto resourceName = makeString("IRC_"_s, subjectName, "_C_R0195_T"_s, pad('0', 3, azimuth), "_P"_s, pad('0', 3, positiveElevation)).utf8();
 
     RefPtr<AudioBus> impulseResponse(AudioBus::loadPlatformResource(resourceName.data(), sampleRate));
 

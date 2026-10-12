@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2024 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -38,17 +38,21 @@
 #include "MachineContext.h"
 #include "MarkedBlockInlines.h"
 #include "MarkedBlockSet.h"
+#include "NativeCallee.h"
+#include "NativeCalleeRegistry.h"
 #include "NativeExecutable.h"
 #include "VM.h"
 #include "VMTrapsInlines.h"
 #include "WasmCallee.h"
-#include "WasmCalleeRegistry.h"
 #include "WasmCapabilities.h"
+#include <wtf/CommaPrinter.h>
 #include <wtf/FilePrintStream.h>
 #include <wtf/HashSet.h>
+#include <wtf/JSONValues.h>
 #include <wtf/RefPtr.h>
 #include <wtf/StackTrace.h>
-#include <wtf/text/StringBuilder.h>
+#include <wtf/TZoneMallocInlines.h>
+#include <wtf/text/MakeString.h>
 
 namespace JSC {
 
@@ -62,6 +66,8 @@ static constexpr bool sReportStats = false;
 
 using FrameType = SamplingProfiler::FrameType;
 using UnprocessedStackFrame = SamplingProfiler::UnprocessedStackFrame;
+
+WTF_MAKE_TZONE_ALLOCATED_IMPL(SamplingProfiler);
 
 ALWAYS_INLINE static void reportStats()
 {
@@ -114,25 +120,38 @@ protected:
         CallSiteIndex callSiteIndex;
         CalleeBits unsafeCallee = m_callFrame->unsafeCallee();
         CodeBlock* codeBlock = m_callFrame->unsafeCodeBlock();
-        if (unsafeCallee.isWasm())
+        if (unsafeCallee.isNativeCallee())
             codeBlock = nullptr;
         if (codeBlock) {
             ASSERT(isValidCodeBlock(codeBlock));
             callSiteIndex = m_callFrame->unsafeCallSiteIndex();
         }
         stackTrace[m_depth] = UnprocessedStackFrame(codeBlock, unsafeCallee, callSiteIndex);
+        if (unsafeCallee.isNativeCallee()) {
+            assertIsHeld(NativeCalleeRegistry::singleton().getLock());
+            auto* nativeCallee = unsafeCallee.asNativeCallee();
+            if (NativeCalleeRegistry::singleton().isValidCallee(nativeCallee)) {
+                stackTrace[m_depth].nativeCalleeCategory = nativeCallee->category();
+                switch (nativeCallee->category()) {
+                case NativeCallee::Category::Wasm: {
 #if ENABLE(WEBASSEMBLY)
-        if (Wasm::isSupported() && unsafeCallee.isWasm()) {
-            assertIsHeld(Wasm::CalleeRegistry::singleton().getLock());
-            auto* wasmCallee = unsafeCallee.asWasmCallee();
-            if (Wasm::CalleeRegistry::singleton().isValidCallee(wasmCallee)) {
-                // At this point, Wasm::Callee would be dying (ref count is 0), but its fields are still live.
-                // And we can safely copy Wasm::IndexOrName even when any lock is held by suspended threads.
-                stackTrace[m_depth].wasmIndexOrName = wasmCallee->indexOrName();
-                stackTrace[m_depth].wasmCompilationMode = wasmCallee->compilationMode();
+                    // At this point, Wasm::Callee would be dying (ref count is 0), but its fields are still live.
+                    // And we can safely copy Wasm::IndexOrName even when any lock is held by suspended threads.
+                    auto* wasmCallee = static_cast<Wasm::Callee*>(nativeCallee);
+                    stackTrace[m_depth].wasmIndexOrName = wasmCallee->indexOrName();
+                    stackTrace[m_depth].wasmCompilationMode = wasmCallee->compilationMode();
+#if ENABLE(JIT)
+                    stackTrace[m_depth].wasmPCMap = NativeCalleeRegistry::singleton().codeOriginMap(wasmCallee);
+#endif
+#endif
+                    break;
+                }
+                case NativeCallee::Category::InlineCache: {
+                    break;
+                }
+                }
             }
         }
-#endif
         m_depth++;
     }
 
@@ -162,7 +181,7 @@ protected:
         }
 
         CodeBlock* codeBlock = m_callFrame->unsafeCodeBlock();
-        if (!codeBlock || m_callFrame->unsafeCallee().isWasm())
+        if (!codeBlock || m_callFrame->unsafeCallee().isNativeCallee())
             return;
 
         if (!isValidCodeBlock(codeBlock)) {
@@ -301,9 +320,7 @@ SamplingProfiler::SamplingProfiler(VM& vm, Ref<Stopwatch>&& stopwatch)
     vm.heap.objectSpace().enablePreciseAllocationTracking();
 }
 
-SamplingProfiler::~SamplingProfiler()
-{
-}
+SamplingProfiler::~SamplingProfiler() = default;
 
 void SamplingProfiler::createThreadIfNecessary()
 {
@@ -313,7 +330,7 @@ void SamplingProfiler::createThreadIfNecessary()
         return;
 
     RefPtr<SamplingProfiler> profiler = this;
-    m_thread = Thread::create("jsc.sampling-profiler.thread", [profiler] {
+    m_thread = Thread::create("jsc.sampling-profiler.thread"_s, [profiler] {
         profiler->timerLoop();
     });
 }
@@ -329,8 +346,6 @@ void SamplingProfiler::timerLoop()
 
             if (!m_isPaused && m_jscExecutionThread)
                 takeSample(stackTraceProcessingTime);
-
-            m_lastTime = m_stopwatch->elapsedTime();
         }
 
         // Read section 6.2 of this paper for more elaboration of why we add a random
@@ -347,18 +362,22 @@ void SamplingProfiler::takeSample(Seconds& stackTraceProcessingTime)
 {
     ASSERT(m_lock.isLocked());
     if (m_vm.entryScope) {
-        Seconds nowTime = m_stopwatch->elapsedTime();
+        auto [ nowTime, timestamp ] = m_stopwatch->elapsedTimeAndTimestamp();
 
         Locker machineThreadsLocker { m_vm.heap.machineThreads().getLock() };
         Locker codeBlockSetLocker { m_vm.heap.codeBlockSet().getLock() };
-        Locker executableAllocatorLocker { ExecutableAllocator::singleton().getLock() };
-        std::optional<LockHolder> wasmCalleesLocker;
+        std::optional<Locker<Lock>> executableAllocatorLocker;
+        if (Options::useJIT())
+            executableAllocatorLocker.emplace(ExecutableAllocator::singleton().getLock());
+
+        std::optional<Locker<Lock>> wasmCalleesLocker;
 #if ENABLE(WEBASSEMBLY)
         if (Wasm::isSupported())
-            wasmCalleesLocker.emplace(Wasm::CalleeRegistry::singleton().getLock());
+            wasmCalleesLocker.emplace(NativeCalleeRegistry::singleton().getLock());
 #endif
 
-        auto didSuspend = m_jscExecutionThread->suspend();
+        ThreadSuspendLocker threadSuspendLocker;
+        auto didSuspend = m_jscExecutionThread->suspend(threadSuspendLocker);
         if (didSuspend) {
             // While the JSC thread is suspended, we can't do things like malloc because the JSC thread
             // may be holding the malloc lock.
@@ -370,12 +389,12 @@ void SamplingProfiler::takeSample(Seconds& stackTraceProcessingTime)
             void* llintPC;
             {
                 PlatformRegisters registers;
-                m_jscExecutionThread->getRegisters(registers);
+                m_jscExecutionThread->getRegisters(threadSuspendLocker, registers);
                 machineFrame = MachineContext::framePointer(registers);
                 callFrame = static_cast<CallFrame*>(machineFrame);
                 auto instructionPointer = MachineContext::instructionPointer(registers);
                 if (instructionPointer)
-                    machinePC = instructionPointer->untaggedExecutableAddress();
+                    machinePC = instructionPointer->untaggedPtr();
                 else
                     machinePC = nullptr;
                 llintPC = removeCodePtrTag(MachineContext::llintInstructionPointer(registers));
@@ -385,7 +404,7 @@ void SamplingProfiler::takeSample(Seconds& stackTraceProcessingTime)
             bool shouldAppendTopFrameAsCCode = false;
             // FIXME: Lets have a way of detecting when we're parsing code.
             // https://bugs.webkit.org/show_bug.cgi?id=152761
-            if (ExecutableAllocator::singleton().isValidExecutableMemory(executableAllocatorLocker, machinePC)) {
+            if (Options::useJIT() && ExecutableAllocator::singleton().isValidExecutableMemory(*executableAllocatorLocker, machinePC)) {
                 regExp = m_vm.m_executingRegExp;
                 if (regExp)
                     callFrame = m_vm.topCallFrame; // We need to do this or else we'd fail our backtrace validation b/c this isn't a JS frame.
@@ -416,7 +435,7 @@ void SamplingProfiler::takeSample(Seconds& stackTraceProcessingTime)
                 wasValidWalk = walker.wasValidWalk();
             }
 
-            m_jscExecutionThread->resume();
+            m_jscExecutionThread->resume(threadSuspendLocker);
 
             auto startTime = MonotonicTime::now();
             // We can now use data structures that malloc, and do other interesting things, again.
@@ -429,13 +448,10 @@ void SamplingProfiler::takeSample(Seconds& stackTraceProcessingTime)
                 Vector<UnprocessedStackFrame> stackTrace;
                 stackTrace.reserveInitialCapacity(walkSize + !!shouldAppendTopFrameAsCCode);
                 if (shouldAppendTopFrameAsCCode)
-                    stackTrace.uncheckedAppend(UnprocessedStackFrame { machinePC });
-                for (size_t i = 0; i < walkSize; i++) {
-                    UnprocessedStackFrame frame = m_currentFrames[i];
-                    stackTrace.uncheckedAppend(frame);
-                }
+                    stackTrace.append(UnprocessedStackFrame { machinePC });
+                stackTrace.appendRange(m_currentFrames.begin(), m_currentFrames.begin() + walkSize);
 
-                m_unprocessedStackTraces.append(UnprocessedStackTrace { nowTime, machinePC, topFrameIsLLInt, llintPC, regExp, WTFMove(stackTrace) });
+                m_unprocessedStackTraces.append(UnprocessedStackTrace { timestamp, nowTime, machinePC, topFrameIsLLInt, llintPC, regExp, WTFMove(stackTrace) });
 
                 if (didRunOutOfVectorSpace)
                     m_currentFrames.grow(m_currentFrames.size() * 1.25);
@@ -464,20 +480,17 @@ void SamplingProfiler::processUnverifiedStackTraces()
     // This function needs to be called from the JSC execution thread.
     RELEASE_ASSERT(m_lock.isLocked());
 
-    TinyBloomFilter filter = m_vm.heap.objectSpace().blocks().filter();
+    TinyBloomFilter<uintptr_t> filter = m_vm.heap.objectSpace().blocks().filter();
 
     for (UnprocessedStackTrace& unprocessedStackTrace : m_unprocessedStackTraces) {
         m_stackTraces.append(StackTrace());
         StackTrace& stackTrace = m_stackTraces.last();
         stackTrace.timestamp = unprocessedStackTrace.timestamp;
+        stackTrace.stopwatchTimestamp = unprocessedStackTrace.stopwatchTimestamp;
 
         auto populateCodeLocation = [] (CodeBlock* codeBlock, JITType jitType, BytecodeIndex bytecodeIndex, StackFrame::CodeLocation& location) {
             if (bytecodeIndex.offset() < codeBlock->instructionsSize()) {
-                int divot;
-                int startOffset;
-                int endOffset;
-                codeBlock->expressionRangeForBytecodeIndex(bytecodeIndex, divot, startOffset, endOffset,
-                    location.lineNumber, location.columnNumber);
+                location.lineColumn = codeBlock->lineColumnForBytecodeIndex(bytecodeIndex);
                 location.bytecodeIndex = bytecodeIndex;
             }
             if (codeBlock->hasHash())
@@ -496,20 +509,46 @@ void SamplingProfiler::processUnverifiedStackTraces()
             stackTrace.frames.append(StackFrame());
         };
 
+#if ENABLE(WEBASSEMBLY)
+        auto storeWasmCalleeIntoLastFrame = [&] (UnprocessedStackFrame& unprocessedStackFrame, void* pc) {
+            CalleeBits calleeBits = unprocessedStackFrame.unverifiedCallee;
+            ASSERT_UNUSED(calleeBits, calleeBits.isNativeCallee());
+            StackFrame& stackFrame = stackTrace.frames.last();
+            stackFrame.frameType = FrameType::Wasm;
+            stackFrame.wasmIndexOrName = unprocessedStackFrame.wasmIndexOrName;
+            stackFrame.wasmCompilationMode = unprocessedStackFrame.wasmCompilationMode;
+#if ENABLE(JIT)
+            if (pc && unprocessedStackFrame.wasmPCMap) {
+                if (std::optional<CodeOrigin> codeOrigin = unprocessedStackFrame.wasmPCMap->findPC(pc))
+                    stackFrame.wasmOffset = codeOrigin->bytecodeIndex();
+            }
+#else
+            UNUSED_PARAM(pc);
+#endif
+        };
+#endif
+
         auto storeCalleeIntoLastFrame = [&] (UnprocessedStackFrame& unprocessedStackFrame) {
             assertIsHeld(m_lock);
             // Set the callee if it's a valid GC object.
             CalleeBits calleeBits = unprocessedStackFrame.unverifiedCallee;
             StackFrame& stackFrame = stackTrace.frames.last();
             bool alreadyHasExecutable = !!stackFrame.executable;
+            if (calleeBits.isNativeCallee()) {
+                switch (unprocessedStackFrame.nativeCalleeCategory) {
+                case NativeCallee::Category::Wasm: {
 #if ENABLE(WEBASSEMBLY)
-            if (calleeBits.isWasm()) {
-                stackFrame.frameType = FrameType::Wasm;
-                stackFrame.wasmIndexOrName = unprocessedStackFrame.wasmIndexOrName;
-                stackFrame.wasmCompilationMode = unprocessedStackFrame.wasmCompilationMode;
+                    storeWasmCalleeIntoLastFrame(unprocessedStackFrame, nullptr);
+#endif
+                    return;
+                }
+                case NativeCallee::Category::InlineCache: {
+                    stackFrame.frameType = FrameType::Unknown;
+                    return;
+                }
+                }
                 return;
             }
-#endif
 
             JSValue callee = calleeBits.asCell();
             if (!HeapUtil::isValueGCObject(m_vm.heap, filter, callee)) {
@@ -522,7 +561,7 @@ void SamplingProfiler::processUnverifiedStackTraces()
             auto setFallbackFrameType = [&] {
                 ASSERT(!alreadyHasExecutable);
                 FrameType result = FrameType::Unknown;
-                auto callData = getCallData(m_vm, calleeCell);
+                auto callData = JSC::getCallData(calleeCell);
                 if (callData.type == CallData::Type::Native)
                     result = FrameType::Host;
 
@@ -536,7 +575,7 @@ void SamplingProfiler::processUnverifiedStackTraces()
             };
 
             if (calleeCell->type() != JSFunctionType) {
-                if (JSObject* object = jsDynamicCast<JSObject*>(calleeCell->vm(), calleeCell))
+                if (JSObject* object = jsDynamicCast<JSObject*>(calleeCell))
                     addCallee(object);
 
                 if (!alreadyHasExecutable)
@@ -631,6 +670,13 @@ void SamplingProfiler::processUnverifiedStackTraces()
                 UNUSED_PARAM(appendCodeOrigin);
             }
         }
+#if ENABLE(WEBASSEMBLY)
+        else if (!unprocessedStackTrace.frames.isEmpty() && unprocessedStackTrace.frames[0].unverifiedCallee.isNativeCallee() && unprocessedStackTrace.frames[0].nativeCalleeCategory == NativeCallee::Category::Wasm) {
+            appendEmptyFrame();
+            storeWasmCalleeIntoLastFrame(unprocessedStackTrace.frames[0], unprocessedStackTrace.topPC);
+            startIndex = 1;
+        }
+#endif
 
         for (size_t i = startIndex; i < unprocessedStackTrace.frames.size(); i++) {
             UnprocessedStackFrame& unprocessedStackFrame = unprocessedStackTrace.frames[i];
@@ -729,7 +775,6 @@ void SamplingProfiler::noticeVMEntry()
     Locker locker { m_lock };
     ASSERT(m_vm.entryScope);
     noticeCurrentThreadAsJSCExecutionThreadWithLock();
-    m_lastTime = m_stopwatch->elapsedTime();
     createThreadIfNecessary();
 }
 
@@ -751,7 +796,7 @@ String SamplingProfiler::StackFrame::nameFromCallee(VM& vm)
 
     DeferTermination deferScope(vm);
     auto scope = DECLARE_CATCH_SCOPE(vm);
-    JSGlobalObject* globalObject = callee->globalObject(vm);
+    JSGlobalObject* globalObject = callee->globalObject();
     auto getPropertyIfPureOperation = [&] (const Identifier& ident) -> String {
         PropertySlot slot(callee, PropertySlot::InternalMethodType::VMInquiry, &vm);
         PropertyName propertyName(ident);
@@ -786,10 +831,9 @@ String SamplingProfiler::StackFrame::displayName(VM& vm)
     case FrameType::C:
 #if HAVE(DLADDR)
         if (frameType == FrameType::C) {
-            auto demangled = WTF::StackTrace::demangle(const_cast<void*>(cCodePC));
+            auto demangled = StackTraceSymbolResolver::demangle(const_cast<void*>(cCodePC));
             if (demangled)
-                return String(demangled->demangledName() ? demangled->demangledName() : demangled->mangledName());
-            WTF::dataLog("couldn't get a name");
+                return String::fromLatin1(demangled->demangledName() ? demangled->demangledName() : demangled->mangledName());
         }
 #endif
         return "(unknown C PC)"_s;
@@ -817,57 +861,6 @@ String SamplingProfiler::StackFrame::displayName(VM& vm)
         if (executable->isFunctionExecutable())
             return static_cast<FunctionExecutable*>(executable)->ecmaName().string();
         if (executable->isProgramExecutable() || executable->isEvalExecutable())
-            return "(program)"_s;
-        if (executable->isModuleProgramExecutable())
-            return "(module)"_s;
-
-        RELEASE_ASSERT_NOT_REACHED();
-        return String();
-    }
-    RELEASE_ASSERT_NOT_REACHED();
-    return String();
-}
-
-String SamplingProfiler::StackFrame::displayNameForJSONTests(VM& vm)
-{
-    {
-        String name = nameFromCallee(vm);
-        if (!name.isEmpty())
-            return name;
-    }
-
-    switch (frameType) {
-    case FrameType::Unknown:
-    case FrameType::C:
-        return "(unknown)"_s;
-
-    case FrameType::RegExp:
-        return "(regexp)"_s;
-
-    case FrameType::Host:
-        return "(host)"_s;
-
-    case FrameType::Wasm: {
-#if ENABLE(WEBASSEMBLY)
-        if (wasmIndexOrName)
-            return makeString(wasmIndexOrName.value());
-#endif
-        return "(wasm)"_s;
-    }
-
-    case FrameType::Executable:
-        if (executable->isHostFunction())
-            return static_cast<NativeExecutable*>(executable)->name();
-
-        if (executable->isFunctionExecutable()) {
-            String result = static_cast<FunctionExecutable*>(executable)->ecmaName().string();
-            if (result.isEmpty())
-                return "(anonymous function)"_s;
-            return result;
-        }
-        if (executable->isEvalExecutable())
-            return "(eval)"_s;
-        if (executable->isProgramExecutable())
             return "(program)"_s;
         if (executable->isModuleProgramExecutable())
             return "(module)"_s;
@@ -918,7 +911,7 @@ unsigned SamplingProfiler::StackFrame::functionStartColumn()
     return std::numeric_limits<unsigned>::max();
 }
 
-intptr_t SamplingProfiler::StackFrame::sourceID()
+SourceID SamplingProfiler::StackFrame::sourceID()
 {
     switch (frameType) {
     case FrameType::Unknown:
@@ -973,9 +966,118 @@ Vector<SamplingProfiler::StackTrace> SamplingProfiler::releaseStackTraces()
     return result;
 }
 
-String SamplingProfiler::stackTracesAsJSON()
+static String descriptionForLocation(SamplingProfiler::StackFrame::CodeLocation location, std::optional<Wasm::CompilationMode> wasmCompilationMode, BytecodeIndex wasmOffset)
 {
-    DeferGC deferGC(m_vm.heap);
+    if (wasmCompilationMode) {
+        StringPrintStream description;
+        description.print(":");
+        description.print(Wasm::makeString(wasmCompilationMode.value()));
+        description.print(":");
+        if (wasmOffset) {
+            uintptr_t offset = wasmOffset.offset();
+            description.print(RawHex(offset));
+        } else
+            description.print("nil");
+        return description.toString();
+    }
+
+    String bytecodeIndex;
+    String codeBlockHash;
+    String jitType;
+    if (location.hasBytecodeIndex())
+        bytecodeIndex = toString(location.bytecodeIndex);
+    else
+        bytecodeIndex = "<nil>"_s;
+
+    if (location.hasCodeBlockHash()) {
+        StringPrintStream stream;
+        location.codeBlockHash.dump(stream);
+        codeBlockHash = stream.toString();
+    } else
+        codeBlockHash = "<nil>"_s;
+
+    if (location.isRegExp)
+        jitType = "RegExp"_s;
+    else
+        jitType = JITCode::typeName(location.jitType);
+
+    return makeString('#', codeBlockHash, ':', jitType, ':', bytecodeIndex);
+}
+
+struct Tiers {
+    static constexpr ASCIILiteral llint { "LLInt"_s };
+    static constexpr ASCIILiteral baseline { "Baseline"_s };
+    static constexpr ASCIILiteral dfg { "DFG"_s };
+    static constexpr ASCIILiteral ftl { "FTL"_s };
+    static constexpr ASCIILiteral builtin { "js builtin"_s };
+    static constexpr ASCIILiteral ipint { "IPInt"_s };
+    static constexpr ASCIILiteral wasmllint { "WasmLLInt"_s };
+    static constexpr ASCIILiteral bbq { "BBQ"_s };
+    static constexpr ASCIILiteral omg { "OMG"_s };
+    static constexpr ASCIILiteral wasm { "Wasm"_s };
+    static constexpr ASCIILiteral host { "Host"_s };
+    static constexpr ASCIILiteral regexp { "RegExp"_s };
+    static constexpr ASCIILiteral cpp { "C/C++"_s };
+    static constexpr ASCIILiteral unknownFrame { "Unknown Frame"_s };
+    static constexpr ASCIILiteral unknownExecutable { "Unknown Executable"_s };
+};
+
+static String tierName(SamplingProfiler::StackFrame& frame)
+{
+    switch (frame.frameType) {
+    case SamplingProfiler::FrameType::Executable:
+        switch (frame.semanticLocation.jitType) {
+        case JITType::HostCallThunk:
+            return Tiers::host;
+        case JITType::InterpreterThunk:
+            return Tiers::llint;
+        case JITType::BaselineJIT:
+            return Tiers::baseline;
+        case JITType::DFGJIT:
+            return Tiers::dfg;
+        case JITType::FTLJIT:
+            return Tiers::ftl;
+        default:
+            return Tiers::unknownExecutable;
+        }
+        break;
+    case SamplingProfiler::FrameType::Wasm:
+        if (frame.wasmCompilationMode) {
+            switch (frame.wasmCompilationMode.value()) {
+            case Wasm::CompilationMode::LLIntMode:
+                return Tiers::wasmllint;
+            case Wasm::CompilationMode::IPIntMode:
+                return Tiers::ipint;
+            case Wasm::CompilationMode::JSEntrypointJITMode:
+            case Wasm::CompilationMode::JITLessJSEntrypointMode:
+            case Wasm::CompilationMode::JSToWasmICMode:
+            case Wasm::CompilationMode::WasmToJSMode:
+                // Just say "Wasm" for now.
+                break;
+            case Wasm::CompilationMode::BBQMode:
+            case Wasm::CompilationMode::BBQForOSREntryMode:
+                return Tiers::bbq;
+            case Wasm::CompilationMode::OMGMode:
+            case Wasm::CompilationMode::OMGForOSREntryMode:
+                return Tiers::omg;
+            }
+        }
+        return Tiers::wasm;
+    case SamplingProfiler::FrameType::Host:
+        return Tiers::host;
+    case SamplingProfiler::FrameType::RegExp:
+        return Tiers::regexp;
+    case SamplingProfiler::FrameType::C:
+        return Tiers::cpp;
+    case SamplingProfiler::FrameType::Unknown:
+        return Tiers::unknownFrame;
+    }
+    return Tiers::unknownFrame;
+}
+
+Ref<JSON::Value> SamplingProfiler::stackTracesAsJSON()
+{
+    DeferGC deferGC(m_vm);
     Locker locker { m_lock };
 
     {
@@ -983,32 +1085,51 @@ String SamplingProfiler::stackTracesAsJSON()
         processUnverifiedStackTraces();
     }
 
-    StringBuilder json;
-    json.append('[');
-
-    bool loopedOnce = false;
-    auto comma = [&] {
-        if (loopedOnce)
-            json.append(',');
-    };
-    for (StackTrace& stackTrace : m_stackTraces) {
-        comma();
-        json.append('[');
-        loopedOnce = false;
-        for (StackFrame& stackFrame : stackTrace.frames) {
-            comma();
-            json.appendQuotedJSONString(stackFrame.displayNameForJSONTests(m_vm));
-            loopedOnce = true;
+    auto stackFrameAsJSON = [&](StackFrame& stackFrame) {
+        auto result = JSON::Object::create();
+        result->setDouble("sourceID"_s, stackFrame.sourceID());
+        result->setString("name"_s, stackFrame.displayName(m_vm));
+        result->setString("location"_s, descriptionForLocation(stackFrame.semanticLocation, stackFrame.wasmCompilationMode, stackFrame.wasmOffset));
+        result->setString("category"_s, tierName(stackFrame));
+        uint32_t flags = 0;
+        if (stackFrame.frameType == SamplingProfiler::FrameType::Executable && stackFrame.executable) {
+            if (auto* executable = jsDynamicCast<FunctionExecutable*>(stackFrame.executable); executable && executable->isBuiltinFunction())
+                flags = 1;
         }
-        json.append(']');
-        loopedOnce = true;
-    }
+        result->setDouble("flags"_s, flags);
 
-    json.append(']');
+        if (std::optional<std::pair<StackFrame::CodeLocation, CodeBlock*>> machineLocation = stackFrame.machineLocation) {
+            auto inliner = JSON::Object::create();
+            inliner->setString("name"_s, String::fromUTF8(machineLocation->second->inferredName().span()));
+            inliner->setString("location"_s, descriptionForLocation(machineLocation->first, std::nullopt, BytecodeIndex()));
+            inliner->setString("category"_s, tierName(stackFrame));
+            result->setValue("inliner"_s, WTFMove(inliner));
+        }
+        return result;
+    };
+
+    auto stackTraceAsJSON = [&](StackTrace& stackTrace) {
+        auto result = JSON::Object::create();
+        result->setDouble("timestamp"_s, stackTrace.timestamp.secondsSinceEpoch().seconds());
+        {
+            auto frames = JSON::Array::create();
+            for (StackFrame& stackFrame : stackTrace.frames)
+                frames->pushValue(stackFrameAsJSON(stackFrame));
+            result->setValue("frames"_s, WTFMove(frames));
+        }
+        return result;
+    };
+
+    auto result = JSON::Object::create();
+    result->setDouble("interval"_s, m_timingInterval.seconds());
+    auto traces = JSON::Array::create();
+    for (StackTrace& stackTrace : m_stackTraces)
+        traces->pushValue(stackTraceAsJSON(stackTrace));
+    result->setValue("traces"_s, traces);
 
     clearData();
 
-    return json.toString();
+    return result;
 }
 
 void SamplingProfiler::registerForReportAtExit()
@@ -1053,7 +1174,7 @@ void SamplingProfiler::reportTopFunctions()
 void SamplingProfiler::reportTopFunctions(PrintStream& out)
 {
     Locker locker { m_lock };
-    DeferGCForAWhile deferGC(m_vm.heap);
+    DeferGCForAWhile deferGC(m_vm);
 
     {
         HeapIterationScope heapIterationScope(m_vm.heap);
@@ -1074,7 +1195,7 @@ void SamplingProfiler::reportTopFunctions(PrintStream& out)
             hash = stream.toString();
         } else
             hash = "<nil>"_s;
-        intptr_t sourceID = frame.sourceID();
+        SourceID sourceID = frame.sourceID();
         if (Options::samplingProfilerIgnoreExternalSourceID()) {
             if (sourceID != internalSourceID)
                 sourceID = aggregatedExternalSourceID;
@@ -1119,7 +1240,7 @@ void SamplingProfiler::reportTopBytecodes()
 void SamplingProfiler::reportTopBytecodes(PrintStream& out)
 {
     Locker locker { m_lock };
-    DeferGCForAWhile deferGC(m_vm.heap);
+    DeferGCForAWhile deferGC(m_vm);
 
     {
         HeapIterationScope heapIterationScope(m_vm.heap);
@@ -1130,123 +1251,44 @@ void SamplingProfiler::reportTopBytecodes(PrintStream& out)
     HashMap<String, size_t> bytecodeCounts;
     HashMap<String, size_t> tierCounts;
 
-    String llint = "LLInt"_s;
-    String baseline = "Baseline"_s;
-    String dfg = "DFG"_s;
-    String ftl = "FTL"_s;
-    String builtin = "js builtin"_s;
-    String wasm = "Wasm"_s;
-    String host = "Host"_s;
-    String regexp = "RegExp"_s;
-    String cpp = "C/C++"_s;
-    String unknownFrame = "Unknown Frame"_s;
-    String unknownExecutable = "Unknown Executable"_s;
-
     auto forEachTier = [&] (auto func) {
-        func(llint);
-        func(baseline);
-        func(dfg);
-        func(ftl);
-        func(builtin);
-        func(wasm);
-        func(host);
-        func(regexp);
-        func(cpp);
-        func(unknownFrame);
-        func(unknownExecutable);
+        func(Tiers::llint);
+        func(Tiers::baseline);
+        func(Tiers::dfg);
+        func(Tiers::ftl);
+        func(Tiers::builtin);
+        func(Tiers::ipint);
+        func(Tiers::wasmllint);
+        func(Tiers::bbq);
+        func(Tiers::omg);
+        func(Tiers::wasm);
+        func(Tiers::host);
+        func(Tiers::regexp);
+        func(Tiers::cpp);
+        func(Tiers::unknownFrame);
+        func(Tiers::unknownExecutable);
     };
 
     for (StackTrace& stackTrace : m_stackTraces) {
         if (!stackTrace.frames.size())
             continue;
 
-        auto descriptionForLocation = [&] (StackFrame::CodeLocation location, std::optional<Wasm::CompilationMode> wasmCompilationMode) -> String {
-            String bytecodeIndex;
-            String codeBlockHash;
-            String jitType;
-            if (location.hasBytecodeIndex())
-                bytecodeIndex = toString(location.bytecodeIndex);
-            else
-                bytecodeIndex = "<nil>"_s;
-
-            if (location.hasCodeBlockHash()) {
-                StringPrintStream stream;
-                location.codeBlockHash.dump(stream);
-                codeBlockHash = stream.toString();
-            } else
-                codeBlockHash = "<nil>"_s;
-
-            if (wasmCompilationMode)
-                jitType = Wasm::makeString(wasmCompilationMode.value());
-            else if (location.isRegExp)
-                jitType = "RegExp"_s;
-            else
-                jitType = JITCode::typeName(location.jitType);
-
-            return makeString('#', codeBlockHash, ':', jitType, ':', bytecodeIndex);
-        };
-
         StackFrame& frame = stackTrace.frames.first();
-        auto frameDescription = makeString(frame.displayName(m_vm), descriptionForLocation(frame.semanticLocation, frame.wasmCompilationMode));
+        auto frameDescription = makeString(frame.displayName(m_vm), descriptionForLocation(frame.semanticLocation, frame.wasmCompilationMode, frame.wasmOffset));
         if (std::optional<std::pair<StackFrame::CodeLocation, CodeBlock*>> machineLocation = frame.machineLocation) {
-            frameDescription = makeString(frameDescription, " <-- ",
-                machineLocation->second->inferredName().data(), descriptionForLocation(machineLocation->first, std::nullopt));
+            frameDescription = makeString(frameDescription, " <-- "_s,
+                span(machineLocation->second->inferredName().data()), descriptionForLocation(machineLocation->first, std::nullopt, BytecodeIndex()));
         }
         bytecodeCounts.add(frameDescription, 0).iterator->value++;
-        
-        {
-            String tierName;
-            switch (frame.frameType) {
-            case SamplingProfiler::FrameType::Executable:
-                switch (frame.semanticLocation.jitType) {
-                case JITType::HostCallThunk:
-                    tierName = host;
-                    break;
-                case JITType::InterpreterThunk:
-                    tierName = llint;
-                    break;
-                case JITType::BaselineJIT:
-                    tierName = baseline;
-                    break;
-                case JITType::DFGJIT:
-                    tierName = dfg;
-                    break;
-                case JITType::FTLJIT:
-                    tierName = ftl;
-                    break;
-                default:
-                    tierName = unknownExecutable;
-                    break;
-                }
 
-                if (frame.executable) {
-                    if (auto* executable = jsDynamicCast<FunctionExecutable*>(m_vm, frame.executable)) {
-                        if (executable->isBuiltinFunction())
-                            tierCounts.add(builtin, 0).iterator->value++;
-                    }
-                }
-
-                break;
-            case SamplingProfiler::FrameType::Wasm:
-                tierName = wasm;
-                break;
-            case SamplingProfiler::FrameType::Host:
-                tierName = host;
-                break;
-            case SamplingProfiler::FrameType::RegExp:
-                tierName = regexp;
-                break;
-            case SamplingProfiler::FrameType::C:
-                tierName = cpp;
-                break;
-            case SamplingProfiler::FrameType::Unknown:
-                tierName = unknownFrame;
-                break;
+        tierCounts.add(tierName(frame), 0).iterator->value++;
+        if (frame.frameType == SamplingProfiler::FrameType::Executable && frame.executable) {
+            if (auto* executable = jsDynamicCast<FunctionExecutable*>(frame.executable)) {
+                if (executable->isBuiltinFunction())
+                    tierCounts.add(Tiers::builtin, 0).iterator->value++;
             }
-
-            tierCounts.add(tierName, 0).iterator->value++;
         }
-         
+
         totalSamples++;
     }
 
@@ -1275,7 +1317,7 @@ void SamplingProfiler::reportTopBytecodes(PrintStream& out)
         });
         auto printTier = [&] (String tier) {
             size_t count = tierCounts.get(tier);
-            if (!count && (tier == unknownFrame || tier == unknownExecutable))
+            if (!count && (tier == Tiers::unknownFrame || tier == Tiers::unknownExecutable))
                 return;
             out.print(tier, ": ");
             for (unsigned i = 0; i < maxTierNameLength + 2 - tier.length(); ++i)

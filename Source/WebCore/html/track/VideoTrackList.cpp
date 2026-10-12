@@ -24,18 +24,18 @@
  */
 
 #include "config.h"
+#include "VideoTrackList.h"
 
 #if ENABLE(VIDEO)
 
-#include "VideoTrackList.h"
-
-#include "HTMLMediaElement.h"
+#include "ContextDestructionObserverInlines.h"
+#include "ScriptExecutionContext.h"
 #include "VideoTrack.h"
 
 namespace WebCore {
 
-VideoTrackList::VideoTrackList(WeakPtr<HTMLMediaElement> element, ScriptExecutionContext* context)
-    : TrackListBase(element, context)
+VideoTrackList::VideoTrackList(ScriptExecutionContext* context)
+    : TrackListBase(context, TrackListBase::VideoTrackList)
 {
 }
 
@@ -53,8 +53,8 @@ void VideoTrackList::append(Ref<VideoTrack>&& track)
     }
     m_inbandTracks.insert(insertionIndex, track.ptr());
 
-    ASSERT(!track->mediaElement() || track->mediaElement() == mediaElement());
-    track->setMediaElement(mediaElement());
+    if (!track->trackList())
+        track->setTrackList(*this);
 
     scheduleAddTrackEvent(WTFMove(track));
 }
@@ -76,6 +76,16 @@ VideoTrack* VideoTrackList::getTrackById(const AtomString& id) const
     return nullptr;
 }
 
+VideoTrack* VideoTrackList::getTrackById(TrackID id) const
+{
+    for (auto& inbandTracks : m_inbandTracks) {
+        auto& track = downcast<VideoTrack>(*inbandTracks);
+        if (track.trackId() == id)
+            return &track;
+    }
+    return nullptr;
+}
+
 int VideoTrackList::selectedIndex() const
 {
     // 4.8.10.10.1 AudioTrackList and VideoTrackList objects
@@ -90,14 +100,18 @@ int VideoTrackList::selectedIndex() const
     return -1;
 }
 
-EventTargetInterface VideoTrackList::eventTargetInterface() const
+VideoTrack* VideoTrackList::selectedItem() const
 {
-    return VideoTrackListEventTargetInterfaceType;
+    auto selectedIndex = this->selectedIndex();
+    if (selectedIndex < 0)
+        return nullptr;
+
+    return item(selectedIndex);
 }
 
-const char* VideoTrackList::activeDOMObjectName() const
+enum EventTargetInterfaceType VideoTrackList::eventTargetInterface() const
 {
-    return "VideoTrackList";
+    return EventTargetInterfaceType::VideoTrackList;
 }
 
 } // namespace WebCore

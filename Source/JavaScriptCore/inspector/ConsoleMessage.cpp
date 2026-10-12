@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007, 2008, 2014, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2007-2023 Apple Inc. All rights reserved.
  * Copyright (C) 2008 Matt Lilek <webkit@mattlilek.com>
  * Copyright (C) 2009, 2010 Google Inc. All rights reserved.
  *
@@ -39,10 +39,13 @@
 #include "ScriptCallFrame.h"
 #include "ScriptCallStack.h"
 #include "ScriptCallStackFactory.h"
+#include <wtf/TZoneMallocInlines.h>
 
 namespace Inspector {
 
-ConsoleMessage::ConsoleMessage(MessageSource source, MessageType type, MessageLevel level, const String& message, unsigned long requestIdentifier)
+WTF_MAKE_TZONE_ALLOCATED_IMPL(ConsoleMessage);
+
+ConsoleMessage::ConsoleMessage(MessageSource source, MessageType type, MessageLevel level, const String& message, unsigned long requestIdentifier, WallTime timestamp)
     : m_source(source)
     , m_type(type)
     , m_level(level)
@@ -50,9 +53,10 @@ ConsoleMessage::ConsoleMessage(MessageSource source, MessageType type, MessageLe
     , m_url()
     , m_requestId(IdentifiersFactory::requestId(requestIdentifier))
 {
+    m_timestamp = timestamp ? timestamp : WallTime::now();
 }
 
-ConsoleMessage::ConsoleMessage(MessageSource source, MessageType type, MessageLevel level, const String& message, const String& url, unsigned line, unsigned column, JSC::JSGlobalObject* globalObject, unsigned long requestIdentifier)
+ConsoleMessage::ConsoleMessage(MessageSource source, MessageType type, MessageLevel level, const String& message, const String& url, unsigned line, unsigned column, JSC::JSGlobalObject* globalObject, unsigned long requestIdentifier, WallTime timestamp)
     : m_source(source)
     , m_type(type)
     , m_level(level)
@@ -62,10 +66,11 @@ ConsoleMessage::ConsoleMessage(MessageSource source, MessageType type, MessageLe
     , m_column(column)
     , m_requestId(IdentifiersFactory::requestId(requestIdentifier))
 {
+    m_timestamp = timestamp ? timestamp : WallTime::now();
     autogenerateMetadata(globalObject);
 }
 
-ConsoleMessage::ConsoleMessage(MessageSource source, MessageType type, MessageLevel level, const String& message, Ref<ScriptCallStack>&& callStack, unsigned long requestIdentifier)
+ConsoleMessage::ConsoleMessage(MessageSource source, MessageType type, MessageLevel level, const String& message, Ref<ScriptCallStack>&& callStack, unsigned long requestIdentifier, WallTime timestamp)
     : m_source(source)
     , m_type(type)
     , m_level(level)
@@ -74,6 +79,7 @@ ConsoleMessage::ConsoleMessage(MessageSource source, MessageType type, MessageLe
     , m_url()
     , m_requestId(IdentifiersFactory::requestId(requestIdentifier))
 {
+    m_timestamp = timestamp ? timestamp : WallTime::now();
     const ScriptCallFrame* frame = m_callStack ? m_callStack->firstNonNativeCallFrame() : nullptr;
     if (frame) {
         m_url = frame->sourceURL();
@@ -82,7 +88,7 @@ ConsoleMessage::ConsoleMessage(MessageSource source, MessageType type, MessageLe
     }
 }
 
-ConsoleMessage::ConsoleMessage(MessageSource source, MessageType type, MessageLevel level, const String& message, Ref<ScriptArguments>&& arguments, Ref<ScriptCallStack>&& callStack, unsigned long requestIdentifier)
+ConsoleMessage::ConsoleMessage(MessageSource source, MessageType type, MessageLevel level, const String& message, Ref<ScriptArguments>&& arguments, Ref<ScriptCallStack>&& callStack, unsigned long requestIdentifier, WallTime timestamp)
     : m_source(source)
     , m_type(type)
     , m_level(level)
@@ -92,6 +98,7 @@ ConsoleMessage::ConsoleMessage(MessageSource source, MessageType type, MessageLe
     , m_url()
     , m_requestId(IdentifiersFactory::requestId(requestIdentifier))
 {
+    m_timestamp = timestamp ? timestamp : WallTime::now();
     const ScriptCallFrame* frame = m_callStack ? m_callStack->firstNonNativeCallFrame() : nullptr;
     if (frame) {
         m_url = frame->sourceURL();
@@ -100,7 +107,7 @@ ConsoleMessage::ConsoleMessage(MessageSource source, MessageType type, MessageLe
     }
 }
 
-ConsoleMessage::ConsoleMessage(MessageSource source, MessageType type, MessageLevel level, const String& message, Ref<ScriptArguments>&& arguments, JSC::JSGlobalObject* globalObject, unsigned long requestIdentifier)
+ConsoleMessage::ConsoleMessage(MessageSource source, MessageType type, MessageLevel level, const String& message, Ref<ScriptArguments>&& arguments, JSC::JSGlobalObject* globalObject, unsigned long requestIdentifier, WallTime timestamp)
     : m_source(source)
     , m_type(type)
     , m_level(level)
@@ -109,16 +116,18 @@ ConsoleMessage::ConsoleMessage(MessageSource source, MessageType type, MessageLe
     , m_url()
     , m_requestId(IdentifiersFactory::requestId(requestIdentifier))
 {
+    m_timestamp = timestamp ? timestamp : WallTime::now();
     autogenerateMetadata(globalObject);
 }
 
-ConsoleMessage::ConsoleMessage(MessageSource source, MessageType type, MessageLevel level, Vector<JSONLogValue>&& messages, JSC::JSGlobalObject* globalObject, unsigned long requestIdentifier)
+ConsoleMessage::ConsoleMessage(MessageSource source, MessageType type, MessageLevel level, Vector<JSONLogValue>&& messages, JSC::JSGlobalObject* globalObject, unsigned long requestIdentifier, WallTime timestamp)
     : m_source(source)
     , m_type(type)
     , m_level(level)
     , m_url()
     , m_requestId(IdentifiersFactory::requestId(requestIdentifier))
 {
+    m_timestamp = timestamp ? timestamp : WallTime::now();
     if (globalObject)
         m_globalObject = { globalObject->vm(), globalObject };
 
@@ -151,9 +160,7 @@ ConsoleMessage::ConsoleMessage(MessageSource source, MessageType type, MessageLe
         m_message = m_jsonLogValues[0].value;
 }
 
-ConsoleMessage::~ConsoleMessage()
-{
-}
+ConsoleMessage::~ConsoleMessage() = default;
 
 void ConsoleMessage::autogenerateMetadata(JSC::JSGlobalObject* globalObject)
 {
@@ -249,6 +256,9 @@ void ConsoleMessage::addToFrontend(ConsoleFrontendDispatcher& consoleFrontendDis
     if (m_source == MessageSource::Network && !m_requestId.isEmpty())
         messageObject->setNetworkRequestId(m_requestId);
 
+    if (m_timestamp)
+        messageObject->setTimestamp(m_timestamp.secondsSinceEpoch().value());
+
     if ((m_arguments && m_arguments->argumentCount()) || m_jsonLogValues.size()) {
         InjectedScript injectedScript = injectedScriptManager.injectedScriptFor(globalObject());
         if (!injectedScript.hasNoValue()) {
@@ -306,7 +316,7 @@ void ConsoleMessage::addToFrontend(ConsoleFrontendDispatcher& consoleFrontendDis
     }
 
     if (m_callStack)
-        messageObject->setStackTrace(m_callStack->buildInspectorArray());
+        messageObject->setStackTrace(m_callStack->buildInspectorObject());
 
     consoleFrontendDispatcher.messageAdded(WTFMove(messageObject));
 }
@@ -324,11 +334,28 @@ String ConsoleMessage::toString() const
 
 void ConsoleMessage::updateRepeatCountInConsole(ConsoleFrontendDispatcher& consoleFrontendDispatcher)
 {
-    consoleFrontendDispatcher.messageRepeatCountUpdated(m_repeatCount);
+    auto timestamp = WallTime::now();
+    consoleFrontendDispatcher.messageRepeatCountUpdated(m_repeatCount, timestamp.secondsSinceEpoch().value());
+}
+
+static bool isGroupMessage(MessageType type)
+{
+    return type == MessageType::StartGroup
+        || type == MessageType::StartGroupCollapsed
+        || type == MessageType::EndGroup;
 }
 
 bool ConsoleMessage::isEqual(ConsoleMessage* msg) const
 {
+    // `console.clear()` might not always clear the console if the frontend doesn't allow it to, so
+    // ensure that the repeat count is never updated by treating each `console.clear()` as unique.
+    if (m_type == MessageType::Clear || msg->m_type == MessageType::Clear)
+        return false;
+
+    // Groups should always be considered unique.
+    if (isGroupMessage(m_type) || isGroupMessage(msg->m_type))
+        return false;
+
     if (m_arguments) {
         if (!msg->m_arguments || !m_arguments->isEqual(*msg->m_arguments))
             return false;

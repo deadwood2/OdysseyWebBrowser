@@ -28,18 +28,19 @@
 
 #include "InjectedBundleScriptWorld.h"
 #include "WebFrame.h"
-#include "WebFrameLoaderClient.h"
+#include "WebLocalFrameLoaderClient.h"
 #include <WebCore/DOMWindowExtension.h>
 #include <WebCore/DOMWrapperWorld.h>
-#include <WebCore/Frame.h>
 #include <WebCore/FrameLoader.h>
+#include <WebCore/LocalFrame.h>
+#include <wtf/CheckedPtr.h>
 #include <wtf/HashMap.h>
 #include <wtf/NeverDestroyed.h>
 
 namespace WebKit {
 using namespace WebCore;
 
-typedef HashMap<WebCore::DOMWindowExtension*, InjectedBundleDOMWindowExtension*> ExtensionMap;
+using ExtensionMap = HashMap<WeakRef<WebCore::DOMWindowExtension>, WeakRef<InjectedBundleDOMWindowExtension>>;
 static ExtensionMap& allExtensions()
 {
     static NeverDestroyed<ExtensionMap> map;
@@ -58,20 +59,20 @@ InjectedBundleDOMWindowExtension* InjectedBundleDOMWindowExtension::get(DOMWindo
 }
 
 InjectedBundleDOMWindowExtension::InjectedBundleDOMWindowExtension(WebFrame* frame, InjectedBundleScriptWorld* world)
-    : m_coreExtension(DOMWindowExtension::create(frame->coreFrame() ? frame->coreFrame()->window() : nullptr, world->coreWorld()))
+    : m_coreExtension(DOMWindowExtension::create(frame->coreLocalFrame() ? frame->coreLocalFrame()->window() : nullptr, world->coreWorld()))
 {
-    allExtensions().add(m_coreExtension.get(), this);
+    allExtensions().add(m_coreExtension.get(), *this);
 }
 
 InjectedBundleDOMWindowExtension::~InjectedBundleDOMWindowExtension()
 {
-    ASSERT(allExtensions().contains(m_coreExtension.get()));
-    allExtensions().remove(m_coreExtension.get());
+    ASSERT(allExtensions().contains(m_coreExtension));
+    allExtensions().remove(m_coreExtension);
 }
 
-WebFrame* InjectedBundleDOMWindowExtension::frame() const
+RefPtr<WebFrame> InjectedBundleDOMWindowExtension::frame() const
 {
-    Frame* frame = m_coreExtension->frame();
+    auto* frame = m_coreExtension->frame();
     if (!frame)
         return nullptr;
 

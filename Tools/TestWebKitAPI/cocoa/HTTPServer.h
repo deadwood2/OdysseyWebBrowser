@@ -32,32 +32,90 @@
 #import <wtf/RetainPtr.h>
 #import <wtf/text/StringHash.h>
 
+#if (_LIBCPP_VERSION >= 14000) && !defined(_LIBCPP_HAS_NO_CXX20_COROUTINES)
+#import <coroutine>
+#else
+// FIXME: Remove this once all supported toolchains have non-experimental coroutine support.
+#import <experimental/coroutine>
+namespace std {
+using std::experimental::coroutine_handle;
+using std::experimental::suspend_never;
+using std::experimental::suspend_always;
+}
+#endif
+
+OBJC_CLASS NSURLRequest;
+
 namespace TestWebKitAPI {
 
 class Connection;
 struct HTTPResponse;
 
+template<typename PromiseType>
+struct CoroutineHandle {
+    CoroutineHandle(std::coroutine_handle<PromiseType>&& handle)
+        : handle(WTFMove(handle)) { }
+    CoroutineHandle(const CoroutineHandle&) = delete;
+    CoroutineHandle(CoroutineHandle&& other)
+        : handle(std::exchange(other.handle, nullptr)) { }
+    ~CoroutineHandle()
+    {
+        if (handle)
+            handle.destroy();
+    }
+    std::coroutine_handle<PromiseType> handle;
+};
+
+struct Task {
+    struct promise_type {
+        Task get_return_object() { return { std::coroutine_handle<promise_type>::from_promise(*this) }; }
+        std::suspend_never initial_suspend() { return { }; }
+        std::suspend_always final_suspend() noexcept { return { }; }
+        void unhandled_exception() { }
+        void return_void() { }
+    };
+    CoroutineHandle<promise_type> handle;
+};
+
+class ReceiveOperation;
+class SendOperation;
+
 class HTTPServer {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     struct RequestData;
-    enum class Protocol : uint8_t { Http, Https, HttpsWithLegacyTLS, Http2 };
+    enum class Protocol : uint8_t { Http, Https, HttpsWithLegacyTLS, Http2, HttpsProxy, HttpsProxyWithAuthentication };
     using CertificateVerifier = Function<void(sec_protocol_metadata_t, sec_trust_t, sec_protocol_verify_complete_t)>;
 
     HTTPServer(std::initializer_list<std::pair<String, HTTPResponse>>, Protocol = Protocol::Http, CertificateVerifier&& = nullptr, RetainPtr<SecIdentityRef>&& = nullptr, std::optional<uint16_t> port = { });
     HTTPServer(Function<void(Connection)>&&, Protocol = Protocol::Http);
+    enum class UseCoroutines : bool { Yes };
+    HTTPServer(UseCoroutines, Function<Task(Connection)>&&, Protocol = Protocol::Http);
     ~HTTPServer();
     uint16_t port() const;
-    NSURLRequest *request(const String& path = "/"_str) const;
+    String origin() const;
+    NSURLRequest *request(StringView path = "/"_s) const;
+    NSURLRequest *requestWithLocalhost(StringView path = "/"_s) const;
+    WKWebViewConfiguration *httpsProxyConfiguration() const;
+    size_t totalConnections() const;
     size_t totalRequests() const;
     void cancel();
+    void terminateAllConnections(CompletionHandler<void()>&&);
+
+    void addResponse(String&& path, HTTPResponse&&);
+    void setResponse(String&& path, HTTPResponse&&);
 
     static void respondWithOK(Connection);
     static void respondWithChallengeThenOK(Connection);
     static String parsePath(const Vector<char>& request);
+    static String parseBody(const Vector<char>&);
+    static Vector<uint8_t> testPrivateKey();
+    static Vector<uint8_t> testCertificate();
 
 private:
     static RetainPtr<nw_parameters_t> listenerParameters(Protocol, CertificateVerifier&&, RetainPtr<SecIdentityRef>&&, std::optional<uint16_t> port);
     static void respondToRequests(Connection, Ref<RequestData>);
+    const char* scheme() const;
 
     Ref<RequestData> m_requestData;
     RetainPtr<nw_listener_t> m_listener;
@@ -68,11 +126,16 @@ class Connection {
 public:
     void send(String&&, CompletionHandler<void()>&& = nullptr) const;
     void send(Vector<uint8_t>&&, CompletionHandler<void()>&& = nullptr) const;
-    void send(RetainPtr<dispatch_data_t>&&, CompletionHandler<void()>&& = nullptr) const;
+    void send(RetainPtr<dispatch_data_t>&&, CompletionHandler<void(bool)>&& = nullptr) const;
+    SendOperation awaitableSend(Vector<uint8_t>&&);
+    SendOperation awaitableSend(String&&);
+    SendOperation awaitableSend(RetainPtr<dispatch_data_t>&&);
+    void sendAndReportError(Vector<uint8_t>&&, CompletionHandler<void(bool)>&&) const;
     void receiveBytes(CompletionHandler<void(Vector<uint8_t>&&)>&&, size_t minimumSize = 1) const;
     void receiveHTTPRequest(CompletionHandler<void(Vector<char>&&)>&&, Vector<char>&& buffer = { }) const;
+    ReceiveOperation awaitableReceiveHTTPRequest() const;
     void webSocketHandshake(CompletionHandler<void()>&& = { });
-    void terminate();
+    void terminate(CompletionHandler<void()>&& = { });
     void cancel();
 
 private:
@@ -83,8 +146,37 @@ private:
     RetainPtr<nw_connection_t> m_connection;
 };
 
+class ReceiveOperation {
+public:
+    ReceiveOperation(const Connection& connection)
+        : m_connection(connection) { }
+    bool await_ready() { return false; }
+    void await_suspend(std::coroutine_handle<>);
+    Vector<char> await_resume() { return WTFMove(m_result); }
+private:
+    Connection m_connection;
+    Vector<char> m_result;
+};
+
+class SendOperation {
+public:
+    SendOperation(RetainPtr<dispatch_data_t>&& data, const Connection& connection)
+        : m_data(WTFMove(data))
+        , m_connection(connection) { }
+    bool await_ready() { return false; }
+    void await_suspend(std::coroutine_handle<>);
+    void await_resume() { }
+private:
+    RetainPtr<dispatch_data_t> m_data;
+    Connection m_connection;
+};
+
 struct HTTPResponse {
-    enum class TerminateConnection { No, Yes };
+    enum class Behavior : uint8_t {
+        SendResponseNormally,
+        TerminateConnectionAfterReceivingResponse,
+        NeverSendResponse
+    };
 
     HTTPResponse(Vector<uint8_t>&& body)
         : body(WTFMove(body)) { }
@@ -97,8 +189,8 @@ struct HTTPResponse {
         : statusCode(statusCode)
         , headerFields(WTFMove(headerFields))
         , body(bodyFromString(body)) { }
-    HTTPResponse(TerminateConnection terminateConnection)
-        : terminateConnection(terminateConnection) { }
+    HTTPResponse(Behavior behavior)
+        : behavior(behavior) { }
 
     HTTPResponse(const HTTPResponse&) = default;
     HTTPResponse(HTTPResponse&&) = default;
@@ -107,13 +199,13 @@ struct HTTPResponse {
     HTTPResponse& operator=(HTTPResponse&&) = default;
 
     enum class IncludeContentLength : bool { No, Yes };
-    Vector<uint8_t> serialize(IncludeContentLength = IncludeContentLength::Yes);
+    Vector<uint8_t> serialize(IncludeContentLength = IncludeContentLength::Yes) const;
     static Vector<uint8_t> bodyFromString(const String&);
 
     unsigned statusCode { 200 };
     HashMap<String, String> headerFields;
     Vector<uint8_t> body;
-    TerminateConnection terminateConnection { TerminateConnection::No };
+    Behavior behavior { Behavior::SendResponseNormally };
 };
 
 namespace H2 {
@@ -170,6 +262,8 @@ private:
 };
 
 } // namespace H2
+
+RetainPtr<dispatch_data_t> dataFromVector(Vector<uint8_t>&&);
 
 } // namespace TestWebKitAPI
 

@@ -30,7 +30,6 @@
 #import "DOMKeyboardEvent.h"
 #import "DOMMouseEvent.h"
 #import "DOMMutationEvent.h"
-#import "DOMOverflowEvent.h"
 #import "DOMProgressEvent.h"
 #import "DOMTextEvent.h"
 #import "DOMWheelEvent.h"
@@ -41,21 +40,19 @@ using WebCore::eventNames;
 
 Class kitClass(WebCore::Event* impl)
 {
-    switch (impl->eventInterface()) {
-    case WebCore::KeyboardEventInterfaceType:
+    switch (impl->interfaceType()) {
+    case WebCore::EventInterfaceType::KeyboardEvent:
         return [DOMKeyboardEvent class];
-    case WebCore::MouseEventInterfaceType:
+    case WebCore::EventInterfaceType::MouseEvent:
         return [DOMMouseEvent class];
-    case WebCore::MutationEventInterfaceType:
+    case WebCore::EventInterfaceType::MutationEvent:
         return [DOMMutationEvent class];
-    case WebCore::OverflowEventInterfaceType:
-        return [DOMOverflowEvent class];
-    case WebCore::ProgressEventInterfaceType:
-    case WebCore::XMLHttpRequestProgressEventInterfaceType:
+    case WebCore::EventInterfaceType::ProgressEvent:
+    case WebCore::EventInterfaceType::XMLHttpRequestProgressEvent:
         return [DOMProgressEvent class];
-    case WebCore::TextEventInterfaceType:
+    case WebCore::EventInterfaceType::TextEvent:
         return [DOMTextEvent class];
-    case WebCore::WheelEventInterfaceType:
+    case WebCore::EventInterfaceType::WheelEvent:
         return [DOMWheelEvent class];
     default:
         if (impl->isUIEvent())

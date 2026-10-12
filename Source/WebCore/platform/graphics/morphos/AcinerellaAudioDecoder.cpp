@@ -1,3 +1,5 @@
+#include "config.h"
+
 #include "AcinerellaAudioDecoder.h"
 #include "AcinerellaContainer.h"
 #include "MediaPlayerMorphOS.h"
@@ -7,6 +9,9 @@
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include <dos/dos.h>
+#include <proto/intuition.h>
+#include <proto/muimaster.h>
+#include <intuition/intuition.h>
 
 namespace WebCore {
 namespace Acinerella {
@@ -17,9 +22,195 @@ namespace Acinerella {
 #define AHI_BASE_NAME m_ahiBase
 
 #define D(x)
-#define DSYNC(x) 
-#define DSPAM(x) 
-#define DSPAMTS(x) 
+#define DTHREAD(x) 
+#define DAAR(x)
+#define DFILL(x)
+#define DSPAM(x)
+
+AcinerellaAudioRequest::AcinerellaAudioRequest(const int frequency, const int channels)
+{
+    DAAR(dprintf("[AD]%s: %p\n", __func__, this));
+    m_msgPort = CreateMsgPort();
+
+    if (nullptr != m_msgPort)
+    {
+        m_request = reinterpret_cast<AHIRequest*>(CreateIORequest(m_msgPort, sizeof(struct AHIRequest)));
+        if (nullptr != m_request)
+        {
+            m_request->ahir_Version = 5;
+            m_frequency = frequency;
+            m_channels = channels;
+            
+            if (0 != OpenDevice("ahi.device", 0, reinterpret_cast<IORequest *>(m_request), 0))
+            {
+                DeleteIORequest(reinterpret_cast<IORequest *>(m_request));
+                m_request = nullptr;
+                DeleteMsgPort(m_msgPort);
+                m_msgPort = nullptr;
+            }
+        }
+    }
+}
+
+AcinerellaAudioRequest::AcinerellaAudioRequest(RefPtr<AcinerellaAudioRequest> primary)
+{
+    DAAR(dprintf("[AD]%s: %p\n", __func__, this));
+    m_primaryRequest = primary;
+    if (!!m_primaryRequest && primary->isValid())
+    {
+        m_msgPort = primary->m_msgPort;
+        m_request = reinterpret_cast<AHIRequest*>(malloc(sizeof(struct AHIRequest)));
+        m_frequency = primary->m_frequency;
+        m_channels = primary->m_channels;
+        m_volume = primary->m_volume;
+        
+        if (nullptr != m_request)
+        {
+            memcpy(m_request, primary->m_request, sizeof(struct AHIRequest));
+        }
+    }
+}
+
+AcinerellaAudioRequest::~AcinerellaAudioRequest()
+{
+    DAAR(dprintf("[AD]%s: %p\n", __func__, this));
+
+    if (m_pending)
+        WaitIO(reinterpret_cast<IORequest *>(m_request));
+
+    if (!!m_primaryRequest)
+    {
+        free(m_request);
+    }
+    else if (m_request)
+    {
+        CloseDevice(reinterpret_cast<IORequest *>(m_request));
+        DeleteIORequest(reinterpret_cast<IORequest *>(m_request));
+        DeleteMsgPort(m_msgPort);
+    }
+}
+
+void AcinerellaAudioRequest::setVolume(double volume)
+{
+    m_volume = (LONG) (double(0x10000L) * volume);
+}
+
+size_t AcinerellaAudioRequest::push(const uint8_t *frames, const size_t byteCount)
+{
+    DAAR(dprintf("[AD]%s: %p bytes %lu\n", __func__, this, byteCount));
+
+    if (m_pending)
+    {
+        dprintf("[AD]%s: attempted to write to a pending buffer\n", __func__);
+        return 0;
+    }
+
+    size_t max = std::min(sizeof(m_buffer) - m_bufferUsed, byteCount);
+
+    if (max > 0)
+    {
+        memcpy(m_buffer + m_bufferUsed, frames, max);
+        m_bufferUsed += max;
+    }
+
+    return max;
+}
+
+void AcinerellaAudioRequest::play(RefPtr<AcinerellaAudioRequest> continuation)
+{
+    DAAR(dprintf("[AD]%s: %p\n", __func__, this));
+    if (m_pending)
+    {
+        dprintf("[AD]%s: attempted to play a pending buffer\n", __func__);
+        return;
+    }
+
+    m_request->ahir_Std.io_Command = CMD_WRITE;
+    m_request->ahir_Std.io_Message.mn_Node.ln_Pri = 0;
+    m_request->ahir_Std.io_Data = m_buffer;
+    m_request->ahir_Std.io_Length = m_bufferUsed;
+    m_request->ahir_Std.io_Offset = m_paused ? m_continuation : 0;
+    m_request->ahir_Frequency = m_frequency;
+    m_request->ahir_Volume = m_volume;
+    m_request->ahir_Position = 0x00008000; // balance
+    m_request->ahir_Type = (m_channels == 2) ? AHIST_S16S : AHIST_M16S;
+    m_request->ahir_Link = !!continuation ? continuation->m_request : nullptr;
+    m_continuation = sizeof(m_buffer);
+    m_paused = false;
+    m_pending = true;
+
+    SendIO(reinterpret_cast<IORequest *>(m_request));
+}
+
+void AcinerellaAudioRequest::pause()
+{
+    if (m_pending)
+    {
+        AbortIO(reinterpret_cast<IORequest *>(m_request));
+        WaitIO(reinterpret_cast<IORequest *>(m_request));
+        m_pending = false;
+        m_paused = true;
+        m_continuation = m_request->ahir_Std.io_Actual;
+        DAAR(dprintf("[AD]%s: %p continuation %lu of %lu\n", __func__, this, m_continuation, m_bufferUsed));
+    }
+}
+
+void AcinerellaAudioRequest::stop()
+{
+    if (m_pending)
+    {
+        AbortIO(reinterpret_cast<IORequest *>(m_request));
+        WaitIO(reinterpret_cast<IORequest *>(m_request));
+        m_pending = false;
+        m_paused = false;
+        m_continuation = sizeof(m_buffer);
+        m_bufferUsed = 0;
+    }
+}
+
+size_t AcinerellaAudioRequest::dataToPlayAfterResuming()
+{
+    if (m_paused && m_bufferUsed && m_continuation < m_bufferUsed)
+        return m_bufferUsed - m_continuation;
+    return 0;
+}
+
+void AcinerellaAudioRequest::onDone()
+{
+    m_pending = false;
+    m_continuation = sizeof(m_buffer);
+    m_bufferUsed = 0;
+}
+
+RefPtr<AcinerellaAudioRequest> AcinerellaAudioRequest::poll(RefPtr<AcinerellaAudioRequest>& requestA, RefPtr<AcinerellaAudioRequest>& requestB)
+{
+    struct AHIRequest *r;
+
+    DAAR(dprintf("[AD]%s:\n", __func__));
+
+    while ((r = reinterpret_cast<AHIRequest*>(GetMsg(requestA->m_msgPort))))
+    {
+        if (requestA->m_request == r)
+        {
+            requestA->onDone();
+            DAAR(dprintf("[AD]%s: %p: %d, %p: %d\n", __func__, requestA.get(), requestA->m_pending, requestB.get(),requestB->m_pending));
+            return requestA;
+        }
+        else if (requestB->m_request == r)
+        {
+            requestB->onDone();
+            DAAR(dprintf("[AD]%s: %p: %d, %p: %d\n", __func__, requestA.get(), requestA->m_pending, requestB.get(),requestB->m_pending));
+            return requestB;
+        }
+
+    }
+    
+    DAAR(dprintf("[AD]%s: %p: %d, %p: %d\n", __func__, requestA.get(), requestA->m_pending, requestB.get(),requestB->m_pending));
+    return nullptr;
+}
+
+
+///--------------------------------------- 
 
 AcinerellaAudioDecoder::AcinerellaAudioDecoder(AcinerellaDecoderClient* client, RefPtr<AcinerellaPointer> acinerella, RefPtr<AcinerellaMuxedBuffer> buffer, int index, const ac_stream_info &info, bool isLiveStream, bool isHLS)
 	: AcinerellaDecoder(client, acinerella, buffer, index, info, isLiveStream, isHLS)
@@ -28,11 +219,6 @@ AcinerellaAudioDecoder::AcinerellaAudioDecoder(AcinerellaDecoderClient* client, 
 	, m_audioBits(info.additional_info.audio_info.bit_depth)
 {
 	D(dprintf("[AD]%s: %p\n", __func__, this));
-	for (int i = 0; i < 2; i++)
-	{
-		m_ahiSample[i].ahisi_Address = nullptr;
-		m_ahiSampleTimestamp[i] = 0.f;
-	}
 }
 
 void AcinerellaAudioDecoder::startPlaying()
@@ -40,23 +226,24 @@ void AcinerellaAudioDecoder::startPlaying()
 	D(dprintf("[AD]%s: %p\n", __func__, this));
 	EP_EVENT(start);
 	initializeAudio();
-	
-	if (m_ahiControl)
-	{
-		AHI_ControlAudio(m_ahiControl, AHIC_Play, TRUE, TAG_DONE);
-		m_playing = true;
-	}
+
+	m_playing = true;
+    signalAHIThread([&](){
+        m_ahiThreadTransitionPlaying.store(true);
+        m_ahiThreadTransitionPaused.store(false);
+    });
 }
 
 void AcinerellaAudioDecoder::stopPlaying()
 {
 	D(dprintf("[AD]%s: %p\n", __func__, this));
 	EP_EVENT(stop);
-	if (m_ahiControl)
-	{
-		AHI_ControlAudio(m_ahiControl, AHIC_Play, FALSE, TAG_DONE);
-		m_playing = false;
-	}
+
+    m_playing = false;
+    signalAHIThread([&](){
+        m_ahiThreadTransitionPaused.store(true);
+        m_ahiThreadTransitionPlaying.store(false);
+    });
 }
 
 void AcinerellaAudioDecoder::onCoolDown()
@@ -66,16 +253,15 @@ void AcinerellaAudioDecoder::onCoolDown()
 
 void AcinerellaAudioDecoder::doSetVolume(double volume)
 {
-	if (m_ahiControl)
-	{
-		AHI_SetVol(0, (LONG) (double(0x10000L) * volume),
-			0x8000L, m_ahiControl, AHISF_IMM);
-	}
+    m_volume = volume;
+    signalAHIThread([&](){
+        m_ahiThreadVolumeChanged.store(true);
+    });
 }
 
 bool AcinerellaAudioDecoder::isReadyToPlay() const
 {
-	return isWarmedUp() && m_ahiControl;
+	return isWarmedUp() && !!m_ahiThread;
 }
 
 bool AcinerellaAudioDecoder::isWarmedUp() const
@@ -92,128 +278,51 @@ bool AcinerellaAudioDecoder::initializeAudio()
 {
 	D(dprintf("[AD]%s:\n", __func__));
 	EP_SCOPE(initializeAudio);
-	
-	if (m_ahiControl)
+
+	if (m_ahiThread)
 		return true;
-	
-	if ((m_ahiPort = CreateMsgPort()))
-	{
-		if ((m_ahiIO = reinterpret_cast<AHIRequest *>(CreateIORequest(m_ahiPort, sizeof(AHIRequest)))))
-		{
-			m_ahiIO->ahir_Version = 4;
-			if (0 == OpenDevice(AHINAME, AHI_NO_UNIT, reinterpret_cast<IORequest *>(m_ahiIO), 0))
-			{
-				m_ahiBase = reinterpret_cast<Library *>(m_ahiIO->ahir_Std.io_Device);
+    
+    m_ahiThreadShuttingDown = false;
+    m_ahiThreadTransitionPlaying.store(false);
+    m_ahiThreadTransitionPaused.store(false);
 
-				D(dprintf("[AD]%s: ahiBase %p\n", __func__, m_ahiBase));
+    m_ahiThread = Thread::create("Acinerella AHI Pump"_s, [this] {
+        ahiThreadEntryPoint();
+    });
+    
+    if (!!m_ahiThread)
+    {
+        m_ahiThreadReady.wait();
 
-				static struct EmulLibEntry GATE_SoundFunc = {
-					TRAP_LIB, 0, (void (*)(void))AcinerellaAudioDecoder::soundFunc
-				};
+        decodeUntilBufferFull();
+        auto lock = Locker(m_lock);
+        if (!m_decodedFrames.isEmpty())
+        {
+            const auto *frame = m_decodedFrames.first().frame();
+            dispatch([this, positionToAnnounce(frame->timecode), protectedThis(Ref{*this})]() {
+                if (!m_ahiThreadShuttingDown)
+                {
+                    D(dprintf("[AD]initializeAudio: initialized to %f\n", float(m_position)));
+                    m_position = positionToAnnounce;
+                    onPositionChanged();
+                }
+            });
+        }
 
-				static struct Hook __soundHook = {
-					{NULL,NULL},
-					(ULONG (*)()) &GATE_SoundFunc,
-					NULL, NULL,
-				};
+        return true;
+    }
+    
+    return false;
+}
 
-				if ((m_ahiControl = AHI_AllocAudio(
-					AHIA_UserData, reinterpret_cast<IPTR>(this),
-					AHIA_AudioID, AHI_DEFAULT_ID,
-					AHIA_Sounds, 2, AHIA_Channels, 1,
-					AHIA_MixFreq, m_audioRate,
-					AHIA_SoundFunc, reinterpret_cast<IPTR>(&__soundHook),
-					TAG_DONE)))
-				{
-					ULONG maxSamples = 0, mixFreq = 0;
-
-					AHI_GetAudioAttrs(AHI_INVALID_ID, m_ahiControl,
-						AHIDB_MaxPlaySamples, reinterpret_cast<IPTR>(&maxSamples),
-						TAG_DONE);
-					AHI_ControlAudio(m_ahiControl,
-						AHIC_MixFreq_Query, reinterpret_cast<IPTR>(&mixFreq),
-						TAG_DONE);
-					
-					D(dprintf("[AD]%s: control allocated\n", __func__));
-					
-					if (maxSamples && mixFreq)
-					{
-						m_ahiSampleLength = maxSamples * m_audioRate / mixFreq;
-						
-						m_ahiSampleLength = std::max(m_ahiSampleLength, (m_audioRate / 2 / m_ahiSampleLength) * m_ahiSampleLength);
-						
-						D(dprintf("[AD]%s: sample length: %d\n", __func__, m_ahiSampleLength));
-
-						for (int i = 0; i < 2; i++)
-						{
-							m_ahiSample[i].ahisi_Type = AHIST_S16S;
-							m_ahiSample[i].ahisi_Length = m_ahiSampleLength;
-							m_ahiSample[i].ahisi_Address = malloc(m_ahiSampleLength * 4);
-						}
-						
-						if (m_ahiSample[0].ahisi_Address && m_ahiSample[1].ahisi_Address)
-						{
-							bzero(m_ahiSample[0].ahisi_Address, m_ahiSampleLength * 4);
-							bzero(m_ahiSample[1].ahisi_Address, m_ahiSampleLength * 4);
-							
-							m_ahiSampleBeingPlayed = 0;
-							m_ahiThreadShuttingDown = false;
-							m_ahiFrameOffset = 0;
-							m_didFlushBuffers = true;
-							
-							fillBuffer(0);
-							
-							m_ahiThread = Thread::create("Acinerella AHI Pump", [this] {
-								ahiThreadEntryPoint();
-							});
-							
-							if (0 == AHI_LoadSound(0, AHIST_DYNAMICSAMPLE, reinterpret_cast<APTR>(&m_ahiSample[0]), m_ahiControl)
-								&& 0 == AHI_LoadSound(1, AHIST_DYNAMICSAMPLE, reinterpret_cast<APTR>(&m_ahiSample[1]), m_ahiControl))
-							{
-								D(dprintf("[AD]%s: samples loaded - samplelen %d\n", __func__, m_ahiSampleLength));
-								if (0 == AHI_ControlAudio(m_ahiControl, AHIC_Play, FALSE, TAG_DONE))
-								{
-									D(dprintf("[AD]%s: calling AHI_Play!\n", __func__));
-									AHI_Play(m_ahiControl,
-										AHIP_BeginChannel, 0,
-										AHIP_Freq, m_audioRate,
-										AHIP_Vol, 0x10000L, AHIP_Pan, 0x8000L,
-										AHIP_Sound, 0, AHIP_Offset, 0, AHIP_Length, 0,
-										AHIP_EndChannel, 0,
-										TAG_DONE);
-									m_playing = false;
-								}
-								else
-								{
-									D(dprintf("[AD]%s: AHI_ControlAudio failed\n", __func__));
-								}
-							}
-							
-							return true;
-						}
-						
-						for (int i = 0; i < 2; i++)
-						{
-							free(m_ahiSample[i].ahisi_Address);
-							m_ahiSample[i].ahisi_Address = nullptr;
-						}
-					}
-
-					AHI_FreeAudio(m_ahiControl);
-					m_ahiControl = 0;
-				}
-			}
-			
-			DeleteIORequest(reinterpret_cast<IORequest *>(m_ahiIO));
-			m_ahiIO = nullptr;
-			m_ahiBase = nullptr;
-		}
-		
-		DeleteMsgPort(m_ahiPort);
-		m_ahiPort = nullptr;
-	}
-	
-	return false;
+void AcinerellaAudioDecoder::signalAHIThread(std::function<void()>&& func)
+{
+    auto lock = Locker(m_ahiThreadAccessLock);
+    if (m_ahiThreadTask)
+    {
+        func();
+        Signal(m_ahiThreadTask, 1UL << m_ahiThreadStateSignal);
+    }
 }
 
 void AcinerellaAudioDecoder::onThreadShutdown()
@@ -223,7 +332,7 @@ void AcinerellaAudioDecoder::onThreadShutdown()
 
 void AcinerellaAudioDecoder::onGetReadyToPlay()
 {
-	D(dprintf("[AD]%s: waplay %d readying %d warmup %d warmedup %d\n", __func__, m_waitingToPlay, m_readying, m_warminUp, isWarmedUp()));
+	D(dprintf("[AD]%s: readying %d warmup %d warmedup %d\n", __func__, m_readying, m_warminUp, isWarmedUp()));
 	initializeAudio();
 }
 
@@ -232,49 +341,14 @@ void AcinerellaAudioDecoder::ahiCleanup()
 	D(dprintf("[AD]%s:\n", __func__));
 	EP_SCOPE(ahiCleanup);
 
-	if (m_ahiControl)
-	{
-		AHI_ControlAudio(m_ahiControl, AHIC_Play, FALSE, TAG_DONE);
-	}
-
 	if (m_ahiThread)
 	{
-		m_ahiThreadShuttingDown = true;
-		m_ahiSampleConsumed.signal();
-	}
-
-	if (m_ahiControl)
-	{
-		AHI_FreeAudio(m_ahiControl);
-		m_ahiControl = nullptr;
-		D(dprintf("[AD]%s: AHI control disposed\n", __func__));
-	}
-
-	if (m_ahiThread)
-	{
+        signalAHIThread([&]() {
+            m_ahiThreadShuttingDown = true;
+        });
 		m_ahiThread->waitForCompletion();
 		D(dprintf("[AD]%s: AHI thread shut down... \n", __func__));
 		m_ahiThread = nullptr;
-	}
-
-	for (int i = 0; i < 2; i++)
-	{
-		free(m_ahiSample[i].ahisi_Address);
-		m_ahiSample[i].ahisi_Address = nullptr;
-	}
-
-	if (m_ahiIO)
-	{
-		CloseDevice(reinterpret_cast<IORequest *>(m_ahiIO));
-		DeleteIORequest(reinterpret_cast<IORequest *>(m_ahiIO));
-		m_ahiIO = nullptr;
-		m_ahiBase = nullptr;
-	}
-
-	if (m_ahiPort)
-	{
-		DeleteMsgPort(m_ahiPort);
-		m_ahiPort = nullptr;
 	}
 
 	D(dprintf("[AD]%s: done\n", __func__));
@@ -286,14 +360,31 @@ void AcinerellaAudioDecoder::onFrameDecoded(const AcinerellaDecodedFrame &frame)
 	m_bufferedSamples += avframe->buffer_size / 4; // 16bitStereo = 4BPF
 	m_bufferedSeconds = double(m_bufferedSamples) / double(m_audioRate);
 
+	DSPAM(dprintf("[AD]%s: buffered %f. frametime %f\n", __func__, float(m_bufferedSeconds), float(avframe->timecode)));
+
+    if (m_didUnderrun && m_playing && isWarmedUp())
+    {
+        signalAHIThread([&](){
+            m_ahiThreadTransitionPlaying.store(true);
+            m_ahiThreadTransitionPaused.store(false);
+        });
+    }
+
+#if 0
 	if (m_isHLS)// && avframe->timecode <= 0.0)
 	{
 		auto *nonconstframe = const_cast<ac_decoder_frame *>(avframe);
 		nonconstframe->timecode = m_liveTimeCode;
 		m_liveTimeCode += (double((avframe->buffer_size / 4)) / double(m_audioRate));
 	}
+#endif
+}
 
-	DSPAM(dprintf("[AD]%s: buffered %f\n", __func__, m_bufferedSeconds));
+bool AcinerellaAudioDecoder::acceptPackage(RefPtr<AcinerellaPackage>&, double pts)
+{
+    if (pts < m_position)
+        return false;
+    return true;
 }
 
 double AcinerellaAudioDecoder::position() const
@@ -301,56 +392,40 @@ double AcinerellaAudioDecoder::position() const
 	return m_position;
 }
 
-void AcinerellaAudioDecoder::flush()
+void AcinerellaAudioDecoder::flush(bool willSeek)
 {
 	D(dprintf("[AD]%s: flushing audio\n", __func__));
 	EP_SCOPE(flush);
 
-	if (m_ahiControl)
-	{
-		AHI_ControlAudio(m_ahiControl, AHIC_Play, FALSE, TAG_DONE);
-		AHI_UnloadSound(0, m_ahiControl);
-		AHI_UnloadSound(1, m_ahiControl);
-	}
-	
-	AcinerellaDecoder::flush();
+    if (willSeek)
+    {
+        ahiCleanup();
 
-	m_ahiFrameOffset = 0;
-	m_bufferedSeconds = 0;
-	m_bufferedSamples = 0;
-	m_didFlushBuffers = true;
-	m_position = 0;
-	m_liveTimeCode = 0;
+        AcinerellaDecoder::flush(true);
 
-	if (m_ahiControl)
-	{
-		bzero(m_ahiSample[0].ahisi_Address, m_ahiSampleLength * 4);
-		bzero(m_ahiSample[1].ahisi_Address, m_ahiSampleLength * 4);
+        m_bufferedSeconds = 0;
+        m_bufferedSamples = 0;
+        m_position = 0;
+        m_ahiFrameOffset = 0;
+        m_didUnderrun = false;
 
-		AHI_LoadSound(0, AHIST_DYNAMICSAMPLE, reinterpret_cast<APTR>(&m_ahiSample[0]), m_ahiControl);
-		AHI_LoadSound(1, AHIST_DYNAMICSAMPLE, reinterpret_cast<APTR>(&m_ahiSample[1]), m_ahiControl);
-	}
-
-		D({
-			auto lock = Locker(m_lock);
-			if (!m_decodedFrames.empty())
-			{
-				dprintf("First audio frame @ %f\n", float(m_decodedFrames.front().frame()->timecode));
-			}
-			else
-			{
-				dprintf("Decoder empty\n");
-			}
-		});
-
-	if (m_playing && m_ahiControl)
-	{
-		decodeUntilBufferFull();
-
-		uint32_t index = m_ahiSampleBeingPlayed % 2; // this sample will play next
-		fillBuffer(index);
-		AHI_ControlAudio(m_ahiControl, AHIC_Play, TRUE, TAG_DONE);
-	}
+        if (m_playing)
+        {
+            decodeUntilBufferFull();
+            startPlaying();
+        }
+    }
+    else
+    {
+        AcinerellaDecoder::flush(false);
+        m_bufferedSeconds = 0;
+        m_bufferedSamples = 0;
+        if (m_playing)
+        {
+            decodeUntilBufferFull();
+            startPlaying();
+        }
+    }
 }
 
 void AcinerellaAudioDecoder::dumpStatus()
@@ -360,170 +435,274 @@ void AcinerellaAudioDecoder::dumpStatus()
 		float(bufferSize()), m_bufferedSamples, m_decodedFrames.size(), float(position()), m_isLive, m_isHLS);
 }
 
-#undef AHI_BASE_NAME
-#define AHI_BASE_NAME me->m_ahiBase
-void AcinerellaAudioDecoder::soundFunc()
+bool AcinerellaAudioDecoder::fillBuffer(RefPtr<AcinerellaAudioRequest>& request, double desiredPosition)
 {
-	AHIAudioCtrl *ahiCtrl = reinterpret_cast<AHIAudioCtrl *>(REG_A2);
-	AcinerellaAudioDecoder *me = reinterpret_cast<AcinerellaAudioDecoder *>(ahiCtrl->ahiac_UserData);
-	
-	me->m_ahiSampleBeingPlayed ++;
-	AHI_SetSound(0, me->m_ahiSampleBeingPlayed % 2, 0, 0, me->m_ahiControl, 0);
+    bool success = false;
+    bool didPopFrames = false;
 
-	// D(dprintf("[AD]%s: setSound %d (%d)\n", __func__, me->m_ahiSampleBeingPlayed % 2, me->m_ahiSampleBeingPlayed));
+    DFILL(dprintf("[AD]%s: request %p afo %lu\n", __func__, request.get(), m_ahiFrameOffset));
 
-	me->m_ahiSampleConsumed.signal();
-}
+    request->setIsEOF(false);
 
-void AcinerellaAudioDecoder::fillBuffer(int index)
-{
-	EP_SCOPE(fillBuffer);
-	uint32_t offset = 0;
-	uint32_t bytesLeft = m_ahiSampleLength * 4;
-	bool didPopFrames = false;
-	bool didSetTimecode = false;
+    {
+        auto lock = Locker(m_lock);
 
-	DSPAM(dprintf("[AD]%s: sample %d, next index: %d\n", __func__, m_ahiSampleBeingPlayed, index));
+        for (;;)
+        {
+            if (m_decodedFrames.isEmpty())
+                break;
 
-	{
-		auto lock = Locker(m_lock);
-		while (!m_decodedFrames.empty() && bytesLeft)
-		{
-			if (0 == bytesLeft)
-				break;
+            if (m_didUnderrun)
+            {
+                D(dprintf("[AD]%s: Underrun, %f buffered. warmedup %d\n", __func__, float(bufferSize()), isWarmedUp()));
+                if (!isWarmedUp())
+                    break;
+                m_didUnderrun = false;
+            }
 
-			if (m_decodedFrames.empty())
-				break;
-				
-			if (m_didUnderrun)
-			{
-				D(dprintf("[AD]%s: Underrun, %f buddered\n", __func__, float(bufferSize())));
-				if (!isWarmedUp())
-					break;
-				m_didUnderrun = false;
-			}
+            const auto *frame = m_decodedFrames.first().frame();
 
-			const auto *frame = m_decodedFrames.front().frame();
+            DFILL(dprintf("[AD]%s: processing frame @ %f, afo %lu of %lu\n", __func__, float(frame->timecode), m_ahiFrameOffset, frame->buffer_size));
 
-			if (!m_isLive && m_position > frame->timecode)
-			{
-				m_bufferedSamples -= frame->buffer_size / 4; // 16bitStereo = 4BPF
-				m_bufferedSeconds = double(m_bufferedSamples) / double(m_audioRate);
-				m_decodedFrames.pop();
-				didPopFrames = true;
-				continue;
-			}
+            // skip frames
+            if (!m_isLive && desiredPosition > frame->timecode)
+            {
+                m_bufferedSamples -= frame->buffer_size / 4; // 16bitStereo = 4BPF
+                m_bufferedSeconds = double(m_bufferedSamples) / double(m_audioRate);
+                m_decodedFrames.removeFirst();
+                m_ahiFrameOffset = 0;
+                didPopFrames = true;
+                continue;
+            }
 
-			size_t copyBytes = std::min(frame->buffer_size - m_ahiFrameOffset, bytesLeft);
-			
-			DSPAM(dprintf("[AD]%s: cb %d of %d afo %d bs %d\n", __func__, copyBytes, offset, m_ahiFrameOffset, frame->buffer_size));
-			
-			memcpy(reinterpret_cast<uint8_t*>(m_ahiSample[index].ahisi_Address) + offset, frame->pBuffer + m_ahiFrameOffset, copyBytes);
-			
-			m_ahiFrameOffset += copyBytes;
-			offset += copyBytes;
-			bytesLeft -= copyBytes;
+            size_t bytesCopied = request->push(frame->pBuffer + m_ahiFrameOffset, frame->buffer_size - m_ahiFrameOffset);
+            m_ahiFrameOffset += bytesCopied;
+            request->setTimeToAnnounce(frame->timecode);
 
-			if (!didSetTimecode)
-			{
-				m_ahiSampleTimestamp[index] = frame->timecode;
-				if (m_didFlushBuffers) // index should always be 0 with initial
-				{
-					m_ahiSampleTimestamp[1] = m_ahiSampleTimestamp[0] = frame->timecode;
-					m_didFlushBuffers = false;
-				}
-				didSetTimecode = true;
-				DSPAMTS(dprintf("[AD]%s: set timecode %f\n", __func__, float(frame->timecode)));
-			}
-		
-			if (frame->buffer_size == int(m_ahiFrameOffset))
-			{
-				DSPAM(dprintf("[AD]%s: pop frame sized %d at %f\n", __func__, frame->buffer_size, float(frame->timecode)));
-				m_bufferedSamples -= frame->buffer_size / 4; // 16bitStereo = 4BPF
-				m_bufferedSeconds = double(m_bufferedSamples) / double(m_audioRate);
-				m_decodedFrames.pop();
-				m_ahiFrameOffset = 0;
-				didPopFrames = true;
-			}
-		}
-	}
+            if (frame->buffer_size == int(m_ahiFrameOffset))
+            {
+                DFILL(dprintf("[AD]%s: pop frame sized %d at %f\n", __func__, frame->buffer_size, float(frame->timecode)));
+                m_bufferedSamples -= frame->buffer_size / 4; // 16bitStereo = 4BPF
+                m_bufferedSeconds = double(m_bufferedSamples) / double(m_audioRate);
+                m_decodedFrames.removeFirst();
+                m_ahiFrameOffset = 0;
+                didPopFrames = true;
+            }
+            
+            if (request->isFull())
+            {
+                DFILL(dprintf("[AD]%s: request %p is full, afo %lu, bc %lu\n", __func__, request.get(), m_ahiFrameOffset, bytesCopied));
+                success = true;
+                break;
+            }
+        }
+    }
 
-	if (bytesLeft > 0)
-	{
-		// Clear remaining buffer in case of an underrun
-		bzero(reinterpret_cast<uint8_t*>(m_ahiSample[index].ahisi_Address) + offset, bytesLeft);
-		m_didUnderrun = true;
-	}
+    if (!request->isEmpty() && m_decoderEOF)
+    {
+        success = true;
+        request->setIsEOF(true);
+    }
+    
+    if (!request->isFull() && !success)
+    {
+        m_didUnderrun = true;
+        didPopFrames = true;
+    }
+    
+    if (didPopFrames)
+    {
+        dispatch([this, protectedThis(Ref{*this})]() {
+            decodeUntilBufferFull();
+        });
+    }
 
-#if 0
-				BPTR f = Open("sys:out.raw", MODE_READWRITE);
-				if (f)
-				{
-					Seek(f, 0, OFFSET_END);
-					Write(f, m_ahiSample[index].ahisi_Address, m_ahiSampleLength * 4);
-					Close(f);
-				}
-#endif
-
-#if 0 // not needed anymore since frames are timestamped in lives now
-	if (0 && m_isLive)
-	{
-		if (didPopFrames)
-		{
-			dispatch([this, protectedThis(makeRef(*this))]() {
-				if (!m_ahiThreadShuttingDown)
-				{
-					m_position += 0.5f;
-					onPositionChanged();
-					decodeUntilBufferFull();
-				}
-			});
-		}
-	}
-	else
-#endif
-	{
-		double positionToAnnounce = index == 0 ? m_ahiSampleTimestamp[1] : m_ahiSampleTimestamp[0];
-		
-		DSYNC(dprintf("[A] %s: PTS %f, bleft %d offset %d timeleft %f dp %d eof %d live %d\n", __func__, positionToAnnounce, bytesLeft, offset, m_bufferedSeconds, didPopFrames, m_decoderEOF, m_isLive));
-
-		if (didPopFrames)
-		{
-			dispatch([this, positionToAnnounce, protectedThis(makeRef(*this))]() {
-				if (!m_ahiThreadShuttingDown)
-				{
-					m_position = positionToAnnounce;
-					onPositionChanged();
-					decodeUntilBufferFull();
-				}
-			});
-		}
-	}
-	
-	if ((bytesLeft == m_ahiSampleLength * 4) && (m_decoderEOF || (m_position + 1.5f > m_duration && !m_isHLS)))
-	{
-		dispatch([this, protectedThis(makeRef(*this))]() {
-			stopPlaying();
-			if (!m_ahiThreadShuttingDown)
-			{
-				m_position = m_duration;
-				onEnded();
-			}
-		});
-	}
+    return success;
 }
 
 void AcinerellaAudioDecoder::ahiThreadEntryPoint()
 {
-	SetTaskPri(FindTask(0), 50);
+    DTHREAD(dprintf("[AD]%s: started\n", __func__));
+
+    auto requestA = AcinerellaAudioRequest::create(m_audioRate, m_audioChannels);
+    auto requestB = AcinerellaAudioRequest::create(requestA);
+
+    if (!requestA || !requestB || !requestA->isValid() || !requestB->isValid())
+    {
+        DTHREAD(dprintf("[AD]%s: failed to initialize buffers\n", __func__));
+        m_ahiThreadShuttingDown = true;
+        m_ahiThreadReady.signal();
+        return;
+    }
+
+    {
+        Locker lock(m_ahiThreadAccessLock);
+
+        m_ahiThreadTask = FindTask(0);
+        m_ahiThreadStateSignal = AllocSignal(-1);
+    }
+
+    
+    requestA->setVolume(m_volume);
+    requestB->setVolume(m_volume);
+
+    m_ahiThreadReady.signal();
+    DTHREAD(dprintf("[AD]%s: ready\n", __func__));
+
+    const ULONG mpSigBit = 1UL << requestA->sigBit();
+    const ULONG comSigBit = 1UL << m_ahiThreadStateSignal;
+    bool playing = false;
+    double nextPositionToAnnounce = -1.0;
+    double desiredPosition = -1.0;
+
 	while (!m_ahiThreadShuttingDown)
 	{
-		m_ahiSampleConsumed.wait();
-		uint32_t index = m_ahiSampleBeingPlayed % 2; // this sample will play next
-		fillBuffer(index);
-	}
-}
+		ULONG signals = Wait(mpSigBit | comSigBit);
+  
+        if (mpSigBit && signals)
+        {
+            auto requestComplete = AcinerellaAudioRequest::poll(requestA, requestB);
+            
+            if (!!requestComplete)
+            {
+                if (requestComplete->isEOF())
+                {
+                    DTHREAD(dprintf("[AD]%s: ended!\n", __func__));
+                    playing = false;
 
+                    dispatch([this, protectedThis(Ref{*this})]() {
+                        stopPlaying();
+                        if (!m_ahiThreadShuttingDown)
+                        {
+                            m_position = m_duration;
+                            onPositionChanged();
+                            onEnded();
+                        }
+                    });
+                }
+                else
+                {
+                    desiredPosition = requestComplete->timeToAnnounce();
+                
+                    if (requestComplete->timeToAnnounce() > nextPositionToAnnounce)
+                    {
+                        nextPositionToAnnounce = requestComplete->timeToAnnounce() + 0.2;
+                        dispatch([this, positionToAnnounce(requestComplete->timeToAnnounce()), protectedThis(Ref{*this})]() {
+                            if (!m_ahiThreadShuttingDown)
+                            {
+                                m_position = positionToAnnounce;
+                                onPositionChanged();
+                            }
+                        });
+                    }
+                }
+
+                if (playing)
+                {
+                    if (fillBuffer(requestComplete, desiredPosition))
+                    {
+                        requestComplete->play(requestComplete == requestA ? requestB : requestA);
+                    }
+                    else
+                    {
+                        playing = false;
+                    }
+                }
+            }
+
+        }
+        
+        if (m_ahiThreadTransitionPaused.load())
+        {
+            DTHREAD(dprintf("[AD]%s: >> paused\n", __func__));
+            m_ahiThreadTransitionPaused.store(false);
+            playing = false;
+            SetTaskPri(FindTask(0), 0);
+            nextPositionToAnnounce = -1.0;
+            requestA->pause();
+            requestB->pause();
+        }
+        else if (m_ahiThreadTransitionPlaying.load())
+        {
+            DTHREAD(dprintf("[AD]%s: >> playing\n", __func__));
+            m_ahiThreadTransitionPlaying.store(false);
+            playing = true;
+            SetTaskPri(FindTask(0), 50);
+
+            // if both are reporting they have data to play, 
+            if (requestA->dataToPlayAfterResuming() && requestB->dataToPlayAfterResuming())
+            {
+                DTHREAD(dprintf("[AD]%s: >> resuming both...\n", __func__));
+                if (requestA->dataToPlayAfterResuming() < requestB->dataToPlayAfterResuming())
+                {
+                    requestA->play(nullptr);
+                    requestB->play(requestA);
+                }
+                else
+                {
+                    requestB->play(nullptr);
+                    requestA->play(requestB);
+                }
+            }
+            else if (requestA->dataToPlayAfterResuming())
+            {
+                DTHREAD(dprintf("[AD]%s: >> resuming A...\n", __func__));
+                requestB->stop();
+                if (fillBuffer(requestB, desiredPosition))
+                {
+                    requestA->play(nullptr);
+                    requestB->play(requestA);
+                }
+                else
+                {
+                    playing = false;
+                }
+            }
+            else if (requestB->dataToPlayAfterResuming())
+            {
+                DTHREAD(dprintf("[AD]%s: >> resuming B...\n", __func__));
+                requestA->stop();
+                if (fillBuffer(requestA, desiredPosition))
+                {
+                    requestB->play(nullptr);
+                    requestA->play(requestB);
+                }
+                else
+                {
+                    playing = false;
+                }
+            }
+            else
+            {
+                DTHREAD(dprintf("[AD]%s: >> starting both...\n", __func__));
+                requestA->stop();
+                requestB->stop();
+            
+                if (fillBuffer(requestA, desiredPosition) && fillBuffer(requestB, desiredPosition))
+                {
+                    requestA->play(nullptr);
+                    requestB->play(requestA);
+                }
+                else
+                {
+                    playing = false;
+                }
+            }
+        }
+        else if (m_ahiThreadVolumeChanged.load())
+        {
+            requestA->setVolume(m_volume);
+            requestB->setVolume(m_volume);
+            m_ahiThreadVolumeChanged.store(false);
+        }
+	}
+ 
+    SetTaskPri(FindTask(0), 0);
+    DTHREAD(dprintf("[AD]%s: bye!\n", __func__));
+    Locker lock(m_ahiThreadAccessLock);
+    m_ahiThreadTask = nullptr;
+    DTHREAD(dprintf("[AD]%s: exiting...\n", __func__));
+}
 
 }
 }

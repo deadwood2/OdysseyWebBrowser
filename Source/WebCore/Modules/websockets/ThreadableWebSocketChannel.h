@@ -32,7 +32,9 @@
 
 #include "WebSocketIdentifier.h"
 #include <wtf/Forward.h>
+#include <wtf/Identified.h>
 #include <wtf/Noncopyable.h>
+#include <wtf/ObjectIdentifier.h>
 #include <wtf/URL.h>
 
 namespace JSC {
@@ -47,19 +49,21 @@ class ResourceRequest;
 class ResourceResponse;
 class ScriptExecutionContext;
 class SocketProvider;
+class WebSocketChannel;
+class WebSocketChannelInspector;
 class WebSocketChannelClient;
 
-class ThreadableWebSocketChannel {
+using WebSocketChannelIdentifier = LegacyNullableAtomicObjectIdentifier<WebSocketChannel>;
+
+class ThreadableWebSocketChannel : public Identified<WebSocketIdentifier> {
     WTF_MAKE_NONCOPYABLE(ThreadableWebSocketChannel);
 public:
-    static Ref<ThreadableWebSocketChannel> create(Document&, WebSocketChannelClient&, SocketProvider&);
-    static Ref<ThreadableWebSocketChannel> create(ScriptExecutionContext&, WebSocketChannelClient&, SocketProvider&);
+    static RefPtr<ThreadableWebSocketChannel> create(Document&, WebSocketChannelClient&, SocketProvider&);
+    static RefPtr<ThreadableWebSocketChannel> create(ScriptExecutionContext&, WebSocketChannelClient&, SocketProvider&);
     WEBCORE_EXPORT ThreadableWebSocketChannel();
 
     void ref() { refThreadableWebSocketChannel(); }
     void deref() { derefThreadableWebSocketChannel(); }
-
-    WebSocketIdentifier identifier() const { return m_identifier; };
 
     enum class ConnectStatus { KO, OK };
     virtual ConnectStatus connect(const URL&, const String& protocol) = 0;
@@ -67,26 +71,46 @@ public:
     virtual String extensions() = 0; // Will be available after didConnect() callback is invoked.
 
     enum SendResult { SendSuccess, SendFail };
-    virtual SendResult send(const String& message) = 0;
+    virtual SendResult send(CString&&) = 0;
     virtual SendResult send(const JSC::ArrayBuffer&, unsigned byteOffset, unsigned byteLength) = 0;
     virtual SendResult send(Blob&) = 0;
 
     virtual unsigned bufferedAmount() const = 0;
     virtual void close(int code, const String& reason) = 0;
     // Log the reason text and close the connection. Will call didClose().
-    virtual void fail(const String& reason) = 0;
+    virtual void fail(String&& reason) = 0;
     virtual void disconnect() = 0; // Will suppress didClose().
 
     virtual void suspend() = 0;
     virtual void resume() = 0;
 
-    virtual unsigned long progressIdentifier() const = 0;
+    virtual const WebSocketChannelInspector* channelInspector() const { return nullptr; };
+    virtual WebSocketChannelIdentifier progressIdentifier() const = 0;
     virtual bool hasCreatedHandshake() const = 0;
     virtual bool isConnected() const = 0;
     using CookieGetter = Function<String(const URL&)>;
     virtual ResourceRequest clientHandshakeRequest(const CookieGetter&) const = 0;
     virtual const ResourceResponse& serverHandshakeResponse() const = 0;
 
+    enum CloseEventCode {
+        CloseEventCodeNotSpecified = -1,
+        CloseEventCodeNormalClosure = 1000,
+        CloseEventCodeGoingAway = 1001,
+        CloseEventCodeProtocolError = 1002,
+        CloseEventCodeUnsupportedData = 1003,
+        CloseEventCodeFrameTooLarge = 1004,
+        CloseEventCodeNoStatusRcvd = 1005,
+        CloseEventCodeAbnormalClosure = 1006,
+        CloseEventCodeInvalidFramePayloadData = 1007,
+        CloseEventCodePolicyViolation = 1008,
+        CloseEventCodeMessageTooBig = 1009,
+        CloseEventCodeMandatoryExt = 1010,
+        CloseEventCodeInternalError = 1011,
+        CloseEventCodeTLSHandshake = 1015,
+        CloseEventCodeMinimumUserDefined = 3000,
+        CloseEventCodeMaximumUserDefined = 4999
+    };
+    
 protected:
     virtual ~ThreadableWebSocketChannel() = default;
     virtual void refThreadableWebSocketChannel() = 0;
@@ -96,10 +120,8 @@ protected:
         URL url;
         bool areCookiesAllowed { true };
     };
-    static std::optional<ValidatedURL> validateURL(Document&, const URL&);
+    WEBCORE_EXPORT static std::optional<ValidatedURL> validateURL(Document&, const URL&);
     WEBCORE_EXPORT static std::optional<ResourceRequest> webSocketConnectRequest(Document&, const URL&);
-
-    WebSocketIdentifier m_identifier;
 };
 
 } // namespace WebCore

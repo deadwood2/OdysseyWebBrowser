@@ -31,6 +31,7 @@
 #include "config.h"
 #include "FileReader.h"
 
+#include "ContextDestructionObserverInlines.h"
 #include "DOMException.h"
 #include "EventLoop.h"
 #include "EventNames.h"
@@ -41,17 +42,17 @@
 #include "ProgressEvent.h"
 #include "ScriptExecutionContext.h"
 #include <JavaScriptCore/ArrayBuffer.h>
-#include <wtf/IsoMallocInlines.h>
+#include <wtf/TZoneMallocInlines.h>
 #include <wtf/text/CString.h>
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(FileReader);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(FileReader);
 
-// Fire the progress event at least every 50ms.
 #if OS(MORPHOS)
-static const auto progressNotificationInterval = 100_ms;
+static const auto progressNotificationInterval = 250_ms;
 #else
+// Fire the progress event at least every 50ms.
 static const auto progressNotificationInterval = 50_ms;
 #endif
 
@@ -71,11 +72,6 @@ FileReader::~FileReader()
 {
     if (m_loader)
         m_loader->cancel();
-}
-
-const char* FileReader::activeDOMObjectName() const
-{
-    return "FileReader";
 }
 
 void FileReader::stop()
@@ -126,7 +122,7 @@ ExceptionOr<void> FileReader::readInternal(Blob& blob, FileReaderLoader::ReadTyp
 {
     // If multiple concurrent read methods are called on the same FileReader, InvalidStateError should be thrown when the state is LOADING.
     if (m_state == LOADING)
-        return Exception { InvalidStateError };
+        return Exception { ExceptionCode::InvalidStateError };
 
     m_blob = &blob;
     m_readType = type;
@@ -149,9 +145,9 @@ void FileReader::abort()
 
     m_pendingTasks.clear();
     stop();
-    m_error = DOMException::create(Exception { AbortError });
+    m_error = DOMException::create(Exception { ExceptionCode::AbortError });
 
-    auto protectedThis = makeRef(*this);
+    Ref protectedThis { *this };
     fireEvent(eventNames().abortEvent);
     fireEvent(eventNames().loadendEvent);
 }
@@ -167,7 +163,7 @@ void FileReader::didReceiveData()
 {
     enqueueTask([this] {
         auto now = MonotonicTime::now();
-        if (std::isnan(m_lastProgressNotificationTime)) {
+        if (m_lastProgressNotificationTime.isNaN()) {
             m_lastProgressNotificationTime = now;
             return;
         }
@@ -184,7 +180,8 @@ void FileReader::didFinishLoading()
         if (m_state == DONE)
             return;
         m_finishedLoading = true;
-        fireEvent(eventNames().progressEvent);
+        if (m_loader->bytesLoaded())
+            fireEvent(eventNames().progressEvent);
         if (m_state == DONE)
             return;
         m_state = DONE;
@@ -213,7 +210,7 @@ void FileReader::fireEvent(const AtomString& type)
     dispatchEvent(ProgressEvent::create(type, true, m_loader ? m_loader->bytesLoaded() : 0, m_loader ? m_loader->totalBytes() : 0));
 }
 
-std::optional<Variant<String, RefPtr<JSC::ArrayBuffer>>> FileReader::result() const
+std::optional<std::variant<String, RefPtr<JSC::ArrayBuffer>>> FileReader::result() const
 {
     if (!m_loader || m_error || m_state != DONE)
         return std::nullopt;

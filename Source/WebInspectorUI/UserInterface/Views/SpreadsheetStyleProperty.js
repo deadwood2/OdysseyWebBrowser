@@ -52,6 +52,7 @@ WI.SpreadsheetStyleProperty = class SpreadsheetStyleProperty extends WI.Object
         this._selected = false;
         this._hasInvalidVariableValue = false;
         this._cssDocumentationPopover = null;
+        this._activeInlineSwatch = null;
 
         this.update();
         property.addEventListener(WI.CSSProperty.Event.OverriddenStatusChanged, this.updateStatus, this);
@@ -134,6 +135,12 @@ WI.SpreadsheetStyleProperty = class SpreadsheetStyleProperty extends WI.Object
 
         if (this._valueTextField)
             this._valueTextField.detached();
+
+        this._activeInlineSwatch?.dismissPopover();
+        this._activeInlineSwatch = null;
+
+        this._cssDocumentationPopover?.dismiss();
+        this._cssDocumentationPopover = null;
     }
 
     remove(replacement = null)
@@ -144,7 +151,7 @@ WI.SpreadsheetStyleProperty = class SpreadsheetStyleProperty extends WI.Object
         this.element.remove();
 
         if (replacement)
-            this._property.replaceWithText(replacement);
+            this._property.text = replacement;
         else
             this._property.remove();
 
@@ -300,13 +307,9 @@ WI.SpreadsheetStyleProperty = class SpreadsheetStyleProperty extends WI.Object
         if (!this._property.valid && this._property.hasOtherVendorNameOrKeyword())
             classNames.push("other-vendor");
         else if (this._hasInvalidVariableValue || (!this._property.valid && this._property.value !== "")) {
-            let propertyNameIsValid = false;
-            if (WI.CSSCompletions.cssNameCompletions)
-                propertyNameIsValid = WI.CSSCompletions.cssNameCompletions.isValidPropertyName(this._property.name);
-
             classNames.push("has-warning");
 
-            if (!propertyNameIsValid) {
+            if (!WI.cssManager.propertyNameCompletions?.isValidPropertyName(this._property.name)) {
                 classNames.push("invalid-name");
                 elementTitle = WI.UIString("Unsupported property name");
             } else {
@@ -365,6 +368,13 @@ WI.SpreadsheetStyleProperty = class SpreadsheetStyleProperty extends WI.Object
         textField.value = isEditingName ? this._property.name : this._property.rawValue;
     }
 
+    spreadsheetTextFieldInitialCompletionIndex(textField, completions)
+    {
+        if (textField === this._nameTextField && WI.settings.experimentalCSSSortPropertyNameAutocompletionByUsage.value)
+            return WI.CSSProperty.indexOfCompletionForMostUsedPropertyName(completions);
+        return 0;
+    }
+
     spreadsheetTextFieldAllowsNewlines(textField)
     {
         return textField === this._valueTextField;
@@ -390,6 +400,7 @@ WI.SpreadsheetStyleProperty = class SpreadsheetStyleProperty extends WI.Object
             this._renderValue(this._property.rawValue);
 
         this._cssDocumentationPopover?.dismiss();
+        this._cssDocumentationPopover = null;
 
         if (direction === "forward") {
             if (isEditingName && !willRemoveProperty) {
@@ -419,9 +430,12 @@ WI.SpreadsheetStyleProperty = class SpreadsheetStyleProperty extends WI.Object
         this._addCSSDocumentationButton();
 
         let focusedOutsideThisProperty = event.relatedTarget !== this._nameElement && event.relatedTarget !== this._valueElement;
-        if (focusedOutsideThisProperty && (!this._nameTextField.value.trim() || !this._valueTextField.value.trim())) {
-            this.remove();
-            return;
+        if (focusedOutsideThisProperty) {
+            if (!this._nameTextField.value.trim() || !this._valueTextField.value.trim()) {
+                this.remove();
+                return;
+            }
+            this._property.isNewProperty = false;
         }
 
         if (textField === this._valueTextField)
@@ -458,8 +472,14 @@ WI.SpreadsheetStyleProperty = class SpreadsheetStyleProperty extends WI.Object
 
     willDismissPopover()
     {
-        this._valueElement.classList.remove(WI.Popover.IgnoreAutoDismissClassName);
         this._cssDocumentationPopover = null;
+    }
+
+    // InlineSwatch delegate
+
+    inlineSwatchGetColorVariables(inlineSwatch)
+    {
+        return this._property.ownerStyle.nodeStyles.computedStyle.variablesForType(WI.CSSStyleDeclaration.VariablesGroupType.Colors);
     }
 
     // Private
@@ -486,6 +506,7 @@ WI.SpreadsheetStyleProperty = class SpreadsheetStyleProperty extends WI.Object
     _renderValue(value)
     {
         this._hasInvalidVariableValue = false;
+        this._activeInlineSwatch = null;
 
         const maxValueLength = 150;
         let tokens = WI.tokenizeCSSValue(value);
@@ -539,7 +560,7 @@ WI.SpreadsheetStyleProperty = class SpreadsheetStyleProperty extends WI.Object
         if (this.property.isVariable)
             return;
 
-        if (!WI.CSSCompletions.cssNameCompletions.isValidPropertyName(this._property.name))
+        if (!WI.cssManager.propertyNameCompletions?.isValidPropertyName(this._property.name))
             return;
 
         if (!CSSDocumentation.hasOwnProperty(this._property.name) && !CSSDocumentation.hasOwnProperty(this._property.canonicalName))
@@ -569,8 +590,6 @@ WI.SpreadsheetStyleProperty = class SpreadsheetStyleProperty extends WI.Object
     {
         this._cssDocumentationPopover ??= new WI.CSSDocumentationPopover(this._property, this);
         this._cssDocumentationPopover.show(this._nameElement);
-        if (this._isEditable())
-            this._valueElement.classList.add(WI.Popover.IgnoreAutoDismissClassName);
     }
 
     _createInlineSwatch(type, contents, valueObject)
@@ -586,8 +605,29 @@ WI.SpreadsheetStyleProperty = class SpreadsheetStyleProperty extends WI.Object
                 innerElement.append(item);
         }
 
-        let readOnly = !this._isEditable();
-        let swatch = new WI.InlineSwatch(type, valueObject, readOnly);
+        let variableType = null;
+        if (type === WI.InlineSwatch.Type.Variable) {
+            const variableNameStart = 4;
+            const varibleNameEnd = 1;
+            let computedColorCSSVariables = this.property.ownerStyle.nodeStyles.computedStyle.variablesForType(WI.CSSStyleDeclaration.VariablesGroupType.Colors);
+            let valueString = valueObject.toString();
+            for (let variable of computedColorCSSVariables) {
+                let index = valueString.indexOf(variable.name);
+                let match = (!index && variable.name.length === valueString.length)
+                         || (index === variableNameStart && variableNameStart + variable.name.length === valueString.length - varibleNameEnd);
+                if (match) {
+                    variableType = WI.InlineSwatch.Type.Color;
+                    break;
+                }
+            }
+            if (!variableType) {
+                valueObject = () => {
+                    return this._property.ownerStyle.nodeStyles.computedStyle.resolveVariableValue(innerElement.textContent);
+                };
+            }
+        }
+
+        let swatch = new WI.InlineSwatch(type, valueObject, {readOnly: !this._isEditable(), variableType, delegate: this});
 
         swatch.addEventListener(WI.InlineSwatch.Event.ValueChanged, function(event) {
             let value = event.data.value && event.data.value.toString();
@@ -596,22 +636,12 @@ WI.SpreadsheetStyleProperty = class SpreadsheetStyleProperty extends WI.Object
 
             innerElement.textContent = value;
             this._handleValueChange();
-
-            if (type === WI.InlineSwatch.Type.Variable)
-                this._renderValue(this._property.rawValue);
         }, this);
 
-        if (type === WI.InlineSwatch.Type.Variable) {
-            swatch.value = () => {
-                return this._property.ownerStyle.nodeStyles.computedStyle.resolveVariableValue(innerElement.textContent);
-            };
-        }
-
-        if (this._delegate && typeof this._delegate.stylePropertyInlineSwatchActivated === "function") {
-            swatch.addEventListener(WI.InlineSwatch.Event.Activated, function(event) {
-                this._delegate.stylePropertyInlineSwatchActivated();
-            }, this);
-        }
+        swatch.addEventListener(WI.InlineSwatch.Event.Activated, function(event) {
+            this._activeInlineSwatch = swatch;
+            this._delegate?.stylePropertyInlineSwatchActivated?.();
+        }, this);
 
         if (this._delegate && typeof this._delegate.stylePropertyInlineSwatchDeactivated === "function") {
             swatch.addEventListener(WI.InlineSwatch.Event.Deactivated, function(event) {
@@ -627,9 +657,13 @@ WI.SpreadsheetStyleProperty = class SpreadsheetStyleProperty extends WI.Object
     _replaceSpecialTokens(tokens)
     {
         // FIXME: <https://webkit.org/b/178636> Web Inspector: Styles: Make inline widgets work with CSS functions (var(), calc(), etc.)
+        // FIXME: <https://webkit.org/b/233055> Web Inspector: Add a swatch for justify-content, justify-items, and justify-self
 
         if (this._property.name === "box-shadow")
             return this._addBoxShadowTokens(tokens);
+
+        if (WI.AlignmentData.isAlignmentAwarePropertyName(this._property.name))
+            return this._addAlignmentTokens(tokens, this._property.name);
 
         if (this._property.isVariable || WI.CSSKeywordCompletions.isColorAwareProperty(this._property.name)) {
             tokens = this._addGradientTokens(tokens);
@@ -638,7 +672,9 @@ WI.SpreadsheetStyleProperty = class SpreadsheetStyleProperty extends WI.Object
 
         if (this._property.isVariable || WI.CSSKeywordCompletions.isTimingFunctionAwareProperty(this._property.name)) {
             tokens = this._addTimingFunctionTokens(tokens, "cubic-bezier");
+            tokens = this._addTimingFunctionTokens(tokens, "linear");
             tokens = this._addTimingFunctionTokens(tokens, "spring");
+            tokens = this._addTimingFunctionTokens(tokens, "steps");
         }
 
         tokens = this._addVariableTokens(tokens);
@@ -648,7 +684,7 @@ WI.SpreadsheetStyleProperty = class SpreadsheetStyleProperty extends WI.Object
 
     _addGradientTokens(tokens)
     {
-        let gradientRegex = /^(repeating-)?(linear|radial)-gradient$/i;
+        let gradientRegex = /^(repeating-)?(linear|radial|conic)-gradient$/i;
         let newTokens = [];
         let gradientStartIndex = NaN;
         let openParenthesis = 0;
@@ -706,10 +742,15 @@ WI.SpreadsheetStyleProperty = class SpreadsheetStyleProperty extends WI.Object
             if (token.type && token.type.includes("hex-color")) {
                 // Hex
                 pushPossibleColorToken(token.value, token);
-            } else if (WI.Color.FunctionNames.has(token.value) && token.type && (token.type.includes("atom") || token.type.includes("keyword"))) {
+            } else if (isNaN(colorFunctionStartIndex)
+                && WI.Color.FunctionNames.has(token.value)
+                && tokens[i + 1]?.value === "("
+                && (token.type?.includes("atom") || token.type?.includes("keyword"))) {
                 // Color Function start
                 colorFunctionStartIndex = i;
-            } else if (isNaN(colorFunctionStartIndex) && token.type && (token.type.includes("atom") || token.type.includes("keyword"))) {
+            } else if (isNaN(colorFunctionStartIndex)
+                && tokens[i + 1]?.value !== "("
+                && (token.type?.includes("atom") || token.type?.includes("keyword"))) {
                 // Color keyword
                 pushPossibleColorToken(token.value, token);
             } else if (!isNaN(colorFunctionStartIndex)) {
@@ -724,12 +765,21 @@ WI.SpreadsheetStyleProperty = class SpreadsheetStyleProperty extends WI.Object
                 if (--openParentheses)
                     continue;
 
-                let rawTokens = tokens.slice(colorFunctionStartIndex, i + 1);
+                // A function will always have a `(` after the function name.
+                let functionOpeningTokens = tokens.slice(colorFunctionStartIndex, colorFunctionStartIndex + 2);
 
-                let text = this._resolveVariables(rawTokens.map((token) => token.value).join(""));
-                rawTokens = this._addVariableTokens(rawTokens);
+                // Functions may contain additional functions that can be represented by a color swatch. (e.g. `color-mix`)
+                let functionInnerTokens = tokens.slice(colorFunctionStartIndex + 2, i);
+                functionInnerTokens = this._addColorTokens(functionInnerTokens);
 
-                pushPossibleColorToken(text, ...rawTokens);
+                let functionClosingToken = tokens[i];
+
+                let functionTokens = [...functionOpeningTokens, ...functionInnerTokens, functionClosingToken];
+
+                let text = this._resolveVariables(functionTokens.map((token) => token.value).join(""));
+                functionTokens = this._addVariableTokens(functionTokens);
+
+                pushPossibleColorToken(text, ...functionTokens);
                 colorFunctionStartIndex = NaN;
             } else
                 newTokens.push(token);
@@ -740,48 +790,90 @@ WI.SpreadsheetStyleProperty = class SpreadsheetStyleProperty extends WI.Object
 
     _addTimingFunctionTokens(tokens, tokenType)
     {
+        if (!this._isEditable())
+            return tokens;
+
         let newTokens = [];
         let startIndex = NaN;
         let openParenthesis = 0;
 
         for (let i = 0; i < tokens.length; i++) {
             let token = tokens[i];
-            if (token.value === tokenType && token.type && token.type.includes("atom")) {
-                startIndex = i;
-                openParenthesis = 0;
-            } else if (token.value === "(" && !isNaN(startIndex))
-                openParenthesis++;
-            else if (token.value === ")" && !isNaN(startIndex)) {
 
-                openParenthesis--;
-                if (openParenthesis > 0)
+            if (tokens[i + 1]?.value !== "(") {
+                if (token.value in WI.CubicBezierTimingFunction.keywordValues) {
+                    newTokens.push(this._createInlineSwatch(WI.InlineSwatch.Type.CubicBezierTimingFunction, [token], WI.CubicBezierTimingFunction.fromString(token.value)));
                     continue;
-
-                let rawTokens = tokens.slice(startIndex, i + 1);
-
-                let text = this._resolveVariables(rawTokens.map((token) => token.value).join(""));
-                rawTokens = this._addVariableTokens(rawTokens);
-
-                let valueObject;
-                let inlineSwatchType;
-                if (tokenType === "cubic-bezier") {
-                    valueObject = WI.CubicBezier.fromString(text);
-                    inlineSwatchType = WI.InlineSwatch.Type.Bezier;
-                } else if (tokenType === "spring") {
-                    valueObject = WI.Spring.fromString(text);
-                    inlineSwatchType = WI.InlineSwatch.Type.Spring;
                 }
 
-                if (valueObject)
-                    newTokens.push(this._createInlineSwatch(inlineSwatchType, rawTokens, valueObject));
-                else
-                    newTokens.pushAll(rawTokens);
+                if (token.value in WI.LinearTimingFunction.keywordValues) {
+                    newTokens.push(this._createInlineSwatch(WI.InlineSwatch.Type.LinearTimingFunction, [token], WI.LinearTimingFunction.fromString(token.value)));
+                    continue;
+                }
 
-                startIndex = NaN;
-            } else if (token.value in WI.CubicBezier.keywordValues)
-                newTokens.push(this._createInlineSwatch(WI.InlineSwatch.Type.Bezier, [token], WI.CubicBezier.fromString(token.value)));
-            else if (isNaN(startIndex))
-                newTokens.push(token);
+                if (token.value in WI.StepsTimingFunction.keywordValues) {
+                    newTokens.push(this._createInlineSwatch(WI.InlineSwatch.Type.StepsTimingFunction, [token], WI.StepsTimingFunction.fromString(token.value)));
+                    continue;
+                }
+            }
+
+            if (token.value === tokenType && token.type?.includes("atom")) {
+                startIndex = i;
+                openParenthesis = 0;
+                continue;
+            }
+
+            if (!isNaN(startIndex)) {
+                switch (token.value) {
+                case "(":
+                    ++openParenthesis;
+                    break;
+
+                case ")":
+                    if (!--openParenthesis) {
+                        let rawTokens = tokens.slice(startIndex, i + 1);
+
+                        let text = this._resolveVariables(rawTokens.map((token) => token.value).join(""));
+                        rawTokens = this._addVariableTokens(rawTokens);
+
+                        let valueObject = null;
+                        let inlineSwatchType;
+                        switch (tokenType) {
+                        case "cubic-bezier":
+                            valueObject = WI.CubicBezierTimingFunction.fromString(text);
+                            inlineSwatchType = WI.InlineSwatch.Type.CubicBezierTimingFunction;
+                            break;
+
+                        case "linear":
+                            valueObject = WI.LinearTimingFunction.fromString(text);
+                            inlineSwatchType = WI.InlineSwatch.Type.LinearTimingFunction;
+                            break;
+
+                        case "spring":
+                            valueObject = WI.SpringTimingFunction.fromString(text);
+                            inlineSwatchType = WI.InlineSwatch.Type.SpringTimingFunction;
+                            break;
+
+                        case "steps":
+                            valueObject = WI.StepsTimingFunction.fromString(text);
+                            inlineSwatchType = WI.InlineSwatch.Type.StepsTimingFunction;
+                            break;
+                        }
+
+                        if (valueObject)
+                            newTokens.push(this._createInlineSwatch(inlineSwatchType, rawTokens, valueObject));
+                        else
+                            newTokens.pushAll(rawTokens);
+
+                        startIndex = NaN;
+                    }
+                    break;
+                }
+
+                continue;
+            }
+
+            newTokens.push(token);
         }
 
         return newTokens;
@@ -789,6 +881,9 @@ WI.SpreadsheetStyleProperty = class SpreadsheetStyleProperty extends WI.Object
 
     _addBoxShadowTokens(tokens)
     {
+        if (!this._isEditable())
+            return tokens;
+
         let newTokens = [];
         let startIndex = 0;
         let openParentheses = 0;
@@ -844,6 +939,14 @@ WI.SpreadsheetStyleProperty = class SpreadsheetStyleProperty extends WI.Object
         return newTokens;
     }
 
+    _addAlignmentTokens(tokens, propertyName)
+    {
+        // FIXME: <https://webkit.org/b/233281> Web Inspector: Alignment swatch should handle multi-token values better
+        let text = this._resolveVariables(tokens.map((token) => token.value).join(""));
+        let swatch = this._createInlineSwatch(WI.InlineSwatch.Type.Alignment, this._addVariableTokens(tokens), new WI.AlignmentData(propertyName, text));
+        return [swatch];
+    }
+
     _addVariableTokens(tokens)
     {
         let newTokens = [];
@@ -865,13 +968,12 @@ WI.SpreadsheetStyleProperty = class SpreadsheetStyleProperty extends WI.Object
                     continue;
 
                 let rawTokens = tokens.slice(startIndex, i + 1);
-                let variableNameIndex = rawTokens.findIndex((token) => token.value.startsWith("--") && /\bvariable-2\b/.test(token.type));
+                let variableNameIndex = rawTokens.findIndex((token) => WI.CSSProperty.isVariable(token.value) && /\bvariable-2\b/.test(token.type));
                 if (variableNameIndex !== -1) {
                     let contents = rawTokens.slice(0, variableNameIndex + 1);
 
                     if (WI.settings.experimentalEnableStylesJumpToVariableDeclaration.value && this._property.ownerStyle.type !== WI.CSSStyleDeclaration.Type.Computed && this._delegate && this._delegate.spreadsheetStylePropertySelectByProperty) {
-                        const dontCreateIfMissing = true;
-                        let effectiveVariableProperty = this._property.ownerStyle.nodeStyles.effectivePropertyForName(rawTokens[variableNameIndex].value, dontCreateIfMissing);
+                        let effectiveVariableProperty = this._property.ownerStyle.nodeStyles.effectivePropertyForName(rawTokens[variableNameIndex].value);
                         if (effectiveVariableProperty) {
                             let arrowElement = WI.createGoToArrowButton();
                             arrowElement.classList.add("select-variable-property");
@@ -893,7 +995,9 @@ WI.SpreadsheetStyleProperty = class SpreadsheetStyleProperty extends WI.Object
                         fallbackTokens = this._addGradientTokens(fallbackTokens);
                         fallbackTokens = this._addColorTokens(fallbackTokens);
                         fallbackTokens = this._addTimingFunctionTokens(fallbackTokens, "cubic-bezier");
+                        fallbackTokens = this._addTimingFunctionTokens(fallbackTokens, "linear");
                         fallbackTokens = this._addTimingFunctionTokens(fallbackTokens, "spring");
+                        fallbackTokens = this._addTimingFunctionTokens(fallbackTokens, "steps");
                         fallbackTokens = this._addVariableTokens(fallbackTokens);
                         contents.pushAll(fallbackTokens);
                     } else
@@ -901,7 +1005,7 @@ WI.SpreadsheetStyleProperty = class SpreadsheetStyleProperty extends WI.Object
 
                     let text = rawTokens.reduce((accumulator, token) => accumulator + token.value, "");
                     if (this._property.ownerStyle.nodeStyles.computedStyle.resolveVariableValue(text))
-                        newTokens.push(this._createInlineSwatch(WI.InlineSwatch.Type.Variable, contents));
+                        newTokens.push(this._createInlineSwatch(WI.InlineSwatch.Type.Variable, contents, text));
                     else
                         newTokens.pushAll(contents);
                 } else {
@@ -924,12 +1028,12 @@ WI.SpreadsheetStyleProperty = class SpreadsheetStyleProperty extends WI.Object
 
     _handleNameChange()
     {
-        this._property.name = this._nameElement.textContent.trim();
+        this._property.name = this._nameTextField.value;
     }
 
     _handleValueChange()
     {
-        let value = this._valueElement.textContent;
+        let value = this._valueTextField.value;
 
         this._property.rawValue = value.trim();
 
@@ -963,9 +1067,9 @@ WI.SpreadsheetStyleProperty = class SpreadsheetStyleProperty extends WI.Object
         }
     }
 
-    _nameCompletionDataProvider(text, {allowEmptyPrefix} = {})
+    _nameCompletionDataProvider(text, options = {})
     {
-        return WI.CSSKeywordCompletions.forPartialPropertyName(text, {allowEmptyPrefix});
+        return WI.CSSKeywordCompletions.forPartialPropertyName(text, options);
     }
 
     _handleValueBeforeInput(event)
@@ -987,10 +1091,10 @@ WI.SpreadsheetStyleProperty = class SpreadsheetStyleProperty extends WI.Object
         this.spreadsheetTextFieldDidCommit(this._valueTextField, {direction: "forward"});
     }
 
-    _valueCompletionDataProvider(text, {allowEmptyPrefix} = {})
+    _valueCompletionDataProvider(text, options = {})
     {
-        // FIXME: <webkit.org/b/227411> Styles sidebar panel should support midline and multiline completions.
-        return WI.CSSKeywordCompletions.forPartialPropertyValue(text, this._nameElement.textContent.trim(), {additionalFunctionValueCompletionsProvider: this.additionalFunctionValueCompletionsProvider.bind(this)});
+        options.additionalFunctionValueCompletionsProvider = this.additionalFunctionValueCompletionsProvider.bind(this);
+        return WI.CSSKeywordCompletions.forPartialPropertyValue(text, this._nameElement.textContent.trim(), options);
     }
 
     _setupJumpToSymbol(element)

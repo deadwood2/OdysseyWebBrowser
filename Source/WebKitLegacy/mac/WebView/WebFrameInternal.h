@@ -30,6 +30,7 @@
 
 #import "WebFramePrivate.h"
 #import "WebPreferencesPrivate.h"
+#import <WebCore/CaptionUserPreferences.h>
 #import <WebCore/EditAction.h>
 #import <WebCore/FrameLoaderTypes.h>
 #import <WebCore/FrameSelection.h>
@@ -48,12 +49,11 @@
 class WebScriptDebugger;
 
 namespace WebCore {
-    class CSSStyleDeclaration;
+class CSSStyleDeclaration;
     class Document;
     class DocumentLoader;
     class Element;
-    class Frame;
-    class Frame;
+    class LocalFrame;
     class HistoryItem;
     class HTMLElement;
     class HTMLFrameOwnerElement;
@@ -69,8 +69,8 @@ enum class WebRangeIsRelativeTo : uint8_t {
     Paragraph,
 };
 
-WebCore::Frame* core(WebFrame *);
-WebFrame *kit(WebCore::Frame *);
+WebCore::LocalFrame* core(WebFrame *);
+WebFrame *kit(WebCore::LocalFrame *);
 
 WebCore::Page* core(WebView *);
 WebView *kit(WebCore::Page*);
@@ -86,9 +86,10 @@ WebView *getWebView(WebFrame *webFrame);
 
 @interface WebFramePrivate : NSObject {
 @public
-    NakedPtr<WebCore::Frame> coreFrame;
+    NakedPtr<WebCore::LocalFrame> coreFrame;
     RetainPtr<WebFrameView> webFrameView;
     std::unique_ptr<WebScriptDebugger> scriptDebugger;
+    std::unique_ptr<WebCore::CaptionUserPreferencesTestingModeToken> captionPreferencesTestingModeToken;
     id internalLoadDelegate;
     BOOL shouldCreateRenderers;
     BOOL includedInWebKitStatistics;
@@ -106,8 +107,8 @@ WebView *getWebView(WebFrame *webFrame);
 
 @interface WebFrame (WebInternal)
 
-+ (void)_createMainFrameWithPage:(WebCore::Page*)page frameName:(const WTF::String&)name frameView:(WebFrameView *)frameView;
-+ (Ref<WebCore::Frame>)_createSubframeWithOwnerElement:(WebCore::HTMLFrameOwnerElement*)ownerElement frameName:(const WTF::String&)name frameView:(WebFrameView *)frameView;
++ (void)_createMainFrameWithPage:(WebCore::Page*)page frameName:(const WTF::AtomString&)name frameView:(WebFrameView *)frameView;
++ (Ref<WebCore::LocalFrame>)_createSubframeWithOwnerElement:(WebCore::HTMLFrameOwnerElement&)ownerElement page:(WebCore::Page&)page frameName:(const WTF::AtomString&)name frameView:(WebFrameView *)frameView;
 - (id)_initWithWebFrameView:(WebFrameView *)webFrameView webView:(WebView *)webView;
 
 - (void)_clearCoreFrame;
@@ -162,7 +163,7 @@ WebView *getWebView(WebFrame *webFrame);
 #endif
 
 #if !PLATFORM(IOS_FAMILY)
-- (DOMRange *)_rangeByAlteringCurrentSelection:(WebCore::FrameSelection::EAlteration)alteration direction:(WebCore::SelectionDirection)direction granularity:(WebCore::TextGranularity)granularity;
+- (DOMRange *)_rangeByAlteringCurrentSelection:(WebCore::FrameSelection::Alteration)alteration direction:(WebCore::SelectionDirection)direction granularity:(WebCore::TextGranularity)granularity;
 #endif
 
 - (NSRange)_convertToNSRange:(const WebCore::SimpleRange&)range;

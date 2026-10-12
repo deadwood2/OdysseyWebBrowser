@@ -25,8 +25,6 @@
 
 #pragma once
 
-#if ENABLE(SERVICE_WORKER)
-
 #include <wtf/Forward.h>
 #include <wtf/Noncopyable.h>
 
@@ -52,8 +50,8 @@ public:
 
     void connectToWorker(Inspector::FrontendChannel&);
     void disconnectFromWorker(Inspector::FrontendChannel&);
-    void sendMessageToWorker(const String&);
-    void sendMessageFromWorkerToFrontend(const String&);
+    void sendMessageToWorker(String&&);
+    void sendMessageFromWorkerToFrontend(String&&);
 
 private:
     ServiceWorkerThreadProxy& m_serviceWorkerThreadProxy;
@@ -61,5 +59,3 @@ private:
 };
 
 } // namespace WebCore
-
-#endif // ENABLE(SERVICE_WORKER)

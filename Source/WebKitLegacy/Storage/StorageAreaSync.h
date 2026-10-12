@@ -25,6 +25,7 @@
 
 #pragma once
 
+#include "WebKit.h"
 #include <WebCore/SQLiteDatabase.h>
 #include <WebCore/Timer.h>
 #include <wtf/Condition.h>

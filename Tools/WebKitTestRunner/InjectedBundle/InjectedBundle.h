@@ -25,20 +25,19 @@
 
 #pragma once
 
+#include "AccessibilityController.h"
 #include "EventSendingController.h"
 #include "GCController.h"
 #include "TestRunner.h"
 #include "TextInputController.h"
 #include <WebKit/WKBase.h>
+#include <WebKit/WKBundlePage.h>
 #include <WebKit/WKRetainPtr.h>
 #include <sstream>
 #include <wtf/Forward.h>
+#include <wtf/Function.h>
 #include <wtf/RefPtr.h>
 #include <wtf/Vector.h>
-
-#if HAVE(ACCESSIBILITY)
-#include "AccessibilityController.h"
-#endif
 
 namespace WTR {
 
@@ -57,24 +56,21 @@ public:
     GCController* gcController() { return m_gcController.get(); }
     EventSendingController* eventSendingController() { return m_eventSendingController.get(); }
     TextInputController* textInputController() { return m_textInputController.get(); }
-#if HAVE(ACCESSIBILITY)
     AccessibilityController* accessibilityController() { return m_accessibilityController.get(); }
-#endif
 
     InjectedBundlePage* page() const;
     WKBundlePageRef pageRef() const;
     size_t pageCount() const { return m_pages.size(); }
-    void closeOtherPages();
 
     void dumpBackForwardListsForAllPages(StringBuilder&);
 
-    void done();
+    void done(bool forceRepaint);
     void setAudioResult(WKDataRef audioData) { m_audioResult = audioData; }
     void setPixelResult(WKImageRef image) { m_pixelResult = image; m_pixelResultIsPending = false; }
     void setPixelResultIsPending(bool isPending) { m_pixelResultIsPending = isPending; }
     void setRepaintRects(WKArrayRef rects) { m_repaintRects = rects; }
 
-    bool isTestRunning() { return m_state == Testing; }
+    bool isTestRunning() { return !!testRunner(); }
 
     WKBundleFrameRef topLoadingFrame() { return m_topLoadingFrame; }
     void setTopLoadingFrame(WKBundleFrameRef frame) { m_topLoadingFrame = frame; }
@@ -82,19 +78,14 @@ public:
     bool shouldDumpPixels() const { return m_dumpPixels; }
     bool dumpJSConsoleLogInStdErr() const { return m_dumpJSConsoleLogInStdErr; };
 
-    void outputText(const String&);
+    enum class IsFinalTestOutput : bool { No, Yes };
+    void outputText(StringView, IsFinalTestOutput = IsFinalTestOutput::No);
     void dumpToStdErr(const String&);
     void postNewBeforeUnloadReturnValue(bool);
-    void postAddChromeInputField();
-    void postRemoveChromeInputField();
-    void postSetTextInChromeInputField(const String&);
-    void postSelectChromeInputField();
-    void postGetSelectedTextInChromeInputField();
-    void postFocusWebView();
-    void postSetBackingScaleFactor(double);
     void postSetWindowIsKey(bool);
     void postSetViewSize(double width, double height);
-    void postSimulateWebNotificationClick(uint64_t notificationID);
+    void postSimulateWebNotificationClick(WKDataRef notificationID);
+    void postSimulateWebNotificationClickForServiceWorkerNotifications();
     void postSetAddsVisitedLinks(bool);
 
     // Geolocation.
@@ -103,8 +94,12 @@ public:
     void setMockGeolocationPositionUnavailableError(WKStringRef errorMessage);
     bool isGeolocationProviderActive() const;
 
+    // Screen Wake Lock.
+    void setScreenWakeLockPermission(bool);
+
     // MediaStream.
-    void setUserMediaPermission(bool);
+    void setCameraPermission(bool);
+    void setMicrophonePermission(bool);
     void resetUserMediaPermission();
     void setUserMediaPersistentPermissionForOrigin(bool permission, WKStringRef origin, WKStringRef parentOrigin);
     unsigned userMediaPermissionRequestCountForOrigin(WKStringRef origin, WKStringRef parentOrigin) const;
@@ -136,7 +131,7 @@ public:
 
     void setAllowsAnySSLCertificate(bool);
 
-    bool statisticsNotifyObserver();
+    void statisticsNotifyObserver(CompletionHandler<void()>&&);
 
     void textDidChangeInTextField();
     void textFieldDidBeginEditing();
@@ -147,6 +142,15 @@ public:
     void resetUserScriptInjectedCount() { m_userScriptInjectedCount = 0; }
     void increaseUserScriptInjectedCount() { ++m_userScriptInjectedCount; }
     size_t userScriptInjectedCount() const { return m_userScriptInjectedCount; }
+
+    void clearResourceLoadStatistics();
+    void reloadFromOrigin();
+
+    WKRetainPtr<WKStringRef> getBackgroundFetchIdentifier();
+    WKRetainPtr<WKStringRef> lastAddedBackgroundFetchIdentifier() const;
+    WKRetainPtr<WKStringRef> lastRemovedBackgroundFetchIdentifier() const;
+    WKRetainPtr<WKStringRef> lastUpdatedBackgroundFetchIdentifier() const;
+    WKRetainPtr<WKStringRef> backgroundFetchState(WKStringRef);
 
 private:
     InjectedBundle() = default;
@@ -164,6 +168,8 @@ private:
 
     void setUpInjectedBundleClients(WKBundlePageRef);
 
+    void setAllowedHosts(WKDictionaryRef settings);
+
     void platformInitialize(WKTypeRef initializationUserData);
 
     enum class BegingTestingMode { New, Resume };
@@ -172,22 +178,13 @@ private:
     WKRetainPtr<WKBundleRef> m_bundle;
     Vector<std::unique_ptr<InjectedBundlePage>> m_pages;
 
-#if HAVE(ACCESSIBILITY)
     RefPtr<AccessibilityController> m_accessibilityController;
-#endif
     RefPtr<TestRunner> m_testRunner;
     RefPtr<GCController> m_gcController;
     RefPtr<EventSendingController> m_eventSendingController;
     RefPtr<TextInputController> m_textInputController;
 
     WKBundleFrameRef m_topLoadingFrame { nullptr };
-
-    enum State {
-        Idle,
-        Testing,
-        Stopping
-    };
-    State m_state { Idle };
 
     bool m_dumpPixels { false };
     bool m_useWorkQueue { false };
@@ -204,6 +201,8 @@ private:
     Vector<String> m_allowedHosts;
 
     size_t m_userScriptInjectedCount { 0 };
+
+    WKRetainPtr<WKCaptionUserPreferencesTestingModeTokenRef> m_captionUserPreferencesTestingModeToken;
 };
 
 void postMessage(const char* name);
@@ -228,6 +227,7 @@ void postPageMessage(const char* name);
 void postPageMessage(const char* name, bool value);
 void postPageMessage(const char* name, const char* value);
 void postPageMessage(const char* name, WKStringRef value);
+void postPageMessage(const char* name, WKDataRef value);
 void postPageMessage(const char* name, const void* value) = delete;
 
 void postSynchronousPageMessage(const char* name);
@@ -255,8 +255,15 @@ template<typename T> void postPageMessage(const char* name, const WKRetainPtr<T>
 
 template<typename T> void postSynchronousPageMessage(const char* name, const WKRetainPtr<T>& value)
 {
-    if (auto page = InjectedBundle::singleton().pageRef())
+    if (auto page = InjectedBundle::singleton().pageRef()) {
+        // EventSender needs a layout
+        if (!strcmp(name, "EventSender"))
+            WKBundlePageLayoutIfNeeded(page);
         WKBundlePagePostSynchronousMessageForTesting(page, toWK(name).get(), value.get(), nullptr);
+    }
 }
+
+void postMessageWithAsyncReply(JSContextRef, const char* messageName, JSValueRef callback);
+void postMessageWithAsyncReply(JSContextRef, const char* messageName, WKRetainPtr<WKTypeRef> value, JSValueRef callback);
 
 } // namespace WTR

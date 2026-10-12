@@ -28,19 +28,15 @@
 
 #if PLATFORM(MAC)
 
-#import "SystemVersion.h"
+#import <wtf/text/MakeString.h>
 
 namespace WebCore {
 
 String standardUserAgentWithApplicationName(const String& applicationName, const String&, UserAgentType)
 {
-    String osVersion = systemMarketingVersionForUserAgentString();
-    if (!osVersion.startsWith("10"))
-        osVersion = "10_15_7"_s;
-    
-    String appNameSuffix = applicationName.isEmpty() ? "" : makeString(" ", applicationName);
+    String appNameSuffix = applicationName.isEmpty() ? emptyString() : makeString(' ', applicationName);
 
-    return makeString("Mozilla/5.0 (Macintosh; Intel Mac OS X ", osVersion, ") AppleWebKit/605.1.15 (KHTML, like Gecko)", appNameSuffix);
+    return makeString("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)"_s, appNameSuffix);
 }
 
 } // namespace WebCore

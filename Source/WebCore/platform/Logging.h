@@ -38,6 +38,7 @@ namespace WebCore {
 
 #define WEBCORE_LOG_CHANNELS(M) \
     M(Accessibility) \
+    M(ActivityState) \
     M(Animations) \
     M(AppHighlights) \
     M(ApplePay) \
@@ -49,9 +50,11 @@ namespace WebCore {
     M(CompositingOverlap) \
     M(ContentFiltering) \
     M(ContentObservation) \
+    M(Crypto) \
     M(DatabaseTracker) \
     M(DisplayLink) \
     M(DisplayLists) \
+    M(DragAndDrop) \
     M(DOMTimers) \
     M(Editing) \
     M(EME) \
@@ -60,6 +63,7 @@ namespace WebCore {
     M(EventRegions) \
     M(FileAPI) \
     M(Filters) \
+    M(FingerprintingMitigation) \
     M(Fonts) \
     M(Frames) \
     M(FTP) \
@@ -73,8 +77,10 @@ namespace WebCore {
     M(IndexedDB) \
     M(IndexedDBOperations) \
     M(Inspector) \
+    M(IntersectionObserver) \
     M(Layers) \
     M(Layout) \
+    M(LazyLoading) \
     M(FormattingContextLayout) \
     M(Loading) \
     M(Media) \
@@ -86,6 +92,7 @@ namespace WebCore {
     M(MemoryPressure) \
     M(MessagePorts) \
     M(ModelElement) \
+    M(NativePromise) \
     M(Network) \
     M(NotYetImplemented) \
     M(OverlayScrollbars) \
@@ -93,13 +100,19 @@ namespace WebCore {
     M(PlatformLeaks) \
     M(Plugins) \
     M(PopupBlocking) \
+    M(Printing) \
     M(PrivateClickMeasurement) \
+    M(Process) \
     M(Progress) \
+    M(Push) \
     M(RemoteInspector) \
     M(RequestAnimationFrame) \
+    M(ResizeObserver) \
     M(ResourceLoading) \
     M(ResourceLoadObserver) \
     M(ResourceLoadStatistics) \
+    M(ScrollAnimations) \
+    M(ScrollAnchoring) \
     M(ScrollSnap) \
     M(Scrolling) \
     M(ScrollingTree) \
@@ -107,6 +120,7 @@ namespace WebCore {
     M(Selection) \
     M(Services) \
     M(ServiceWorker) \
+    M(SharedWorker) \
     M(SpellingAndGrammar) \
     M(SQLDatabase) \
     M(Storage) \
@@ -114,14 +128,22 @@ namespace WebCore {
     M(StyleSheets) \
     M(SVG) \
     M(TextAutosizing) \
+    M(TextDecoding) \
+    M(TextFragment) \
+    M(TextManipulation) \
+    M(TextShaping) \
     M(Tiling) \
     M(Threading) \
+    M(WritingTools) \
     M(URLParser) \
     M(Viewports) \
+    M(ViewTransitions) \
+    M(VirtualMemory) \
     M(WebAudio) \
     M(WebGL) \
     M(WebRTC) \
     M(WebRTCStats) \
+    M(Worker) \
     M(XR) \
     M(WheelEventTestMonitor) \
 

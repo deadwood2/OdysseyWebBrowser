@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2021-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,6 +33,10 @@
 
 #if USE(ACCELERATE) && USE(CG)
 #include <Accelerate/Accelerate.h>
+#elif USE(SKIA)
+IGNORE_CLANG_WARNINGS_BEGIN("cast-align")
+#include <skia/core/SkPixmap.h>
+IGNORE_CLANG_WARNINGS_END
 #endif
 
 namespace WebCore {
@@ -45,25 +49,26 @@ static inline vImage_CGImageFormat makeVImageCGImageFormat(const PixelBufferForm
         switch (format.pixelFormat) {
         case PixelFormat::RGBA8:
             if (format.alphaFormat == AlphaPremultiplication::Premultiplied)
-                return std::make_tuple(8u, 32u, kCGBitmapByteOrder32Big | kCGImageAlphaPremultipliedLast);
+                return std::make_tuple(8u, 32u, static_cast<CGBitmapInfo>(kCGBitmapByteOrder32Big) | static_cast<CGBitmapInfo>(kCGImageAlphaPremultipliedLast));
             else
-                return std::make_tuple(8u, 32u, kCGBitmapByteOrder32Big | kCGImageAlphaLast);
+                return std::make_tuple(8u, 32u, static_cast<CGBitmapInfo>(kCGBitmapByteOrder32Big) | static_cast<CGBitmapInfo>(kCGImageAlphaLast));
 
         case PixelFormat::BGRA8:
             if (format.alphaFormat == AlphaPremultiplication::Premultiplied)
-                return std::make_tuple(8u, 32u, kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedFirst);
+                return std::make_tuple(8u, 32u, static_cast<CGBitmapInfo>(kCGBitmapByteOrder32Little) | static_cast<CGBitmapInfo>(kCGImageAlphaPremultipliedFirst));
             else
-                return std::make_tuple(8u, 32u, kCGBitmapByteOrder32Little | kCGImageAlphaFirst);
+                return std::make_tuple(8u, 32u, static_cast<CGBitmapInfo>(kCGBitmapByteOrder32Little) | static_cast<CGBitmapInfo>(kCGImageAlphaFirst));
 
+        case PixelFormat::BGRX8:
         case PixelFormat::RGB10:
         case PixelFormat::RGB10A8:
             break;
         }
 
-        // We currently only support 8 bit pixel formats for these conversions.
+        // We currently only support 8 bit pixel formats with alpha for these conversions.
 
         ASSERT_NOT_REACHED();
-        return std::make_tuple(8u, 32u, kCGBitmapByteOrder32Little | kCGImageAlphaFirst);
+        return std::make_tuple(8u, 32u, static_cast<CGBitmapInfo>(kCGBitmapByteOrder32Little) | static_cast<CGBitmapInfo>(kCGImageAlphaFirst));
     }(format);
 
     vImage_CGImageFormat result;
@@ -105,7 +110,8 @@ static void convertImagePixelsAccelerated(const ConstPixelBufferConversionView& 
 
         vImage_Error converterCreateError = kvImageNoError;
         auto converter = adoptCF(vImageConverter_CreateWithCGImageFormat(&sourceCGImageFormat, &destinationCGImageFormat, nullptr, kvImageNoFlags, &converterCreateError));
-        ASSERT_WITH_MESSAGE_UNUSED(converterCreateError, converterCreateError == kvImageNoError, "vImageConverter creation failed with error: %zd", converterCreateError);
+        if (converterCreateError != kvImageNoError)
+            return;
 
         vImage_Error converterConvertError = vImageConvert_AnyToAny(converter.get(), &sourceVImageBuffer, &destinationVImageBuffer, nullptr, kvImageNoFlags);
         ASSERT_WITH_MESSAGE_UNUSED(converterConvertError, converterConvertError == kvImageNoError, "vImageConvert_AnyToAny failed conversion with error: %zd", converterConvertError);
@@ -133,6 +139,54 @@ static void convertImagePixelsAccelerated(const ConstPixelBufferConversionView& 
         const uint8_t map[4] = { 2, 1, 0, 3 };
         vImagePermuteChannels_ARGB8888(&sourceVImageBuffer, &destinationVImageBuffer, map, kvImageNoFlags);
     }
+}
+
+#elif USE(SKIA)
+
+static void convertImagePixelsSkia(const ConstPixelBufferConversionView& source, const PixelBufferConversionView& destination, const IntSize& destinationSize)
+{
+    auto toSkiaColorType = [](const PixelFormat& pixelFormat) {
+        switch (pixelFormat) {
+        case PixelFormat::RGBA8:
+            return SkColorType::kRGBA_8888_SkColorType;
+        case PixelFormat::BGRA8:
+            return SkColorType::kBGRA_8888_SkColorType;
+        case PixelFormat::BGRX8:
+        case PixelFormat::RGB10:
+        case PixelFormat::RGB10A8:
+            break;
+        }
+        ASSERT_NOT_REACHED();
+        return SkColorType::kUnknown_SkColorType;
+    };
+    auto toSkiaAlphaType = [](const AlphaPremultiplication& alphaFormat) {
+        switch (alphaFormat) {
+        case AlphaPremultiplication::Premultiplied:
+            return SkAlphaType::kPremul_SkAlphaType;
+        case AlphaPremultiplication::Unpremultiplied:
+            return SkAlphaType::kUnpremul_SkAlphaType;
+        }
+        ASSERT_NOT_REACHED();
+        return SkAlphaType::kUnknown_SkAlphaType;
+    };
+    SkImageInfo sourceImageInfo = SkImageInfo::Make(
+        destinationSize.width(),
+        destinationSize.height(),
+        toSkiaColorType(source.format.pixelFormat),
+        toSkiaAlphaType(source.format.alphaFormat),
+        source.format.colorSpace.platformColorSpace()
+    );
+    // Utilize SkPixmap which is a raw bytes wrapper capable of performing conversions.
+    SkPixmap sourcePixmap(sourceImageInfo, source.rows, source.bytesPerRow);
+    SkImageInfo destinationImageInfo = SkImageInfo::Make(
+        destinationSize.width(),
+        destinationSize.height(),
+        toSkiaColorType(destination.format.pixelFormat),
+        toSkiaAlphaType(destination.format.alphaFormat),
+        destination.format.colorSpace.platformColorSpace()
+    );
+    // Read pixels from source to destination and convert pixels if necessary.
+    sourcePixmap.readPixels(destinationImageInfo, destination.rows, destination.bytesPerRow);
 }
 
 #endif
@@ -373,13 +427,12 @@ static void convertImagePixelsUnaccelerated(const ConstPixelBufferConversionView
 
 void convertImagePixels(const ConstPixelBufferConversionView& source, const PixelBufferConversionView& destination, const IntSize& destinationSize)
 {
-    // We don't currently support converting pixel data with non-8-bit buffers.
-    // BGRA8 is actually ARGB8 on BIG_ENDIAN.
-    ASSERT(source.format.pixelFormat == PixelFormat::RGBA8 || source.format.pixelFormat == PixelFormat::BGRA8);
-    ASSERT(destination.format.pixelFormat == PixelFormat::RGBA8 || destination.format.pixelFormat == PixelFormat::BGRA8);
+    // We currently only support converting between RGBA8, BGRA8, and BGRX8.
+    ASSERT(source.format.pixelFormat == PixelFormat::RGBA8 || source.format.pixelFormat == PixelFormat::BGRA8 || source.format.pixelFormat == PixelFormat::BGRX8);
+    ASSERT(destination.format.pixelFormat == PixelFormat::RGBA8 || destination.format.pixelFormat == PixelFormat::BGRA8 || destination.format.pixelFormat == PixelFormat::BGRX8);
 
 #if USE(ACCELERATE) && USE(CG)
-    if (source.format.alphaFormat == destination.format.alphaFormat && source.format.pixelFormat == destination.format.pixelFormat) {
+    if (source.format.alphaFormat == destination.format.alphaFormat && source.format.pixelFormat == destination.format.pixelFormat && source.format.colorSpace == destination.format.colorSpace) {
         // FIXME: Can thes both just use per-row memcpy?
         if (source.format.alphaFormat == AlphaPremultiplication::Premultiplied)
             convertImagePixelsUnaccelerated<convertSinglePixelPremultipliedToPremultiplied<PixelFormatConversion::None>>(source, destination, destinationSize);
@@ -387,10 +440,22 @@ void convertImagePixels(const ConstPixelBufferConversionView& source, const Pixe
             convertImagePixelsUnaccelerated<convertSinglePixelUnpremultipliedToUnpremultiplied<PixelFormatConversion::None>>(source, destination, destinationSize);
     } else
         convertImagePixelsAccelerated(source, destination, destinationSize);
+#elif USE(SKIA)
+    if (source.format.alphaFormat == destination.format.alphaFormat && source.format.pixelFormat == destination.format.pixelFormat && source.format.colorSpace == destination.format.colorSpace)
+        memcpy(destination.rows, source.rows, source.bytesPerRow * destinationSize.height());
+    else
+        convertImagePixelsSkia(source, destination, destinationSize);
 #else
     // FIXME: We don't currently support converting pixel data between different color spaces in the non-accelerated path.
     // This could be added using conversion functions from ColorConversion.h.
     ASSERT(source.format.colorSpace == destination.format.colorSpace);
+
+    if (source.format.alphaFormat == destination.format.alphaFormat && source.format.pixelFormat == destination.format.pixelFormat) {
+        memcpy(destination.rows, source.rows, source.bytesPerRow * destinationSize.height());
+        return;
+    }
+
+    // FIXME: In Linux platform the following paths could be optimized with ORC.
 
     if (source.format.alphaFormat == destination.format.alphaFormat) {
         if (source.format.pixelFormat == destination.format.pixelFormat) {
@@ -418,6 +483,19 @@ void convertImagePixels(const ConstPixelBufferConversionView& source, const Pixe
         }
     }
 #endif
+}
+
+void copyRows(unsigned sourceBytesPerRow, const uint8_t* source, unsigned destinationBytesPerRow, uint8_t* destination, unsigned rows, unsigned copyBytesPerRow)
+{
+    if (sourceBytesPerRow == destinationBytesPerRow && copyBytesPerRow == sourceBytesPerRow)
+        std::copy(source, source + copyBytesPerRow * rows, destination);
+    else {
+        for (unsigned row = 0; row < rows; ++row) {
+            std::copy(source, source + copyBytesPerRow, destination);
+            source += sourceBytesPerRow;
+            destination += destinationBytesPerRow;
+        }
+    }
 }
 
 }

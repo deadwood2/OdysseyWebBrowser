@@ -34,8 +34,8 @@ using namespace WebCore;
 
 WebCore::ApplicationCacheStorage& WebApplicationCache::storage()
 {
-    static ApplicationCacheStorage& storage = ApplicationCacheStorage::create("PROGDIR:Cache/Application",
-    	"ApplicationCache").leakRef();
+    static ApplicationCacheStorage& storage = ApplicationCacheStorage::create("PROGDIR:Cache/Application"_s,
+    	"ApplicationCache"_s).leakRef();
 
     return storage;
 }

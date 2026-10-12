@@ -1,7 +1,7 @@
 kind: manual
 
 depends:
-- sdk/gtk+-3.bst
+- freedesktop-sdk.bst:components/gtk3.bst
 - freedesktop-sdk.bst:components/perl.bst
       # gtk3 seems to have all the so files that qtbase needs access to
       # perl is listed as a recommended dependency on packages.debian.org
@@ -10,7 +10,7 @@ depends:
 build-depends:
 - freedesktop-sdk.bst:components/pkg-config.bst
 - freedesktop-sdk.bst:components/which.bst
-- sdk/libdrm.bst
+- freedesktop-sdk.bst:components/libdrm.bst
 
 variables:
   conf-local: |
@@ -46,7 +46,7 @@ config:
   - ./configure %{conf-local}
 
   build-commands:
-  - make
+  - make -j%{max-jobs}
 
   install-commands:
   - |
@@ -60,7 +60,7 @@ public:
         - "%{libdir}/*.so"
 
 sources:
-- kind: git_tag
+- kind: git_repo
   url: kde:qtbase
   track: kde/5.15
   ref: v5.15.0-870-g663d240a18f5acac82fd2bd0fd4a33c4f47b260a

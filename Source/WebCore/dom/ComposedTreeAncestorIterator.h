@@ -25,6 +25,7 @@
 
 #pragma once
 
+#include "ElementRareData.h"
 #include "HTMLSlotElement.h"
 #include "PseudoElement.h"
 #include "ShadowRoot.h"
@@ -36,23 +37,27 @@ class HTMLSlotElement;
 class ComposedTreeAncestorIterator {
 public:
     ComposedTreeAncestorIterator();
+    ComposedTreeAncestorIterator(Element& current);
     ComposedTreeAncestorIterator(Node& current);
 
     Element& operator*() { return get(); }
     Element* operator->() { return &get(); }
 
-    bool operator==(const ComposedTreeAncestorIterator& other) const { return m_current == other.m_current; }
-    bool operator!=(const ComposedTreeAncestorIterator& other) const { return m_current != other.m_current; }
+    friend bool operator==(ComposedTreeAncestorIterator, ComposedTreeAncestorIterator) = default;
 
-    ComposedTreeAncestorIterator& operator++() { return traverseParent(); }
+    ComposedTreeAncestorIterator& operator++()
+    {
+        m_current = traverseParent(m_current);
+        return *this;
+    }
 
-    Element& get() { return downcast<Element>(*m_current); }
-    ComposedTreeAncestorIterator& traverseParent();
+    Element& get() { return *m_current; }
 
 private:
     void traverseParentInShadowTree();
+    static Element* traverseParent(Node*);
 
-    Node* m_current { 0 };
+    Element* m_current { nullptr };
 };
 
 inline ComposedTreeAncestorIterator::ComposedTreeAncestorIterator()
@@ -60,34 +65,29 @@ inline ComposedTreeAncestorIterator::ComposedTreeAncestorIterator()
 }
 
 inline ComposedTreeAncestorIterator::ComposedTreeAncestorIterator(Node& current)
-    : m_current(&current)
+    : m_current(traverseParent(&current))
 {
-    ASSERT(!is<ShadowRoot>(m_current));
+    ASSERT(!is<ShadowRoot>(current));
 }
 
-inline ComposedTreeAncestorIterator& ComposedTreeAncestorIterator::traverseParent()
+inline ComposedTreeAncestorIterator::ComposedTreeAncestorIterator(Element& current)
+    : m_current(&current)
 {
-    auto* parent = m_current->parentNode();
-    if (!parent) {
-        m_current = nullptr;
-        return *this;
-    }
-    if (is<ShadowRoot>(*parent)) {
-        m_current = downcast<ShadowRoot>(*parent).host();
-        return *this;
-    }
-    if (!is<Element>(*parent)) {
-        m_current = nullptr;
-        return *this;
-    };
+}
 
-    if (auto* shadowRoot = parent->shadowRoot()) {
-        m_current = shadowRoot->findAssignedSlot(*m_current);
-        return *this;
-    }
-
-    m_current = parent;
-    return *this;
+inline Element* ComposedTreeAncestorIterator::traverseParent(Node* current)
+{
+    auto* parent = current->parentNode();
+    if (!parent)
+        return nullptr;
+    if (auto* shadowRoot = dynamicDowncast<ShadowRoot>(*parent))
+        return shadowRoot->host();
+    auto* parentElement = dynamicDowncast<Element>(*parent);
+    if (!parentElement)
+        return nullptr;
+    if (auto* shadowRoot = parentElement->shadowRoot())
+        return shadowRoot->findAssignedSlot(*current);
+    return parentElement;
 }
 
 class ComposedTreeAncestorAdapter {
@@ -100,11 +100,11 @@ public:
 
     iterator begin()
     {
-        if (is<ShadowRoot>(m_node))
-            return iterator(*downcast<ShadowRoot>(m_node).host());
-        if (is<PseudoElement>(m_node))
-            return iterator(*downcast<PseudoElement>(m_node).hostElement());
-        return iterator(m_node).traverseParent();
+        if (auto shadowRoot = dynamicDowncast<ShadowRoot>(m_node.get()))
+            return iterator(*shadowRoot->host());
+        if (auto pseudoElement = dynamicDowncast<PseudoElement>(m_node.get()))
+            return iterator(*pseudoElement->hostElement());
+        return iterator(m_node);
     }
     iterator end()
     {
@@ -119,7 +119,7 @@ public:
     }
 
 private:
-    Node& m_node;
+    Ref<Node> m_node;
 };
 
 // FIXME: We should have const versions too.

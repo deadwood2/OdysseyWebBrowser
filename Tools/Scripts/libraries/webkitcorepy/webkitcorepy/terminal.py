@@ -1,4 +1,4 @@
-# Copyright (C) 2021 Apple Inc. All rights reserved.
+# Copyright (C) 2021-2024 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -22,9 +22,14 @@
 
 import contextlib
 import io
+import logging
 import sys
+import webbrowser
 
-from webkitcorepy import StringIO
+if not sys.platform.startswith('win'):
+    import readline
+
+from webkitcorepy import StringIO, run, Timer, run
 
 if sys.version_info > (3, 0):
     file = io.IOBase
@@ -33,29 +38,64 @@ if sys.version_info > (3, 0):
 class Terminal(object):
     _atty_overrides = {}
     colors = True
+    URL_PREFIXES = ('file://', 'http://', 'https://', 'radar://', 'rdar://')
+    RING_INTERVAL = 30
 
     @classmethod
     def input(cls, *args, **kwargs):
-        return (input if sys.version_info > (3, 0) else raw_input)(*args, **kwargs)
+        alert_after = kwargs.pop('alert_after', None)
+
+        try:
+            if alert_after and cls.isatty(sys.stdout):
+                with Timer(alert_after, lambda: cls.ring(sys.stdout)):
+                    return (input if sys.version_info > (3, 0) else raw_input)(*args, **kwargs)
+            else:
+                return (input if sys.version_info > (3, 0) else raw_input)(*args, **kwargs)
+        except KeyboardInterrupt:
+            sys.stderr.write('\nUser interrupted program\n')
+            sys.exit(1)
 
     @classmethod
-    def choose(cls, prompt, options=None, default=None, strict=False, numbered=False):
+    def ring(cls, file=sys.stdout):
+        if file:
+            file.write('\a')
+            file.flush()
+
+    @classmethod
+    def size(cls):
+        cmd = run(['stty', 'size'], capture_output=True, encoding='utf-8')
+        if cmd.returncode:
+            return None, None
+        try:
+            return [int(value) for value in cmd.stdout.strip().split(' ')]
+        except ValueError:
+            return None, None
+
+    @classmethod
+    def choose(cls, prompt, options=None, default=None, strict=False, numbered=False, alert_after=RING_INTERVAL):
         options = options or ('Yes', 'No')
 
         response = None
         while response is None:
             if numbered:
-                numbered_options = ['{}) {}'.format(i + 1, options[i]) for i in range(len(options))]
-                response = cls.input('{}:\n    {}\n: '.format(prompt, '\n    '.join(numbered_options)))
+                numbered_options = [
+                    ('{}) [{}]' if options[i] == default else '{}) {}').format( i + 1, options[i])
+                    for i in range(len(options))
+                ]
+                sys.stdout.write('{}:\n    {}\n'.format(prompt, '\n    '.join(numbered_options)))
             else:
-                response = cls.input('{} ({}): '.format(prompt, '/'.join(options)))
+                sys.stdout.write('{} ({})'.format(prompt, '/'.join([
+                    '[{}]'.format(option) if option == default else option for option in options
+                ])))
+            sys.stdout.flush()
+            response = cls.input(': ', alert_after=alert_after)
 
             if numbered and response.isdigit():
                 index = int(response) - 1
                 if index >= 0 and index < len(options):
                     response = options[index]
 
-            if not strict:
+            if not strict and len(response) > 0:
                 for option in options:
                     if option.lower().startswith(response.lower()):
                         response = option
@@ -73,7 +113,7 @@ class Terminal(object):
         if not isinstance(target, (io.IOBase, file, StringIO)):
             raise ValueError('{} is not an IO object'.format(target))
         if not isinstance(target, StringIO) and not (getattr(target, 'writable', None) and target.writable()) and 'w' not in getattr(target, 'mode', 'r'):
-            raise ValueError('{} is an IO object, but is not writable {}'.format(target, ))
+            raise ValueError('{} is an IO object, but is not writable'.format(target))
 
     @classmethod
     def supports_color(cls, file):
@@ -109,6 +149,51 @@ class Terminal(object):
                 del cls._atty_overrides[key]
             else:
                 cls._atty_overrides[key] = previous
+
+    @classmethod
+    @contextlib.contextmanager
+    def disable_keyboard_interrupt_stacktracktrace(cls, logging_level=logging.INFO):
+        try:
+            yield
+        except KeyboardInterrupt:
+            if logging.root.level <= logging_level:
+                raise
+            sys.stderr.write('\nUser interrupted program\n')
+            sys.exit(1)
+
+    @classmethod
+    def open_url(cls, url, prompt=None, alert_after=RING_INTERVAL):
+        if all(not url.startswith(prefix) for prefix in cls.URL_PREFIXES):
+            sys.stderr.write("'{}' is not a valid URL\n")
+            return False
+        if not cls.isatty(sys.stdout):
+            return False
+
+        if prompt:
+            try:
+                cls.input(prompt, alert_after=alert_after)
+            except SystemExit:
+                sys.stderr.write('User aborted URL open\n')
+                return False
+
+        if (url.startswith('http://') or url.startswith('https://')):
+            try:
+                webbrowser.open(url)
+                return True
+            except webbrowser.Error:
+                sys.stderr.write(
+                    "Failed to open '{}' in the browser, continuing\n".format(url))
+                return False
+        else:
+            if sys.platform.startswith('win'):
+                process = run(['explorer', url])
+            else:
+                # TODO: Use shutil directly when Python 2.7 is removed
+                if sys.platform.startswith('linux') and shutil.which('xdg-open'):
+                    process = run(['xdg-open', url])
+                else:
+                    process = run(['open', url])
+            return True if process.returncode == 0 else False
 
     class Text(object):
         value = lambda value: '\033[{}m'.format(value)

@@ -32,26 +32,31 @@
 #include "IDBConnectionToServer.h"
 #include "IDBDatabase.h"
 #include "IDBError.h"
+#include "IDBOpenRequestData.h"
 #include "IDBRequestCompletionEvent.h"
 #include "IDBResultData.h"
 #include "IDBTransaction.h"
 #include "IDBVersionChangeEvent.h"
 #include "Logging.h"
 #include "ScriptExecutionContext.h"
-#include <wtf/IsoMallocInlines.h>
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(IDBOpenDBRequest);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(IDBOpenDBRequest);
 
 Ref<IDBOpenDBRequest> IDBOpenDBRequest::createDeleteRequest(ScriptExecutionContext& context, IDBClient::IDBConnectionProxy& connectionProxy, const IDBDatabaseIdentifier& databaseIdentifier)
 {
-    return adoptRef(*new IDBOpenDBRequest(context, connectionProxy, databaseIdentifier, 0, IndexedDB::RequestType::Delete));
+    auto result = adoptRef(*new IDBOpenDBRequest(context, connectionProxy, databaseIdentifier, 0, IndexedDB::RequestType::Delete));
+    result->suspendIfNeeded();
+    return result;
 }
 
 Ref<IDBOpenDBRequest> IDBOpenDBRequest::createOpenRequest(ScriptExecutionContext& context, IDBClient::IDBConnectionProxy& connectionProxy, const IDBDatabaseIdentifier& databaseIdentifier, uint64_t version)
 {
-    return adoptRef(*new IDBOpenDBRequest(context, connectionProxy, databaseIdentifier, version, IndexedDB::RequestType::Open));
+    auto result = adoptRef(*new IDBOpenDBRequest(context, connectionProxy, databaseIdentifier, version, IndexedDB::RequestType::Open));
+    result->suspendIfNeeded();
+    return result;
 }
     
 IDBOpenDBRequest::IDBOpenDBRequest(ScriptExecutionContext& context, IDBClient::IDBConnectionProxy& connectionProxy, const IDBDatabaseIdentifier& databaseIdentifier, uint64_t version, IndexedDB::RequestType requestType)
@@ -104,8 +109,8 @@ void IDBOpenDBRequest::fireErrorAfterVersionChangeCompletion()
     ASSERT(canCurrentThreadAccessThreadLocalData(originThread()));
     ASSERT(hasPendingActivity());
 
-    IDBError idbError(AbortError);
-    m_domError = DOMException::create(AbortError);
+    IDBError idbError(ExceptionCode::AbortError);
+    m_domError = DOMException::create(ExceptionCode::AbortError);
     setResultToUndefined();
 
     m_transaction->addRequest(*this);
@@ -121,7 +126,7 @@ void IDBOpenDBRequest::dispatchEvent(Event& event)
 {
     ASSERT(canCurrentThreadAccessThreadLocalData(originThread()));
 
-    auto protectedThis = makeRef(*this);
+    Ref protectedThis { *this };
 
     IDBRequest::dispatchEvent(event);
 
@@ -192,7 +197,7 @@ void IDBOpenDBRequest::requestCompleted(const IDBResultData& data)
     if (isContextStopped()) {
         switch (data.type()) {
         case IDBResultType::OpenDatabaseSuccess:
-            connectionProxy().abortOpenAndUpgradeNeeded(data.databaseConnectionIdentifier(), IDBResourceIdentifier::emptyValue());
+            connectionProxy().abortOpenAndUpgradeNeeded(data.databaseConnectionIdentifier(), std::nullopt);
             break;
         case IDBResultType::OpenDatabaseUpgradeNeeded:
             connectionProxy().abortOpenAndUpgradeNeeded(data.databaseConnectionIdentifier(), data.transactionInfo().identifier());
@@ -240,9 +245,9 @@ void IDBOpenDBRequest::setIsContextSuspended(bool isContextSuspended)
     // If this request is blocked, it means this request is being processed on the server.
     // The client needs to actively stop the request so it doesn't blocks the processing of subsequent requests.
     if (m_isBlocked) {
-        IDBRequestData requestData(connectionProxy(), *this);
+        IDBOpenRequestData requestData(connectionProxy(), *this);
         connectionProxy().openDBRequestCancelled(requestData);
-        auto result = IDBResultData::error(requestData.requestIdentifier(), IDBError { UnknownError, "Blocked open request on cached page is aborted to unblock other requests"_s });
+        auto result = IDBResultData::error(requestData.requestIdentifier(), IDBError { ExceptionCode::UnknownError, "Blocked open request on cached page is aborted to unblock other requests"_s });
         requestCompleted(result);
     }
 }

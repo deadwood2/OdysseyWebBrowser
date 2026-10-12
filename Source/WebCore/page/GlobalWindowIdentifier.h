@@ -27,58 +27,25 @@
 
 #include "ProcessIdentifier.h"
 #include <wtf/HashTraits.h>
+#include <wtf/Hasher.h>
 #include <wtf/ObjectIdentifier.h>
 
 namespace WebCore {
 
-enum WindowIdentifierType { };
-using WindowIdentifier = ObjectIdentifier<WindowIdentifierType>;
+enum class WindowIdentifierType { };
+using WindowIdentifier = LegacyNullableObjectIdentifier<WindowIdentifierType>;
 
 // Window identifier that is unique across all WebContent processes.
 struct GlobalWindowIdentifier {
     ProcessIdentifier processIdentifier;
     WindowIdentifier windowIdentifier;
 
-    unsigned hash() const;
-
-    template<class Encoder> void encode(Encoder&) const;
-    template<class Decoder> static std::optional<GlobalWindowIdentifier> decode(Decoder&);
+    friend bool operator==(const GlobalWindowIdentifier&, const GlobalWindowIdentifier&) = default;
 };
 
-inline bool operator==(const GlobalWindowIdentifier& a, const GlobalWindowIdentifier& b)
+inline void add(Hasher& hasher, const GlobalWindowIdentifier& identifier)
 {
-    return a.processIdentifier == b.processIdentifier &&  a.windowIdentifier == b.windowIdentifier;
-}
-
-inline unsigned GlobalWindowIdentifier::hash() const
-{
-    uint64_t identifiers[2];
-    identifiers[0] = processIdentifier.toUInt64();
-    identifiers[1] = windowIdentifier.toUInt64();
-
-    return StringHasher::hashMemory(identifiers, sizeof(identifiers));
-}
-
-template<class Encoder>
-void GlobalWindowIdentifier::encode(Encoder& encoder) const
-{
-    encoder << processIdentifier << windowIdentifier;
-}
-
-template<class Decoder>
-std::optional<GlobalWindowIdentifier> GlobalWindowIdentifier::decode(Decoder& decoder)
-{
-    std::optional<ProcessIdentifier> processIdentifier;
-    decoder >> processIdentifier;
-    if (!processIdentifier)
-        return std::nullopt;
-
-    std::optional<WindowIdentifier> windowIdentifier;
-    decoder >> windowIdentifier;
-    if (!windowIdentifier)
-        return std::nullopt;
-
-    return { { WTFMove(*processIdentifier), WTFMove(*windowIdentifier) } };
+    add(hasher, identifier.processIdentifier, identifier.windowIdentifier);
 }
 
 } // namespace WebCore
@@ -86,7 +53,7 @@ std::optional<GlobalWindowIdentifier> GlobalWindowIdentifier::decode(Decoder& de
 namespace WTF {
 
 struct GlobalWindowIdentifierHash {
-    static unsigned hash(const WebCore::GlobalWindowIdentifier& key) { return key.hash(); }
+    static unsigned hash(const WebCore::GlobalWindowIdentifier& key) { return computeHash(key); }
     static bool equal(const WebCore::GlobalWindowIdentifier& a, const WebCore::GlobalWindowIdentifier& b) { return a == b; }
     static const bool safeToCompareToEmptyOrDeleted = true;
 };
@@ -94,7 +61,11 @@ struct GlobalWindowIdentifierHash {
 template<> struct HashTraits<WebCore::GlobalWindowIdentifier> : GenericHashTraits<WebCore::GlobalWindowIdentifier> {
     static WebCore::GlobalWindowIdentifier emptyValue() { return { }; }
 
-    static void constructDeletedValue(WebCore::GlobalWindowIdentifier& slot) { new (NotNull, &slot.windowIdentifier) WebCore::WindowIdentifier(WTF::HashTableDeletedValue); }
+    static void constructDeletedValue(WebCore::GlobalWindowIdentifier& slot)
+    {
+        new (NotNull, &slot.processIdentifier) WebCore::ProcessIdentifier(WTF::HashTableDeletedValue);
+        new (NotNull, &slot.windowIdentifier) WebCore::WindowIdentifier(WTF::HashTableDeletedValue);
+    }
     static bool isDeletedValue(const WebCore::GlobalWindowIdentifier& slot) { return slot.windowIdentifier.isHashTableDeletedValue(); }
 };
 

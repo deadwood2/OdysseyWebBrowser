@@ -27,20 +27,23 @@
 
 #include "FloatConversion.h"
 #include "FloatPoint.h"
+#include "LegacyRenderSVGResourceRadialGradient.h"
+#include "NodeName.h"
 #include "RadialGradientAttributes.h"
 #include "RenderSVGResourceRadialGradient.h"
+#include "SVGElementTypeHelpers.h"
 #include "SVGNames.h"
 #include "SVGStopElement.h"
 #include "SVGUnitTypes.h"
-#include <wtf/IsoMallocInlines.h>
 #include <wtf/NeverDestroyed.h>
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(SVGRadialGradientElement);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(SVGRadialGradientElement);
 
 inline SVGRadialGradientElement::SVGRadialGradientElement(const QualifiedName& tagName, Document& document)
-    : SVGGradientElement(tagName, document)
+    : SVGGradientElement(tagName, document, makeUniqueRef<PropertyRegistry>(*this))
 {
     // Spec: If the cx/cy/r/fr attribute is not specified, the effect is as if a value of "50%" were specified.
     ASSERT(hasTagName(SVGNames::radialGradientTag));
@@ -61,26 +64,34 @@ Ref<SVGRadialGradientElement> SVGRadialGradientElement::create(const QualifiedNa
     return adoptRef(*new SVGRadialGradientElement(tagName, document));
 }
 
-void SVGRadialGradientElement::parseAttribute(const QualifiedName& name, const AtomString& value)
+void SVGRadialGradientElement::attributeChanged(const QualifiedName& name, const AtomString& oldValue, const AtomString& newValue, AttributeModificationReason attributeModificationReason)
 {
     SVGParsingError parseError = NoError;
 
-    if (name == SVGNames::cxAttr)
-        m_cx->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Width, value, parseError));
-    else if (name == SVGNames::cyAttr)
-        m_cy->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Height, value, parseError));
-    else if (name == SVGNames::rAttr)
-        m_r->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Other, value, parseError, SVGLengthNegativeValuesMode::Forbid));
-    else if (name == SVGNames::fxAttr)
-        m_fx->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Width, value, parseError));
-    else if (name == SVGNames::fyAttr)
-        m_fy->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Height, value, parseError));
-    else if (name == SVGNames::frAttr)
-        m_fr->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Other, value, parseError, SVGLengthNegativeValuesMode::Forbid));
-
-    reportAttributeParsingError(parseError, name, value);
-
-    SVGGradientElement::parseAttribute(name, value);
+    switch (name.nodeName()) {
+    case AttributeNames::cxAttr:
+        Ref { m_cx }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Width, newValue, parseError));
+        break;
+    case AttributeNames::cyAttr:
+        Ref { m_cy }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Height, newValue, parseError));
+        break;
+    case AttributeNames::rAttr:
+        Ref { m_r }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Other, newValue, parseError, SVGLengthNegativeValuesMode::Forbid));
+        break;
+    case AttributeNames::fxAttr:
+        Ref { m_fx }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Width, newValue, parseError));
+        break;
+    case AttributeNames::fyAttr:
+        Ref { m_fy }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Height, newValue, parseError));
+        break;
+    case AttributeNames::frAttr:
+        Ref { m_fr }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Other, newValue, parseError, SVGLengthNegativeValuesMode::Forbid));
+        break;
+    default:
+        break;
+    }
+    reportAttributeParsingError(parseError, name, newValue);
+    SVGGradientElement::attributeChanged(name, oldValue, newValue, attributeModificationReason);
 }
 
 void SVGRadialGradientElement::svgAttributeChanged(const QualifiedName& attrName)
@@ -88,8 +99,7 @@ void SVGRadialGradientElement::svgAttributeChanged(const QualifiedName& attrName
     if (PropertyRegistry::isKnownAttribute(attrName)) {
         InstanceInvalidationGuard guard(*this);
         updateRelativeLengthsInformation();
-        if (RenderObject* object = renderer())
-            object->setNeedsLayout();
+        invalidateGradientResource();
         return;
     }
 
@@ -98,7 +108,9 @@ void SVGRadialGradientElement::svgAttributeChanged(const QualifiedName& attrName
 
 RenderPtr<RenderElement> SVGRadialGradientElement::createElementRenderer(RenderStyle&& style, const RenderTreePosition&)
 {
-    return createRenderer<RenderSVGResourceRadialGradient>(*this, WTFMove(style));
+    if (document().settings().layerBasedSVGEngineEnabled())
+        return createRenderer<RenderSVGResourceRadialGradient>(*this, WTFMove(style));
+    return createRenderer<LegacyRenderSVGResourceRadialGradient>(*this, WTFMove(style));
 }
 
 static void setGradientAttributes(SVGGradientElement& element, RadialGradientAttributes& attributes, bool isRadial = true)
@@ -143,17 +155,17 @@ bool SVGRadialGradientElement::collectGradientAttributes(RadialGradientAttribute
     if (!renderer())
         return false;
 
-    HashSet<SVGGradientElement*> processedGradients;
-    SVGGradientElement* current = this;
+    HashSet<RefPtr<SVGGradientElement>> processedGradients;
+    RefPtr<SVGGradientElement> current = this;
 
     setGradientAttributes(*current, attributes);
     processedGradients.add(current);
 
     while (true) {
         // Respect xlink:href, take attributes from referenced element
-        auto target = SVGURIReference::targetElementFromIRIString(current->href(), treeScope());
-        if (is<SVGGradientElement>(target.element)) {
-            current = downcast<SVGGradientElement>(target.element.get());
+        auto target = SVGURIReference::targetElementFromIRIString(current->href(), treeScopeForSVGReferences());
+        if (RefPtr gradientElement = dynamicDowncast<SVGGradientElement>(target.element.get())) {
+            current = WTFMove(gradientElement);
 
             // Cycle detection
             if (processedGradients.contains(current))

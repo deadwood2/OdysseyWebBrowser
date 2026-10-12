@@ -34,18 +34,16 @@
 #include "B3StackmapGenerationParams.h"
 #include "B3ValueInlines.h"
 
+#include <wtf/ListDump.h>
+
 namespace JSC { namespace B3 {
 
 using Arg = Air::Arg;
 using Inst = Air::Inst;
 
-PatchpointSpecial::PatchpointSpecial()
-{
-}
+PatchpointSpecial::PatchpointSpecial() = default;
 
-PatchpointSpecial::~PatchpointSpecial()
-{
-}
+PatchpointSpecial::~PatchpointSpecial() = default;
 
 void PatchpointSpecial::forEachArg(Inst& inst, const ScopedLambda<Inst::EachArgCallback>& callback)
 {
@@ -71,7 +69,7 @@ void PatchpointSpecial::forEachArg(Inst& inst, const ScopedLambda<Inst::EachArgC
     for (unsigned i = patchpoint->numGPScratchRegisters; i--;)
         callback(inst.args[argIndex++], Arg::Scratch, GP, conservativeWidth(GP));
     for (unsigned i = patchpoint->numFPScratchRegisters; i--;)
-        callback(inst.args[argIndex++], Arg::Scratch, FP, conservativeWidth(FP));
+        callback(inst.args[argIndex++], Arg::Scratch, FP, procedure.usesSIMD() ? conservativeWidth(FP) : conservativeWidthWithoutVectors(FP));
 }
 
 bool PatchpointSpecial::isValid(Inst& inst)

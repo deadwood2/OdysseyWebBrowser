@@ -29,7 +29,7 @@
 
 namespace WebKit {
 
-enum PDFPluginIdentifierType { };
-using PDFPluginIdentifier = ObjectIdentifier<PDFPluginIdentifierType>;
+struct PDFPluginIdentifierType;
+using PDFPluginIdentifier = LegacyNullableObjectIdentifier<PDFPluginIdentifierType>;
 
 }

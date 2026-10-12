@@ -24,6 +24,7 @@
 
 #include "JSTestVoidCallbackFunction.h"
 
+#include "ContextDestructionObserverInlines.h"
 #include "JSDOMConvertBase.h"
 #include "JSDOMConvertBoolean.h"
 #include "JSDOMConvertBufferSource.h"
@@ -31,6 +32,7 @@
 #include "JSDOMConvertNumbers.h"
 #include "JSDOMConvertSerializedScriptValue.h"
 #include "JSDOMConvertStrings.h"
+#include "JSDOMConvertUnion.h"
 #include "JSDOMExceptionHandling.h"
 #include "JSDOMGlobalObject.h"
 #include "JSTestNode.h"
@@ -43,7 +45,7 @@ using namespace JSC;
 
 JSTestVoidCallbackFunction::JSTestVoidCallbackFunction(JSObject* callback, JSDOMGlobalObject* globalObject)
     : TestVoidCallbackFunction(globalObject->scriptExecutionContext())
-    , m_data(new JSCallbackDataStrong(callback, globalObject, this))
+    , m_data(new JSCallbackData(callback, globalObject, this))
 {
 }
 
@@ -61,7 +63,7 @@ JSTestVoidCallbackFunction::~JSTestVoidCallbackFunction()
 #endif
 }
 
-CallbackResult<typename IDLUndefined::ImplementationType> JSTestVoidCallbackFunction::handleEvent(typename IDLFloat32Array::ParameterType arrayParam, typename IDLSerializedScriptValue<SerializedScriptValue>::ParameterType srzParam, typename IDLDOMString::ParameterType strArg, typename IDLBoolean::ParameterType boolParam, typename IDLLong::ParameterType longParam, typename IDLInterface<TestNode>::ParameterType testNodeParam)
+CallbackResult<typename IDLUndefined::CallbackReturnType> JSTestVoidCallbackFunction::handleEvent(typename IDLFloat32Array::ParameterType arrayParam, typename IDLSerializedScriptValue<SerializedScriptValue>::ParameterType srzParam, typename IDLDOMString::ParameterType strArg, typename IDLBoolean::ParameterType boolParam, typename IDLLong::ParameterType longParam, typename IDLInterface<TestNode>::ParameterType testNodeParam)
 {
     if (!canInvokeCallback())
         return CallbackResultType::UnableToExecute;
@@ -86,11 +88,22 @@ CallbackResult<typename IDLUndefined::ImplementationType> JSTestVoidCallbackFunc
     NakedPtr<JSC::Exception> returnedException;
     m_data->invokeCallback(thisValue, args, JSCallbackData::CallbackType::Function, Identifier(), returnedException);
     if (returnedException) {
-        reportException(&lexicalGlobalObject, returnedException);
+        UNUSED_PARAM(lexicalGlobalObject);
+        reportException(m_data->callback()->globalObject(), returnedException);
         return CallbackResultType::ExceptionThrown;
      }
 
     return { };
+}
+
+void JSTestVoidCallbackFunction::visitJSFunction(JSC::AbstractSlotVisitor& visitor)
+{
+    m_data->visitJSFunction(visitor);
+}
+
+void JSTestVoidCallbackFunction::visitJSFunction(JSC::SlotVisitor& visitor)
+{
+    m_data->visitJSFunction(visitor);
 }
 
 JSC::JSValue toJS(TestVoidCallbackFunction& impl)

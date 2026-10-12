@@ -37,7 +37,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 /*! @enum WKNavigationType
  @abstract The type of action triggering a navigation.
- @constant WKNavigationTypeLinkActivated    A link with an href attribute was activated by the user.
+ @constant WKNavigationTypeLinkActivated    A link with an href attribute was activated.
  @constant WKNavigationTypeFormSubmitted    A form was submitted.
  @constant WKNavigationTypeBackForward      An item from the back-forward list was requested.
  @constant WKNavigationTypeReload           The webpage was reloaded.
@@ -56,6 +56,7 @@ typedef NS_ENUM(NSInteger, WKNavigationType) {
 /*! 
 A WKNavigationAction object contains information about an action that may cause a navigation, used for making policy decisions.
  */
+WK_SWIFT_UI_ACTOR
 WK_CLASS_AVAILABLE(macos(10.10), ios(8.0))
 @interface WKNavigationAction : NSObject
 

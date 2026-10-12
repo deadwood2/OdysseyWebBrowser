@@ -40,15 +40,29 @@ struct wpe_input_pointer_event;
 struct wpe_input_touch_event;
 #endif
 
+#if PLATFORM(WPE) && ENABLE(WPE_PLATFORM)
+typedef struct _WPEEvent WPEEvent;
+#endif
+
 namespace WebKit {
 
 class WebEventFactory {
 public:
-    static WebKeyboardEvent createWebKeyboardEvent(struct wpe_input_keyboard_event*, const String&, bool handledByInputMethod, std::optional<Vector<WebCore::CompositionUnderline>>&&, std::optional<EditingRange>&&);
-    static WebMouseEvent createWebMouseEvent(struct wpe_input_pointer_event*, float deviceScaleFactor);
+    static WebKeyboardEvent createWebKeyboardEvent(struct wpe_input_keyboard_event*, const String&, bool isAutoRepeat, bool handledByInputMethod, std::optional<Vector<WebCore::CompositionUnderline>>&&, std::optional<EditingRange>&&);
+    static WebMouseEvent createWebMouseEvent(struct wpe_input_pointer_event*, float deviceScaleFactor, WebMouseEventSyntheticClickType = WebMouseEventSyntheticClickType::NoTap);
     static WebWheelEvent createWebWheelEvent(struct wpe_input_axis_event*, float deviceScaleFactor, WebWheelEvent::Phase, WebWheelEvent::Phase momentumPhase);
 #if ENABLE(TOUCH_EVENTS)
     static WebTouchEvent createWebTouchEvent(struct wpe_input_touch_event*, float deviceScaleFactor);
+#endif
+
+#if PLATFORM(WPE) && ENABLE(WPE_PLATFORM)
+    static WebMouseEvent createWebMouseEvent(WPEEvent*);
+    static WebWheelEvent createWebWheelEvent(WPEEvent*);
+    static WebWheelEvent createWebWheelEvent(WPEEvent*, WebWheelEvent::Phase);
+    static WebKeyboardEvent createWebKeyboardEvent(WPEEvent*, const String&, bool isAutoRepeat);
+#if ENABLE(TOUCH_EVENTS)
+    static WebTouchEvent createWebTouchEvent(WPEEvent*, Vector<WebPlatformTouchPoint>&&);
+#endif
 #endif
 };
 

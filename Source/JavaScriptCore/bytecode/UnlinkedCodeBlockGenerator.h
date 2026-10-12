@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019-2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2019-2024 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,6 +27,7 @@
 #pragma once
 
 #include "UnlinkedCodeBlock.h"
+#include <wtf/TZoneMalloc.h>
 #include <wtf/Vector.h>
 
 namespace JSC {
@@ -34,7 +35,7 @@ namespace JSC {
 // FIXME: Create UnlinkedCodeBlock inside UnlinkedCodeBlockGenerator.
 // https://bugs.webkit.org/show_bug.cgi?id=207212
 class UnlinkedCodeBlockGenerator {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED(UnlinkedCodeBlockGenerator);
     WTF_MAKE_NONCOPYABLE(UnlinkedCodeBlockGenerator)
 public:
     UnlinkedCodeBlockGenerator(VM& vm, UnlinkedCodeBlock* codeBlock)
@@ -51,8 +52,6 @@ public:
     JSParserScriptMode scriptMode() const { return m_codeBlock->scriptMode(); }
     NeedsClassFieldInitializer needsClassFieldInitializer() const { return m_codeBlock->needsClassFieldInitializer(); }
     PrivateBrandRequirement privateBrandRequirement() const { return m_codeBlock->privateBrandRequirement(); }
-    bool usesCallEval() const { return m_codeBlock->usesCallEval(); }
-    void setUsesCallEval() { return m_codeBlock->setUsesCallEval(); }
     SourceParseMode parseMode() const { return m_codeBlock->parseMode(); }
     bool isArrowFunction() { return m_codeBlock->isArrowFunction(); }
     DerivedContextType derivedContextType() const { return m_codeBlock->derivedContextType(); }
@@ -78,9 +77,9 @@ public:
     void setNumParameters(unsigned newValue) { m_codeBlock->setNumParameters(newValue); }
 
     UnlinkedMetadataTable& metadata() { return m_codeBlock->metadata(); }
-    void addExpressionInfo(unsigned instructionOffset, int divot, int startOffset, int endOffset, unsigned line, unsigned column);
+    void addExpressionInfo(unsigned instructionOffset, unsigned divot, unsigned startOffset, unsigned endOffset, LineColumn);
     void addTypeProfilerExpressionInfo(unsigned instructionOffset, unsigned startDivot, unsigned endDivot);
-    void addOpProfileControlFlowBytecodeOffset(InstructionStream::Offset offset)
+    void addOpProfileControlFlowBytecodeOffset(JSInstructionStream::Offset offset)
     {
         m_opProfileControlFlowBytecodeOffsets.append(offset);
     }
@@ -176,10 +175,10 @@ public:
     const Identifier& identifier(int index) const { return m_identifiers[index]; }
     void addIdentifier(const Identifier& i) { return m_identifiers.append(i); }
 
-    using OutOfLineJumpTargets = HashMap<InstructionStream::Offset, int>;
-    void addOutOfLineJumpTarget(InstructionStream::Offset, int target);
-    int outOfLineJumpOffset(InstructionStream::Offset);
-    int outOfLineJumpOffset(const InstructionStream::Ref& instruction)
+    using OutOfLineJumpTargets = HashMap<JSInstructionStream::Offset, int>;
+    void addOutOfLineJumpTarget(JSInstructionStream::Offset, int target);
+    int outOfLineJumpOffset(JSInstructionStream::Offset);
+    int outOfLineJumpOffset(const JSInstructionStream::Ref& instruction)
     {
         return outOfLineJumpOffset(instruction.offset());
     }
@@ -192,35 +191,37 @@ public:
 
     size_t metadataSizeInBytes() { return m_codeBlock->metadataSizeInBytes(); }
 
-    void getLineAndColumn(const ExpressionRangeInfo&, unsigned& line, unsigned& column) const;
+    void applyModification(BytecodeRewriter&, JSInstructionStreamWriter&);
 
-    void applyModification(BytecodeRewriter&, InstructionStreamWriter&);
-
-    void finalize(std::unique_ptr<InstructionStream>);
+    void finalize(std::unique_ptr<JSInstructionStream>);
 
     void dump(PrintStream&) const;
+
+    unsigned addBinaryArithProfile() { return m_numBinaryArithProfiles++; }
+    unsigned addUnaryArithProfile() { return m_numUnaryArithProfiles++; }
 
 private:
     VM& m_vm;
     Strong<UnlinkedCodeBlock> m_codeBlock;
     // In non-RareData.
-    Vector<InstructionStream::Offset> m_jumpTargets;
+    Vector<JSInstructionStream::Offset> m_jumpTargets;
     Vector<Identifier> m_identifiers;
     Vector<WriteBarrier<Unknown>> m_constantRegisters;
     Vector<SourceCodeRepresentation> m_constantsSourceCodeRepresentation;
     Vector<WriteBarrier<UnlinkedFunctionExecutable>> m_functionDecls;
     Vector<WriteBarrier<UnlinkedFunctionExecutable>> m_functionExprs;
-    Vector<ExpressionRangeInfo> m_expressionInfo;
+    ExpressionInfo::Encoder m_expressionInfoEncoder;
     OutOfLineJumpTargets m_outOfLineJumpTargets;
     // In RareData.
     Vector<UnlinkedHandlerInfo> m_exceptionHandlers;
     Vector<UnlinkedSimpleJumpTable> m_unlinkedSwitchJumpTables;
     Vector<UnlinkedStringJumpTable> m_unlinkedStringSwitchJumpTables;
-    Vector<ExpressionRangeInfo::FatPosition> m_expressionInfoFatPositions;
     HashMap<unsigned, UnlinkedCodeBlock::RareData::TypeProfilerExpressionRange> m_typeProfilerInfoMap;
-    Vector<InstructionStream::Offset> m_opProfileControlFlowBytecodeOffsets;
+    Vector<JSInstructionStream::Offset> m_opProfileControlFlowBytecodeOffsets;
     Vector<BitVector> m_bitVectors;
     Vector<IdentifierSet> m_constantIdentifierSets;
+    unsigned m_numBinaryArithProfiles { 0 };
+    unsigned m_numUnaryArithProfiles { 0 };
 };
 
 } // namespace JSC

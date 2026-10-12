@@ -26,6 +26,7 @@
 #import <WebKit/WKNavigationAction.h>
 
 @class WKNavigation;
+@class _WKHitTestResult;
 @class _WKUserInitiatedAction;
 
 #if TARGET_OS_IPHONE
@@ -46,6 +47,7 @@ typedef NS_ENUM(NSInteger, WKSyntheticClickType) {
 @property (nonatomic, readonly) BOOL _shouldOpenExternalSchemes WK_API_AVAILABLE(macos(10.11), ios(9.0));
 @property (nonatomic, readonly) BOOL _shouldOpenAppLinks WK_API_AVAILABLE(macos(10.11), ios(9.0));
 @property (nonatomic, readonly) BOOL _shouldPerformDownload WK_API_DEPRECATED_WITH_REPLACEMENT("downloadAttribute", macos(10.15, 12.0), ios(13.0, 15.0));
+@property (nonatomic, readonly) NSString *_targetFrameName WK_API_AVAILABLE(macos(14.2), ios(17.2));
 
 @property (nonatomic, readonly) BOOL _shouldOpenExternalURLs WK_API_DEPRECATED("use _shouldOpenExternalSchemes and _shouldOpenAppLinks", macos(10.11, 10.11), ios(9.0, 9.0));
 
@@ -60,5 +62,10 @@ typedef NS_ENUM(NSInteger, WKSyntheticClickType) {
 
 @property (nonatomic, readonly) BOOL _isRedirect WK_API_AVAILABLE(macos(10.13), ios(11.0));
 @property (nonatomic, readonly) WKNavigation *_mainFrameNavigation WK_API_AVAILABLE(macos(10.14.4), ios(12.2));
+- (void)_storeSKAdNetworkAttribution WK_API_AVAILABLE(macos(13.0), ios(16.1));
+
+@property (nonatomic, readonly) _WKHitTestResult *_hitTestResult WK_API_AVAILABLE(macos(13.3), ios(16.4));
+
+@property (nonatomic, readonly) BOOL _hasOpener WK_API_AVAILABLE(macos(13.3), ios(16.4));
 
 @end

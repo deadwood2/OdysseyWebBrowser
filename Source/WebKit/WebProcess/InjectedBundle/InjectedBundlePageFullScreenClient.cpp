@@ -30,6 +30,7 @@
 #include "InjectedBundlePageFullScreenClient.h"
 
 #include "InjectedBundleNodeHandle.h"
+#include "MessageSenderInlines.h"
 #include "WKAPICast.h"
 #include "WKBundleAPICast.h"
 #include "WKSharedAPICast.h"
@@ -46,26 +47,26 @@ bool InjectedBundlePageFullScreenClient::supportsFullScreen(WebPage *page, bool 
     if (m_client.supportsFullScreen) 
         return m_client.supportsFullScreen(toAPI(page), withKeyboard);
 
-    bool supports = true;
-    page->sendSync(Messages::WebFullScreenManagerProxy::SupportsFullScreen(withKeyboard), Messages::WebFullScreenManagerProxy::SupportsFullScreen::Reply(supports));
+    auto sendResult = page->sendSync(Messages::WebFullScreenManagerProxy::SupportsFullScreen(withKeyboard));
+    auto [supports] = sendResult.takeReplyOr(true);
     return supports;
 }
 
-void InjectedBundlePageFullScreenClient::enterFullScreenForElement(WebPage *page, WebCore::Element *element, bool blocksReturnToFullscreenFromPictureInPicture)
+void InjectedBundlePageFullScreenClient::enterFullScreenForElement(WebPage* page, WebCore::Element* element, bool blocksReturnToFullscreenFromPictureInPicture, WebCore::HTMLMediaElementEnums::VideoFullscreenMode mode, FullScreenMediaDetails&& mediaDetails)
 {
     if (m_client.enterFullScreenForElement) {
         RefPtr<InjectedBundleNodeHandle> nodeHandle = InjectedBundleNodeHandle::getOrCreate(element);
         m_client.enterFullScreenForElement(toAPI(page), toAPI(nodeHandle.get()));
-    } else
-        page->send(Messages::WebFullScreenManagerProxy::EnterFullScreen(blocksReturnToFullscreenFromPictureInPicture));
+    } else if (mode != WebCore::HTMLMediaElementEnums::VideoFullscreenModeInWindow)
+        page->send(Messages::WebFullScreenManagerProxy::EnterFullScreen(blocksReturnToFullscreenFromPictureInPicture, WTFMove(mediaDetails)));
 }
 
-void InjectedBundlePageFullScreenClient::exitFullScreenForElement(WebPage *page, WebCore::Element *element)
+void InjectedBundlePageFullScreenClient::exitFullScreenForElement(WebPage *page, WebCore::Element *element, bool isInInWindowFullScreenMode)
 {
     if (m_client.exitFullScreenForElement) {
         RefPtr<InjectedBundleNodeHandle> nodeHandle = InjectedBundleNodeHandle::getOrCreate(element);
         m_client.exitFullScreenForElement(toAPI(page), toAPI(nodeHandle.get()));
-    } else
+    } else if (!isInInWindowFullScreenMode)
         page->send(Messages::WebFullScreenManagerProxy::ExitFullScreen());
 }
 

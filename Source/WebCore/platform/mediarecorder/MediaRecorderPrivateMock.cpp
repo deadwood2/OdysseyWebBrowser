@@ -26,11 +26,12 @@
 #include "config.h"
 #include "MediaRecorderPrivateMock.h"
 
-#if ENABLE(MEDIA_STREAM)
+#if ENABLE(MEDIA_RECORDER)
 
 #include "MediaStreamTrackPrivate.h"
 #include "SharedBuffer.h"
 #include "Timer.h"
+#include <wtf/MediaTime.h>
 #include <wtf/MonotonicTime.h>
 
 namespace WebCore {
@@ -67,36 +68,34 @@ void MediaRecorderPrivateMock::resumeRecording(CompletionHandler<void()>&& compl
     completionHandler();
 }
 
-void MediaRecorderPrivateMock::videoSampleAvailable(MediaSample&)
+void MediaRecorderPrivateMock::videoFrameAvailable(VideoFrame&, VideoFrameTimeMetadata)
 {
     Locker locker { m_bufferLock };
-    m_buffer.append("Video Track ID: ");
-    m_buffer.append(m_videoTrackID);
+    m_buffer.append("Video Track ID: "_s, m_videoTrackID);
     generateMockCounterString();
 }
 
-void MediaRecorderPrivateMock::audioSamplesAvailable(const WTF::MediaTime&, const PlatformAudioData&, const AudioStreamDescription&, size_t)
+void MediaRecorderPrivateMock::audioSamplesAvailable(const MediaTime&, const PlatformAudioData&, const AudioStreamDescription&, size_t)
 {
     // Heap allocations are forbidden on the audio thread for performance reasons so we need to
     // explicitly allow the following allocation(s).
     DisableMallocRestrictionsForCurrentThreadScope disableMallocRestrictions;
     Locker locker { m_bufferLock };
-    m_buffer.append("Audio Track ID: ");
-    m_buffer.append(m_audioTrackID);
+    m_buffer.append("Audio Track ID: "_s, m_audioTrackID);
     generateMockCounterString();
 }
 
 void MediaRecorderPrivateMock::generateMockCounterString()
 {
-    m_buffer.append(" Counter: ", ++m_counter, "\r\n---------\r\n");
+    m_buffer.append(" Counter: "_s, ++m_counter, "\r\n---------\r\n"_s);
 }
 
 void MediaRecorderPrivateMock::fetchData(FetchDataCallback&& completionHandler)
 {
-    RefPtr<SharedBuffer> buffer;
+    RefPtr<FragmentedSharedBuffer> buffer;
     {
         Locker locker { m_bufferLock };
-        Vector<uint8_t> value { m_buffer.characters8(), m_buffer.length() };
+        Vector<uint8_t> value(m_buffer.span<uint8_t>());
         m_buffer.clear();
         buffer = SharedBuffer::create(WTFMove(value));
     }
@@ -115,4 +114,4 @@ const String& MediaRecorderPrivateMock::mimeType() const
 
 } // namespace WebCore
 
-#endif // ENABLE(MEDIA_STREAM)
+#endif // ENABLE(MEDIA_RECORDER)

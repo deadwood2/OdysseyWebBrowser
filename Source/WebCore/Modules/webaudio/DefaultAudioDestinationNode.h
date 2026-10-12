@@ -34,7 +34,7 @@ class AudioContext;
 class AudioDestination;
     
 class DefaultAudioDestinationNode final : public AudioDestinationNode, public AudioIOCallback {
-    WTF_MAKE_ISO_ALLOCATED(DefaultAudioDestinationNode);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(DefaultAudioDestinationNode);
 public:
     explicit DefaultAudioDestinationNode(AudioContext&, std::optional<float> sampleRate = std::nullopt);
     ~DefaultAudioDestinationNode();
@@ -51,6 +51,7 @@ public:
 
     void setMuted(bool muted) { m_muted = muted; }
     bool isPlayingAudio() const { return m_isEffectivelyPlayingAudio; }
+    bool isConnected() const;
 
 private:
     void createDestination();

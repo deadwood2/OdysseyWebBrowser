@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -40,12 +40,9 @@ struct VMEntryRecord {
      * This record stored in a vmEntryTo{JavaScript,Host} allocated frame. It is allocated on the stack
      * after callee save registers where local variables would go.
      */
-    VM* m_vm;
-    CallFrame* m_prevTopCallFrame;
-    EntryFrame* m_prevTopEntryFrame;
-    JSObject* m_callee;
-
-    JSObject* callee() const { return m_callee; }
+    VM* const m_vm;
+    CallFrame* const m_prevTopCallFrame;
+    EntryFrame* const m_prevTopEntryFrame;
 
 #if !ENABLE(C_LOOP) && NUMBER_OF_CALLEE_SAVES_REGISTERS > 0
     CPURegister calleeSaveRegistersBuffer[NUMBER_OF_CALLEE_SAVES_REGISTERS];
@@ -60,6 +57,6 @@ struct VMEntryRecord {
     SUPPRESS_ASAN EntryFrame* unsafePrevTopEntryFrame() { return m_prevTopEntryFrame; }
 };
 
-extern "C" VMEntryRecord* vmEntryRecord(EntryFrame*);
+extern "C" VMEntryRecord* SYSV_ABI vmEntryRecord(EntryFrame*);
 
 } // namespace JSC

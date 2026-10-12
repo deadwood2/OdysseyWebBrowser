@@ -36,7 +36,7 @@ namespace WTF {
 
 DEFINE_ALLOCATOR_WITH_HEAP_IDENTIFIER(MetaAllocatorHandle);
 
-DECLARE_ALLOCATOR_WITH_HEAP_IDENTIFIER(MetaAllocatorFreeSpace);
+DECLARE_ALLOCATOR_WITH_HEAP_IDENTIFIER_AND_EXPORT(MetaAllocatorFreeSpace, WTF_INTERNAL);
 DEFINE_ALLOCATOR_WITH_HEAP_IDENTIFIER(MetaAllocatorFreeSpace);
 
 MetaAllocator::~MetaAllocator()
@@ -62,13 +62,13 @@ void MetaAllocatorTracker::release(MetaAllocatorHandle& handle)
     m_allocations.remove(&handle);
 }
 
-void MetaAllocator::release(const LockHolder&, MetaAllocatorHandle& handle)
+void MetaAllocator::release(const Locker<Lock>&, MetaAllocatorHandle& handle)
 {
     if (handle.sizeInBytes()) {
         MemoryPtr start = handle.start();
         size_t sizeInBytes = handle.sizeInBytes();
         decrementPageOccupancy(start.untaggedPtr(), sizeInBytes);
-        addFreeSpaceFromReleasedHandle(FreeSpacePtr(start), sizeInBytes);
+        addFreeSpaceFromReleasedHandle(start.retagged<FreeSpacePtrTag>(), sizeInBytes);
     }
 
     if (UNLIKELY(!!m_tracker))
@@ -114,7 +114,7 @@ void MetaAllocatorHandle::shrink(size_t newSizeInBytes)
     if (firstCompletelyFreePage < freeEnd)
         allocator.decrementPageOccupancy(reinterpret_cast<void*>(firstCompletelyFreePage), freeSize - (firstCompletelyFreePage - freeStartValue));
 
-    allocator.addFreeSpaceFromReleasedHandle(MetaAllocator::FreeSpacePtr(freeStart), freeSize);
+    allocator.addFreeSpaceFromReleasedHandle(freeStart.retagged<FreeSpacePtrTag>(), freeSize);
 
     m_end = freeStart;
 }
@@ -154,7 +154,7 @@ MetaAllocator::MetaAllocator(Lock& lock, size_t allocationGranule, size_t pageSi
     ASSERT(static_cast<size_t>(1) << m_logAllocationGranule == m_allocationGranule);
 }
 
-RefPtr<MetaAllocatorHandle> MetaAllocator::allocate(const LockHolder&, size_t sizeInBytes)
+RefPtr<MetaAllocatorHandle> MetaAllocator::allocate(const Locker<Lock>&, size_t sizeInBytes)
 {
     if (!sizeInBytes)
         return nullptr;
@@ -190,7 +190,7 @@ RefPtr<MetaAllocatorHandle> MetaAllocator::allocate(const LockHolder&, size_t si
     m_numAllocations++;
 #endif
 
-    auto handle = adoptRef(*new MetaAllocatorHandle(*this, MemoryPtr(start), sizeInBytes));
+    auto handle = adoptRef(*new MetaAllocatorHandle(*this, start.retagged<HandleMemoryPtrTag>(), sizeInBytes));
 
     if (UNLIKELY(!!m_tracker))
         m_tracker->notify(*handle.ptr());
@@ -198,7 +198,7 @@ RefPtr<MetaAllocatorHandle> MetaAllocator::allocate(const LockHolder&, size_t si
     return handle;
 }
 
-MetaAllocator::Statistics MetaAllocator::currentStatistics(const LockHolder&)
+MetaAllocator::Statistics MetaAllocator::currentStatistics(const Locker<Lock>&)
 {
     Statistics result;
     result.bytesAllocated = m_bytesAllocated;
@@ -289,7 +289,7 @@ void MetaAllocator::addFreshFreeSpace(void* start, size_t sizeInBytes)
     Config::AssertNotFrozenScope assertNotFrozenScope;
     Locker locker { m_lock };
     m_bytesReserved += sizeInBytes;
-    addFreeSpace(FreeSpacePtr::makeFromRawPointer(start), sizeInBytes);
+    addFreeSpace(FreeSpacePtr::fromUntaggedPtr(start), sizeInBytes);
 }
 
 size_t MetaAllocator::debugFreeSpaceSize()

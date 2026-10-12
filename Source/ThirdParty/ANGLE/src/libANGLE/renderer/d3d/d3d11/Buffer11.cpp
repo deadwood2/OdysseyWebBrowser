@@ -387,7 +387,7 @@ angle::Result Buffer11::getData(const gl::Context *context, const uint8_t **outD
 {
     if (mSize == 0)
     {
-        // TODO(http://anglebug.com/2840): This ensures that we don't crash or assert in robust
+        // TODO(http://anglebug.com/42261543): This ensures that we don't crash or assert in robust
         // buffer access behavior mode if there are buffers without any data. However, technically
         // it should still be possible to draw, with fetches from this buffer returning zero.
         return angle::Result::Stop;
@@ -750,6 +750,12 @@ angle::Result Buffer11::markRawBufferUsage(const gl::Context *context)
     return angle::Result::Continue;
 }
 
+angle::Result Buffer11::markTypedBufferUsage(const gl::Context *context)
+{
+    ANGLE_TRY(markBufferUsage(context, BUFFER_USAGE_TYPED_UAV));
+    return angle::Result::Continue;
+}
+
 angle::Result Buffer11::getRawUAVRange(const gl::Context *context,
                                        GLintptr offset,
                                        GLsizeiptr size,
@@ -999,6 +1005,11 @@ angle::Result Buffer11::updateBufferStorage(const gl::Context *context,
         return angle::Result::Continue;
     }
 
+    if (latestBuffer->getSize() == 0 || storage->getSize() == 0)
+    {
+        return angle::Result::Continue;
+    }
+
     // Copy through a staging buffer if we're copying from or to a non-staging, mappable
     // buffer storage. This is because we can't map a GPU buffer, and copy CPU
     // data directly. If we're already using a staging buffer we're fine.
@@ -1230,7 +1241,7 @@ angle::Result Buffer11::NativeStorage::resize(const gl::Context *context,
     d3d11::Buffer newBuffer;
     ANGLE_TRY(
         mRenderer->allocateResource(SafeGetImplAs<Context11>(context), bufferDesc, &newBuffer));
-    newBuffer.setDebugName("Buffer11::NativeStorage");
+    newBuffer.setInternalName("Buffer11::NativeStorage");
 
     if (mBuffer.valid() && preserveData)
     {
@@ -1344,6 +1355,12 @@ void Buffer11::NativeStorage::FillBufferDesc(D3D11_BUFFER_DESC *bufferDesc,
             bufferDesc->Usage          = D3D11_USAGE_DEFAULT;
             bufferDesc->CPUAccessFlags = 0;
             break;
+        case BUFFER_USAGE_TYPED_UAV:
+            bufferDesc->BindFlags      = D3D11_BIND_UNORDERED_ACCESS | D3D11_BIND_SHADER_RESOURCE;
+            bufferDesc->Usage          = D3D11_USAGE_DEFAULT;
+            bufferDesc->CPUAccessFlags = 0;
+            bufferDesc->MiscFlags      = 0;
+            break;
 
         default:
             UNREACHABLE();
@@ -1360,10 +1377,8 @@ angle::Result Buffer11::NativeStorage::map(const gl::Context *context,
 
     D3D11_MAPPED_SUBRESOURCE mappedResource;
     D3D11_MAP d3dMapType = gl_d3d11::GetD3DMapTypeFromBits(mUsage, access);
-    UINT d3dMapFlag = ((access & GL_MAP_UNSYNCHRONIZED_BIT) != 0 ? D3D11_MAP_FLAG_DO_NOT_WAIT : 0);
 
-    ANGLE_TRY(
-        mRenderer->mapResource(context, mBuffer.get(), 0, d3dMapType, d3dMapFlag, &mappedResource));
+    ANGLE_TRY(mRenderer->mapResource(context, mBuffer.get(), 0, d3dMapType, 0, &mappedResource));
     ASSERT(mappedResource.pData);
     *mapPointerOut = static_cast<uint8_t *>(mappedResource.pData) + offset;
     return angle::Result::Continue;
@@ -1478,7 +1493,7 @@ angle::Result Buffer11::StructuredBufferStorage::resizeStructuredBuffer(
     d3d11::Buffer newBuffer;
     ANGLE_TRY(
         mRenderer->allocateResource(SafeGetImplAs<Context11>(context), bufferDesc, &newBuffer));
-    newBuffer.setDebugName("Buffer11::StructuredBufferStorage");
+    newBuffer.setInternalName("Buffer11::StructuredBufferStorage");
 
     // No longer need the old buffer
     mBuffer = std::move(newBuffer);
@@ -1632,7 +1647,7 @@ angle::Result Buffer11::EmulatedIndexedStorage::getBuffer(const gl::Context *con
 
         ANGLE_TRY(mRenderer->allocateResource(GetImplAs<Context11>(context), bufferDesc,
                                               &subResourceData, &mBuffer));
-        mBuffer.setDebugName("Buffer11::EmulatedIndexedStorage");
+        mBuffer.setInternalName("Buffer11::EmulatedIndexedStorage");
     }
 
     *bufferOut = &mBuffer;

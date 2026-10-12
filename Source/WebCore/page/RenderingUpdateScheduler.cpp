@@ -31,6 +31,7 @@
 #include "DisplayRefreshMonitorManager.h"
 #include "Logging.h"
 #include "Page.h"
+#include "Timer.h"
 #include <wtf/SystemTracing.h>
 #include <wtf/text/TextStream.h>
 
@@ -41,6 +42,8 @@ RenderingUpdateScheduler::RenderingUpdateScheduler(Page& page)
 {
     windowScreenDidChange(page.chrome().displayID());
 }
+
+RenderingUpdateScheduler::~RenderingUpdateScheduler() = default;
 
 bool RenderingUpdateScheduler::scheduleAnimation()
 {
@@ -59,7 +62,7 @@ void RenderingUpdateScheduler::adjustRenderingUpdateFrequency()
     } else
         m_useTimer = true;
 
-    if (isScheduled()) {
+    if (m_refreshTimer) {
         clearScheduled();
         scheduleRenderingUpdate();
     }
@@ -84,27 +87,26 @@ void RenderingUpdateScheduler::scheduleRenderingUpdate()
         LOG_WITH_STREAM(DisplayLink, stream << "RenderingUpdateScheduler::scheduleRenderingUpdate for interval " << m_page.preferredRenderingUpdateInterval() << " falling back to timer");
         startTimer(m_page.preferredRenderingUpdateInterval());
     }
+    
+    m_page.didScheduleRenderingUpdate();
 }
 
 bool RenderingUpdateScheduler::isScheduled() const
 {
-    ASSERT_IMPLIES(m_refreshTimer.get(), m_scheduled);
-    return m_scheduled;
+    return m_refreshTimer || DisplayRefreshMonitorClient::isScheduled();
 }
     
 void RenderingUpdateScheduler::startTimer(Seconds delay)
 {
     LOG_WITH_STREAM(EventLoop, stream << "RenderingUpdateScheduler for page " << &m_page << " startTimer(" << delay << ")");
 
-    ASSERT(!isScheduled());
+    ASSERT(!m_refreshTimer);
     m_refreshTimer = makeUnique<Timer>(*this, &RenderingUpdateScheduler::displayRefreshFired);
     m_refreshTimer->startOneShot(delay);
-    m_scheduled = true;
 }
 
 void RenderingUpdateScheduler::clearScheduled()
 {
-    m_scheduled = false;
     m_refreshTimer = nullptr;
 }
 
@@ -134,11 +136,6 @@ void RenderingUpdateScheduler::displayRefreshFired()
         scheduleRenderingUpdate();
         ++m_rescheduledRenderingUpdateCount;
     }
-}
-
-void RenderingUpdateScheduler::triggerRenderingUpdateForTesting()
-{
-    triggerRenderingUpdate();
 }
 
 void RenderingUpdateScheduler::triggerRenderingUpdate()

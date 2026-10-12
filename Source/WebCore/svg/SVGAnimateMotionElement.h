@@ -28,7 +28,8 @@ namespace WebCore {
 class AffineTransform;
             
 class SVGAnimateMotionElement final : public SVGAnimationElement {
-    WTF_MAKE_ISO_ALLOCATED(SVGAnimateMotionElement);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(SVGAnimateMotionElement);
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(SVGAnimateMotionElement);
 public:
     static Ref<SVGAnimateMotionElement> create(const QualifiedName&, Document&);
     void updateAnimationPath();
@@ -39,13 +40,13 @@ private:
     bool hasValidAttributeType() const override;
     bool hasValidAttributeName() const override;
 
-    void parseAttribute(const QualifiedName&, const AtomString&) override;
+    void attributeChanged(const QualifiedName&, const AtomString& oldValue, const AtomString& newValue, AttributeModificationReason) override;
 
     void startAnimation() override;
     void stopAnimation(SVGElement* targetElement) override;
-    bool calculateToAtEndOfDurationValue(const String& toAtEndOfDurationString) override;
-    bool calculateFromAndToValues(const String& fromString, const String& toString) override;
-    bool calculateFromAndByValues(const String& fromString, const String& byString) override;
+    bool setFromAndToValues(const String& fromString, const String& toString) override;
+    bool setFromAndByValues(const String& fromString, const String& byString) override;
+    bool setToAtEndOfDurationValue(const String& toAtEndOfDurationString) override;
     void calculateAnimatedValue(float percentage, unsigned repeatCount) override;
     void applyResultsToTarget() override;
     std::optional<float> calculateDistance(const String& fromString, const String& toString) override;
@@ -59,6 +60,7 @@ private:
     void buildTransformForProgress(AffineTransform*, float percentage);
 
     void updateAnimationMode() override;
+    void childrenChanged(const ChildChange&) final;
 
     // Note: we do not support percentage values for to/from coords as the spec implies we should (opera doesn't either)
     FloatPoint m_fromPoint;

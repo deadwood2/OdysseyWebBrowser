@@ -38,6 +38,18 @@ Ref<ScrollingStateFrameHostingNode> ScrollingStateFrameHostingNode::create(Scrol
     return adoptRef(*new ScrollingStateFrameHostingNode(stateTree, nodeID));
 }
 
+Ref<ScrollingStateFrameHostingNode> ScrollingStateFrameHostingNode::create(ScrollingNodeID nodeID, Vector<Ref<ScrollingStateNode>>&& children, OptionSet<ScrollingStateNodeProperty> changedProperties, std::optional<PlatformLayerIdentifier> layerID, std::optional<LayerHostingContextIdentifier> identifier)
+{
+    return adoptRef(*new ScrollingStateFrameHostingNode(nodeID, WTFMove(children), changedProperties, layerID, identifier));
+}
+
+ScrollingStateFrameHostingNode::ScrollingStateFrameHostingNode(ScrollingNodeID nodeID, Vector<Ref<ScrollingStateNode>>&& children, OptionSet<ScrollingStateNodeProperty> changedProperties, std::optional<PlatformLayerIdentifier> layerID, std::optional<LayerHostingContextIdentifier> identifier)
+    : ScrollingStateNode(ScrollingNodeType::FrameHosting, nodeID, WTFMove(children), changedProperties, layerID)
+    , m_hostingContext(identifier)
+{
+    ASSERT(isFrameHostingNode());
+}
+
 ScrollingStateFrameHostingNode::ScrollingStateFrameHostingNode(ScrollingStateTree& stateTree, ScrollingNodeID nodeID)
     : ScrollingStateNode(ScrollingNodeType::FrameHosting, stateTree, nodeID)
 {
@@ -46,17 +58,26 @@ ScrollingStateFrameHostingNode::ScrollingStateFrameHostingNode(ScrollingStateTre
 
 ScrollingStateFrameHostingNode::ScrollingStateFrameHostingNode(const ScrollingStateFrameHostingNode& stateNode, ScrollingStateTree& adoptiveTree)
     : ScrollingStateNode(stateNode, adoptiveTree)
+    , m_hostingContext(stateNode.layerHostingContextIdentifier())
 {
 }
 
 ScrollingStateFrameHostingNode::~ScrollingStateFrameHostingNode() = default;
+
+void ScrollingStateFrameHostingNode::setLayerHostingContextIdentifier(const std::optional<LayerHostingContextIdentifier> identifier)
+{
+    if (identifier == m_hostingContext)
+        return;
+    m_hostingContext = identifier;
+    setPropertyChanged(Property::LayerHostingContextIdentifier);
+}
 
 Ref<ScrollingStateNode> ScrollingStateFrameHostingNode::clone(ScrollingStateTree& adoptiveTree)
 {
     return adoptRef(*new ScrollingStateFrameHostingNode(*this, adoptiveTree));
 }
 
-void ScrollingStateFrameHostingNode::dumpProperties(TextStream& ts, ScrollingStateTreeAsTextBehavior behavior) const
+void ScrollingStateFrameHostingNode::dumpProperties(TextStream& ts, OptionSet<ScrollingStateTreeAsTextBehavior> behavior) const
 {
     ts << "Frame hosting node";
     ScrollingStateNode::dumpProperties(ts, behavior);

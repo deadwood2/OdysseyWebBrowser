@@ -35,12 +35,14 @@
 #include "NetworkContentRuleListManagerMessages.h"
 #include "NetworkProcessProxy.h"
 #include "WebPageCreationParameters.h"
+#include "WebPageProxy.h"
 #include "WebProcessProxy.h"
 #include "WebScriptMessageHandler.h"
 #include "WebUserContentControllerDataTypes.h"
 #include "WebUserContentControllerMessages.h"
 #include "WebUserContentControllerProxyMessages.h"
 #include <WebCore/SerializedScriptValue.h>
+#include <wtf/CheckedPtr.h>
 
 #if ENABLE(CONTENT_EXTENSIONS)
 #include "APIContentRuleList.h"
@@ -51,12 +53,11 @@ namespace WebKit {
 
 using namespace WebCore;
 
-static HashMap<UserContentControllerIdentifier, WebUserContentControllerProxy*>& webUserContentControllerProxies()
+static HashMap<UserContentControllerIdentifier, WeakRef<WebUserContentControllerProxy>>& webUserContentControllerProxies()
 {
-    static NeverDestroyed<HashMap<UserContentControllerIdentifier, WebUserContentControllerProxy*>> proxies;
+    static NeverDestroyed<HashMap<UserContentControllerIdentifier, WeakRef<WebUserContentControllerProxy>>> proxies;
     return proxies;
 }
-
 
 WebUserContentControllerProxy* WebUserContentControllerProxy::get(UserContentControllerIdentifier identifier)
 {
@@ -64,11 +65,10 @@ WebUserContentControllerProxy* WebUserContentControllerProxy::get(UserContentCon
 }
     
 WebUserContentControllerProxy::WebUserContentControllerProxy()
-    : m_identifier(UserContentControllerIdentifier::generate())
-    , m_userScripts(API::Array::create())
+    : m_userScripts(API::Array::create())
     , m_userStyleSheets(API::Array::create())
 {
-    webUserContentControllerProxies().add(m_identifier, this);
+    webUserContentControllerProxies().add(identifier(), *this);
 }
 
 WebUserContentControllerProxy::~WebUserContentControllerProxy()
@@ -79,7 +79,7 @@ WebUserContentControllerProxy::~WebUserContentControllerProxy()
         world->userContentControllerProxyDestroyed(*this);
     }
     
-    webUserContentControllerProxies().remove(m_identifier);
+    webUserContentControllerProxies().remove(identifier());
     for (auto& process : m_processes) {
         process.removeMessageReceiver(Messages::WebUserContentControllerProxy::messageReceiverName(), identifier());
         process.didDestroyWebUserContentControllerProxy(*this);
@@ -117,11 +117,11 @@ UserContentControllerParameters WebUserContentControllerProxy::parameters() cons
     parameters.identifier = identifier();
     
     ASSERT(parameters.userContentWorlds.isEmpty());
-    for (const auto& identifier : m_associatedContentWorlds) {
+    parameters.userContentWorlds = WTF::map(m_associatedContentWorlds, [](auto& identifier) {
         auto* world = API::ContentWorld::worldForIdentifier(identifier);
         RELEASE_ASSERT(world);
-        parameters.userContentWorlds.append(world->worldData());
-    }
+        return world->worldData();
+    });
 
     for (auto userScript : m_userScripts->elementsOfType<API::UserScript>())
         parameters.userScripts.append({ userScript->identifier(), userScript->contentWorld().identifier(), userScript->userScript() });
@@ -129,8 +129,9 @@ UserContentControllerParameters WebUserContentControllerProxy::parameters() cons
     for (auto userStyleSheet : m_userStyleSheets->elementsOfType<API::UserStyleSheet>())
         parameters.userStyleSheets.append({ userStyleSheet->identifier(), userStyleSheet->contentWorld().identifier(), userStyleSheet->userStyleSheet() });
 
-    for (auto& handler : m_scriptMessageHandlers.values())
-        parameters.messageHandlers.append({ handler->identifier(), handler->world().identifier(), handler->name() });
+    parameters.messageHandlers = WTF::map(m_scriptMessageHandlers, [](auto entry) {
+        return WebScriptMessageHandlerData { entry.value->identifier(), entry.value->world().identifier(), entry.value->name() };
+    });
 
 #if ENABLE(CONTENT_EXTENSIONS)
     parameters.contentRuleLists = contentRuleListData();
@@ -140,13 +141,11 @@ UserContentControllerParameters WebUserContentControllerProxy::parameters() cons
 }
 
 #if ENABLE(CONTENT_EXTENSIONS)
-Vector<std::pair<String, WebCompiledContentRuleListData>> WebUserContentControllerProxy::contentRuleListData() const
+Vector<std::pair<WebCompiledContentRuleListData, URL>> WebUserContentControllerProxy::contentRuleListData() const
 {
-    Vector<std::pair<String, WebCompiledContentRuleListData>> data;
-    data.reserveInitialCapacity(m_contentRuleLists.size());
-    for (const auto& contentRuleList : m_contentRuleLists.values())
-        data.uncheckedAppend(std::make_pair(contentRuleList->name(), contentRuleList->compiledRuleList().data()));
-    return data;
+    return WTF::map(m_contentRuleLists, [](const auto& keyValue) -> std::pair<WebCompiledContentRuleListData, URL> {
+        return { keyValue.value.first->compiledRuleList().data(), keyValue.value.second };
+    });
 }
 #endif
 
@@ -220,11 +219,9 @@ void WebUserContentControllerProxy::removeAllUserScripts()
     for (auto userScript : m_userScripts->elementsOfType<API::UserScript>())
         worlds.add(const_cast<API::ContentWorld*>(&userScript->contentWorld()));
 
-    Vector<ContentWorldIdentifier> worldIdentifiers;
-    worldIdentifiers.reserveInitialCapacity(worlds.size());
-    for (const auto& worldCountPair : worlds)
-        worldIdentifiers.uncheckedAppend(worldCountPair.key->identifier());
-
+    auto worldIdentifiers = WTF::map(worlds, [](auto& entry) {
+        return entry.key->identifier();
+    });
     for (auto& process : m_processes)
         process.send(Messages::WebUserContentController::RemoveAllUserScripts(worldIdentifiers), identifier());
 
@@ -269,11 +266,9 @@ void WebUserContentControllerProxy::removeAllUserStyleSheets()
     for (auto userStyleSheet : m_userStyleSheets->elementsOfType<API::UserStyleSheet>())
         worlds.add(const_cast<API::ContentWorld*>(&userStyleSheet->contentWorld()));
 
-    Vector<ContentWorldIdentifier> worldIdentifiers;
-    worldIdentifiers.reserveInitialCapacity(worlds.size());
-    for (const auto& worldCountPair : worlds)
-        worldIdentifiers.uncheckedAppend(worldCountPair.key->identifier());
-
+    auto worldIdentifiers = WTF::map(worlds, [](auto& entry) {
+        return entry.key->identifier();
+    });
     for (auto& process : m_processes)
         process.send(Messages::WebUserContentController::RemoveAllUserStyleSheets(worldIdentifiers), identifier());
 
@@ -331,29 +326,35 @@ void WebUserContentControllerProxy::removeAllUserMessageHandlers()
     m_scriptMessageHandlers.clear();
 }
 
-void WebUserContentControllerProxy::didPostMessage(WebPageProxyIdentifier pageProxyID, FrameInfoData&& frameInfoData, uint64_t messageHandlerID, const IPC::DataReference& dataReference, Messages::WebUserContentControllerProxy::DidPostMessage::AsyncReply&& reply)
+void WebUserContentControllerProxy::didPostMessage(WebPageProxyIdentifier pageProxyID, FrameInfoData&& frameInfoData, ScriptMessageHandlerIdentifier messageHandlerID, std::span<const uint8_t> dataReference, CompletionHandler<void(std::span<const uint8_t>, const String&)>&& reply)
 {
-    WebPageProxy* page = WebProcessProxy::webPage(pageProxyID);
-    if (!page)
-        return;
-
-    if (!HashMap<uint64_t, RefPtr<WebScriptMessageHandler>>::isValidKey(messageHandlerID))
-        return;
-
-    RefPtr<WebScriptMessageHandler> handler = m_scriptMessageHandlers.get(messageHandlerID);
-    if (!handler)
-        return;
-
-    if (!handler->client().supportsAsyncReply()) {
-        handler->client().didPostMessage(*page, WTFMove(frameInfoData), handler->world(),  WebCore::SerializedScriptValue::adopt(dataReference.vector()));
+    auto page = WebProcessProxy::webPage(pageProxyID);
+    if (!page) {
         reply({ }, { });
         return;
     }
 
-    handler->client().didPostMessageWithAsyncReply(*page, WTFMove(frameInfoData), handler->world(),  WebCore::SerializedScriptValue::adopt(dataReference.vector()), [reply = WTFMove(reply)](API::SerializedScriptValue* value, const String& errorMessage) mutable {
+    if (!HashMap<ScriptMessageHandlerIdentifier, RefPtr<WebScriptMessageHandler>>::isValidKey(messageHandlerID)) {
+        reply({ }, { });
+        return;
+    }
+
+    RefPtr<WebScriptMessageHandler> handler = m_scriptMessageHandlers.get(messageHandlerID);
+    if (!handler) {
+        reply({ }, { });
+        return;
+    }
+
+    if (!handler->client().supportsAsyncReply()) {
+        handler->client().didPostMessage(*page, WTFMove(frameInfoData), handler->world(),  WebCore::SerializedScriptValue::createFromWireBytes({ dataReference }));
+        reply({ }, { });
+        return;
+    }
+
+    handler->client().didPostMessageWithAsyncReply(*page, WTFMove(frameInfoData), handler->world(),  WebCore::SerializedScriptValue::createFromWireBytes({ dataReference }), [reply = WTFMove(reply)](API::SerializedScriptValue* value, const String& errorMessage) mutable {
         if (errorMessage.isNull()) {
             ASSERT(value);
-            reply({ value->internalRepresentation().toWireBytes() }, { });
+            reply({ value->internalRepresentation().wireBytes() }, { });
             return;
         }
 
@@ -362,17 +363,17 @@ void WebUserContentControllerProxy::didPostMessage(WebPageProxyIdentifier pagePr
 }
 
 #if ENABLE(CONTENT_EXTENSIONS)
-void WebUserContentControllerProxy::addContentRuleList(API::ContentRuleList& contentRuleList)
+void WebUserContentControllerProxy::addContentRuleList(API::ContentRuleList& contentRuleList, const WTF::URL& extensionBaseURL)
 {
-    m_contentRuleLists.set(contentRuleList.name(), &contentRuleList);
+    m_contentRuleLists.set(contentRuleList.name(), std::make_pair(Ref { contentRuleList }, extensionBaseURL));
 
-    auto pair = std::make_pair(contentRuleList.name(), contentRuleList.compiledRuleList().data());
+    auto& data = contentRuleList.compiledRuleList().data();
 
     for (auto& process : m_processes)
-        process.send(Messages::WebUserContentController::AddContentRuleLists({ pair }), identifier());
+        process.send(Messages::WebUserContentController::AddContentRuleLists({ { data, extensionBaseURL } }), identifier());
 
     for (auto& process : m_networkProcesses)
-        process.send(Messages::NetworkContentRuleListManager::AddContentRuleLists { identifier(), { pair } }, 0);
+        process.send(Messages::NetworkContentRuleListManager::AddContentRuleLists { identifier(), { { data, extensionBaseURL } } }, 0);
 }
 
 void WebUserContentControllerProxy::removeContentRuleList(const String& name)

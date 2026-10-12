@@ -32,19 +32,24 @@
 #include "WebCoreArgumentCoders.h"
 #include <WebCore/ResourceRequest.h>
 #include <WebCore/SharedBuffer.h>
+#include <wtf/TZoneMallocInlines.h>
+#include <wtf/persistence/PersistentEncoder.h>
 #include <wtf/text/StringBuilder.h>
 
 namespace WebKit {
 namespace NetworkCache {
 
-Entry::Entry(const Key& key, const WebCore::ResourceResponse& response, RefPtr<WebCore::SharedBuffer>&& buffer, const Vector<std::pair<String, String>>& varyingRequestHeaders)
+WTF_MAKE_TZONE_ALLOCATED_IMPL(Entry);
+
+Entry::Entry(const Key& key, const WebCore::ResourceResponse& response, PrivateRelayed privateRelayed, RefPtr<WebCore::FragmentedSharedBuffer>&& buffer, const Vector<std::pair<String, String>>& varyingRequestHeaders)
     : m_key(key)
     , m_timeStamp(WallTime::now())
     , m_response(response)
     , m_varyingRequestHeaders(varyingRequestHeaders)
     , m_buffer(WTFMove(buffer))
+    , m_privateRelayed(privateRelayed)
 {
-    ASSERT(m_key.type() == "Resource");
+    ASSERT(m_key.type() == "Resource"_s);
 }
 
 Entry::Entry(const Key& key, const WebCore::ResourceResponse& response, const WebCore::ResourceRequest& redirectRequest, const Vector<std::pair<String, String>>& varyingRequestHeaders)
@@ -53,7 +58,7 @@ Entry::Entry(const Key& key, const WebCore::ResourceResponse& response, const We
     , m_response(response)
     , m_varyingRequestHeaders(varyingRequestHeaders)
 {
-    ASSERT(m_key.type() == "Resource");
+    ASSERT(m_key.type() == "Resource"_s);
 
     m_redirectRequest.emplace();
     m_redirectRequest->setAsIsolatedCopy(redirectRequest);
@@ -77,7 +82,7 @@ Entry::Entry(const Storage::Record& storageEntry)
     , m_timeStamp(storageEntry.timeStamp)
     , m_sourceStorageRecord(storageEntry)
 {
-    ASSERT(m_key.type() == "Resource");
+    ASSERT(m_key.type() == "Resource"_s);
 }
 
 Storage::Record Entry::encodeAsStorageRecord() const
@@ -90,19 +95,22 @@ Storage::Record Entry::encodeAsStorageRecord() const
     if (hasVaryingRequestHeaders)
         encoder << m_varyingRequestHeaders;
 
-    bool isRedirect = !!m_redirectRequest;
-    encoder << isRedirect;
+    uint8_t isRedirect = !!m_redirectRequest;
+    uint8_t privateRelayed = m_privateRelayed == PrivateRelayed::Yes;
+    encoder << static_cast<uint8_t>((isRedirect << 0) | (privateRelayed << 1));
     if (isRedirect)
-        m_redirectRequest->encodeWithoutPlatformData(encoder);
+        encoder << m_redirectRequest;
 
     encoder << m_maxAgeCap;
     
     encoder.encodeChecksum();
 
-    Data header(encoder.buffer(), encoder.bufferSize());
+    Data header(encoder.span());
     Data body;
-    if (m_buffer)
-        body = { m_buffer->data(), m_buffer->size() };
+    if (m_buffer) {
+        m_buffer = m_buffer->makeContiguous();
+        body = { downcast<WebCore::SharedBuffer>(*m_buffer).span() };
+    }
 
     return { m_key, m_timeStamp, header, body, { } };
 }
@@ -112,10 +120,11 @@ std::unique_ptr<Entry> Entry::decodeStorageRecord(const Storage::Record& storage
     auto entry = makeUnique<Entry>(storageEntry);
 
     WTF::Persistence::Decoder decoder(storageEntry.header.span());
-    WebCore::ResourceResponse response;
-    if (!WebCore::ResourceResponse::decode(decoder, response))
+    std::optional<WebCore::ResourceResponse> response;
+    decoder >> response;
+    if (!response)
         return nullptr;
-    entry->m_response = WTFMove(response);
+    entry->m_response = WTFMove(*response);
     entry->m_response.setSource(WebCore::ResourceResponse::Source::DiskCache);
 
     std::optional<bool> hasVaryingRequestHeaders;
@@ -131,15 +140,21 @@ std::unique_ptr<Entry> Entry::decodeStorageRecord(const Storage::Record& storage
         entry->m_varyingRequestHeaders = WTFMove(*varyingRequestHeaders);
     }
 
-    std::optional<bool> isRedirect;
-    decoder >> isRedirect;
-    if (!isRedirect)
+    std::optional<uint8_t> isRedirectAndPrivateRelayed;
+    decoder >> isRedirectAndPrivateRelayed;
+    if (!isRedirectAndPrivateRelayed)
         return nullptr;
 
-    if (*isRedirect) {
+    bool isRedirect = *isRedirectAndPrivateRelayed & 0x1;
+    entry->m_privateRelayed = *isRedirectAndPrivateRelayed & 0x2 ? PrivateRelayed::Yes : PrivateRelayed::No;
+    
+    if (isRedirect) {
         entry->m_redirectRequest.emplace();
-        if (!entry->m_redirectRequest->decodeWithoutPlatformData(decoder))
+        std::optional<std::optional<WebCore::ResourceRequest>> resourceRequest;
+        decoder >> resourceRequest;
+        if (!resourceRequest)
             return nullptr;
+        entry->m_redirectRequest = WTFMove(*resourceRequest);
     }
 
     std::optional<std::optional<Seconds>> maxAgeCap;
@@ -156,7 +171,6 @@ std::unique_ptr<Entry> Entry::decodeStorageRecord(const Storage::Record& storage
     return entry;
 }
 
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
 bool Entry::hasReachedPrevalentResourceAgeCap() const
 {
     return m_maxAgeCap && WebCore::computeCurrentAge(response(), timeStamp()) > m_maxAgeCap;
@@ -166,35 +180,20 @@ void Entry::capMaxAge(const Seconds seconds)
 {
     m_maxAgeCap = seconds;
 }
-#endif
-
-#if ENABLE(SHAREABLE_RESOURCE)
-void Entry::initializeShareableResourceHandleFromStorageRecord() const
-{
-    auto sharedMemory = m_sourceStorageRecord.body.tryCreateSharedMemory();
-    if (!sharedMemory)
-        return;
-
-    auto shareableResource = ShareableResource::create(sharedMemory.releaseNonNull(), 0, m_sourceStorageRecord.body.size());
-    if (!shareableResource)
-        return;
-    shareableResource->createHandle(m_shareableResourceHandle);
-}
-#endif
 
 void Entry::initializeBufferFromStorageRecord() const
 {
 #if ENABLE(SHAREABLE_RESOURCE)
-    if (!shareableResourceHandle().isNull()) {
-        m_buffer = m_shareableResourceHandle.tryWrapInSharedBuffer();
+    if (auto handle = shareableResourceHandle()) {
+        m_buffer = WTFMove(*handle).tryWrapInSharedBuffer();
         if (m_buffer)
             return;
     }
 #endif
-    m_buffer = WebCore::SharedBuffer::create(m_sourceStorageRecord.body.data(), m_sourceStorageRecord.body.size());
+    m_buffer = WebCore::SharedBuffer::create(m_sourceStorageRecord.body.span());
 }
 
-WebCore::SharedBuffer* Entry::buffer() const
+WebCore::FragmentedSharedBuffer* Entry::buffer() const
 {
     if (!m_buffer)
         initializeBufferFromStorageRecord();
@@ -202,13 +201,24 @@ WebCore::SharedBuffer* Entry::buffer() const
     return m_buffer.get();
 }
 
-#if ENABLE(SHAREABLE_RESOURCE)
-ShareableResource::Handle& Entry::shareableResourceHandle() const
+RefPtr<WebCore::FragmentedSharedBuffer> Entry::protectedBuffer() const
 {
-    if (m_shareableResourceHandle.isNull())
-        initializeShareableResourceHandleFromStorageRecord();
+    return buffer();
+}
 
-    return m_shareableResourceHandle;
+#if ENABLE(SHAREABLE_RESOURCE)
+std::optional<WebCore::ShareableResource::Handle> Entry::shareableResourceHandle() const
+{
+    if (m_shareableResource)
+        return m_shareableResource->createHandle();
+
+    auto sharedMemory = m_sourceStorageRecord.body.tryCreateSharedMemory();
+    if (!sharedMemory)
+        return std::nullopt;
+
+    if ((m_shareableResource = WebCore::ShareableResource::create(sharedMemory.releaseNonNull(), 0, m_sourceStorageRecord.body.size())))
+        return m_shareableResource->createHandle();
+    return std::nullopt;
 }
 #endif
 
@@ -224,34 +234,34 @@ void Entry::setNeedsValidation(bool value)
 
 void Entry::asJSON(StringBuilder& json, const Storage::RecordInfo& info) const
 {
-    json.append("{\n"
-        "\"hash\": ");
+    json.append("{\n"_s
+        "\"hash\": "_s);
     json.appendQuotedJSONString(m_key.hashAsString());
-    json.append(",\n"
-        "\"bodySize\": ", info.bodySize, ",\n"
-        "\"worth\": ", info.worth, ",\n"
-        "\"partition\": ");
+    json.append(",\n"_s
+        "\"bodySize\": "_s, info.bodySize, ",\n"_s
+        "\"worth\": "_s, info.worth, ",\n"_s
+        "\"partition\": "_s);
     json.appendQuotedJSONString(m_key.partition());
-    json.append(",\n"
-        "\"timestamp\": ", m_timeStamp.secondsSinceEpoch().milliseconds(), ",\n"
-        "\"URL\": ");
+    json.append(",\n"_s
+        "\"timestamp\": "_s, m_timeStamp.secondsSinceEpoch().milliseconds(), ",\n"_s
+        "\"URL\": "_s);
     json.appendQuotedJSONString(m_response.url().string());
-    json.append(",\n"
-        "\"bodyHash\": ");
+    json.append(",\n"_s
+        "\"bodyHash\": "_s);
     json.appendQuotedJSONString(info.bodyHash);
-    json.append(",\n"
-        "\"bodyShareCount\": ", info.bodyShareCount, ",\n"
-        "\"headers\": {\n");
+    json.append(",\n"_s
+        "\"bodyShareCount\": "_s, info.bodyShareCount, ",\n"_s
+        "\"headers\": {\n"_s);
     bool firstHeader = true;
     for (auto& header : m_response.httpHeaderFields()) {
-        json.append(std::exchange(firstHeader, false) ? "" : ",\n", "    ");
+        json.append(std::exchange(firstHeader, false) ? ""_s : ",\n"_s, "    "_s);
         json.appendQuotedJSONString(header.key);
-        json.append(": ");
+        json.append(": "_s);
         json.appendQuotedJSONString(header.value);
     }
-    json.append("\n"
-        "}\n"
-        "}");
+    json.append("\n"_s
+        "}\n"_s
+        "}"_s);
 }
 
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2021 Apple Inc.  All rights reserved.
+ * Copyright (C) 2014-2023 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -32,6 +32,7 @@
 
 #include <CoreText/CoreTextPriv.h>
 #include <OTSVG/OTSVG.h>
+#include <fparse/FPFontParser.h>
 
 #else
 
@@ -87,7 +88,24 @@ enum {
     kCTFontTraitEmphasized = kCTFontTraitBold,
 };
 
+typedef CF_ENUM(CFIndex, CTFontPalette)
+{
+    kCTFontPaletteLight = -1,
+    kCTFontPaletteDark = -2
+};
+
 typedef const struct __OTSVGTable * OTSVGTableRef;
+
+typedef CF_OPTIONS(uint32_t, CTFontDescriptorOptions) {
+    kCTFontDescriptorOptionThisIsNotARealOption = 0xFFFFFFFF
+};
+
+typedef CF_ENUM(uint32_t, CTFontTextStylePlatform)
+{
+    kCTFontTextStylePlatformDefault = (CTFontTextStylePlatform)-1,
+    kCTFontTextStylePlatformPhone = (CTFontTextStylePlatform)0,
+    kCTFontTextStylePlatformVision = (CTFontTextStylePlatform)5,
+};
 
 #endif
 
@@ -110,10 +128,7 @@ extern const CFStringRef kCTFontCSSFamilyMonospace;
 extern const CFStringRef kCTFontCSSFamilySystemUI;
 
 bool CTFontTransformGlyphs(CTFontRef, CGGlyph glyphs[], CGSize advances[], CFIndex count, CTFontTransformOptions);
-#if USE(CTFONTSHAPEGLYPHS)
-// CTFontShapeOptions isn't defined on Mojave.
 CGSize CTFontShapeGlyphs(CTFontRef, CGGlyph glyphs[], CGSize advances[], CGPoint origins[], CFIndex indexes[], const UniChar chars[], CFIndex count, CTFontShapeOptions, CFStringRef language, void (^handler)(CFRange, CGGlyph**, CGSize**, CGPoint**, CFIndex**));
-#endif
 
 CGSize CTRunGetInitialAdvance(CTRunRef);
 CTLineRef CTLineCreateWithUniCharProvider(CTUniCharProviderCallback, CTUniCharDisposeCallback, void* refCon);
@@ -124,11 +139,14 @@ void CTFontGetUnsummedAdvancesForGlyphsAndStyle(CTFontRef, CTFontOrientation, CG
 CTFontDescriptorRef CTFontDescriptorCreateForCSSFamily(CFStringRef cssFamily, CFStringRef language);
 bool CTFontGetGlyphsForCharacterRange(CTFontRef, CGGlyph glyphs[], CFRange);
 
+bool CTFontHasTable(CTFontRef, CTFontTableTag);
+
 CTFontDescriptorRef CTFontDescriptorCreateForUIType(CTFontUIFontType, CGFloat size, CFStringRef language);
 CTFontDescriptorRef CTFontDescriptorCreateWithTextStyle(CFStringRef style, CFStringRef size, CFStringRef language);
 CTFontDescriptorRef CTFontDescriptorCreateCopyWithSymbolicTraits(CTFontDescriptorRef original, CTFontSymbolicTraits symTraitValue, CTFontSymbolicTraits symTraitMask);
 CTFontDescriptorRef CTFontDescriptorCreateWithTextStyleAndAttributes(CFStringRef style, CFStringRef size, CFDictionaryRef attributes);
 CFBitVectorRef CTFontCopyGlyphCoverageForFeature(CTFontRef, CFDictionaryRef feature);
+CGFloat CTFontDescriptorGetTextStyleSize(CFStringRef style, CFTypeRef sizeCategory, CTFontTextStylePlatform, CGFloat* weight, CGFloat* lineSpacing);
 
 CTFontDescriptorRef CTFontDescriptorCreateWithAttributesAndOptions(CFDictionaryRef attributes, CTFontDescriptorOptions);
 CTFontDescriptorRef CTFontDescriptorCreateLastResort();
@@ -137,16 +155,26 @@ CFArrayRef CTFontManagerCreateFontDescriptorsFromData(CFDataRef);
 bool CTFontManagerEnableAllUserFonts(bool postFontChangeNotification);
 
 void CTParagraphStyleSetCompositionLanguage(CTParagraphStyleRef, CTCompositionLanguage);
+CGFloat CTFontGetAccessibilityBoldWeightOfWeight(CGFloat);
 
 extern const CFStringRef kCTFontCSSWeightAttribute;
 extern const CFStringRef kCTFontCSSWidthAttribute;
+extern const CFStringRef kCTFontDescriptorLanguageAttribute;
 extern const CFStringRef kCTFontDescriptorTextStyleAttribute;
-extern const CFStringRef kCTFontUIFontDesignTrait;
+extern const CFStringRef kCTFontGradeTrait;
+extern const CFStringRef kCTFontIgnoreLegibilityWeightAttribute;
+extern const CFStringRef kCTFontSizeCategoryAttribute;
+extern const CFStringRef kCTFontTrackAttribute;
+extern const CFStringRef kCTFontUnscaledTrackingAttribute;
 
 extern const CFStringRef kCTFontUIFontDesignDefault;
-extern const CFStringRef kCTFontUIFontDesignSerif;
 extern const CFStringRef kCTFontUIFontDesignMonospaced;
 extern const CFStringRef kCTFontUIFontDesignRounded;
+extern const CFStringRef kCTFontUIFontDesignSerif;
+extern const CFStringRef kCTFontUIFontDesignTrait;
+
+extern const CFStringRef kCTFontPaletteAttribute;
+extern const CFStringRef kCTFontPaletteColorsAttribute;
 
 extern const CFStringRef kCTFrameMaximumNumberOfLinesAttributeName;
 
@@ -209,5 +237,12 @@ CTFontDescriptorRef CTFontCreatePhysicalFontDescriptorForCharactersWithLanguage(
 bool CTFontIsAppleColorEmoji(CTFontRef);
 CTFontRef CTFontCreateForCharacters(CTFontRef currentFont, const UTF16Char *characters, CFIndex length, CFIndex *coveredLength);
 CGFloat CTFontGetSbixImageSizeForGlyphAndContentsScale(CTFontRef, const CGGlyph, CGFloat contentsScale);
+
+CTFontDescriptorOptions CTFontDescriptorGetOptions(CTFontDescriptorRef);
+
+typedef const struct __FPFont* FPFontRef;
+CFArrayRef FPFontCreateFontsFromData(CFDataRef);
+CFStringRef FPFontCopyPostScriptName(FPFontRef);
+CFDataRef FPFontCopySFNTData(FPFontRef);
 
 WTF_EXTERN_C_END

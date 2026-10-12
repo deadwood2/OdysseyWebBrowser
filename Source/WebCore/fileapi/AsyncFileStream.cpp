@@ -52,20 +52,12 @@ struct AsyncFileStream::Internals {
 
     FileStream stream;
     FileStreamClient& client;
-#if !COMPILER(MSVC)
     std::atomic_bool destroyed { false };
-#else
-    std::atomic_bool destroyed;
-#endif
 };
 
 inline AsyncFileStream::Internals::Internals(FileStreamClient& client)
     : client(client)
 {
-#if COMPILER(MSVC)
-    // Work around a bug that prevents the default value above from compiling.
-    atomic_init(&destroyed, false);
-#endif
 }
 
 static void callOnFileThread(Function<void ()>&& function)
@@ -77,7 +69,7 @@ static void callOnFileThread(Function<void ()>&& function)
 
     static std::once_flag createFileThreadOnce;
     std::call_once(createFileThreadOnce, [] {
-        Thread::create("WebCore: AsyncFileStream", [] {
+        Thread::create("WebCore: AsyncFileStream"_s, [] {
             for (;;) {
                 AutodrainedPool pool;
 
@@ -122,7 +114,7 @@ AsyncFileStream::~AsyncFileStream()
     });
 }
 
-void AsyncFileStream::perform(WTF::Function<WTF::Function<void(FileStreamClient&)>(FileStream&)>&& operation)
+void AsyncFileStream::perform(Function<Function<void(FileStreamClient&)>(FileStream&)>&& operation)
 {
     auto& internals = *m_internals;
     callOnFileThread([&internals, operation = WTFMove(operation)] {
@@ -144,7 +136,7 @@ void AsyncFileStream::getSize(const String& path, std::optional<WallTime> expect
 {
     // FIXME: Explicit return type here and in all the other cases like this below is a workaround for a deficiency
     // in the Windows compiler at the time of this writing. Could remove it if that is resolved.
-    perform([path = path.isolatedCopy(), expectedModificationTime](FileStream& stream) -> WTF::Function<void(FileStreamClient&)> {
+    perform([path = path.isolatedCopy(), expectedModificationTime](FileStream& stream) -> Function<void(FileStreamClient&)> {
         long long size = stream.getSize(path, expectedModificationTime);
         return [size](FileStreamClient& client) {
             client.didGetSize(size);
@@ -155,7 +147,7 @@ void AsyncFileStream::getSize(const String& path, std::optional<WallTime> expect
 void AsyncFileStream::openForRead(const String& path, long long offset, long long length)
 {
     // FIXME: Explicit return type here is a workaround for a deficiency in the Windows compiler at the time of this writing.
-    perform([path = path.isolatedCopy(), offset, length](FileStream& stream) -> WTF::Function<void(FileStreamClient&)> {
+    perform([path = path.isolatedCopy(), offset, length](FileStream& stream) -> Function<void(FileStreamClient&)> {
         bool success = stream.openForRead(path, offset, length);
         return [success](FileStreamClient& client) {
             client.didOpen(success);
@@ -173,7 +165,7 @@ void AsyncFileStream::close()
 
 void AsyncFileStream::read(void* buffer, int length)
 {
-    perform([buffer, length](FileStream& stream) -> WTF::Function<void(FileStreamClient&)> {
+    perform([buffer, length](FileStream& stream) -> Function<void(FileStreamClient&)> {
         int bytesRead = stream.read(buffer, length);
         return [bytesRead](FileStreamClient& client) {
             client.didRead(bytesRead);

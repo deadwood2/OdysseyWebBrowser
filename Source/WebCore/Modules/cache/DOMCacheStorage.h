@@ -32,14 +32,20 @@
 
 namespace WebCore {
 
+struct MultiCacheQueryOptions;
+
 class DOMCacheStorage : public RefCounted<DOMCacheStorage>, public ActiveDOMObject {
 public:
-    static Ref<DOMCacheStorage> create(ScriptExecutionContext& context, Ref<CacheStorageConnection>&& connection) { return adoptRef(*new DOMCacheStorage(context, WTFMove(connection))); }
+    static Ref<DOMCacheStorage> create(ScriptExecutionContext&, Ref<CacheStorageConnection>&&);
     ~DOMCacheStorage();
+
+    // ActiveDOMObject.
+    void ref() const final { RefCounted::ref(); }
+    void deref() const final { RefCounted::deref(); }
 
     using KeysPromise = DOMPromiseDeferred<IDLSequence<IDLDOMString>>;
 
-    void match(DOMCache::RequestInfo&&, CacheQueryOptions&&, Ref<DeferredPromise>&&);
+    void match(DOMCache::RequestInfo&&, MultiCacheQueryOptions&&, Ref<DeferredPromise>&&);
     void has(const String&, DOMPromiseDeferred<IDLBoolean>&&);
     void open(const String&, DOMPromiseDeferred<IDLInterface<DOMCache>>&&);
     void remove(const String&, DOMPromiseDeferred<IDLBoolean>&&);
@@ -50,13 +56,12 @@ private:
 
     // ActiveDOMObject
     void stop() final;
-    const char* activeDOMObjectName() const final;
 
     void doOpen(const String& name, DOMPromiseDeferred<IDLInterface<DOMCache>>&&);
     void doRemove(const String&, DOMPromiseDeferred<IDLBoolean>&&);
     void doSequentialMatch(DOMCache::RequestInfo&&, CacheQueryOptions&&, Ref<DeferredPromise>&&);
     void retrieveCaches(CompletionHandler<void(std::optional<Exception>&&)>&&);
-    Ref<DOMCache> findCacheOrCreate(DOMCacheEngine::CacheInfo&&);
+    Ref<DOMCache> findCacheOrCreate(DOMCacheEngine::CacheInfo&&, ScriptExecutionContext&);
     std::optional<ClientOrigin> origin() const;
 
     Vector<Ref<DOMCache>> m_caches;

@@ -23,17 +23,11 @@
 #include "GStreamerCommon.h"
 
 #include <gst/pbutils/pbutils.h>
-#include <wtf/text/AtomString.h>
-#include <wtf/text/WTFString.h>
+#include <wtf/text/MakeString.h>
 
 #if ENABLE(VIDEO) && USE(GSTREAMER) && ENABLE(MEDIA_SOURCE)
 
 namespace WebCore {
-
-AtomString GStreamerMediaDescription::codec() const
-{
-    return m_codecName;
-}
 
 bool GStreamerMediaDescription::isVideo() const
 {
@@ -51,18 +45,21 @@ bool GStreamerMediaDescription::isText() const
     return false;
 }
 
-AtomString GStreamerMediaDescription::extractCodecName()
+String GStreamerMediaDescription::extractCodecName(const GRefPtr<GstCaps>& caps) const
 {
-    GRefPtr<GstCaps> originalCaps = m_caps;
+    GRefPtr<GstCaps> originalCaps = caps;
 
     if (areEncryptedCaps(originalCaps.get())) {
         originalCaps = adoptGRef(gst_caps_copy(originalCaps.get()));
         GstStructure* structure = gst_caps_get_structure(originalCaps.get(), 0);
 
         if (!gst_structure_has_field(structure, "original-media-type"))
-            return AtomString();
+            return String();
 
-        gst_structure_set_name(structure, gst_structure_get_string(structure, "original-media-type"));
+        auto originalMediaType = WebCore::gstStructureGetString(structure, "original-media-type"_s);
+        RELEASE_ASSERT(originalMediaType);
+        gst_structure_set_name(structure, originalMediaType.toStringWithoutCopying().ascii().data());
+
         // Remove the DRM related fields from the caps.
         for (int j = 0; j < gst_structure_n_fields(structure); ++j) {
             const char* fieldName = gst_structure_nth_field_name(structure, j);
@@ -74,15 +71,17 @@ AtomString GStreamerMediaDescription::extractCodecName()
     }
 
     GUniquePtr<gchar> description(gst_pb_utils_get_codec_description(originalCaps.get()));
-    String codecName(description.get());
+    auto codecName = String::fromLatin1(description.get());
 
     // Report "H.264 (Main Profile)" and "H.264 (High Profile)" just as "H.264" to allow changes between both variants
     // go unnoticed to the SourceBuffer layer.
-    if (codecName.startsWith("H.264")) {
-        size_t braceStart = codecName.find(" (");
-        size_t braceEnd = codecName.find(")");
-        if (braceStart != notFound && braceEnd != notFound)
-            codecName.remove(braceStart, braceEnd - braceStart);
+    if (codecName.startsWith("H.264"_s)) {
+        size_t braceStart = codecName.find(" ("_s);
+        size_t braceEnd = codecName.find(')', braceStart + 1);
+        if (braceStart != notFound && braceEnd != notFound) {
+            StringView codecNameView { codecName };
+            codecName = makeString(codecNameView.left(braceStart), codecNameView.substring(braceEnd + 1));
+        }
     }
 
     return codecName;

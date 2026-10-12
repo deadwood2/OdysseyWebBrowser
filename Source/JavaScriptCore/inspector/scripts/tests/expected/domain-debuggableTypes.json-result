@@ -458,8 +458,6 @@ namespace Inspector {
 
 namespace Protocol {
 
-
-
 } // namespace Protocol
 
 } // namespace Inspector
@@ -905,6 +903,7 @@ __attribute__((visibility ("default")))
 
 #import "TestProtocol.h"
 #import <WebInspector/RWIProtocolArrayConversions.h>
+#import <wtf/SortedArrayMap.h>
 
 namespace Inspector {
 

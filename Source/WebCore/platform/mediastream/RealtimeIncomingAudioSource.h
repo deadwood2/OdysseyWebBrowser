@@ -36,29 +36,40 @@
 #include "RealtimeMediaSource.h"
 
 ALLOW_UNUSED_PARAMETERS_BEGIN
+ALLOW_COMMA_BEGIN
 
 #include <webrtc/api/media_stream_interface.h>
 
 ALLOW_UNUSED_PARAMETERS_END
+ALLOW_COMMA_END
 
 #include <wtf/RetainPtr.h>
 
 namespace WebCore {
 
+class LibWebRTCAudioModule;
+
 class RealtimeIncomingAudioSource
     : public RealtimeMediaSource
     , private webrtc::AudioTrackSinkInterface
     , private webrtc::ObserverInterface
+    , public ThreadSafeRefCountedAndCanMakeThreadSafeWeakPtr<RealtimeIncomingAudioSource, WTF::DestructionThread::MainRunLoop>
 {
 public:
     static Ref<RealtimeIncomingAudioSource> create(rtc::scoped_refptr<webrtc::AudioTrackInterface>&&, String&&);
 
+    void setAudioModule(RefPtr<LibWebRTCAudioModule>&&);
+    LibWebRTCAudioModule* audioModule() { return m_audioModule.get(); }
+
+    void ref() const final { ThreadSafeRefCountedAndCanMakeThreadSafeWeakPtr<RealtimeIncomingAudioSource, WTF::DestructionThread::MainRunLoop>::ref(); }
+    void deref() const final { ThreadSafeRefCountedAndCanMakeThreadSafeWeakPtr<RealtimeIncomingAudioSource, WTF::DestructionThread::MainRunLoop>::deref(); }
+    ThreadSafeWeakPtrControlBlock& controlBlock() const final { return ThreadSafeRefCountedAndCanMakeThreadSafeWeakPtr<RealtimeIncomingAudioSource, WTF::DestructionThread::MainRunLoop>::controlBlock(); }
+    ~RealtimeIncomingAudioSource();
 protected:
     RealtimeIncomingAudioSource(rtc::scoped_refptr<webrtc::AudioTrackInterface>&&, String&&);
-    ~RealtimeIncomingAudioSource();
 
 #if !RELEASE_LOG_DISABLED
-    const char* logClassName() const final { return "RealtimeIncomingAudioSource"; }
+    ASCIILiteral logClassName() const final { return "RealtimeIncomingAudioSource"_s; }
 #endif
 
     // RealtimeMediaSource API
@@ -79,6 +90,7 @@ private:
 
     RealtimeMediaSourceSettings m_currentSettings;
     rtc::scoped_refptr<webrtc::AudioTrackInterface> m_audioTrack;
+    RefPtr<LibWebRTCAudioModule> m_audioModule;
 
 #if !RELEASE_LOG_DISABLED
     mutable RefPtr<const Logger> m_logger;

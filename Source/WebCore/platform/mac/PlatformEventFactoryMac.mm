@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2011-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -45,9 +45,9 @@ namespace WebCore {
 
 NSPoint globalPoint(const NSPoint& windowPoint, NSWindow *window)
 {
-    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     return flipScreenPoint([window convertBaseToScreen:windowPoint], screen(window));
-    ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_END
 }
 
 static NSPoint globalPointForEvent(NSEvent *event)
@@ -109,17 +109,17 @@ static MouseButton mouseButtonForEvent(NSEvent *event)
     case NSEventTypeLeftMouseDown:
     case NSEventTypeLeftMouseUp:
     case NSEventTypeLeftMouseDragged:
-        return LeftButton;
+        return MouseButton::Left;
     case NSEventTypeRightMouseDown:
     case NSEventTypeRightMouseUp:
     case NSEventTypeRightMouseDragged:
-        return RightButton;
+        return MouseButton::Right;
     case NSEventTypeOtherMouseDown:
     case NSEventTypeOtherMouseUp:
     case NSEventTypeOtherMouseDragged:
-        return MiddleButton;
+        return MouseButton::Middle;
     default:
-        return NoButton;
+        return MouseButton::None;
     }
 }
 
@@ -137,17 +137,17 @@ static PlatformEvent::Type mouseEventTypeForEvent(NSEvent* event)
     case NSEventTypeMouseMoved:
     case NSEventTypeOtherMouseDragged:
     case NSEventTypeRightMouseDragged:
-        return PlatformEvent::MouseMoved;
+        return PlatformEvent::Type::MouseMoved;
     case NSEventTypeLeftMouseDown:
     case NSEventTypeRightMouseDown:
     case NSEventTypeOtherMouseDown:
-        return PlatformEvent::MousePressed;
+        return PlatformEvent::Type::MousePressed;
     case NSEventTypeLeftMouseUp:
     case NSEventTypeRightMouseUp:
     case NSEventTypeOtherMouseUp:
-        return PlatformEvent::MouseReleased;
+        return PlatformEvent::Type::MouseReleased;
     default:
-        return PlatformEvent::MouseMoved;
+        return PlatformEvent::Type::MouseMoved;
     }
 }
 
@@ -502,7 +502,7 @@ String keyIdentifierForKeyEvent(NSEvent* event)
     NSString *s = [event charactersIgnoringModifiers];
     if ([s length] != 1) {
         LOG(Events, "received an unexpected number of characters in key event: %u", [s length]);
-        return "Unidentified";
+        return "Unidentified"_s;
     }
     return keyIdentifierForCharCode([s characterAtIndex:0]);
 }
@@ -607,9 +607,9 @@ static CFTimeInterval cachedStartupTimeIntervalSince1970()
     return systemStartupTime;
 }
 
-WallTime eventTimeStampSince1970(NSEvent* event)
+WallTime eventTimeStampSince1970(NSTimeInterval timestamp)
 {
-    return WallTime::fromRawSeconds(static_cast<double>(cachedStartupTimeIntervalSince1970() + [event timestamp]));
+    return WallTime::fromRawSeconds(static_cast<double>(cachedStartupTimeIntervalSince1970() + timestamp));
 }
 
 static inline bool isKeyUpEvent(NSEvent *event)
@@ -700,9 +700,17 @@ UInt8 keyCharForEvent(NSEvent *event)
     return keyChar;
 }
 
+IntPoint unadjustedMovementForEvent(NSEvent *event)
+{
+    CGEventRef cgEvent = [event CGEvent];
+    auto dx = CGEventGetIntegerValueField(cgEvent, kCGEventUnacceleratedPointerMovementX);
+    auto dy = CGEventGetIntegerValueField(cgEvent, kCGEventUnacceleratedPointerMovementY);
+    return IntPoint(dx, dy);
+}
+
 class PlatformMouseEventBuilder : public PlatformMouseEvent {
 public:
-    PlatformMouseEventBuilder(NSEvent *event, NSEvent *correspondingPressureEvent, NSView *windowView)
+    PlatformMouseEventBuilder(NSEvent *event, NSEvent *correspondingPressureEvent, NSView *windowView, bool isCoalesced = false)
     {
         // PlatformEvent
         m_type = mouseEventTypeForEvent(event);
@@ -712,15 +720,15 @@ public:
             // Since AppKit doesn't send mouse events for force down or force up, we have to use the current pressure
             // event and correspondingPressureEvent to detect if this is MouseForceDown, MouseForceUp, or just MouseForceChanged.
             if (correspondingPressureEvent.stage == 1 && event.stage == 2)
-                m_type = PlatformEvent::MouseForceDown;
+                m_type = PlatformEvent::Type::MouseForceDown;
             else if (correspondingPressureEvent.stage == 2 && event.stage == 1)
-                m_type = PlatformEvent::MouseForceUp;
+                m_type = PlatformEvent::Type::MouseForceUp;
             else
-                m_type = PlatformEvent::MouseForceChanged;
+                m_type = PlatformEvent::Type::MouseForceChanged;
         }
 
         m_modifiers = modifiersForEvent(event);
-        m_timestamp = eventTimeStampSince1970(event);
+        m_timestamp = eventTimeStampSince1970(event.timestamp);
 
         // PlatformMouseEvent
         m_position = pointForEvent(event, windowView);
@@ -729,6 +737,10 @@ public:
         m_buttons = currentlyPressedMouseButtons();
         m_clickCount = clickCountForEvent(event);
         m_movementDelta = IntPoint(event.deltaX, event.deltaY);
+        m_unadjustedMovementDelta = unadjustedMovementForEvent(event);
+
+        if (!isCoalesced)
+            m_coalescedEvents = { PlatformMouseEventBuilder { event, correspondingPressureEvent, windowView, true } };
 
         m_force = 0;
         int stage = eventIsPressureEvent ? event.stage : correspondingPressureEvent.stage;
@@ -753,9 +765,9 @@ public:
     PlatformWheelEventBuilder(NSEvent *event, NSView *windowView)
     {
         // PlatformEvent
-        m_type = PlatformEvent::Wheel;
+        m_type = PlatformEvent::Type::Wheel;
         m_modifiers = modifiersForEvent(event);
-        m_timestamp = eventTimeStampSince1970(event);
+        m_timestamp = eventTimeStampSince1970(event.timestamp);
 
         // PlatformWheelEvent
         m_position = pointForEvent(event, windowView);
@@ -792,9 +804,9 @@ public:
     PlatformKeyboardEventBuilder(NSEvent *event)
     {
         // PlatformEvent
-        m_type = isKeyUpEvent(event) ? PlatformEvent::KeyUp : PlatformEvent::KeyDown;
+        m_type = isKeyUpEvent(event) ? PlatformEvent::Type::KeyUp : PlatformEvent::Type::KeyDown;
         m_modifiers = modifiersForEvent(event);
-        m_timestamp = eventTimeStampSince1970(event);
+        m_timestamp = eventTimeStampSince1970(event.timestamp);
 
         // PlatformKeyboardEvent
         m_text = textFromEvent(event);
@@ -809,20 +821,20 @@ public:
 
         // Always use 13 for Enter/Return -- we don't want to use AppKit's different character for Enter.
         if (m_windowsVirtualKeyCode == VK_RETURN) {
-            m_text = "\r";
-            m_unmodifiedText = "\r";
+            m_text = "\r"_s;
+            m_unmodifiedText = m_text;
         }
 
         // AppKit sets text to "\x7F" for backspace, but the correct KeyboardEvent character code is 8.
         if (m_windowsVirtualKeyCode == VK_BACK) {
-            m_text = "\x8";
-            m_unmodifiedText = "\x8";
+            m_text = "\x8"_s;
+            m_unmodifiedText = m_text;
         }
 
         // Always use 9 for Tab -- we don't want to use AppKit's different character for shift-tab.
         if (m_windowsVirtualKeyCode == VK_TAB) {
-            m_text = "\x9";
-            m_unmodifiedText = "\x9";
+            m_text = "\x9"_s;
+            m_unmodifiedText = m_text;
         }
 
         // Mac specific.

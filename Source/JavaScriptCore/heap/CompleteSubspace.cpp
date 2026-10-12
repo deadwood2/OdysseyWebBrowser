@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2017-2024 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -32,27 +32,21 @@
 #include "LocalAllocatorInlines.h"
 #include "MarkedSpaceInlines.h"
 #include "SubspaceInlines.h"
+#include <wtf/RAMSize.h>
 
 namespace JSC {
 
-CompleteSubspace::CompleteSubspace(CString name, Heap& heap, HeapCellType* heapCellType, AlignedMemoryAllocator* alignedMemoryAllocator)
+CompleteSubspace::CompleteSubspace(CString name, JSC::Heap& heap, const HeapCellType& heapCellType, AlignedMemoryAllocator* alignedMemoryAllocator)
     : Subspace(name, heap)
 {
     initialize(heapCellType, alignedMemoryAllocator);
 }
 
-CompleteSubspace::~CompleteSubspace()
-{
-}
+CompleteSubspace::~CompleteSubspace() = default;
 
-Allocator CompleteSubspace::allocatorFor(size_t size, AllocatorForMode mode)
+Allocator CompleteSubspace::allocatorForNonInline(size_t size, AllocatorForMode mode)
 {
-    return allocatorForNonVirtual(size, mode);
-}
-
-void* CompleteSubspace::allocate(VM& vm, size_t size, GCDeferralContext* deferralContext, AllocationFailureMode failureMode)
-{
-    return allocateNonVirtual(vm, size, deferralContext, failureMode);
+    return allocatorFor(size, mode);
 }
 
 Allocator CompleteSubspace::allocatorForSlow(size_t size)
@@ -120,12 +114,12 @@ void* CompleteSubspace::allocateSlow(VM& vm, size_t size, GCDeferralContext* def
 void* CompleteSubspace::tryAllocateSlow(VM& vm, size_t size, GCDeferralContext* deferralContext)
 {
     if constexpr (validateDFGDoesGC)
-        vm.heap.verifyCanGC();
+        vm.verifyCanGC();
 
     sanitizeStackForVM(vm);
-    
-    if (Allocator allocator = allocatorFor(size, AllocatorForMode::EnsureAllocator))
-        return allocator.allocate(vm.heap, deferralContext, AllocationFailureMode::ReturnNull);
+
+    if (Allocator allocator = allocatorForNonInline(size, AllocatorForMode::EnsureAllocator))
+        return allocator.allocate(vm.heap, allocator.cellSize(), deferralContext, AllocationFailureMode::ReturnNull);
     
     if (size <= Options::preciseAllocationCutoff()
         && size <= MarkedSpace::largeCutoff) {
@@ -135,7 +129,11 @@ void* CompleteSubspace::tryAllocateSlow(VM& vm, size_t size, GCDeferralContext* 
     }
     
     vm.heap.collectIfNecessaryOrDefer(deferralContext);
-    
+    if (UNLIKELY(Options::maxHeapSizeAsRAMSizeMultiple())) {
+        if (vm.heap.capacity() > Options::maxHeapSizeAsRAMSizeMultiple() * WTF::ramSize())
+            return nullptr;
+    }
+
     size = WTF::roundUpToMultipleOf<MarkedSpace::sizeStep>(size);
     PreciseAllocation* allocation = PreciseAllocation::tryCreate(vm.heap, size, this, m_space.m_preciseAllocations.size());
     if (!allocation)
@@ -156,7 +154,7 @@ void* CompleteSubspace::tryAllocateSlow(VM& vm, size_t size, GCDeferralContext* 
 void* CompleteSubspace::reallocatePreciseAllocationNonVirtual(VM& vm, HeapCell* oldCell, size_t size, GCDeferralContext* deferralContext, AllocationFailureMode failureMode)
 {
     if constexpr (validateDFGDoesGC)
-        vm.heap.verifyCanGC();
+        vm.verifyCanGC();
 
     // The following conditions are met in Butterfly for example.
     ASSERT(oldCell->isPreciseAllocation());

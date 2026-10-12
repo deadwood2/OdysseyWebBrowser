@@ -31,7 +31,9 @@
 NS_ASSUME_NONNULL_BEGIN
 
 @interface WKFullscreenStackView : UIStackView
+#if !PLATFORM(APPLETV)
 - (void)addArrangedSubview:(UIView *)subview applyingMaterialStyle:(AVBackgroundViewMaterialStyle)materialStyle tintEffectStyle:(AVBackgroundViewTintEffectStyle)tintEffectStyle;
+#endif
 @end
 
 NS_ASSUME_NONNULL_END

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019-2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2019-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -44,7 +44,7 @@ public:
     static void destroy(JSCell*);
 
     template<typename CellType, SubspaceAccess mode>
-    static IsoSubspace* subspaceFor(VM& vm)
+    static GCClient::IsoSubspace* subspaceFor(VM& vm)
     {
         return vm.webAssemblyGlobalSpace<mode>();
     }
@@ -59,7 +59,7 @@ public:
 
 private:
     JSWebAssemblyGlobal(VM&, Structure*, Ref<Wasm::Global>&&);
-    void finishCreation(VM&);
+    DECLARE_DEFAULT_FINISH_CREATION;
     DECLARE_VISIT_CHILDREN;
 
     Ref<Wasm::Global> m_global;

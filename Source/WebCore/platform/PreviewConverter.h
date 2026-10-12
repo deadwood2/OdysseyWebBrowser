@@ -29,6 +29,7 @@
 
 #include "ResourceError.h"
 #include "ResourceResponse.h"
+#include "SharedBuffer.h"
 #include <wtf/RefCounted.h>
 #include <wtf/RetainPtr.h>
 #include <wtf/WeakPtr.h>
@@ -38,18 +39,25 @@ OBJC_CLASS QLPreviewConverter;
 OBJC_CLASS WebPreviewConverterDelegate;
 
 namespace WebCore {
+struct PreviewPlatformDelegate;
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebCore::PreviewPlatformDelegate> : std::true_type { };
+}
+
+namespace WebCore {
 
 class ResourceError;
 class ResourceRequest;
-class SharedBuffer;
-class SharedBufferDataView;
 struct PreviewConverterClient;
 struct PreviewConverterProvider;
 
 struct PreviewPlatformDelegate : CanMakeWeakPtr<PreviewPlatformDelegate> {
     virtual ~PreviewPlatformDelegate() = default;
 
-    virtual void delegateDidReceiveData(const SharedBuffer&) = 0;
+    virtual void delegateDidReceiveData(const FragmentedSharedBuffer&) = 0;
     virtual void delegateDidFinishLoading() = 0;
     virtual void delegateDidFailWithError(const ResourceError&) = 0;
 };
@@ -72,7 +80,7 @@ public:
     WEBCORE_EXPORT String previewFileName() const;
     WEBCORE_EXPORT String previewUTI() const;
     const ResourceError& previewError() const;
-    const SharedBuffer& previewData() const;
+    const FragmentedSharedBuffer& previewData() const;
 
     void failedUpdating();
     void finishUpdating();
@@ -94,7 +102,7 @@ private:
     bool isPlatformPasswordError(const ResourceError&) const;
 
     template<typename T> void iterateClients(T&& callback);
-    void appendFromBuffer(const SharedBuffer&);
+    void appendFromBuffer(const FragmentedSharedBuffer&);
     void didAddClient(PreviewConverterClient&);
     void didFailConvertingWithError(const ResourceError&);
     void didFailUpdating();
@@ -106,7 +114,7 @@ private:
     void platformUnlockWithPassword(const String&);
 
     // PreviewPlatformDelegate
-    void delegateDidReceiveData(const SharedBuffer&) final;
+    void delegateDidReceiveData(const FragmentedSharedBuffer&) final;
     void delegateDidFinishLoading() final;
     void delegateDidFailWithError(const ResourceError&) final;
 
@@ -118,7 +126,7 @@ private:
         FinishedConverting,
     };
 
-    Ref<SharedBuffer> m_previewData;
+    SharedBufferBuilder m_previewData;
     ResourceError m_previewError;
     ResourceResponse m_originalResponse;
     State m_state { State::Updating };

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008-2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2008-2024 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,8 +26,10 @@
 #include "config.h"
 #include "StructureStubInfo.h"
 
+#include "BaselineJITRegisters.h"
 #include "CacheableIdentifierInlines.h"
-#include "PolymorphicAccess.h"
+#include "DFGJITCode.h"
+#include "InlineCacheCompiler.h"
 #include "Repatch.h"
 
 namespace JSC {
@@ -38,36 +40,15 @@ namespace StructureStubInfoInternal {
 static constexpr bool verbose = false;
 }
 
-StructureStubInfo::StructureStubInfo(AccessType accessType, CodeOrigin codeOrigin)
-    : codeOrigin(codeOrigin)
-    , accessType(accessType)
-    , bufferingCountdown(Options::repatchBufferingCountdown())
-    , resetByGC(false)
-    , tookSlowPath(false)
-    , everConsidered(false)
-    , prototypeIsKnownObject(false)
-    , sawNonCell(false)
-    , hasConstantIdentifier(true)
-    , propertyIsString(false)
-    , propertyIsInt32(false)
-    , propertyIsSymbol(false)
-{
-    regs.thisGPR = InvalidGPRReg;
-}
+StructureStubInfo::~StructureStubInfo() = default;
 
-StructureStubInfo::~StructureStubInfo()
-{
-}
-
-void StructureStubInfo::initGetByIdSelf(const ConcurrentJSLockerBase& locker, CodeBlock* codeBlock, Structure* inlineAccessBaseStructure, PropertyOffset offset, CacheableIdentifier identifier)
+void StructureStubInfo::initGetByIdSelf(const ConcurrentJSLockerBase& locker, CodeBlock* codeBlock, Structure* inlineAccessBaseStructure, PropertyOffset offset)
 {
     ASSERT(m_cacheType == CacheType::Unset);
-    ASSERT(hasConstantIdentifier);
+    ASSERT(hasConstantIdentifier(accessType));
     setCacheType(locker, CacheType::GetByIdSelf);
-    m_identifier = identifier;
-    m_inlineAccessBaseStructure.setWithoutWriteBarrier(inlineAccessBaseStructure);
-    codeBlock->vm().heap.writeBarrier(codeBlock);
-    u.byIdSelf.offset = offset;
+    m_inlineAccessBaseStructureID.set(codeBlock->vm(), codeBlock, inlineAccessBaseStructure);
+    byIdSelfOffset = offset;
 }
 
 void StructureStubInfo::initArrayLength(const ConcurrentJSLockerBase& locker)
@@ -82,83 +63,67 @@ void StructureStubInfo::initStringLength(const ConcurrentJSLockerBase& locker)
     setCacheType(locker, CacheType::StringLength);
 }
 
-void StructureStubInfo::initPutByIdReplace(const ConcurrentJSLockerBase& locker, CodeBlock* codeBlock, Structure* inlineAccessBaseStructure, PropertyOffset offset, CacheableIdentifier identifier)
+void StructureStubInfo::initPutByIdReplace(const ConcurrentJSLockerBase& locker, CodeBlock* codeBlock, Structure* inlineAccessBaseStructure, PropertyOffset offset)
 {
     ASSERT(m_cacheType == CacheType::Unset);
+    ASSERT(hasConstantIdentifier(accessType));
     setCacheType(locker, CacheType::PutByIdReplace);
-    m_identifier = identifier;
-    m_inlineAccessBaseStructure.setWithoutWriteBarrier(inlineAccessBaseStructure);
-    codeBlock->vm().heap.writeBarrier(codeBlock);
-    u.byIdSelf.offset = offset;
+    m_inlineAccessBaseStructureID.set(codeBlock->vm(), codeBlock, inlineAccessBaseStructure);
+    byIdSelfOffset = offset;
 }
 
-void StructureStubInfo::initInByIdSelf(const ConcurrentJSLockerBase& locker, CodeBlock* codeBlock, Structure* inlineAccessBaseStructure, PropertyOffset offset, CacheableIdentifier identifier)
+void StructureStubInfo::initInByIdSelf(const ConcurrentJSLockerBase& locker, CodeBlock* codeBlock, Structure* inlineAccessBaseStructure, PropertyOffset offset)
 {
     ASSERT(m_cacheType == CacheType::Unset);
+    ASSERT(hasConstantIdentifier(accessType));
     setCacheType(locker, CacheType::InByIdSelf);
-    m_identifier = identifier;
-    m_inlineAccessBaseStructure.setWithoutWriteBarrier(inlineAccessBaseStructure);
-    codeBlock->vm().heap.writeBarrier(codeBlock);
-    u.byIdSelf.offset = offset;
+    m_inlineAccessBaseStructureID.set(codeBlock->vm(), codeBlock, inlineAccessBaseStructure);
+    byIdSelfOffset = offset;
 }
 
 void StructureStubInfo::deref()
 {
-    switch (m_cacheType) {
-    case CacheType::Stub:
-        delete u.stub;
-        return;
-    case CacheType::Unset:
-    case CacheType::GetByIdSelf:
-    case CacheType::PutByIdReplace:
-    case CacheType::InByIdSelf:
-    case CacheType::ArrayLength:
-    case CacheType::StringLength:
-        return;
-    }
-
-    RELEASE_ASSERT_NOT_REACHED();
+    m_stub.reset();
 }
 
 void StructureStubInfo::aboutToDie()
 {
-    switch (m_cacheType) {
-    case CacheType::Stub:
-        u.stub->aboutToDie();
-        return;
-    case CacheType::Unset:
-    case CacheType::GetByIdSelf:
-    case CacheType::PutByIdReplace:
-    case CacheType::InByIdSelf:
-    case CacheType::ArrayLength:
-    case CacheType::StringLength:
-        return;
-    }
+    if (m_inlinedHandler)
+        m_inlinedHandler->aboutToDie();
 
-    RELEASE_ASSERT_NOT_REACHED();
+    if (auto* cursor = m_handler.get()) {
+        while (cursor) {
+            cursor->aboutToDie();
+            cursor = cursor->next();
+        }
+    }
 }
 
-AccessGenerationResult StructureStubInfo::addAccessCase(
-    const GCSafeConcurrentJSLocker& locker, JSGlobalObject* globalObject, CodeBlock* codeBlock, ECMAMode ecmaMode, CacheableIdentifier ident, RefPtr<AccessCase> accessCase)
+AccessGenerationResult StructureStubInfo::addAccessCase(const GCSafeConcurrentJSLocker& locker, JSGlobalObject* globalObject, CodeBlock* codeBlock, ECMAMode ecmaMode, CacheableIdentifier ident, RefPtr<AccessCase> accessCase)
 {
     checkConsistency();
 
     VM& vm = codeBlock->vm();
     ASSERT(vm.heap.isDeferred());
-    AccessGenerationResult result = ([&] () -> AccessGenerationResult {
-        if (StructureStubInfoInternal::verbose)
-            dataLog("Adding access case: ", accessCase, "\n");
-        
-        if (!accessCase)
-            return AccessGenerationResult::GaveUp;
-        
+
+    if (!accessCase)
+        return AccessGenerationResult::GaveUp;
+
+    AccessGenerationResult result = ([&](Ref<AccessCase>&& accessCase) -> AccessGenerationResult {
+        dataLogLnIf(StructureStubInfoInternal::verbose, "Adding access case: ", accessCase);
+
         AccessGenerationResult result;
-        
-        if (m_cacheType == CacheType::Stub) {
-            result = u.stub->addCase(locker, vm, codeBlock, *this, accessCase.releaseNonNull());
-            
-            if (StructureStubInfoInternal::verbose)
-                dataLog("Had stub, result: ", result, "\n");
+
+        if (useHandlerIC()) {
+            if (!m_stub) {
+                setCacheType(locker, CacheType::Stub);
+                m_stub = makeUnique<PolymorphicAccess>();
+            }
+        }
+
+        if (m_stub) {
+            result = m_stub->addCases(locker, vm, codeBlock, *this, nullptr, accessCase);
+            dataLogLnIf(StructureStubInfoInternal::verbose, "Had stub, result: ", result);
 
             if (result.shouldResetStubAndFireWatchpoints())
                 return result;
@@ -169,19 +134,9 @@ AccessGenerationResult StructureStubInfo::addAccessCase(
             }
         } else {
             std::unique_ptr<PolymorphicAccess> access = makeUnique<PolymorphicAccess>();
-            
-            Vector<RefPtr<AccessCase>, 2> accessCases;
-            
-            auto previousCase = AccessCase::fromStructureStubInfo(vm, codeBlock, ident, *this);
-            if (previousCase)
-                accessCases.append(WTFMove(previousCase));
-            
-            accessCases.append(WTFMove(accessCase));
-            
-            result = access->addCases(locker, vm, codeBlock, *this, WTFMove(accessCases));
-            
-            if (StructureStubInfoInternal::verbose)
-                dataLog("Created stub, result: ", result, "\n");
+            result = access->addCases(locker, vm, codeBlock, *this, AccessCase::fromStructureStubInfo(vm, codeBlock, ident, *this), accessCase);
+
+            dataLogLnIf(StructureStubInfoInternal::verbose, "Created stub, result: ", result);
 
             if (result.shouldResetStubAndFireWatchpoints())
                 return result;
@@ -190,77 +145,88 @@ AccessGenerationResult StructureStubInfo::addAccessCase(
                 clearBufferedStructures();
                 return result;
             }
-            
+
             setCacheType(locker, CacheType::Stub);
-            u.stub = access.release();
+            m_stub = WTFMove(access);
         }
-        
+
         ASSERT(m_cacheType == CacheType::Stub);
         RELEASE_ASSERT(!result.generatedSomeCode());
-        
+
         // If we didn't buffer any cases then bail. If this made no changes then we'll just try again
         // subject to cool-down.
         if (!result.buffered()) {
-            if (StructureStubInfoInternal::verbose)
-                dataLog("Didn't buffer anything, bailing.\n");
+            dataLogLnIf(StructureStubInfoInternal::verbose, "Didn't buffer anything, bailing.");
             clearBufferedStructures();
             return result;
         }
-        
+
+        if (useHandlerIC()) {
+            InlineCacheCompiler compiler(codeBlock->jitType(), vm, globalObject, ecmaMode, *this);
+            return compiler.compileHandler(locker, *m_stub, codeBlock, WTFMove(accessCase));
+        }
+
         // The buffering countdown tells us if we should be repatching now.
         if (bufferingCountdown) {
-            if (StructureStubInfoInternal::verbose)
-                dataLog("Countdown is too high: ", bufferingCountdown, ".\n");
+            dataLogLnIf(StructureStubInfoInternal::verbose, "Countdown is too high: ", bufferingCountdown, ".");
             return result;
         }
-        
+
         // Forget the buffered structures so that all future attempts to cache get fully handled by the
         // PolymorphicAccess.
         clearBufferedStructures();
-        
-        result = u.stub->regenerate(locker, vm, globalObject, codeBlock, ecmaMode, *this);
-        
-        if (StructureStubInfoInternal::verbose)
-            dataLog("Regeneration result: ", result, "\n");
-        
+
+        InlineCacheCompiler compiler(codeBlock->jitType(), vm, globalObject, ecmaMode, *this);
+        result = compiler.compile(locker, *m_stub, codeBlock);
+
+        dataLogLnIf(StructureStubInfoInternal::verbose, "Regeneration result: ", result);
+
         RELEASE_ASSERT(!result.buffered());
         
         if (!result.generatedSomeCode())
             return result;
 
-        // When we first transition to becoming a Stub, we might still be running the inline
-        // access code. That's because when we first transition to becoming a Stub, we may
-        // be buffered, and we have not yet generated any code. Once the Stub finally generates
-        // code, we're no longer running the inline access code, so we can then clear out
-        // m_inlineAccessBaseStructure. The reason we don't clear m_inlineAccessBaseStructure while
-        // we're buffered is because we rely on it to reset during GC if m_inlineAccessBaseStructure
-        // is collected.
-        m_identifier = nullptr;
-        m_inlineAccessBaseStructure.clear();
-        
+        // If we are using DataIC, we will continue using inlined code for the first case.
+        if (!useDataIC) {
+            // When we first transition to becoming a Stub, we might still be running the inline
+            // access code. That's because when we first transition to becoming a Stub, we may
+            // be buffered, and we have not yet generated any code. Once the Stub finally generates
+            // code, we're no longer running the inline access code, so we can then clear out
+            // m_inlineAccessBaseStructureID. The reason we don't clear m_inlineAccessBaseStructureID while
+            // we're buffered is because we rely on it to reset during GC if m_inlineAccessBaseStructureID
+            // is collected.
+            m_inlineAccessBaseStructureID.clear();
+        }
+
         // If we generated some code then we don't want to attempt to repatch in the future until we
         // gather enough cases.
         bufferingCountdown = Options::repatchBufferingCountdown();
         return result;
-    })();
-    vm.heap.writeBarrier(codeBlock);
+    })(accessCase.releaseNonNull());
+    if (result.generatedSomeCode()) {
+        if (useHandlerIC())
+            prependHandler(codeBlock, Ref { *result.handler() }, result.generatedMegamorphicCode());
+        else
+            rewireStubAsJumpInAccess(codeBlock, Ref { *result.handler() });
+    }
+
+    vm.writeBarrier(codeBlock);
     return result;
 }
 
 void StructureStubInfo::reset(const ConcurrentJSLockerBase& locker, CodeBlock* codeBlock)
 {
     clearBufferedStructures();
-    m_identifier = nullptr;
-    m_inlineAccessBaseStructure.clear();
+    m_inlineAccessBaseStructureID.clear();
+    if (m_inlinedHandler)
+        clearInlinedHandler(codeBlock);
 
     if (m_cacheType == CacheType::Unset)
         return;
 
-    if (Options::verboseOSR()) {
-        // This can be called from GC destructor calls, so we don't try to do a full dump
-        // of the CodeBlock.
-        dataLog("Clearing structure cache (kind ", static_cast<int>(accessType), ") in ", RawPointer(codeBlock), ".\n");
-    }
+    // This can be called from GC destructor calls, so we don't try to do a full dump
+    // of the CodeBlock.
+    dataLogLnIf(Options::verboseOSR(), "Clearing structure cache (kind ", static_cast<int>(accessType), ") in ", RawPointer(codeBlock), ".");
 
     switch (accessType) {
     case AccessType::TryGetById:
@@ -278,14 +244,50 @@ void StructureStubInfo::reset(const ConcurrentJSLockerBase& locker, CodeBlock* c
     case AccessType::GetByVal:
         resetGetBy(codeBlock, *this, GetByKind::ByVal);
         break;
+    case AccessType::GetByValWithThis:
+        resetGetBy(codeBlock, *this, GetByKind::ByValWithThis);
+        break;
     case AccessType::GetPrivateName:
         resetGetBy(codeBlock, *this, GetByKind::PrivateName);
         break;
-    case AccessType::PutById:
-        resetPutBy(codeBlock, *this, PutByKind::ById);
+    case AccessType::GetPrivateNameById:
+        resetGetBy(codeBlock, *this, GetByKind::PrivateNameById);
         break;
-    case AccessType::PutByVal:
-        resetPutBy(codeBlock, *this, PutByKind::ByVal);
+    case AccessType::PutByIdStrict:
+        resetPutBy(codeBlock, *this, PutByKind::ByIdStrict);
+        break;
+    case AccessType::PutByIdSloppy:
+        resetPutBy(codeBlock, *this, PutByKind::ByIdSloppy);
+        break;
+    case AccessType::PutByIdDirectStrict:
+        resetPutBy(codeBlock, *this, PutByKind::ByIdDirectStrict);
+        break;
+    case AccessType::PutByIdDirectSloppy:
+        resetPutBy(codeBlock, *this, PutByKind::ByIdDirectSloppy);
+        break;
+    case AccessType::PutByValStrict:
+        resetPutBy(codeBlock, *this, PutByKind::ByValStrict);
+        break;
+    case AccessType::PutByValSloppy:
+        resetPutBy(codeBlock, *this, PutByKind::ByValSloppy);
+        break;
+    case AccessType::PutByValDirectStrict:
+        resetPutBy(codeBlock, *this, PutByKind::ByValDirectStrict);
+        break;
+    case AccessType::PutByValDirectSloppy:
+        resetPutBy(codeBlock, *this, PutByKind::ByValDirectSloppy);
+        break;
+    case AccessType::DefinePrivateNameById:
+        resetPutBy(codeBlock, *this, PutByKind::DefinePrivateNameById);
+        break;
+    case AccessType::SetPrivateNameById:
+        resetPutBy(codeBlock, *this, PutByKind::SetPrivateNameById);
+        break;
+    case AccessType::DefinePrivateNameByVal:
+        resetPutBy(codeBlock, *this, PutByKind::DefinePrivateNameByVal);
+        break;
+    case AccessType::SetPrivateNameByVal:
+        resetPutBy(codeBlock, *this, PutByKind::SetPrivateNameByVal);
         break;
     case AccessType::InById:
         resetInBy(codeBlock, *this, InByKind::ById);
@@ -302,11 +304,17 @@ void StructureStubInfo::reset(const ConcurrentJSLockerBase& locker, CodeBlock* c
     case AccessType::InstanceOf:
         resetInstanceOf(codeBlock, *this);
         break;
-    case AccessType::DeleteByID:
-        resetDelBy(codeBlock, *this, DelByKind::ById);
+    case AccessType::DeleteByIdStrict:
+        resetDelBy(codeBlock, *this, DelByKind::ByIdStrict);
         break;
-    case AccessType::DeleteByVal:
-        resetDelBy(codeBlock, *this, DelByKind::ByVal);
+    case AccessType::DeleteByIdSloppy:
+        resetDelBy(codeBlock, *this, DelByKind::ByIdSloppy);
+        break;
+    case AccessType::DeleteByValStrict:
+        resetDelBy(codeBlock, *this, DelByKind::ByValStrict);
+        break;
+    case AccessType::DeleteByValSloppy:
+        resetDelBy(codeBlock, *this, DelByKind::ByValSloppy);
         break;
     case AccessType::CheckPrivateBrand:
         resetCheckPrivateBrand(codeBlock, *this);
@@ -323,27 +331,20 @@ void StructureStubInfo::reset(const ConcurrentJSLockerBase& locker, CodeBlock* c
 template<typename Visitor>
 void StructureStubInfo::visitAggregateImpl(Visitor& visitor)
 {
-    {
+    if (!m_identifier) {
         Locker locker { m_bufferedStructuresLock };
-        for (auto& bufferedStructure : m_bufferedStructures)
-            bufferedStructure.byValId().visitAggregate(visitor);
-    }
-    m_identifier.visitAggregate(visitor);
-    switch (m_cacheType) {
-    case CacheType::Unset:
-    case CacheType::ArrayLength:
-    case CacheType::StringLength:
-    case CacheType::PutByIdReplace:
-    case CacheType::InByIdSelf:
-    case CacheType::GetByIdSelf:
-        return;
-    case CacheType::Stub:
-        u.stub->visitAggregate(visitor);
-        return;
-    }
-    
-    RELEASE_ASSERT_NOT_REACHED();
-    return;
+        WTF::switchOn(m_bufferedStructures,
+            [&](std::monostate) { },
+            [&](Vector<StructureID>&) { },
+            [&](Vector<std::tuple<StructureID, CacheableIdentifier>>& structures) {
+                for (auto& [bufferedStructureID, bufferedCacheableIdentifier] : structures)
+                    bufferedCacheableIdentifier.visitAggregate(visitor);
+            });
+    } else
+        m_identifier.visitAggregate(visitor);
+
+    if (m_stub)
+        m_stub->visitAggregate(visitor);
 }
 
 DEFINE_VISIT_AGGREGATE(StructureStubInfo);
@@ -353,17 +354,34 @@ void StructureStubInfo::visitWeakReferences(const ConcurrentJSLockerBase& locker
     VM& vm = codeBlock->vm();
     {
         Locker locker { m_bufferedStructuresLock };
-        m_bufferedStructures.removeIf(
-            [&] (auto& entry) -> bool {
-                return !vm.heap.isMarked(entry.structure());
+        WTF::switchOn(m_bufferedStructures,
+            [&](std::monostate) { },
+            [&](Vector<StructureID>& structures) {
+                structures.removeAllMatching([&](StructureID structureID) {
+                    return !vm.heap.isMarked(structureID.decode());
+                });
+            },
+            [&](Vector<std::tuple<StructureID, CacheableIdentifier>>& structures) {
+                structures.removeAllMatching([&](auto& tuple) {
+                    return !vm.heap.isMarked(std::get<0>(tuple).decode());
+                });
             });
     }
 
     bool isValid = true;
-    if (m_inlineAccessBaseStructure)
-        isValid &= vm.heap.isMarked(m_inlineAccessBaseStructure.get());
-    if (m_cacheType == CacheType::Stub)
-        isValid &= u.stub->visitWeak(vm);
+    if (Structure* structure = inlineAccessBaseStructure())
+        isValid &= vm.heap.isMarked(structure);
+    if (m_stub)
+        isValid &= m_stub->visitWeak(vm);
+    if (m_inlinedHandler)
+        isValid &= m_inlinedHandler->visitWeak(vm);
+    if (m_handler) {
+        RefPtr cursor = m_handler.get();
+        while (cursor) {
+            isValid &= cursor->visitWeak(vm);
+            cursor = cursor->next();
+        }
+    }
 
     if (isValid)
         return;
@@ -375,27 +393,62 @@ void StructureStubInfo::visitWeakReferences(const ConcurrentJSLockerBase& locker
 template<typename Visitor>
 void StructureStubInfo::propagateTransitions(Visitor& visitor)
 {
-    if (m_inlineAccessBaseStructure)
-        m_inlineAccessBaseStructure->markIfCheap(visitor);
+    if (Structure* structure = inlineAccessBaseStructure())
+        structure->markIfCheap(visitor);
 
-    if (m_cacheType == CacheType::Stub)
-        u.stub->propagateTransitions(visitor);
+    if (m_stub)
+        m_stub->propagateTransitions(visitor);
 }
 
 template void StructureStubInfo::propagateTransitions(AbstractSlotVisitor&);
 template void StructureStubInfo::propagateTransitions(SlotVisitor&);
 
+CallLinkInfo* StructureStubInfo::callLinkInfoAt(const ConcurrentJSLocker& locker, unsigned index, const AccessCase& accessCase)
+{
+    if (!useDataIC) {
+        if (!m_handler)
+            return nullptr;
+        return m_handler->callLinkInfoAt(locker, index);
+    }
+
+    if (m_inlinedHandler) {
+        if (m_inlinedHandler->accessCase() == &accessCase)
+            return m_inlinedHandler->callLinkInfoAt(locker, 0);
+    }
+
+    if (auto* cursor = m_handler.get()) {
+        while (cursor) {
+            if (cursor->accessCase() == &accessCase)
+                return cursor->callLinkInfoAt(locker, 0);
+            cursor = cursor->next();
+        }
+    }
+    return nullptr;
+}
+
 StubInfoSummary StructureStubInfo::summary(VM& vm) const
 {
     StubInfoSummary takesSlowPath = StubInfoSummary::TakesSlowPath;
     StubInfoSummary simple = StubInfoSummary::Simple;
-    if (m_cacheType == CacheType::Stub) {
-        PolymorphicAccess* list = u.stub;
+    if (auto* list = m_stub.get()) {
         for (unsigned i = 0; i < list->size(); ++i) {
             const AccessCase& access = list->at(i);
             if (access.doesCalls(vm)) {
                 takesSlowPath = StubInfoSummary::TakesSlowPathAndMakesCalls;
                 simple = StubInfoSummary::MakesCalls;
+                break;
+            }
+        }
+        if (list->size() == 1) {
+            switch (list->at(0).type()) {
+            case AccessCase::LoadMegamorphic:
+            case AccessCase::IndexedMegamorphicLoad:
+            case AccessCase::StoreMegamorphic:
+            case AccessCase::IndexedMegamorphicStore:
+            case AccessCase::InMegamorphic:
+            case AccessCase::IndexedMegamorphicIn:
+                return StubInfoSummary::Megamorphic;
+            default:
                 break;
             }
         }
@@ -420,9 +473,17 @@ StubInfoSummary StructureStubInfo::summary(VM& vm, const StructureStubInfo* stub
 
 bool StructureStubInfo::containsPC(void* pc) const
 {
-    if (m_cacheType != CacheType::Stub)
+    // m_inlinedHandler is not having special out-of-inline code, so we do not care.
+    if (!m_handler)
         return false;
-    return u.stub->containsPC(pc);
+
+    auto* cursor = m_handler.get();
+    while (cursor) {
+        if (cursor->containsPC(pc))
+            return true;
+        cursor = cursor->next();
+    }
+    return false;
 }
 
 ALWAYS_INLINE void StructureStubInfo::setCacheType(const ConcurrentJSLockerBase&, CacheType newCacheType)
@@ -430,13 +491,442 @@ ALWAYS_INLINE void StructureStubInfo::setCacheType(const ConcurrentJSLockerBase&
     m_cacheType = newCacheType;
 }
 
+static CodePtr<OperationPtrTag> slowOperationFromUnlinkedStructureStubInfo(const UnlinkedStructureStubInfo& unlinkedStubInfo)
+{
+    switch (unlinkedStubInfo.accessType) {
+    case AccessType::DeleteByValStrict:
+        return operationDeleteByValStrictOptimize;
+    case AccessType::DeleteByValSloppy:
+        return operationDeleteByValSloppyOptimize;
+    case AccessType::DeleteByIdStrict:
+        return operationDeleteByIdStrictOptimize;
+    case AccessType::DeleteByIdSloppy:
+        return operationDeleteByIdSloppyOptimize;
+    case AccessType::GetByVal:
+        return operationGetByValOptimize;
+    case AccessType::InstanceOf:
+        return operationInstanceOfOptimize;
+    case AccessType::InByVal:
+        return operationInByValOptimize;
+    case AccessType::InById:
+        return operationInByIdOptimize;
+    case AccessType::GetById:
+        return operationGetByIdOptimize;
+    case AccessType::TryGetById:
+        return operationTryGetByIdOptimize;
+    case AccessType::GetByIdDirect:
+        return operationGetByIdDirectOptimize;
+    case AccessType::GetByIdWithThis:
+        return operationGetByIdWithThisOptimize;
+    case AccessType::GetByValWithThis:
+        return operationGetByValWithThisOptimize;
+    case AccessType::HasPrivateName:
+        return operationHasPrivateNameOptimize;
+    case AccessType::HasPrivateBrand: 
+        return operationHasPrivateBrandOptimize;
+    case AccessType::GetPrivateName:
+        return operationGetPrivateNameOptimize;
+    case AccessType::GetPrivateNameById:
+        return operationGetPrivateNameByIdOptimize;
+    case AccessType::PutByIdStrict:
+        return operationPutByIdStrictOptimize;
+    case AccessType::PutByIdSloppy:
+        return operationPutByIdSloppyOptimize;
+    case AccessType::PutByIdDirectStrict:
+        return operationPutByIdDirectStrictOptimize;
+    case AccessType::PutByIdDirectSloppy:
+        return operationPutByIdDirectSloppyOptimize;
+    case AccessType::PutByValStrict:
+        return operationPutByValStrictOptimize;
+    case AccessType::PutByValSloppy:
+        return operationPutByValSloppyOptimize;
+    case AccessType::PutByValDirectStrict:
+        return operationDirectPutByValStrictOptimize;
+    case AccessType::PutByValDirectSloppy:
+        return operationDirectPutByValSloppyOptimize;
+    case AccessType::DefinePrivateNameById:
+        return operationPutByIdDefinePrivateFieldStrictOptimize;
+    case AccessType::SetPrivateNameById:
+        return operationPutByIdSetPrivateFieldStrictOptimize;
+    case AccessType::DefinePrivateNameByVal:
+        return operationPutByValDefinePrivateFieldOptimize;
+    case AccessType::SetPrivateNameByVal:
+        return operationPutByValSetPrivateFieldOptimize;
+    case AccessType::SetPrivateBrand:
+        return operationSetPrivateBrandOptimize;
+    case AccessType::CheckPrivateBrand:
+        return operationCheckPrivateBrandOptimize;
+    }
+    return { };
+}
+
+void StructureStubInfo::initializePredefinedRegisters()
+{
+    switch (accessType) {
+    case AccessType::DeleteByValStrict:
+    case AccessType::DeleteByValSloppy:
+        m_baseGPR = BaselineJITRegisters::DelByVal::baseJSR.payloadGPR();
+        m_extraGPR = BaselineJITRegisters::DelByVal::propertyJSR.payloadGPR();
+        m_valueGPR = BaselineJITRegisters::DelByVal::resultJSR.payloadGPR();
+        m_stubInfoGPR = BaselineJITRegisters::DelByVal::stubInfoGPR;
+#if USE(JSVALUE32_64)
+        m_baseTagGPR = BaselineJITRegisters::DelByVal::baseJSR.tagGPR();
+        m_extraTagGPR = BaselineJITRegisters::DelByVal::propertyJSR.tagGPR();
+        m_valueTagGPR = BaselineJITRegisters::DelByVal::resultJSR.tagGPR();
+#endif
+        break;
+    case AccessType::DeleteByIdStrict:
+    case AccessType::DeleteByIdSloppy:
+        m_baseGPR = BaselineJITRegisters::DelById::baseJSR.payloadGPR();
+        m_extraGPR = InvalidGPRReg;
+        m_valueGPR = BaselineJITRegisters::DelById::resultJSR.payloadGPR();
+        m_stubInfoGPR = BaselineJITRegisters::DelById::stubInfoGPR;
+#if USE(JSVALUE32_64)
+        m_baseTagGPR = BaselineJITRegisters::DelById::baseJSR.tagGPR();
+        m_extraTagGPR = InvalidGPRReg;
+        m_valueTagGPR = BaselineJITRegisters::DelById::resultJSR.tagGPR();
+#endif
+        break;
+    case AccessType::GetByVal:
+    case AccessType::GetPrivateName:
+        m_baseGPR = BaselineJITRegisters::GetByVal::baseJSR.payloadGPR();
+        m_extraGPR = BaselineJITRegisters::GetByVal::propertyJSR.payloadGPR();
+        m_valueGPR = BaselineJITRegisters::GetByVal::resultJSR.payloadGPR();
+        m_stubInfoGPR = BaselineJITRegisters::GetByVal::stubInfoGPR;
+        if (accessType == AccessType::GetByVal)
+            m_arrayProfileGPR = BaselineJITRegisters::GetByVal::profileGPR;
+#if USE(JSVALUE32_64)
+        m_baseTagGPR = BaselineJITRegisters::GetByVal::baseJSR.tagGPR();
+        m_extraTagGPR = BaselineJITRegisters::GetByVal::propertyJSR.tagGPR();
+        m_valueTagGPR = BaselineJITRegisters::GetByVal::resultJSR.tagGPR();
+#endif
+        break;
+    case AccessType::InstanceOf:
+        prototypeIsKnownObject = false;
+        m_baseGPR = BaselineJITRegisters::Instanceof::valueJSR.payloadGPR();
+        m_valueGPR = BaselineJITRegisters::Instanceof::resultJSR.payloadGPR();
+        m_extraGPR = BaselineJITRegisters::Instanceof::protoJSR.payloadGPR();
+        m_stubInfoGPR = BaselineJITRegisters::Instanceof::stubInfoGPR;
+#if USE(JSVALUE32_64)
+        m_baseTagGPR = BaselineJITRegisters::Instanceof::valueJSR.tagGPR();
+        m_valueTagGPR = InvalidGPRReg;
+        m_extraTagGPR = BaselineJITRegisters::Instanceof::protoJSR.tagGPR();
+#endif
+        break;
+    case AccessType::InByVal:
+    case AccessType::HasPrivateName:
+    case AccessType::HasPrivateBrand:
+        m_baseGPR = BaselineJITRegisters::InByVal::baseJSR.payloadGPR();
+        m_extraGPR = BaselineJITRegisters::InByVal::propertyJSR.payloadGPR();
+        m_valueGPR = BaselineJITRegisters::InByVal::resultJSR.payloadGPR();
+        m_stubInfoGPR = BaselineJITRegisters::InByVal::stubInfoGPR;
+        if (accessType == AccessType::InByVal)
+            m_arrayProfileGPR = BaselineJITRegisters::InByVal::profileGPR;
+#if USE(JSVALUE32_64)
+        m_baseTagGPR = BaselineJITRegisters::InByVal::baseJSR.tagGPR();
+        m_extraTagGPR = BaselineJITRegisters::InByVal::propertyJSR.tagGPR();
+        m_valueTagGPR = BaselineJITRegisters::InByVal::resultJSR.tagGPR();
+#endif
+        break;
+    case AccessType::InById:
+        m_extraGPR = InvalidGPRReg;
+        m_baseGPR = BaselineJITRegisters::InById::baseJSR.payloadGPR();
+        m_valueGPR = BaselineJITRegisters::InById::resultJSR.payloadGPR();
+        m_stubInfoGPR = BaselineJITRegisters::InById::stubInfoGPR;
+#if USE(JSVALUE32_64)
+        m_extraTagGPR = InvalidGPRReg;
+        m_baseTagGPR = BaselineJITRegisters::InById::baseJSR.tagGPR();
+        m_valueTagGPR = BaselineJITRegisters::InById::resultJSR.tagGPR();
+#endif
+        break;
+    case AccessType::TryGetById:
+    case AccessType::GetByIdDirect:
+    case AccessType::GetById:
+    case AccessType::GetPrivateNameById:
+        m_extraGPR = InvalidGPRReg;
+        m_baseGPR = BaselineJITRegisters::GetById::baseJSR.payloadGPR();
+        m_valueGPR = BaselineJITRegisters::GetById::resultJSR.payloadGPR();
+        m_stubInfoGPR = BaselineJITRegisters::GetById::stubInfoGPR;
+#if USE(JSVALUE32_64)
+        m_extraTagGPR = InvalidGPRReg;
+        m_baseTagGPR = BaselineJITRegisters::GetById::baseJSR.tagGPR();
+        m_valueTagGPR = BaselineJITRegisters::GetById::resultJSR.tagGPR();
+#endif
+        break;
+    case AccessType::GetByIdWithThis:
+        m_baseGPR = BaselineJITRegisters::GetByIdWithThis::baseJSR.payloadGPR();
+        m_valueGPR = BaselineJITRegisters::GetByIdWithThis::resultJSR.payloadGPR();
+        m_extraGPR = BaselineJITRegisters::GetByIdWithThis::thisJSR.payloadGPR();
+        m_stubInfoGPR = BaselineJITRegisters::GetByIdWithThis::stubInfoGPR;
+#if USE(JSVALUE32_64)
+        m_baseTagGPR = BaselineJITRegisters::GetByIdWithThis::baseJSR.tagGPR();
+        m_valueTagGPR = BaselineJITRegisters::GetByIdWithThis::resultJSR.tagGPR();
+        m_extraTagGPR = BaselineJITRegisters::GetByIdWithThis::thisJSR.tagGPR();
+#endif
+        break;
+    case AccessType::GetByValWithThis:
+#if USE(JSVALUE64)
+        m_baseGPR = BaselineJITRegisters::GetByValWithThis::baseJSR.payloadGPR();
+        m_valueGPR = BaselineJITRegisters::GetByValWithThis::resultJSR.payloadGPR();
+        m_extraGPR = BaselineJITRegisters::GetByValWithThis::thisJSR.payloadGPR();
+        m_extra2GPR = BaselineJITRegisters::GetByValWithThis::propertyJSR.payloadGPR();
+        m_stubInfoGPR = BaselineJITRegisters::GetByValWithThis::stubInfoGPR;
+        m_arrayProfileGPR = BaselineJITRegisters::GetByValWithThis::profileGPR;
+#else
+        // Registers are exhausted, we cannot have this IC on 32bit.
+        RELEASE_ASSERT_NOT_REACHED();
+#endif
+        break;
+    case AccessType::PutByIdStrict:
+    case AccessType::PutByIdSloppy:
+    case AccessType::PutByIdDirectStrict:
+    case AccessType::PutByIdDirectSloppy:
+    case AccessType::DefinePrivateNameById:
+    case AccessType::SetPrivateNameById:
+        m_extraGPR = InvalidGPRReg;
+        m_baseGPR = BaselineJITRegisters::PutById::baseJSR.payloadGPR();
+        m_valueGPR = BaselineJITRegisters::PutById::valueJSR.payloadGPR();
+        m_stubInfoGPR = BaselineJITRegisters::PutById::stubInfoGPR;
+#if USE(JSVALUE32_64)
+        m_extraTagGPR = InvalidGPRReg;
+        m_baseTagGPR = BaselineJITRegisters::PutById::baseJSR.tagGPR();
+        m_valueTagGPR = BaselineJITRegisters::PutById::valueJSR.tagGPR();
+#endif
+        break;
+    case AccessType::PutByValStrict:
+    case AccessType::PutByValSloppy:
+    case AccessType::PutByValDirectStrict:
+    case AccessType::PutByValDirectSloppy:
+    case AccessType::DefinePrivateNameByVal:
+    case AccessType::SetPrivateNameByVal:
+        m_baseGPR = BaselineJITRegisters::PutByVal::baseJSR.payloadGPR();
+        m_extraGPR = BaselineJITRegisters::PutByVal::propertyJSR.payloadGPR();
+        m_valueGPR = BaselineJITRegisters::PutByVal::valueJSR.payloadGPR();
+        m_stubInfoGPR = BaselineJITRegisters::PutByVal::stubInfoGPR;
+        if (accessType != AccessType::DefinePrivateNameByVal && accessType != AccessType::SetPrivateNameByVal)
+            m_arrayProfileGPR = BaselineJITRegisters::PutByVal::profileGPR;
+#if USE(JSVALUE32_64)
+        m_baseTagGPR = BaselineJITRegisters::PutByVal::baseJSR.tagGPR();
+        m_extraTagGPR = BaselineJITRegisters::PutByVal::propertyJSR.tagGPR();
+        m_valueTagGPR = BaselineJITRegisters::PutByVal::valueJSR.tagGPR();
+#endif
+        break;
+    case AccessType::SetPrivateBrand:
+    case AccessType::CheckPrivateBrand:
+        m_valueGPR = InvalidGPRReg;
+        m_baseGPR = BaselineJITRegisters::PrivateBrand::baseJSR.payloadGPR();
+        m_extraGPR = BaselineJITRegisters::PrivateBrand::propertyJSR.payloadGPR();
+        m_stubInfoGPR = BaselineJITRegisters::PrivateBrand::stubInfoGPR;
+#if USE(JSVALUE32_64)
+        m_valueTagGPR = InvalidGPRReg;
+        m_baseTagGPR = BaselineJITRegisters::PrivateBrand::baseJSR.tagGPR();
+        m_extraTagGPR = BaselineJITRegisters::PrivateBrand::propertyJSR.tagGPR();
+#endif
+        break;
+    }
+}
+
+void StructureStubInfo::initializeFromUnlinkedStructureStubInfo(VM& vm, CodeBlock* codeBlock, const BaselineUnlinkedStructureStubInfo& unlinkedStubInfo)
+{
+    ASSERT(!isCompilationThread());
+    accessType = unlinkedStubInfo.accessType;
+    preconfiguredCacheType = unlinkedStubInfo.preconfiguredCacheType;
+    switch (preconfiguredCacheType) {
+    case CacheType::ArrayLength:
+        m_cacheType = CacheType::ArrayLength;
+        break;
+    default:
+        break;
+    }
+    doneLocation = unlinkedStubInfo.doneLocation;
+    m_identifier = unlinkedStubInfo.m_identifier;
+    m_globalObject = codeBlock->globalObject();
+    callSiteIndex = CallSiteIndex(BytecodeIndex(unlinkedStubInfo.bytecodeIndex.offset()));
+    codeOrigin = CodeOrigin(unlinkedStubInfo.bytecodeIndex);
+    if (Options::useHandlerIC())
+        initializeWithUnitHandler(codeBlock, InlineCacheCompiler::generateSlowPathHandler(vm, accessType));
+    else {
+        initializeWithUnitHandler(codeBlock, InlineCacheHandler::createNonHandlerSlowPath(unlinkedStubInfo.slowPathStartLocation));
+        slowPathStartLocation = unlinkedStubInfo.slowPathStartLocation;
+    }
+    propertyIsInt32 = unlinkedStubInfo.propertyIsInt32;
+    canBeMegamorphic = unlinkedStubInfo.canBeMegamorphic;
+    useDataIC = true;
+
+    if (unlinkedStubInfo.canBeMegamorphic)
+        bufferingCountdown = 1;
+
+    usedRegisters = RegisterSetBuilder::stubUnavailableRegisters().buildScalarRegisterSet();
+
+    m_slowOperation = slowOperationFromUnlinkedStructureStubInfo(unlinkedStubInfo);
+    initializePredefinedRegisters();
+}
+
+#if ENABLE(DFG_JIT)
+void StructureStubInfo::initializeFromDFGUnlinkedStructureStubInfo(CodeBlock* codeBlock, const DFG::UnlinkedStructureStubInfo& unlinkedStubInfo)
+{
+    ASSERT(!isCompilationThread());
+    accessType = unlinkedStubInfo.accessType;
+    preconfiguredCacheType = unlinkedStubInfo.preconfiguredCacheType;
+    switch (preconfiguredCacheType) {
+    case CacheType::ArrayLength:
+        m_cacheType = CacheType::ArrayLength;
+        break;
+    default:
+        break;
+    }
+    doneLocation = unlinkedStubInfo.doneLocation;
+    m_identifier = unlinkedStubInfo.m_identifier;
+    callSiteIndex = unlinkedStubInfo.callSiteIndex;
+    codeOrigin = unlinkedStubInfo.codeOrigin;
+    if (codeOrigin.inlineCallFrame())
+        m_globalObject = baselineCodeBlockForInlineCallFrame(codeOrigin.inlineCallFrame())->globalObject();
+    else
+        m_globalObject = codeBlock->globalObject();
+    if (Options::useHandlerIC())
+        initializeWithUnitHandler(codeBlock, InlineCacheCompiler::generateSlowPathHandler(codeBlock->vm(), accessType));
+    else {
+        initializeWithUnitHandler(codeBlock, InlineCacheHandler::createNonHandlerSlowPath(unlinkedStubInfo.slowPathStartLocation));
+        slowPathStartLocation = unlinkedStubInfo.slowPathStartLocation;
+    }
+
+    propertyIsInt32 = unlinkedStubInfo.propertyIsInt32;
+    propertyIsSymbol = unlinkedStubInfo.propertyIsSymbol;
+    propertyIsString = unlinkedStubInfo.propertyIsString;
+    prototypeIsKnownObject = unlinkedStubInfo.prototypeIsKnownObject;
+    canBeMegamorphic = unlinkedStubInfo.canBeMegamorphic;
+    useDataIC = true;
+
+    if (unlinkedStubInfo.canBeMegamorphic)
+        bufferingCountdown = 1;
+
+    usedRegisters = RegisterSetBuilder::stubUnavailableRegisters().buildScalarRegisterSet();
+
+    m_slowOperation = slowOperationFromUnlinkedStructureStubInfo(unlinkedStubInfo);
+    initializePredefinedRegisters();
+}
+#endif
+
+void StructureStubInfo::setInlinedHandler(CodeBlock* codeBlock, Ref<InlineCacheHandler>&& handler)
+{
+    ASSERT(!m_inlinedHandler);
+    VM& vm = codeBlock->vm();
+    m_inlinedHandler = WTFMove(handler);
+    m_inlinedHandler->addOwner(codeBlock);
+    switch (m_inlinedHandler->cacheType()) {
+    case CacheType::GetByIdSelf: {
+        m_inlineAccessBaseStructureID.set(vm, codeBlock, m_inlinedHandler->structureID().decode());
+        byIdSelfOffset = m_inlinedHandler->offset();
+        break;
+    }
+    case CacheType::GetByIdPrototype: {
+        m_inlineAccessBaseStructureID.set(vm, codeBlock, m_inlinedHandler->structureID().decode());
+        byIdSelfOffset = m_inlinedHandler->offset();
+        m_inlineHolder = m_inlinedHandler->holder();
+        break;
+    }
+    case CacheType::PutByIdReplace: {
+        m_inlineAccessBaseStructureID.set(vm, codeBlock, m_inlinedHandler->structureID().decode());
+        byIdSelfOffset = m_inlinedHandler->offset();
+        break;
+    }
+    case CacheType::InByIdSelf: {
+        m_inlineAccessBaseStructureID.set(vm, codeBlock, m_inlinedHandler->structureID().decode());
+        byIdSelfOffset = m_inlinedHandler->offset();
+        break;
+    }
+    case CacheType::ArrayLength:
+    case CacheType::StringLength:
+    case CacheType::Unset:
+    case CacheType::Stub:
+        RELEASE_ASSERT_NOT_REACHED();
+        break;
+    }
+}
+
+void StructureStubInfo::clearInlinedHandler(CodeBlock* codeBlock)
+{
+    ASSERT(useHandlerIC());
+    m_inlinedHandler->removeOwner(codeBlock);
+    m_inlinedHandler = nullptr;
+    m_inlineAccessBaseStructureID.clear();
+}
+
+void StructureStubInfo::initializeWithUnitHandler(CodeBlock* codeBlock, Ref<InlineCacheHandler>&& handler)
+{
+    if (useHandlerIC()) {
+        if (m_inlinedHandler)
+            clearInlinedHandler(codeBlock);
+        ASSERT(!m_inlinedHandler);
+        if (m_handler)
+            m_handler->removeOwner(codeBlock);
+        m_handler = WTFMove(handler);
+        m_handler->addOwner(codeBlock);
+    } else {
+        ASSERT(!m_inlinedHandler);
+        m_handler = WTFMove(handler);
+    }
+}
+
+void StructureStubInfo::prependHandler(CodeBlock* codeBlock, Ref<InlineCacheHandler>&& handler, bool isMegamorphic)
+{
+    ASSERT(useHandlerIC());
+    if (isMegamorphic) {
+        initializeWithUnitHandler(codeBlock, WTFMove(handler));
+        return;
+    }
+
+    if (!m_inlinedHandler) {
+        if (preconfiguredCacheType != CacheType::Unset && preconfiguredCacheType == handler->cacheType()) {
+            setInlinedHandler(codeBlock, WTFMove(handler));
+            return;
+        }
+    }
+
+    handler->setNext(WTFMove(m_handler));
+    m_handler = WTFMove(handler);
+    m_handler->addOwner(codeBlock);
+}
+
+void StructureStubInfo::rewireStubAsJumpInAccess(CodeBlock* codeBlock, Ref<InlineCacheHandler>&& handler)
+{
+    CodeLocationLabel label { handler->callTarget() };
+    initializeWithUnitHandler(codeBlock, WTFMove(handler));
+    if (!useDataIC)
+        CCallHelpers::replaceWithJump(startLocation.retagged<JSInternalPtrTag>(), label);
+}
+
+void StructureStubInfo::resetStubAsJumpInAccess(CodeBlock* codeBlock)
+{
+    if (useHandlerIC()) {
+        if (m_inlinedHandler)
+            clearInlinedHandler(codeBlock);
+        auto* cursor = m_handler.get();
+        while (cursor) {
+            cursor->removeOwner(codeBlock);
+            cursor = cursor->next();
+        }
+        m_handler = InlineCacheCompiler::generateSlowPathHandler(codeBlock->vm(), accessType);
+        return;
+    }
+
+    if (useDataIC)
+        m_inlineAccessBaseStructureID.clear(); // Clear out the inline access code.
+    rewireStubAsJumpInAccess(codeBlock, InlineCacheHandler::createNonHandlerSlowPath(slowPathStartLocation));
+}
+
 #if ASSERT_ENABLED
 void StructureStubInfo::checkConsistency()
 {
-    if (thisValueIsInThisGPR()) {
+    switch (accessType) {
+    case AccessType::GetByIdWithThis:
         // We currently use a union for both "thisGPR" and "propertyGPR". If this were
         // not the case, we'd need to take one of them out of the union.
-        RELEASE_ASSERT(hasConstantIdentifier);
+        RELEASE_ASSERT(hasConstantIdentifier(accessType));
+        break;
+    case AccessType::GetByValWithThis:
+    default:
+        break;
     }
 }
 #endif // ASSERT_ENABLED

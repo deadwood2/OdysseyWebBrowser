@@ -93,12 +93,8 @@ class TType
   public:
     POOL_ALLOCATOR_NEW_DELETE
     TType();
-    explicit TType(TBasicType t, unsigned char ps = 1, unsigned char ss = 1);
-    TType(TBasicType t,
-          TPrecision p,
-          TQualifier q     = EvqTemporary,
-          unsigned char ps = 1,
-          unsigned char ss = 1);
+    explicit TType(TBasicType t, uint8_t ps = 1, uint8_t ss = 1);
+    TType(TBasicType t, TPrecision p, TQualifier q = EvqTemporary, uint8_t ps = 1, uint8_t ss = 1);
     explicit TType(const TPublicType &p);
     TType(const TStructure *userDef, bool isStructSpecifier);
     TType(const TInterfaceBlock *interfaceBlockIn,
@@ -110,8 +106,8 @@ class TType
     constexpr TType(TBasicType t,
                     TPrecision p,
                     TQualifier q,
-                    unsigned char ps,
-                    unsigned char ss,
+                    uint8_t ps,
+                    uint8_t ss,
                     const TSpan<const unsigned int> arraySizes,
                     const char *mangledName)
         : type(t),
@@ -119,6 +115,7 @@ class TType
           qualifier(q),
           invariant(false),
           precise(false),
+          interpolant(false),
           memoryQualifier(TMemoryQualifier::Create()),
           layoutQualifier(TLayoutQualifier::Create()),
           primarySize(ps),
@@ -128,6 +125,7 @@ class TType
           mInterfaceBlock(nullptr),
           mStructure(nullptr),
           mIsStructSpecifier(false),
+          mInterfaceBlockFieldIndex(0),
           mMangledName(mangledName)
     {}
 
@@ -137,6 +135,7 @@ class TType
           qualifier(t.qualifier),
           invariant(t.invariant),
           precise(t.precise),
+          interpolant(t.interpolant),
           memoryQualifier(t.memoryQualifier),
           layoutQualifier(t.layoutQualifier),
           primarySize(t.primarySize),
@@ -146,6 +145,7 @@ class TType
           mInterfaceBlock(t.mInterfaceBlock),
           mStructure(t.mStructure),
           mIsStructSpecifier(t.mIsStructSpecifier),
+          mInterfaceBlockFieldIndex(0),
           mMangledName(t.mMangledName)
     {
         t.mArraySizesStorage = nullptr;
@@ -166,26 +166,29 @@ class TType
     bool isPrecise() const { return precise; }
     void setPrecise(bool i) { precise = i; }
 
+    bool isInterpolant() const { return interpolant; }
+    void setInterpolant(bool i) { interpolant = i; }
+
     TMemoryQualifier getMemoryQualifier() const { return memoryQualifier; }
     void setMemoryQualifier(const TMemoryQualifier &mq) { memoryQualifier = mq; }
 
     TLayoutQualifier getLayoutQualifier() const { return layoutQualifier; }
     void setLayoutQualifier(TLayoutQualifier lq) { layoutQualifier = lq; }
 
-    int getNominalSize() const { return primarySize; }
-    int getSecondarySize() const { return secondarySize; }
-    int getCols() const
+    uint8_t getNominalSize() const { return primarySize; }
+    uint8_t getSecondarySize() const { return secondarySize; }
+    uint8_t getCols() const
     {
         ASSERT(isMatrix());
         return primarySize;
     }
-    int getRows() const
+    uint8_t getRows() const
     {
         ASSERT(isMatrix());
         return secondarySize;
     }
-    void setPrimarySize(unsigned char ps);
-    void setSecondarySize(unsigned char ss);
+    void setPrimarySize(uint8_t ps);
+    void setSecondarySize(uint8_t ss);
 
     // Full size of single instance of type
     size_t getObjectSize() const;
@@ -225,10 +228,17 @@ class TType
     void toArrayElementType();
     // Removes all array sizes.
     void toArrayBaseType();
+    // Turns a matrix into a column of it.
+    void toMatrixColumnType();
+    // Turns a matrix or vector into a component of it.
+    void toComponentType();
 
     const TInterfaceBlock *getInterfaceBlock() const { return mInterfaceBlock; }
     void setInterfaceBlock(const TInterfaceBlock *interfaceBlockIn);
     bool isInterfaceBlock() const { return type == EbtInterfaceBlock; }
+
+    void setInterfaceBlockField(const TInterfaceBlock *interfaceBlockIn, size_t fieldIndex);
+    size_t getInterfaceBlockFieldIndex() const { return mInterfaceBlockFieldIndex; }
 
     bool isVector() const { return primarySize > 1 && secondarySize == 1; }
     bool isVectorArray() const { return primarySize > 1 && secondarySize == 1 && isArray(); }
@@ -248,7 +258,7 @@ class TType
 
     const TStructure *getStruct() const { return mStructure; }
 
-    static constexpr char GetSizeMangledName(unsigned char primarySize, unsigned char secondarySize)
+    static constexpr char GetSizeMangledName(uint8_t primarySize, uint8_t secondarySize)
     {
         unsigned int sizeKey = (secondarySize - 1u) * 4u + primarySize - 1u;
         if (sizeKey < 10u)
@@ -326,6 +336,7 @@ class TType
     bool isStructureContainingMatrices() const;
     bool isStructureContainingType(TBasicType t) const;
     bool isStructureContainingSamplers() const;
+    bool isInterfaceBlockContainingType(TBasicType t) const;
 
     bool isStructSpecifier() const { return mIsStructSpecifier; }
 
@@ -350,6 +361,7 @@ class TType
     bool isAtomicCounter() const { return IsAtomicCounter(type); }
     bool isSamplerVideoWEBGL() const { return type == EbtSamplerVideoWEBGL; }
     bool isImage() const { return IsImage(type); }
+    bool isPixelLocal() const { return IsPixelLocal(type); }
 
   private:
     constexpr void invalidateMangledName() { mMangledName = nullptr; }
@@ -365,11 +377,12 @@ class TType
     TQualifier qualifier;
     bool invariant;
     bool precise;
+    bool interpolant;
 
     TMemoryQualifier memoryQualifier;
     TLayoutQualifier layoutQualifier;
-    unsigned char primarySize;    // size of vector or cols matrix
-    unsigned char secondarySize;  // rows of a matrix
+    uint8_t primarySize;    // size of vector or cols matrix
+    uint8_t secondarySize;  // rows of a matrix
 
     // Used to make an array type. Outermost array size is stored at the end of the vector. Having 0
     // in this vector means an unsized array.
@@ -390,6 +403,10 @@ class TType
     const TStructure *mStructure;
     bool mIsStructSpecifier;
 
+    // If this is a field of a nameless interface block, this would indicate which member it's
+    // refering to.
+    size_t mInterfaceBlockFieldIndex;
+
     mutable const char *mMangledName;
 };
 
@@ -398,8 +415,8 @@ class TType
 struct TTypeSpecifierNonArray
 {
     TBasicType type;
-    unsigned char primarySize;    // size of vector or cols of matrix
-    unsigned char secondarySize;  // rows of matrix
+    uint8_t primarySize;    // size of vector or cols of matrix
+    uint8_t secondarySize;  // rows of matrix
     const TStructure *userDef;
     TSourceLoc line;
 
@@ -429,9 +446,9 @@ struct TTypeSpecifierNonArray
         isStructSpecifier = aIsStructSpecifier;
     }
 
-    void setAggregate(unsigned char size) { primarySize = size; }
+    void setAggregate(uint8_t size) { primarySize = size; }
 
-    void setMatrix(unsigned char columns, unsigned char rows)
+    void setMatrix(uint8_t columns, uint8_t rows)
     {
         ASSERT(columns > 1 && rows > 1 && columns <= 4 && rows <= 4);
         primarySize   = columns;
@@ -463,8 +480,8 @@ struct TPublicType
     TBasicType getBasicType() const { return typeSpecifierNonArray.type; }
     void setBasicType(TBasicType basicType) { typeSpecifierNonArray.type = basicType; }
 
-    unsigned char getPrimarySize() const { return typeSpecifierNonArray.primarySize; }
-    unsigned char getSecondarySize() const { return typeSpecifierNonArray.secondarySize; }
+    uint8_t getPrimarySize() const { return typeSpecifierNonArray.primarySize; }
+    uint8_t getSecondarySize() const { return typeSpecifierNonArray.secondarySize; }
 
     const TStructure *getUserDef() const { return typeSpecifierNonArray.userDef; }
     const TSourceLoc &getLine() const { return typeSpecifierNonArray.line; }

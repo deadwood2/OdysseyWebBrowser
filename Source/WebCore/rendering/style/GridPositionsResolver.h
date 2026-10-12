@@ -36,35 +36,52 @@ namespace WebCore {
 
 class GridSpan;
 class RenderBox;
+class RenderGrid;
 class RenderStyle;
 
-enum GridTrackSizingDirection {
+enum class GridTrackSizingDirection : uint8_t {
     ForColumns,
     ForRows
 };
 
-class NamedLineCollection {
-    WTF_MAKE_NONCOPYABLE(NamedLineCollection);
+class NamedLineCollectionBase {
+    WTF_MAKE_NONCOPYABLE(NamedLineCollectionBase);
 public:
-    NamedLineCollection(const RenderStyle&, const String& namedLine, GridTrackSizingDirection, unsigned lastLine, unsigned autoRepeatTracksCount);
+    NamedLineCollectionBase(const RenderGrid&, const String& name, GridPositionSide, bool nameIsAreaName);
+
 
     bool hasNamedLines() const;
-    unsigned firstPosition() const;
-
+    bool hasExplicitNamedLines() const;
     bool contains(unsigned line) const;
+protected:
+
+    void ensureInheritedNamedIndices();
+
+    const Vector<unsigned>* m_namedLinesIndices { nullptr };
+    const Vector<unsigned>* m_autoRepeatNamedLinesIndices { nullptr };
+    const Vector<unsigned>* m_implicitNamedLinesIndices { nullptr };
+
+    Vector<unsigned> m_inheritedNamedLinesIndices;
+
+    unsigned m_insertionPoint { 0 };
+    unsigned m_lastLine { 0 };
+    unsigned m_autoRepeatTotalTracks { 0 };
+    unsigned m_autoRepeatLines { 0 };
+    unsigned m_autoRepeatTrackListLength { 0 };
+    bool m_isSubgrid { false };
+};
+
+class NamedLineCollection : public NamedLineCollectionBase {
+    WTF_MAKE_NONCOPYABLE(NamedLineCollection);
+public:
+    NamedLineCollection(const RenderGrid&, const String& name, GridPositionSide, bool nameIsAreaName = false);
+
+    int firstPosition() const;
+
+    unsigned lastLine() const;
 
 private:
-    bool hasExplicitNamedLines() const;
-    unsigned firstExplicitPosition() const;
-
-    const Vector<unsigned>* m_namedLinesIndexes { nullptr };
-    const Vector<unsigned>* m_autoRepeatNamedLinesIndexes { nullptr };
-    const Vector<unsigned>* m_implicitNamedLinesIndexes { nullptr };
-
-    unsigned m_insertionPoint;
-    unsigned m_lastLine;
-    unsigned m_autoRepeatTotalTracks;
-    unsigned m_autoRepeatTrackListLength;
+    int firstExplicitPosition() const;
 };
 
 // Class with all the code related to grid items positions resolution.
@@ -73,9 +90,9 @@ public:
     static GridPositionSide initialPositionSide(GridTrackSizingDirection);
     static GridPositionSide finalPositionSide(GridTrackSizingDirection);
     static unsigned spanSizeForAutoPlacedItem(const RenderBox&, GridTrackSizingDirection);
-    static GridSpan resolveGridPositionsFromStyle(const RenderStyle&, const RenderBox&, GridTrackSizingDirection, unsigned autoRepeatTracksCount);
-    static unsigned explicitGridColumnCount(const RenderStyle&, unsigned autoRepeatColumnsCount);
-    static unsigned explicitGridRowCount(const RenderStyle&, unsigned autoRepeatRowsCount);
+    static GridSpan resolveGridPositionsFromStyle(const RenderGrid& gridContainer, const RenderBox&, GridTrackSizingDirection);
+    static unsigned explicitGridColumnCount(const RenderGrid&);
+    static unsigned explicitGridRowCount(const RenderGrid&);
 };
 
 } // namespace WebCore

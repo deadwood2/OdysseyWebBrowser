@@ -32,7 +32,17 @@
 #include "WebProcessSupplement.h"
 #include <WebCore/MediaEngineConfigurationFactory.h>
 #include <wtf/HashMap.h>
+#include <wtf/TZoneMalloc.h>
 #include <wtf/WeakPtr.h>
+
+namespace WebKit {
+class RemoteMediaEngineConfigurationFactory;
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebKit::RemoteMediaEngineConfigurationFactory> : std::true_type { };
+}
 
 namespace IPC {
 class Connection;
@@ -47,15 +57,14 @@ class WebProcess;
 class RemoteMediaEngineConfigurationFactory final
     : public WebProcessSupplement
     , public CanMakeWeakPtr<RemoteMediaEngineConfigurationFactory> {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED(RemoteMediaEngineConfigurationFactory);
 public:
     explicit RemoteMediaEngineConfigurationFactory(WebProcess&);
     virtual ~RemoteMediaEngineConfigurationFactory();
 
     void registerFactory();
 
-    static const char* supplementName();
-    WebProcess& process() const { return m_process; }
+    static ASCIILiteral supplementName();
 
     GPUProcessConnection& gpuProcessConnection();
 
@@ -64,8 +73,6 @@ public:
 private:
     void createDecodingConfiguration(WebCore::MediaDecodingConfiguration&&, WebCore::MediaEngineConfigurationFactory::DecodingConfigurationCallback&&);
     void createEncodingConfiguration(WebCore::MediaEncodingConfiguration&&, WebCore::MediaEngineConfigurationFactory::EncodingConfigurationCallback&&);
-
-    WebProcess& m_process;
 };
 
 }

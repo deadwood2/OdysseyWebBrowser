@@ -17,13 +17,13 @@ namespace WebKit {
 
 @implementation WkFavIconPrivate
 
-- (BOOL)loadSharedData:(WebCore::SharedBuffer *)data
+- (BOOL)loadSharedData:(RefPtr<WebCore::SharedBuffer>&&)data
 {
     auto image = WebCore::BitmapImage::create();
     if (image->setData(data, true) < WebCore::EncodedDataStatus::SizeAvailable)
         return NO;
 	
-	auto nativeImage = image->nativeImageForCurrentFrame();
+	auto nativeImage = image->currentNativeImage();
 	if (!nativeImage.get())
 		return NO;
 
@@ -65,13 +65,13 @@ namespace WebKit {
 	return YES;
 }
 
-- (WkFavIconPrivate *)initWithSharedData:(WebCore::SharedBuffer *)data forHost:(OBString *)host
+- (WkFavIconPrivate *)initWithSharedData:(RefPtr<WebCore::SharedBuffer>&&)data forHost:(OBString *)host
 {
 	if ((self = [super init]))
 	{
 		_host = WTF::String::fromUTF8([[host lowercaseString] cString]);
 		
-		if (![self loadSharedData:data])
+		if (![self loadSharedData:std::move(data)])
 		{
 			[self release];
 			return nil;
@@ -106,7 +106,7 @@ namespace WebKit {
 		RefPtr<WebCore::SharedBuffer> buffer = WebCore::SharedBuffer::createWithContentsOfFile(WebKit::generateFileNameForIcon(_host));
 		if (buffer.get() && buffer->size())
 		{
-			[self loadSharedData:buffer.get()];
+			[self loadSharedData:std::move(buffer)];
 		}
 	}
 
@@ -244,11 +244,11 @@ namespace WebKit {
 	return YES;
 }
 
-+ (WkFavIconPrivate *)cacheIconWithData:(WebCore::SharedBuffer *)data forHost:(OBString *)host
++ (WkFavIconPrivate *)cacheIconWithData:(RefPtr<WebCore::SharedBuffer>&&)data forHost:(OBString *)host
 {
 	if (data && data->size())
 	{
-		return [[[self alloc] initWithSharedData:data forHost:host] autorelease];
+		return [[[self alloc] initWithSharedData:std::move(data) forHost:host] autorelease];
 	}
 	
 	return nil;
@@ -257,6 +257,11 @@ namespace WebKit {
 @end
 
 @implementation WkFavIcon
+
++ (void)initialize
+{
+	WTF::initializeMainThread();
+}
 
 + (WkFavIcon *)favIconForHost:(OBString *)host
 {

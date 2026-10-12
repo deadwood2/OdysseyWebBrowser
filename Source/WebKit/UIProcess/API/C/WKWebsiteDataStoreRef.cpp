@@ -77,12 +77,11 @@ void WKWebsiteDataStoreTerminateNetworkProcess(WKWebsiteDataStoreRef dataStore)
 
 WKProcessID WKWebsiteDataStoreGetNetworkProcessIdentifier(WKWebsiteDataStoreRef dataStore)
 {
-    return WebKit::toImpl(dataStore)->networkProcess().processIdentifier();
+    return WebKit::toImpl(dataStore)->networkProcess().processID();
 }
 
 void WKWebsiteDataStoreRemoveITPDataForDomain(WKWebsiteDataStoreRef dataStoreRef, WKStringRef host, void* context, WKWebsiteDataStoreRemoveITPDataForDomainFunction callback)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
     WebKit::WebsiteDataRecord dataRecord;
     dataRecord.types.add(WebKit::WebsiteDataType::ResourceLoadStatistics);
     dataRecord.addResourceLoadStatisticsRegistrableDomain(WebCore::RegistrableDomain::uncheckedCreateFromHost(WebKit::toImpl(host)->string()));
@@ -92,20 +91,13 @@ void WKWebsiteDataStoreRemoveITPDataForDomain(WKWebsiteDataStoreRef dataStoreRef
     WebKit::toImpl(dataStoreRef)->removeData(dataTypes, dataRecords, [context, callback] {
         callback(context);
     });
-#else
-    callback(context);
-#endif
 }
 
 void WKWebsiteDataStoreDoesStatisticsDomainIDExistInDatabase(WKWebsiteDataStoreRef dataStoreRef, int domainID, void* context, WKWebsiteDataStoreDoesStatisticsDomainIDExistInDatabaseFunction callback)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
     WebKit::toImpl(dataStoreRef)->domainIDExistsInDatabase(domainID, [context, callback](bool exists) {
         callback(exists, context);
     });
-#else
-    callback(false, context);
-#endif
 }
 
 void WKWebsiteDataStoreSetServiceWorkerFetchTimeoutForTesting(WKWebsiteDataStoreRef dataStore, double seconds)
@@ -120,27 +112,19 @@ void WKWebsiteDataStoreResetServiceWorkerFetchTimeoutForTesting(WKWebsiteDataSto
 
 void WKWebsiteDataStoreSetResourceLoadStatisticsEnabled(WKWebsiteDataStoreRef dataStoreRef, bool enable)
 {
-    auto* websiteDataStore = WebKit::toImpl(dataStoreRef);
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
-    websiteDataStore->useExplicitITPState();
-#endif
-    websiteDataStore->setResourceLoadStatisticsEnabled(enable);
+    WebKit::toImpl(dataStoreRef)->setTrackingPreventionEnabled(enable);
 }
 
 void WKWebsiteDataStoreIsStatisticsEphemeral(WKWebsiteDataStoreRef dataStoreRef, void* context, WKWebsiteDataStoreStatisticsEphemeralFunction completionHandler)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
     WebKit::toImpl(dataStoreRef)->isResourceLoadStatisticsEphemeral([context, completionHandler](bool isEphemeral) {
         completionHandler(isEphemeral, context);
     });
-#else
-    completionHandler(false, context);
-#endif
 }
 
 bool WKWebsiteDataStoreGetResourceLoadStatisticsEnabled(WKWebsiteDataStoreRef dataStoreRef)
 {
-    return WebKit::toImpl(dataStoreRef)->resourceLoadStatisticsEnabled();
+    return WebKit::toImpl(dataStoreRef)->trackingPreventionEnabled();
 }
 
 void WKWebsiteDataStoreSetResourceLoadStatisticsDebugMode(WKWebsiteDataStoreRef dataStoreRef, bool enable)
@@ -161,389 +145,268 @@ WKHTTPCookieStoreRef WKWebsiteDataStoreGetHTTPCookieStore(WKWebsiteDataStoreRef 
     return WebKit::toAPI(&WebKit::toImpl(dataStoreRef)->cookieStore());
 }
 
-void WKWebsiteDataStoreSetAllowsAnySSLCertificateForWebSocketTesting(WKWebsiteDataStoreRef dataStore, bool allows)
+void WKWebsiteDataStoreSetAllowsAnySSLCertificateForWebSocketTesting(WKWebsiteDataStoreRef, bool)
 {
-    WebKit::toImpl(dataStore)->setAllowsAnySSLCertificateForWebSocket(allows);
-}
-
-void WKWebsiteDataStoreClearCachedCredentials(WKWebsiteDataStoreRef dataStoreRef)
-{
-    WebKit::toImpl(dataStoreRef)->clearCachedCredentials();
 }
 
 void WKWebsiteDataStoreSetResourceLoadStatisticsDebugModeWithCompletionHandler(WKWebsiteDataStoreRef dataStoreRef, bool enable, void* context, WKWebsiteDataStoreStatisticsDebugModeFunction completionHandler)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
     WebKit::toImpl(dataStoreRef)->setResourceLoadStatisticsDebugMode(enable, [context, completionHandler] {
         completionHandler(context);
     });
-#else
-    completionHandler(context);
-#endif
 }
 
 void WKWebsiteDataStoreSetResourceLoadStatisticsPrevalentResourceForDebugMode(WKWebsiteDataStoreRef dataStoreRef, WKStringRef host, void* context, WKWebsiteDataStoreStatisticsDebugModeFunction completionHandler)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
-    WebKit::toImpl(dataStoreRef)->setPrevalentResourceForDebugMode(URL(URL(), WebKit::toImpl(host)->string()), [context, completionHandler] {
+    WebKit::toImpl(dataStoreRef)->setPrevalentResourceForDebugMode(URL { WebKit::toImpl(host)->string() }, [context, completionHandler] {
         completionHandler(context);
     });
-#else
-    completionHandler(context);
-#endif
 }
 void WKWebsiteDataStoreSetStatisticsLastSeen(WKWebsiteDataStoreRef dataStoreRef, WKStringRef host, double seconds, void* context, WKWebsiteDataStoreStatisticsLastSeenFunction completionHandler)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
-    WebKit::toImpl(dataStoreRef)->setLastSeen(URL(URL(), WebKit::toImpl(host)->string()), Seconds { seconds }, [context, completionHandler] {
+    WebKit::toImpl(dataStoreRef)->setLastSeen(URL { WebKit::toImpl(host)->string() }, Seconds { seconds }, [context, completionHandler] {
         completionHandler(context);
     });
-#else
-    completionHandler(context);
-#endif
 }
 
 void WKWebsiteDataStoreSetStatisticsMergeStatistic(WKWebsiteDataStoreRef dataStoreRef, WKStringRef host, WKStringRef topFrameDomain1, WKStringRef topFrameDomain2, double lastSeen, bool hadUserInteraction, double mostRecentUserInteraction, bool isGrandfathered, bool isPrevalent, bool isVeryPrevalent, unsigned dataRecordsRemoved, void* context, WKWebsiteDataStoreStatisticsMergeStatisticFunction completionHandler)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
-    WebKit::toImpl(dataStoreRef)->mergeStatisticForTesting(URL(URL(), WebKit::toImpl(host)->string()), URL(URL(), WebKit::toImpl(topFrameDomain1)->string()), URL(URL(), WebKit::toImpl(topFrameDomain2)->string()), Seconds { lastSeen }, hadUserInteraction, Seconds { mostRecentUserInteraction }, isGrandfathered, isPrevalent, isVeryPrevalent, dataRecordsRemoved, [context, completionHandler] {
+    WebKit::toImpl(dataStoreRef)->mergeStatisticForTesting(URL { WebKit::toImpl(host)->string() }, URL { WebKit::toImpl(topFrameDomain1)->string() }, URL { WebKit::toImpl(topFrameDomain2)->string() }, Seconds { lastSeen }, hadUserInteraction, Seconds { mostRecentUserInteraction }, isGrandfathered, isPrevalent, isVeryPrevalent, dataRecordsRemoved, [context, completionHandler] {
         completionHandler(context);
     });
-#else
-    completionHandler(context);
-#endif
 }
 
 void WKWebsiteDataStoreSetStatisticsExpiredStatistic(WKWebsiteDataStoreRef dataStoreRef, WKStringRef host, unsigned numberOfOperatingDaysPassed, bool hadUserInteraction, bool isScheduledForAllButCookieDataRemoval, bool isPrevalent, void* context, WKWebsiteDataStoreStatisticsMergeStatisticFunction completionHandler)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
-    WebKit::toImpl(dataStoreRef)->insertExpiredStatisticForTesting(URL(URL(), WebKit::toImpl(host)->string()), numberOfOperatingDaysPassed, hadUserInteraction, isScheduledForAllButCookieDataRemoval, isPrevalent, [context, completionHandler] {
+    WebKit::toImpl(dataStoreRef)->insertExpiredStatisticForTesting(URL { WebKit::toImpl(host)->string() }, numberOfOperatingDaysPassed, hadUserInteraction, isScheduledForAllButCookieDataRemoval, isPrevalent, [context, completionHandler] {
         completionHandler(context);
     });
-#else
-    completionHandler(context);
-#endif
 }
 
 void WKWebsiteDataStoreSetStatisticsPrevalentResource(WKWebsiteDataStoreRef dataStoreRef, WKStringRef host, bool value, void* context, WKWebsiteDataStoreStatisticsPrevalentResourceFunction completionHandler)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
     auto& websiteDataStore = *WebKit::toImpl(dataStoreRef);
 
     if (value)
-        websiteDataStore.setPrevalentResource(URL(URL(), WebKit::toImpl(host)->string()), [context, completionHandler] {
+        websiteDataStore.setPrevalentResource(URL { WebKit::toImpl(host)->string() }, [context, completionHandler] {
             completionHandler(context);
         });
     else
-        websiteDataStore.clearPrevalentResource(URL(URL(), WebKit::toImpl(host)->string()), [context, completionHandler] {
+        websiteDataStore.clearPrevalentResource(URL { WebKit::toImpl(host)->string() }, [context, completionHandler] {
             completionHandler(context);
         });
-#else
-    completionHandler(context);
-#endif
 }
 
 void WKWebsiteDataStoreSetStatisticsVeryPrevalentResource(WKWebsiteDataStoreRef dataStoreRef, WKStringRef host, bool value, void* context, WKWebsiteDataStoreStatisticsVeryPrevalentResourceFunction completionHandler)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
     auto& websiteDataStore = *WebKit::toImpl(dataStoreRef);
 
     if (value)
-        websiteDataStore.setVeryPrevalentResource(URL(URL(), WebKit::toImpl(host)->string()), [context, completionHandler] {
+        websiteDataStore.setVeryPrevalentResource(URL { WebKit::toImpl(host)->string() }, [context, completionHandler] {
             completionHandler(context);
         });
     else
-        websiteDataStore.clearPrevalentResource(URL(URL(), WebKit::toImpl(host)->string()), [context, completionHandler] {
+        websiteDataStore.clearPrevalentResource(URL { WebKit::toImpl(host)->string() }, [context, completionHandler] {
             completionHandler(context);
         });
-#else
-    completionHandler(context);
-#endif
 }
 
 void WKWebsiteDataStoreDumpResourceLoadStatistics(WKWebsiteDataStoreRef dataStoreRef, void* context, WKWebsiteDataStoreDumpResourceLoadStatisticsFunction callback)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
     WebKit::toImpl(dataStoreRef)->dumpResourceLoadStatistics([context, callback] (const String& resourceLoadStatistics) {
         callback(WebKit::toAPI(resourceLoadStatistics.impl()), context);
     });
-#else
-    callback(WebKit::toAPI(emptyString().impl()), context);
-#endif
 }
 
 void WKWebsiteDataStoreIsStatisticsPrevalentResource(WKWebsiteDataStoreRef dataStoreRef, WKStringRef host, void* context, WKWebsiteDataStoreIsStatisticsPrevalentResourceFunction callback)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
-    WebKit::toImpl(dataStoreRef)->isPrevalentResource(URL(URL(), WebKit::toImpl(host)->string()), [context, callback](bool isPrevalentResource) {
+    WebKit::toImpl(dataStoreRef)->isPrevalentResource(URL { WebKit::toImpl(host)->string() }, [context, callback](bool isPrevalentResource) {
         callback(isPrevalentResource, context);
     });
-#else
-    callback(false, context);
-#endif
 }
 
 void WKWebsiteDataStoreIsStatisticsVeryPrevalentResource(WKWebsiteDataStoreRef dataStoreRef, WKStringRef host, void* context, WKWebsiteDataStoreIsStatisticsPrevalentResourceFunction callback)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
-    WebKit::toImpl(dataStoreRef)->isVeryPrevalentResource(URL(URL(), WebKit::toImpl(host)->string()), [context, callback](bool isVeryPrevalentResource) {
+    WebKit::toImpl(dataStoreRef)->isVeryPrevalentResource(URL { WebKit::toImpl(host)->string() }, [context, callback](bool isVeryPrevalentResource) {
         callback(isVeryPrevalentResource, context);
     });
-#else
-    callback(false, context);
-#endif
 }
 
 void WKWebsiteDataStoreIsStatisticsRegisteredAsSubresourceUnder(WKWebsiteDataStoreRef dataStoreRef, WKStringRef subresourceHost, WKStringRef topFrameHost, void* context, WKWebsiteDataStoreIsStatisticsRegisteredAsSubresourceUnderFunction callback)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
-    WebKit::toImpl(dataStoreRef)->isRegisteredAsSubresourceUnder(URL(URL(), WebKit::toImpl(subresourceHost)->string()), URL(URL(), WebKit::toImpl(topFrameHost)->string()), [context, callback](bool isRegisteredAsSubresourceUnder) {
+    WebKit::toImpl(dataStoreRef)->isRegisteredAsSubresourceUnder(URL { WebKit::toImpl(subresourceHost)->string() }, URL { WebKit::toImpl(topFrameHost)->string() }, [context, callback](bool isRegisteredAsSubresourceUnder) {
         callback(isRegisteredAsSubresourceUnder, context);
     });
-#else
-    callback(false, context);
-#endif
 }
 
 void WKWebsiteDataStoreIsStatisticsRegisteredAsSubFrameUnder(WKWebsiteDataStoreRef dataStoreRef, WKStringRef subFrameHost, WKStringRef topFrameHost, void* context, WKWebsiteDataStoreIsStatisticsRegisteredAsSubFrameUnderFunction callback)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
-    WebKit::toImpl(dataStoreRef)->isRegisteredAsSubFrameUnder(URL(URL(), WebKit::toImpl(subFrameHost)->string()), URL(URL(), WebKit::toImpl(topFrameHost)->string()), [context, callback](bool isRegisteredAsSubFrameUnder) {
+    WebKit::toImpl(dataStoreRef)->isRegisteredAsSubFrameUnder(URL { WebKit::toImpl(subFrameHost)->string() }, URL { WebKit::toImpl(topFrameHost)->string() }, [context, callback](bool isRegisteredAsSubFrameUnder) {
         callback(isRegisteredAsSubFrameUnder, context);
     });
-#else
-    callback(false, context);
-#endif
 }
 
 void WKWebsiteDataStoreIsStatisticsRegisteredAsRedirectingTo(WKWebsiteDataStoreRef dataStoreRef, WKStringRef hostRedirectedFrom, WKStringRef hostRedirectedTo, void* context, WKWebsiteDataStoreIsStatisticsRegisteredAsRedirectingToFunction callback)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
-    WebKit::toImpl(dataStoreRef)->isRegisteredAsRedirectingTo(URL(URL(), WebKit::toImpl(hostRedirectedFrom)->string()), URL(URL(), WebKit::toImpl(hostRedirectedTo)->string()), [context, callback](bool isRegisteredAsRedirectingTo) {
+    WebKit::toImpl(dataStoreRef)->isRegisteredAsRedirectingTo(URL { WebKit::toImpl(hostRedirectedFrom)->string() }, URL { WebKit::toImpl(hostRedirectedTo)->string() }, [context, callback](bool isRegisteredAsRedirectingTo) {
         callback(isRegisteredAsRedirectingTo, context);
     });
-#else
-    callback(false, context);
-#endif
 }
 
 void WKWebsiteDataStoreSetStatisticsHasHadUserInteraction(WKWebsiteDataStoreRef dataStoreRef, WKStringRef host, bool value, void* context, WKWebsiteDataStoreStatisticsHasHadUserInteractionFunction completionHandler)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
     auto& dataStore = *WebKit::toImpl(dataStoreRef);
 
     if (value)
-        dataStore.logUserInteraction(URL(URL(), WebKit::toImpl(host)->string()), [context, completionHandler] {
+        dataStore.logUserInteraction(URL { WebKit::toImpl(host)->string() }, [context, completionHandler] {
             completionHandler(context);
         });
     else
-        dataStore.clearUserInteraction(URL(URL(), WebKit::toImpl(host)->string()), [context, completionHandler] {
+        dataStore.clearUserInteraction(URL { WebKit::toImpl(host)->string() }, [context, completionHandler] {
             completionHandler(context);
         });
-#else
-    completionHandler(context);
-#endif
 }
 
 void WKWebsiteDataStoreIsStatisticsHasHadUserInteraction(WKWebsiteDataStoreRef dataStoreRef, WKStringRef host, void* context, WKWebsiteDataStoreIsStatisticsHasHadUserInteractionFunction callback)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
-    WebKit::toImpl(dataStoreRef)->hasHadUserInteraction(URL(URL(), WebKit::toImpl(host)->string()), [context, callback](bool hasHadUserInteraction) {
+    WebKit::toImpl(dataStoreRef)->hasHadUserInteraction(URL { WebKit::toImpl(host)->string() }, [context, callback](bool hasHadUserInteraction) {
         callback(hasHadUserInteraction, context);
     });
-#else
-    callback(false, context);
-#endif
 }
 
 void WKWebsiteDataStoreIsStatisticsOnlyInDatabaseOnce(WKWebsiteDataStoreRef dataStoreRef, WKStringRef subHost, WKStringRef topHost, void* context, WKWebsiteDataStoreIsStatisticsOnlyInDatabaseOnceFunction callback)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
-    WebKit::toImpl(dataStoreRef)->isRelationshipOnlyInDatabaseOnce(URL(URL(), WebKit::toImpl(subHost)->string()), URL(URL(), WebKit::toImpl(topHost)->string()), [context, callback](bool onlyInDatabaseOnce) {
+    WebKit::toImpl(dataStoreRef)->isRelationshipOnlyInDatabaseOnce(URL { WebKit::toImpl(subHost)->string() }, URL { WebKit::toImpl(topHost)->string() }, [context, callback](bool onlyInDatabaseOnce) {
         callback(onlyInDatabaseOnce, context);
     });
-#else
-    callback(false, context);
-#endif
 }
 
 void WKWebsiteDataStoreSetStatisticsGrandfathered(WKWebsiteDataStoreRef dataStoreRef, WKStringRef host, bool value)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
-    WebKit::toImpl(dataStoreRef)->setGrandfathered(URL(URL(), WebKit::toImpl(host)->string()), value, [] { });
-#endif
+    WebKit::toImpl(dataStoreRef)->setGrandfathered(URL { WebKit::toImpl(host)->string() }, value, [] { });
 }
 
 void WKWebsiteDataStoreIsStatisticsGrandfathered(WKWebsiteDataStoreRef dataStoreRef, WKStringRef host, void* context, WKWebsiteDataStoreIsStatisticsGrandfatheredFunction callback)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
-    WebKit::toImpl(dataStoreRef)->isGrandfathered(URL(URL(), WebKit::toImpl(host)->string()), [context, callback](bool isGrandfathered) {
+    WebKit::toImpl(dataStoreRef)->isGrandfathered(URL { WebKit::toImpl(host)->string() }, [context, callback](bool isGrandfathered) {
         callback(isGrandfathered, context);
     });
-#else
-    callback(false, context);
-#endif
 }
 
 void WKWebsiteDataStoreSetStatisticsSubframeUnderTopFrameOrigin(WKWebsiteDataStoreRef dataStoreRef, WKStringRef host, WKStringRef topFrameHost)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
-    WebKit::toImpl(dataStoreRef)->setSubframeUnderTopFrameDomain(URL(URL(), WebKit::toImpl(host)->string()), URL(URL(), WebKit::toImpl(topFrameHost)->string()), [] { });
-#endif
+    WebKit::toImpl(dataStoreRef)->setSubframeUnderTopFrameDomain(URL { WebKit::toImpl(host)->string() }, URL { WebKit::toImpl(topFrameHost)->string() }, [] { });
 }
 
 void WKWebsiteDataStoreSetStatisticsSubresourceUnderTopFrameOrigin(WKWebsiteDataStoreRef dataStoreRef, WKStringRef host, WKStringRef topFrameHost)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
-    WebKit::toImpl(dataStoreRef)->setSubresourceUnderTopFrameDomain(URL(URL(), WebKit::toImpl(host)->string()), URL(URL(), WebKit::toImpl(topFrameHost)->string()), [] { });
-#endif
+    WebKit::toImpl(dataStoreRef)->setSubresourceUnderTopFrameDomain(URL { WebKit::toImpl(host)->string() }, URL { WebKit::toImpl(topFrameHost)->string() }, [] { });
 }
 
 void WKWebsiteDataStoreSetStatisticsSubresourceUniqueRedirectTo(WKWebsiteDataStoreRef dataStoreRef, WKStringRef host, WKStringRef hostRedirectedTo)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
-    WebKit::toImpl(dataStoreRef)->setSubresourceUniqueRedirectTo(URL(URL(), WebKit::toImpl(host)->string()), URL(URL(), WebKit::toImpl(hostRedirectedTo)->string()), [] { });
-#endif
+    WebKit::toImpl(dataStoreRef)->setSubresourceUniqueRedirectTo(URL { WebKit::toImpl(host)->string() }, URL { WebKit::toImpl(hostRedirectedTo)->string() }, [] { });
 }
 
 void WKWebsiteDataStoreSetStatisticsSubresourceUniqueRedirectFrom(WKWebsiteDataStoreRef dataStoreRef, WKStringRef host, WKStringRef hostRedirectedFrom)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
-    WebKit::toImpl(dataStoreRef)->setSubresourceUniqueRedirectFrom(URL(URL(), WebKit::toImpl(host)->string()), URL(URL(), WebKit::toImpl(hostRedirectedFrom)->string()), [] { });
-#endif
+    WebKit::toImpl(dataStoreRef)->setSubresourceUniqueRedirectFrom(URL { WebKit::toImpl(host)->string() }, URL { WebKit::toImpl(hostRedirectedFrom)->string() }, [] { });
 }
 
 void WKWebsiteDataStoreSetStatisticsTopFrameUniqueRedirectTo(WKWebsiteDataStoreRef dataStoreRef, WKStringRef host, WKStringRef hostRedirectedTo)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
-    WebKit::toImpl(dataStoreRef)->setTopFrameUniqueRedirectTo(URL(URL(), WebKit::toImpl(host)->string()), URL(URL(), WebKit::toImpl(hostRedirectedTo)->string()), [] { });
-#endif
+    WebKit::toImpl(dataStoreRef)->setTopFrameUniqueRedirectTo(URL { WebKit::toImpl(host)->string() }, URL { WebKit::toImpl(hostRedirectedTo)->string() }, [] { });
 }
 
 void WKWebsiteDataStoreSetStatisticsTopFrameUniqueRedirectFrom(WKWebsiteDataStoreRef dataStoreRef, WKStringRef host, WKStringRef hostRedirectedFrom)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
-    WebKit::toImpl(dataStoreRef)->setTopFrameUniqueRedirectFrom(URL(URL(), WebKit::toImpl(host)->string()), URL(URL(), WebKit::toImpl(hostRedirectedFrom)->string()), [] { });
-#endif
+    WebKit::toImpl(dataStoreRef)->setTopFrameUniqueRedirectFrom(URL { WebKit::toImpl(host)->string() }, URL { WebKit::toImpl(hostRedirectedFrom)->string() }, [] { });
 }
 
-void WKWebsiteDataStoreSetStatisticsCrossSiteLoadWithLinkDecoration(WKWebsiteDataStoreRef dataStoreRef, WKStringRef fromHost, WKStringRef toHost, void* context, WKWebsiteDataStoreSetStatisticsCrossSiteLoadWithLinkDecorationFunction callback)
+void WKWebsiteDataStoreSetStatisticsCrossSiteLoadWithLinkDecoration(WKWebsiteDataStoreRef dataStoreRef, WKStringRef fromHost, WKStringRef toHost, bool wasFiltered, void* context, WKWebsiteDataStoreSetStatisticsCrossSiteLoadWithLinkDecorationFunction callback)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
-    WebKit::toImpl(dataStoreRef)->setCrossSiteLoadWithLinkDecorationForTesting(URL(URL(), WebKit::toImpl(fromHost)->string()), URL(URL(), WebKit::toImpl(toHost)->string()), [context, callback] {
+    WebKit::toImpl(dataStoreRef)->setCrossSiteLoadWithLinkDecorationForTesting(URL { WebKit::toImpl(fromHost)->string() }, URL { WebKit::toImpl(toHost)->string() }, wasFiltered, [context, callback] {
         callback(context);
     });
-#else
-    callback(context);
-#endif
 }
 
 void WKWebsiteDataStoreSetStatisticsTimeToLiveUserInteraction(WKWebsiteDataStoreRef dataStoreRef, double seconds, void* context, WKWebsiteDataStoreSetStatisticsTimeToLiveUserInteractionFunction callback)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
     WebKit::toImpl(dataStoreRef)->setTimeToLiveUserInteraction(Seconds { seconds }, [context, callback] {
         callback(context);
     });
-#else
-    callback(context);
-#endif
 }
 
 void WKWebsiteDataStoreStatisticsProcessStatisticsAndDataRecords(WKWebsiteDataStoreRef dataStoreRef, void* context, WKWebsiteDataStoreStatisticsProcessStatisticsAndDataRecordsFunction callback)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
     WebKit::toImpl(dataStoreRef)->scheduleStatisticsAndDataRecordsProcessing([context, callback] {
         callback(context);
     });
-#else
-    callback(context);
-#endif
 }
 
 void WKWebsiteDataStoreStatisticsUpdateCookieBlocking(WKWebsiteDataStoreRef dataStoreRef, void* context, WKWebsiteDataStoreStatisticsUpdateCookieBlockingFunction completionHandler)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
     WebKit::toImpl(dataStoreRef)->scheduleCookieBlockingUpdate([context, completionHandler]() {
         completionHandler(context);
     });
-#else
-    completionHandler(context);
-#endif
 }
 
 void WKWebsiteDataStoreSetStatisticsNotifyPagesWhenDataRecordsWereScanned(WKWebsiteDataStoreRef dataStoreRef, bool value)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
     WebKit::toImpl(dataStoreRef)->setNotifyPagesWhenDataRecordsWereScanned(value, [] { });
-#endif
+}
+
+void WKWebsiteDataStoreSetResourceLoadStatisticsTimeAdvanceForTesting(WKWebsiteDataStoreRef dataStoreRef, double value, void* context, WKWebsiteDataStoreSetStatisticsIsRunningTestFunction callback)
+{
+    WebKit::toImpl(dataStoreRef)->setResourceLoadStatisticsTimeAdvanceForTesting(Seconds { value }, [context, callback] {
+        callback(context);
+    });
 }
 
 void WKWebsiteDataStoreSetStatisticsIsRunningTest(WKWebsiteDataStoreRef dataStoreRef, bool value, void* context, WKWebsiteDataStoreSetStatisticsIsRunningTestFunction callback)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
     WebKit::toImpl(dataStoreRef)->setIsRunningResourceLoadStatisticsTest(value, [context, callback] {
         callback(context);
     });
-#else
-    callback(context);
-#endif
 }
 
 void WKWebsiteDataStoreSetStatisticsShouldClassifyResourcesBeforeDataRecordsRemoval(WKWebsiteDataStoreRef dataStoreRef, bool value)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
     WebKit::toImpl(dataStoreRef)->setShouldClassifyResourcesBeforeDataRecordsRemoval(value, []() { });
-#endif
 }
 
 void WKWebsiteDataStoreSetStatisticsMinimumTimeBetweenDataRecordsRemoval(WKWebsiteDataStoreRef dataStoreRef, double seconds)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
     WebKit::toImpl(dataStoreRef)->setMinimumTimeBetweenDataRecordsRemoval(Seconds { seconds }, []() { });
-#endif
 }
 
 void WKWebsiteDataStoreSetStatisticsGrandfatheringTime(WKWebsiteDataStoreRef dataStoreRef, double seconds)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
     WebKit::toImpl(dataStoreRef)->setGrandfatheringTime(Seconds { seconds }, []() { });
-#endif
 }
 
 void WKWebsiteDataStoreSetStatisticsMaxStatisticsEntries(WKWebsiteDataStoreRef dataStoreRef, unsigned entries)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
     WebKit::toImpl(dataStoreRef)->setMaxStatisticsEntries(entries, []() { });
-#endif
 }
 
 void WKWebsiteDataStoreSetStatisticsPruneEntriesDownTo(WKWebsiteDataStoreRef dataStoreRef, unsigned entries)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
     WebKit::toImpl(dataStoreRef)->setPruneEntriesDownTo(entries, []() { });
-#endif
 }
 
 void WKWebsiteDataStoreStatisticsClearInMemoryAndPersistentStore(WKWebsiteDataStoreRef dataStoreRef, void* context, WKWebsiteDataStoreStatisticsClearInMemoryAndPersistentStoreFunction callback)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
     WebKit::toImpl(dataStoreRef)->scheduleClearInMemoryAndPersistent(WebKit::ShouldGrandfatherStatistics::Yes, [context, callback]() {
         callback(context);
     });
-#else
-    callback(context);
-#endif
 }
 
 void WKWebsiteDataStoreStatisticsClearInMemoryAndPersistentStoreModifiedSinceHours(WKWebsiteDataStoreRef dataStoreRef, unsigned hours, void* context, WKWebsiteDataStoreStatisticsClearInMemoryAndPersistentStoreModifiedSinceHoursFunction callback)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
     WebKit::toImpl(dataStoreRef)->scheduleClearInMemoryAndPersistent(WallTime::now() - Seconds::fromHours(hours), WebKit::ShouldGrandfatherStatistics::Yes, [context, callback]() {
         callback(context);
     });
-#else
-    callback(context);
-#endif
 }
 
 void WKWebsiteDataStoreStatisticsClearThroughWebsiteDataRemoval(WKWebsiteDataStoreRef dataStoreRef, void* context, WKWebsiteDataStoreStatisticsClearThroughWebsiteDataRemovalFunction callback)
@@ -556,46 +419,30 @@ void WKWebsiteDataStoreStatisticsClearThroughWebsiteDataRemoval(WKWebsiteDataSto
 
 void WKWebsiteDataStoreStatisticsDeleteCookiesForTesting(WKWebsiteDataStoreRef dataStoreRef, WKStringRef host, bool includeHttpOnlyCookies, void* context, WKWebsiteDataStoreStatisticsDeleteCookiesForTestingFunction callback)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
-    WebKit::toImpl(dataStoreRef)->deleteCookiesForTesting(URL(URL(), WebKit::toImpl(host)->string()), includeHttpOnlyCookies, [context, callback] {
+    WebKit::toImpl(dataStoreRef)->deleteCookiesForTesting(URL { WebKit::toImpl(host)->string() }, includeHttpOnlyCookies, [context, callback] {
         callback(context);
     });
-#else
-    callback(context);
-#endif
 }
 
 void WKWebsiteDataStoreStatisticsHasLocalStorage(WKWebsiteDataStoreRef dataStoreRef, WKStringRef host, void* context, WKWebsiteDataStoreStatisticsHasLocalStorageFunction callback)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
-    WebKit::toImpl(dataStoreRef)->hasLocalStorageForTesting(URL(URL(), WebKit::toImpl(host)->string()), [context, callback](bool hasLocalStorage) {
+    WebKit::toImpl(dataStoreRef)->hasLocalStorageForTesting(URL { WebKit::toImpl(host)->string() }, [context, callback](bool hasLocalStorage) {
         callback(hasLocalStorage, context);
     });
-#else
-    callback(false, context);
-#endif
 }
 
 void WKWebsiteDataStoreSetStatisticsCacheMaxAgeCap(WKWebsiteDataStoreRef dataStoreRef, double seconds, void* context, WKWebsiteDataStoreSetStatisticsCacheMaxAgeCapFunction callback)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
     WebKit::toImpl(dataStoreRef)->setCacheMaxAgeCapForPrevalentResources(Seconds { seconds }, [context, callback] {
         callback(context);
     });
-#else
-    callback(context);
-#endif
 }
 
 void WKWebsiteDataStoreStatisticsHasIsolatedSession(WKWebsiteDataStoreRef dataStoreRef, WKStringRef host, void* context, WKWebsiteDataStoreStatisticsHasIsolatedSessionFunction callback)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
-    WebKit::toImpl(dataStoreRef)->hasIsolatedSessionForTesting(URL(URL(), WebKit::toImpl(host)->string()), [context, callback](bool hasIsolatedSession) {
+    WebKit::toImpl(dataStoreRef)->hasIsolatedSessionForTesting(URL { WebKit::toImpl(host)->string() }, [context, callback](bool hasIsolatedSession) {
         callback(hasIsolatedSession, context);
     });
-#else
-    callback(false, context);
-#endif
 }
 
 void WKWebsiteDataStoreHasAppBoundSession(WKWebsiteDataStoreRef dataStoreRef, void* context, WKWebsiteDataStoreHasAppBoundSessionFunction callback)
@@ -612,68 +459,44 @@ void WKWebsiteDataStoreHasAppBoundSession(WKWebsiteDataStoreRef dataStoreRef, vo
 
 void WKWebsiteDataStoreSetResourceLoadStatisticsShouldDowngradeReferrerForTesting(WKWebsiteDataStoreRef dataStoreRef, bool enabled, void* context, WKWebsiteDataStoreSetResourceLoadStatisticsShouldDowngradeReferrerForTestingFunction completionHandler)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
     WebKit::toImpl(dataStoreRef)->setResourceLoadStatisticsShouldDowngradeReferrerForTesting(enabled, [context, completionHandler] {
         completionHandler(context);
     });
-#else
-    completionHandler(context);
-#endif
 }
 
 void WKWebsiteDataStoreSetResourceLoadStatisticsShouldBlockThirdPartyCookiesForTesting(WKWebsiteDataStoreRef dataStoreRef, bool enabled, bool onlyOnSitesWithoutUserInteraction, void* context, WKWebsiteDataStoreSetResourceLoadStatisticsShouldBlockThirdPartyCookiesForTestingFunction completionHandler)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
     WebKit::toImpl(dataStoreRef)->setResourceLoadStatisticsShouldBlockThirdPartyCookiesForTesting(enabled, onlyOnSitesWithoutUserInteraction, [context, completionHandler] {
         completionHandler(context);
     });
-#else
-    completionHandler(context);
-#endif
 }
 
 void WKWebsiteDataStoreSetResourceLoadStatisticsFirstPartyWebsiteDataRemovalModeForTesting(WKWebsiteDataStoreRef dataStoreRef, bool enabled, void* context, WKWebsiteDataStoreSetResourceLoadStatisticsFirstPartyWebsiteDataRemovalModeForTestingFunction completionHandler)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
     WebKit::toImpl(dataStoreRef)->setResourceLoadStatisticsFirstPartyWebsiteDataRemovalModeForTesting(enabled, [context, completionHandler] {
         completionHandler(context);
     });
-#else
-    completionHandler(context);
-#endif
 }
 
 void WKWebsiteDataStoreSetResourceLoadStatisticsToSameSiteStrictCookiesForTesting(WKWebsiteDataStoreRef dataStoreRef, WKStringRef hostName, void* context, WKWebsiteDataStoreSetResourceLoadStatisticsToSameSiteStrictCookiesForTestingFunction completionHandler)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
-    WebKit::toImpl(dataStoreRef)->setResourceLoadStatisticsToSameSiteStrictCookiesForTesting(URL(URL(), WebKit::toImpl(hostName)->string()), [context, completionHandler] {
+    WebKit::toImpl(dataStoreRef)->setResourceLoadStatisticsToSameSiteStrictCookiesForTesting(URL { WebKit::toImpl(hostName)->string() }, [context, completionHandler] {
         completionHandler(context);
     });
-#else
-    completionHandler(context);
-#endif
 }
 
 void WKWebsiteDataStoreSetResourceLoadStatisticsFirstPartyHostCNAMEDomainForTesting(WKWebsiteDataStoreRef dataStoreRef, WKStringRef firstPartyURLString, WKStringRef cnameURLString, void* context, WKWebsiteDataStoreSetResourceLoadStatisticsFirstPartyHostCNAMEDomainForTestingFunction completionHandler)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
-    WebKit::toImpl(dataStoreRef)->setResourceLoadStatisticsFirstPartyHostCNAMEDomainForTesting(URL(URL(), WebKit::toImpl(firstPartyURLString)->string()), URL(URL(), WebKit::toImpl(cnameURLString)->string()), [context, completionHandler] {
+    WebKit::toImpl(dataStoreRef)->setResourceLoadStatisticsFirstPartyHostCNAMEDomainForTesting(URL { WebKit::toImpl(firstPartyURLString)->string() }, URL { WebKit::toImpl(cnameURLString)->string() }, [context, completionHandler] {
         completionHandler(context);
     });
-#else
-    completionHandler(context);
-#endif
 }
 
 void WKWebsiteDataStoreSetResourceLoadStatisticsThirdPartyCNAMEDomainForTesting(WKWebsiteDataStoreRef dataStoreRef, WKStringRef cnameURLString, void* context, WKWebsiteDataStoreSetResourceLoadStatisticsThirdPartyCNAMEDomainForTestingFunction completionHandler)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
-    WebKit::toImpl(dataStoreRef)->setResourceLoadStatisticsThirdPartyCNAMEDomainForTesting(URL(URL(), WebKit::toImpl(cnameURLString)->string()), [context, completionHandler] {
+    WebKit::toImpl(dataStoreRef)->setResourceLoadStatisticsThirdPartyCNAMEDomainForTesting(URL { WebKit::toImpl(cnameURLString)->string() }, [context, completionHandler] {
         completionHandler(context);
     });
-#else
-    completionHandler(context);
-#endif
 }
 
 void WKWebsiteDataStoreSetAppBoundDomainsForTesting(WKArrayRef originURLsRef, void* context, WKWebsiteDataStoreSetAppBoundDomainsForTestingFunction completionHandler)
@@ -688,7 +511,7 @@ void WKWebsiteDataStoreSetAppBoundDomainsForTesting(WKArrayRef originURLsRef, vo
         if (!originURL)
             continue;
         
-        domains.add(WebCore::RegistrableDomain { URL(URL(), originURL->string()) });
+        domains.add(WebCore::RegistrableDomain { URL { originURL->string() } });
     }
 
     WebKit::WebsiteDataStore::setAppBoundDomainsForTesting(WTFMove(domains), [context, completionHandler] {
@@ -701,9 +524,33 @@ void WKWebsiteDataStoreSetAppBoundDomainsForTesting(WKArrayRef originURLsRef, vo
 #endif
 }
 
+void WKWebsiteDataStoreSetManagedDomainsForTesting(WKArrayRef originURLsRef, void* context, WKWebsiteDataStoreSetManagedDomainsForTestingFunction completionHandler)
+{
+#if ENABLE(MANAGED_DOMAINS)
+    RefPtr<API::Array> originURLsArray = WebKit::toImpl(originURLsRef);
+    size_t newSize = originURLsArray ? originURLsArray->size() : 0;
+    HashSet<WebCore::RegistrableDomain> domains;
+    domains.reserveInitialCapacity(newSize);
+    for (size_t i = 0; i < newSize; ++i) {
+        auto* originURL = originURLsArray->at<API::URL>(i);
+        if (!originURL)
+            continue;
+
+        domains.add(WebCore::RegistrableDomain { URL { originURL->string() } });
+    }
+
+    WebKit::WebsiteDataStore::setManagedDomainsForTesting(WTFMove(domains), [context, completionHandler] {
+        completionHandler(context);
+    });
+#else
+    UNUSED_PARAM(originURLsRef);
+    UNUSED_PARAM(context);
+    UNUSED_PARAM(completionHandler);
+#endif
+}
+
 void WKWebsiteDataStoreStatisticsResetToConsistentState(WKWebsiteDataStoreRef dataStoreRef, void* context, WKWebsiteDataStoreStatisticsResetToConsistentStateFunction completionHandler)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
     auto callbackAggregator = CallbackAggregator::create([context, completionHandler]() {
         completionHandler(context);
     });
@@ -718,15 +565,27 @@ void WKWebsiteDataStoreStatisticsResetToConsistentState(WKWebsiteDataStoreRef da
     store.setResourceLoadStatisticsFirstPartyWebsiteDataRemovalModeForTesting(false, [callbackAggregator] { });
     store.resetParametersToDefaultValues([callbackAggregator] { });
     store.scheduleClearInMemoryAndPersistent(WebKit::ShouldGrandfatherStatistics::No, [callbackAggregator] { });
-#else
-    UNUSED_PARAM(dataStoreRef);
-    completionHandler(context);
-#endif
 }
 
 void WKWebsiteDataStoreRemoveAllFetchCaches(WKWebsiteDataStoreRef dataStoreRef, void* context, WKWebsiteDataStoreRemoveFetchCacheRemovalFunction callback)
 {
     OptionSet<WebKit::WebsiteDataType> dataTypes = WebKit::WebsiteDataType::DOMCache;
+    WebKit::toImpl(dataStoreRef)->removeData(dataTypes, -WallTime::infinity(), [context, callback] {
+        callback(context);
+    });
+}
+
+void WKWebsiteDataStoreRemoveNetworkCache(WKWebsiteDataStoreRef dataStoreRef, void* context, WKWebsiteDataStoreRemoveNetworkCacheCallback callback)
+{
+    OptionSet<WebKit::WebsiteDataType> dataTypes = WebKit::WebsiteDataType::DiskCache;
+    WebKit::toImpl(dataStoreRef)->removeData(dataTypes, -WallTime::infinity(), [context, callback] {
+        callback(context);
+    });
+}
+
+void WKWebsiteDataStoreRemoveMemoryCaches(WKWebsiteDataStoreRef dataStoreRef, void* context, WKWebsiteDataStoreRemoveMemoryCachesRemovalFunction callback)
+{
+    OptionSet<WebKit::WebsiteDataType> dataTypes = WebKit::WebsiteDataType::MemoryCache;
     WebKit::toImpl(dataStoreRef)->removeData(dataTypes, -WallTime::infinity(), [context, callback] {
         callback(context);
     });
@@ -764,15 +623,10 @@ void WKWebsiteDataStoreRemoveLocalStorage(WKWebsiteDataStoreRef dataStoreRef, vo
 
 void WKWebsiteDataStoreRemoveAllServiceWorkerRegistrations(WKWebsiteDataStoreRef dataStoreRef, void* context, WKWebsiteDataStoreRemoveAllServiceWorkerRegistrationsCallback callback)
 {
-#if ENABLE(SERVICE_WORKER)
     OptionSet<WebKit::WebsiteDataType> dataTypes = WebKit::WebsiteDataType::ServiceWorkerRegistrations;
     WebKit::toImpl(dataStoreRef)->removeData(dataTypes, -WallTime::infinity(), [context, callback] {
         callback(context);
     });
-#else
-    UNUSED_PARAM(dataStoreRef);
-    callback(context);
-#endif
 }
 
 void WKWebsiteDataStoreGetFetchCacheOrigins(WKWebsiteDataStoreRef dataStoreRef, void* context, WKWebsiteDataStoreGetFetchCacheOriginsFunction callback)
@@ -838,6 +692,38 @@ void WKWebsiteDataStoreResetQuota(WKWebsiteDataStoreRef dataStoreRef, void* cont
     });
 }
 
+void WKWebsiteDataStoreResetStoragePersistedState(WKWebsiteDataStoreRef dataStoreRef, void* context, WKWebsiteDataStoreResetStoragePersistedStateCallback callback)
+{
+    WebKit::toImpl(dataStoreRef)->resetStoragePersistedState([context, callback] {
+        if (callback)
+            callback(context);
+    });
+}
+
+void WKWebsiteDataStoreClearStorage(WKWebsiteDataStoreRef dataStoreRef, void* context, WKWebsiteDataStoreClearStorageCallback callback)
+{
+    OptionSet<WebKit::WebsiteDataType> dataTypes = {
+        WebKit::WebsiteDataType::LocalStorage,
+        WebKit::WebsiteDataType::IndexedDBDatabases,
+        WebKit::WebsiteDataType::FileSystem,
+        WebKit::WebsiteDataType::DOMCache,
+        WebKit::WebsiteDataType::Credentials,
+        WebKit::WebsiteDataType::ServiceWorkerRegistrations
+    };
+    WebKit::toImpl(dataStoreRef)->removeData(dataTypes, -WallTime::infinity(), [context, callback] {
+        if (callback)
+            callback(context);
+    });
+}
+
+void WKWebsiteDataStoreSetOriginQuotaRatioEnabled(WKWebsiteDataStoreRef dataStoreRef, bool enabled, void* context, WKWebsiteDataStoreResetQuotaCallback callback)
+{
+    WebKit::toImpl(dataStoreRef)->setOriginQuotaRatioEnabledForTesting(enabled, [context, callback] {
+        if (callback)
+            callback(context);
+    });
+}
+
 void WKWebsiteDataStoreClearAppBoundSession(WKWebsiteDataStoreRef dataStoreRef, void* context, WKWebsiteDataStoreClearAppBoundSessionFunction completionHandler)
 {
 #if ENABLE(APP_BOUND_DOMAINS)
@@ -875,7 +761,6 @@ void WKWebsiteDataStoreClearBundleIdentifierInNetworkProcess(WKWebsiteDataStoreR
 
 void WKWebsiteDataStoreGetAllStorageAccessEntries(WKWebsiteDataStoreRef dataStoreRef, WKPageRef pageRef, void* context, WKWebsiteDataStoreGetAllStorageAccessEntriesFunction callback)
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
     WebKit::toImpl(dataStoreRef)->getAllStorageAccessEntries(WebKit::toImpl(pageRef)->identifier(), [context, callback] (Vector<String>&& domains) {
         auto domainArrayRef = WKMutableArrayCreate();
         for (auto domain : domains)
@@ -883,7 +768,4 @@ void WKWebsiteDataStoreGetAllStorageAccessEntries(WKWebsiteDataStoreRef dataStor
 
         callback(context, domainArrayRef);
     });
-#else
-    callback(context, WKMutableArrayCreate());
-#endif
 }

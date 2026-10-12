@@ -35,10 +35,10 @@ namespace WebCore {
 TileCoverageMap::TileCoverageMap(const TileController& controller)
     : m_controller(controller)
     , m_updateTimer(*this, &TileCoverageMap::updateTimerFired)
-    , m_layer(controller.rootLayer().createCompatibleLayer(PlatformCALayer::LayerTypeSimpleLayer, this))
-    , m_visibleViewportIndicatorLayer(controller.rootLayer().createCompatibleLayer(PlatformCALayer::LayerTypeLayer, nullptr))
-    , m_layoutViewportIndicatorLayer(controller.rootLayer().createCompatibleLayer(PlatformCALayer::LayerTypeLayer, nullptr))
-    , m_coverageRectIndicatorLayer(controller.rootLayer().createCompatibleLayer(PlatformCALayer::LayerTypeLayer, nullptr))
+    , m_layer(controller.rootLayer().createCompatibleLayer(PlatformCALayer::LayerType::LayerTypeSimpleLayer, this))
+    , m_visibleViewportIndicatorLayer(controller.rootLayer().createCompatibleLayer(PlatformCALayer::LayerType::LayerTypeLayer, nullptr))
+    , m_layoutViewportIndicatorLayer(controller.rootLayer().createCompatibleLayer(PlatformCALayer::LayerType::LayerTypeLayer, nullptr))
+    , m_coverageRectIndicatorLayer(controller.rootLayer().createCompatibleLayer(PlatformCALayer::LayerType::LayerTypeLayer, nullptr))
     , m_position(FloatPoint(0, controller.topContentInset()))
 {
     m_layer.get().setOpacity(0.75);
@@ -152,7 +152,12 @@ void TileCoverageMap::update()
     m_visibleViewportIndicatorLayer.get().setBorderColor(visibleRectIndicatorColor);
 }
 
-void TileCoverageMap::platformCALayerPaintContents(PlatformCALayer* platformCALayer, GraphicsContext& context, const FloatRect&, GraphicsLayerPaintBehavior)
+PlatformLayerIdentifier TileCoverageMap::platformCALayerIdentifier() const
+{
+    return m_layer->layerID();
+}
+
+void TileCoverageMap::platformCALayerPaintContents(PlatformCALayer* platformCALayer, GraphicsContext& context, const FloatRect&, OptionSet<GraphicsLayerPaintBehavior>)
 {
     ASSERT_UNUSED(platformCALayer, platformCALayer == m_layer.ptr());
     m_controller.tileGrid().drawTileMapContents(context.platformContext(), m_layer.get().bounds());

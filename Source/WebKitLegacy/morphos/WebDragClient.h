@@ -25,6 +25,7 @@
 
 #pragma once
 #include "WebKit.h"
+#include <wtf/WeakPtr.h>
 #include <WebCore/DragClient.h>
 
 namespace WebKit {
@@ -47,7 +48,7 @@ private:
     void startDrag(WebCore::DragItem, WebCore::DataTransfer&, WebCore::Frame&) override;
     void didConcludeEditDrag() override;
 
-    WebPage* m_page;
+    WeakPtr<WebPage> m_page;
 };
 
 } // namespace WebKit

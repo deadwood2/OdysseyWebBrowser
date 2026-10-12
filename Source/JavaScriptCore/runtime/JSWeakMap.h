@@ -36,19 +36,16 @@ public:
 
     DECLARE_EXPORT_INFO;
 
-    static Structure* createStructure(VM& vm, JSGlobalObject* globalObject, JSValue prototype)
-    {
-        return Structure::create(vm, globalObject, prototype, TypeInfo(JSWeakMapType, StructureFlags), info());
-    }
+    inline static Structure* createStructure(VM&, JSGlobalObject*, JSValue);
 
     static JSWeakMap* create(VM& vm, Structure* structure)
     {
-        JSWeakMap* instance = new (NotNull, allocateCell<JSWeakMap>(vm.heap)) JSWeakMap(vm, structure);
+        JSWeakMap* instance = new (NotNull, allocateCell<JSWeakMap>(vm)) JSWeakMap(vm, structure);
         instance->finishCreation(vm);
         return instance;
     }
 
-    ALWAYS_INLINE void set(VM&, JSObject* key, JSValue);
+    ALWAYS_INLINE void set(VM&, JSCell* key, JSValue);
 
 private:
     JSWeakMap(VM& vm, Structure* structure)

@@ -25,7 +25,9 @@
 
 #pragma once
 
-#include "WKDeclarationSpecifiers.h"
+#ifdef __cplusplus
+
+#include <WebKit/WKBase.h>
 #include <wtf/Lock.h>
 #include <wtf/OSObjectPtr.h>
 #include <wtf/spi/darwin/XPCSPI.h>
@@ -50,3 +52,5 @@ private:
 };
 
 }
+
+#endif

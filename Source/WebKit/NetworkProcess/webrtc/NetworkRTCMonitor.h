@@ -28,10 +28,11 @@
 #if USE(LIBWEBRTC)
 
 #include "RTCNetwork.h"
-#include <WebCore/LibWebRTCMacros.h>
-#include <webrtc/rtc_base/network.h>
-#include <webrtc/rtc_base/thread.h>
 #include <wtf/WeakPtr.h>
+
+namespace WebKit {
+class NetworkRTCMonitor;
+}
 
 namespace IPC {
 class Connection;
@@ -52,15 +53,19 @@ public:
     bool isStarted() const { return m_isStarted; }
     NetworkRTCProvider& rtcProvider() { return m_rtcProvider; }
 
-    void onNetworksChanged(const Vector<RTCNetwork>&, const Vector<RTCNetwork>&, const RTCNetwork::IPAddress&, const RTCNetwork::IPAddress&);
+    void onNetworksChanged(const Vector<RTCNetwork>&, const RTCNetwork::IPAddress&, const RTCNetwork::IPAddress&);
+
+    const RTCNetwork::IPAddress& ipv4() const;
+    const RTCNetwork::IPAddress& ipv6()  const;
+
+    void ref();
+    void deref();
 
 private:
-    void startUpdatingIfNeeded(bool);
+    void startUpdatingIfNeeded();
 
     NetworkRTCProvider& m_rtcProvider;
-    std::unique_ptr<rtc::BasicNetworkManager> m_manager;
     bool m_isStarted { false };
-    bool m_enableEnumeratingAllNetworkInterfaces { false };
 };
 
 } // namespace WebKit

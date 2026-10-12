@@ -6,6 +6,7 @@
  * Copyright (C) 2009 Google, Inc.
  * Copyright (C) 2011 Renata Hodovan <reni@webkit.org>
  * Copyright (C) 2011 University of Szeged
+ * Copyright (C) 2020, 2021, 2022 Igalia S.L.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -30,31 +31,42 @@
 namespace WebCore {
 
 class RenderSVGPath final : public RenderSVGShape {
-    WTF_MAKE_ISO_ALLOCATED(RenderSVGPath);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(RenderSVGPath);
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(RenderSVGPath);
 public:
     RenderSVGPath(SVGGraphicsElement&, RenderStyle&&);
     virtual ~RenderSVGPath();
 
+    FloatRect computeMarkerBoundingBox(const SVGBoundingBoxComputation::DecorationOptions&) const;
+
+    void updateMarkerPositions();
+
 private:
-    bool isSVGPath() const override { return true; }
-    const char* renderName() const override { return "RenderSVGPath"; }
+    ASCIILiteral renderName() const override { return "RenderSVGPath"_s; }
 
     void updateShapeFromElement() override;
-    FloatRect calculateUpdatedStrokeBoundingBox() const;
+    FloatRect adjustStrokeBoundingBoxForZeroLengthLinecaps(RepaintRectCalculation, FloatRect strokeBoundingBox) const override;
 
     void strokeShape(GraphicsContext&) const override;
     bool shapeDependentStrokeContains(const FloatPoint&, PointCoordinateSpace = GlobalCoordinateSpace) override;
+
+    void styleDidChange(StyleDifference, const RenderStyle*) final;
 
     bool shouldStrokeZeroLengthSubpath() const;
     Path* zeroLengthLinecapPath(const FloatPoint&) const;
     FloatRect zeroLengthSubpathRect(const FloatPoint&, float) const;
     void updateZeroLengthSubpaths();
+    void strokeZeroLengthSubpaths(GraphicsContext&) const;
+
+    bool shouldGenerateMarkerPositions() const;
+    void drawMarkers(PaintInfo&) override;
 
     bool isRenderingDisabled() const override;
 
     Vector<FloatPoint> m_zeroLengthLinecapLocations;
+    Vector<MarkerPosition> m_markerPositions;
 };
 
 } // namespace WebCore
 
-SPECIALIZE_TYPE_TRAITS_RENDER_OBJECT(RenderSVGPath, isSVGPath())
+SPECIALIZE_TYPE_TRAITS_RENDER_OBJECT(RenderSVGPath, isRenderSVGPath())

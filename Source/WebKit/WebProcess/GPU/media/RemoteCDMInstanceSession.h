@@ -31,17 +31,18 @@
 #include "RemoteCDMFactory.h"
 #include "RemoteCDMInstanceSessionIdentifier.h"
 #include <WebCore/CDMInstanceSession.h>
+#include <wtf/WeakPtr.h>
 
-namespace IPC {
-class SharedBufferCopy;
+namespace WebCore {
+class SharedBuffer;
 }
 
 namespace WebKit {
 
-class RemoteCDMInstanceSession final : private IPC::MessageReceiver, public WebCore::CDMInstanceSession {
+class RemoteCDMInstanceSession final : public IPC::MessageReceiver, public WebCore::CDMInstanceSession {
 public:
     static Ref<RemoteCDMInstanceSession> create(WeakPtr<RemoteCDMFactory>&&, RemoteCDMInstanceSessionIdentifier&&);
-    virtual ~RemoteCDMInstanceSession() = default;
+    virtual ~RemoteCDMInstanceSession();
 
     RemoteCDMInstanceSessionIdentifier identifier() const { return m_identifier; }
 
@@ -49,17 +50,21 @@ private:
     friend class RemoteCDMFactory;
     RemoteCDMInstanceSession(WeakPtr<RemoteCDMFactory>&&, RemoteCDMInstanceSessionIdentifier&&);
 
+#if !RELEASE_LOG_DISABLED
+    void setLogIdentifier(const void*) final;
+#endif
+
     // IPC::MessageReceiver
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) final;
 
     // Messages
     void updateKeyStatuses(KeyStatusVector&&);
-    void sendMessage(WebCore::CDMMessageType, IPC::SharedBufferCopy&&);
+    void sendMessage(WebCore::CDMMessageType, RefPtr<WebCore::SharedBuffer>&&);
     void sessionIdChanged(const String&);
 
     void setClient(WeakPtr<WebCore::CDMInstanceSessionClient>&& client) final { m_client = WTFMove(client); }
     void clearClient() final { m_client = nullptr; }
-    void requestLicense(LicenseType, const AtomString& initDataType, Ref<WebCore::SharedBuffer>&& initData, LicenseCallback&&) final;
+    void requestLicense(LicenseType, KeyGroupingStrategy, const AtomString& initDataType, Ref<WebCore::SharedBuffer>&& initData, LicenseCallback&&) final;
     void updateLicense(const String& sessionId, LicenseType, Ref<WebCore::SharedBuffer>&& response, LicenseUpdateCallback&&) final;
     void loadSession(LicenseType, const String& sessionId, const String& origin, LoadSessionCallback&&) final;
     void closeSession(const String& sessionId, CloseSessionCallback&&) final;

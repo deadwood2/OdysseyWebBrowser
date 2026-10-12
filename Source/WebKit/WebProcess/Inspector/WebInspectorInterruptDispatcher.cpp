@@ -26,6 +26,7 @@
 #include "config.h"
 #include "WebInspectorInterruptDispatcher.h"
 
+#include "Connection.h"
 #include "WebInspectorInterruptDispatcherMessages.h"
 #include <JavaScriptCore/VM.h>
 #include <WebCore/CommonVM.h>
@@ -33,13 +34,8 @@
 
 namespace WebKit {
 
-Ref<WebInspectorInterruptDispatcher> WebInspectorInterruptDispatcher::create()
-{
-    return adoptRef(*new WebInspectorInterruptDispatcher);
-}
-
 WebInspectorInterruptDispatcher::WebInspectorInterruptDispatcher()
-    : m_queue(WorkQueue::create("com.apple.WebKit.WebInspectorInterruptDispatcher"))
+    : m_queue(WorkQueue::create("com.apple.WebKit.WebInspectorInterruptDispatcher"_s))
 {
 }
 
@@ -48,9 +44,9 @@ WebInspectorInterruptDispatcher::~WebInspectorInterruptDispatcher()
     ASSERT_NOT_REACHED();
 }
 
-void WebInspectorInterruptDispatcher::initializeConnection(IPC::Connection* connection)
+void WebInspectorInterruptDispatcher::initializeConnection(IPC::Connection& connection)
 {
-    connection->addWorkQueueMessageReceiver(Messages::WebInspectorInterruptDispatcher::messageReceiverName(), m_queue.get(), this);
+    connection.addMessageReceiver(m_queue.get(), *this, Messages::WebInspectorInterruptDispatcher::messageReceiverName());
 }
 
 void WebInspectorInterruptDispatcher::notifyNeedDebuggerBreak()
@@ -60,8 +56,8 @@ void WebInspectorInterruptDispatcher::notifyNeedDebuggerBreak()
     if (!WebCore::commonVMOrNull())
         return;
 
-    JSC::VM& vm = WebCore::commonVM();
-    vm.notifyNeedDebuggerBreak();
+    Ref vm = WebCore::commonVM();
+    vm->notifyNeedDebuggerBreak();
 }
 
 } // namespace WebKit

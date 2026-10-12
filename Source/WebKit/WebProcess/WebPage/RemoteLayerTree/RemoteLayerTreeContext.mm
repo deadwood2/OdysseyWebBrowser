@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,46 +26,52 @@
 #import "config.h"
 #import "RemoteLayerTreeContext.h"
 
-#import "GenericCallback.h"
+#import "DrawingArea.h"
 #import "GraphicsLayerCARemote.h"
 #import "PlatformCALayerRemote.h"
-#import "RemoteLayerBackingStoreCollection.h"
+#import "RemoteLayerTreeDrawingArea.h"
 #import "RemoteLayerTreeTransaction.h"
+#import "VideoPresentationManager.h"
+#import "WebFrame.h"
 #import "WebPage.h"
-#import <WebCore/Frame.h>
-#import <WebCore/FrameView.h>
+#import "WebProcess.h"
+#import <WebCore/HTMLMediaElementIdentifier.h>
+#import <WebCore/HTMLVideoElement.h>
+#import <WebCore/LocalFrame.h>
+#import <WebCore/LocalFrameView.h>
 #import <WebCore/Page.h>
 #import <wtf/SetForScope.h>
 #import <wtf/SystemTracing.h>
+#import <wtf/TZoneMallocInlines.h>
 
 namespace WebKit {
 using namespace WebCore;
 
+WTF_MAKE_TZONE_ALLOCATED_IMPL(RemoteLayerTreeContext);
+
 RemoteLayerTreeContext::RemoteLayerTreeContext(WebPage& webPage)
     : m_webPage(webPage)
-    , m_currentTransaction(nullptr)
 {
+    m_backingStoreCollection = makeUnique<RemoteLayerBackingStoreCollection>(*this);
 }
 
 RemoteLayerTreeContext::~RemoteLayerTreeContext()
 {
-    for (auto& layer : m_livePlatformLayers.values())
-        layer->clearContext();
-
-    auto graphicsLayers = m_liveGraphicsLayers;
-    for (auto& layer : graphicsLayers)
-        layer->clearContext();
+    // Make sure containers are empty before destruction to avoid hitting the assertion in CanMakeCheckedPtr.
+    m_livePlatformLayers.clear();
+    m_liveGraphicsLayers.clear();
+    m_layersWithAnimations.clear();
 }
 
 void RemoteLayerTreeContext::adoptLayersFromContext(RemoteLayerTreeContext& oldContext)
 {
     auto& platformLayers = oldContext.m_livePlatformLayers;
     while (!platformLayers.isEmpty())
-        platformLayers.begin()->value->moveToContext(*this);
+        RefPtr { platformLayers.begin()->value.get() }->moveToContext(*this);
 
     auto& graphicsLayers = oldContext.m_liveGraphicsLayers;
     while (!graphicsLayers.isEmpty())
-        (*graphicsLayers.begin())->moveToContext(*this);
+        Ref { (*graphicsLayers.begin()).get() }->moveToContext(*this);
 }
 
 float RemoteLayerTreeContext::deviceScaleFactor() const
@@ -78,6 +84,21 @@ LayerHostingMode RemoteLayerTreeContext::layerHostingMode() const
     return m_webPage.layerHostingMode();
 }
 
+DrawingAreaIdentifier RemoteLayerTreeContext::drawingAreaIdentifier() const
+{
+    if (!m_webPage.drawingArea())
+        return DrawingAreaIdentifier();
+    return m_webPage.drawingArea()->identifier();
+}
+
+std::optional<WebCore::DestinationColorSpace> RemoteLayerTreeContext::displayColorSpace() const
+{
+    if (auto* drawingArea = m_webPage.drawingArea())
+        return drawingArea->displayColorSpace();
+    
+    return { };
+}
+
 #if PLATFORM(IOS_FAMILY)
 bool RemoteLayerTreeContext::canShowWhileLocked() const
 {
@@ -87,7 +108,7 @@ bool RemoteLayerTreeContext::canShowWhileLocked() const
 
 void RemoteLayerTreeContext::layerDidEnterContext(PlatformCALayerRemote& layer, PlatformCALayer::LayerType type)
 {
-    GraphicsLayer::PlatformLayerID layerID = layer.layerID();
+    PlatformLayerIdentifier layerID = layer.layerID();
 
     RemoteLayerTreeTransaction::LayerCreationProperties creationProperties;
     layer.populateCreationProperties(creationProperties, *this, type);
@@ -96,10 +117,40 @@ void RemoteLayerTreeContext::layerDidEnterContext(PlatformCALayerRemote& layer, 
     m_livePlatformLayers.add(layerID, &layer);
 }
 
+#if HAVE(AVKIT)
+void RemoteLayerTreeContext::layerDidEnterContext(PlatformCALayerRemote& layer, PlatformCALayer::LayerType type, WebCore::HTMLVideoElement& videoElement)
+{
+    PlatformLayerIdentifier layerID = layer.layerID();
+
+    RemoteLayerTreeTransaction::LayerCreationProperties creationProperties;
+    layer.populateCreationProperties(creationProperties, *this, type);
+    ASSERT(!creationProperties.videoElementData);
+    creationProperties.videoElementData = RemoteLayerTreeTransaction::LayerCreationProperties::VideoElementData {
+        videoElement.identifier(),
+        videoElement.videoLayerSize(),
+        videoElement.naturalSize()
+    };
+
+    m_webPage.videoPresentationManager().setupRemoteLayerHosting(videoElement);
+    m_videoLayers.add(layerID, videoElement.identifier());
+
+    m_createdLayers.add(layerID, WTFMove(creationProperties));
+    m_livePlatformLayers.add(layerID, &layer);
+}
+#endif
+
 void RemoteLayerTreeContext::layerWillLeaveContext(PlatformCALayerRemote& layer)
 {
     ASSERT(layer.layerID());
-    GraphicsLayer::PlatformLayerID layerID = layer.layerID();
+    PlatformLayerIdentifier layerID = layer.layerID();
+
+#if HAVE(AVKIT)
+    auto videoLayerIter = m_videoLayers.find(layerID);
+    if (videoLayerIter != m_videoLayers.end()) {
+        m_webPage.videoPresentationManager().willRemoveLayerForID(videoLayerIter->value);
+        m_videoLayers.remove(videoLayerIter);
+    }
+#endif
 
     m_createdLayers.remove(layerID);
     m_livePlatformLayers.remove(layerID);
@@ -112,27 +163,12 @@ void RemoteLayerTreeContext::layerWillLeaveContext(PlatformCALayerRemote& layer)
 
 void RemoteLayerTreeContext::graphicsLayerDidEnterContext(GraphicsLayerCARemote& layer)
 {
-    m_liveGraphicsLayers.add(&layer);
+    m_liveGraphicsLayers.add(layer);
 }
 
 void RemoteLayerTreeContext::graphicsLayerWillLeaveContext(GraphicsLayerCARemote& layer)
 {
-    m_liveGraphicsLayers.remove(&layer);
-}
-
-void RemoteLayerTreeContext::backingStoreWasCreated(RemoteLayerBackingStore& backingStore)
-{
-    m_backingStoreCollection.backingStoreWasCreated(backingStore);
-}
-
-void RemoteLayerTreeContext::backingStoreWillBeDestroyed(RemoteLayerBackingStore& backingStore)
-{
-    m_backingStoreCollection.backingStoreWillBeDestroyed(backingStore);
-}
-
-bool RemoteLayerTreeContext::backingStoreWillBeDisplayed(RemoteLayerBackingStore& backingStore)
-{
-    return m_backingStoreCollection.backingStoreWillBeDisplayed(backingStore);
+    m_liveGraphicsLayers.remove(layer);
 }
 
 Ref<GraphicsLayer> RemoteLayerTreeContext::createGraphicsLayer(WebCore::GraphicsLayer::Type layerType, GraphicsLayerClient& client)
@@ -140,21 +176,27 @@ Ref<GraphicsLayer> RemoteLayerTreeContext::createGraphicsLayer(WebCore::Graphics
     return adoptRef(*new GraphicsLayerCARemote(layerType, client, *this));
 }
 
-void RemoteLayerTreeContext::buildTransaction(RemoteLayerTreeTransaction& transaction, PlatformCALayer& rootLayer)
+void RemoteLayerTreeContext::buildTransaction(RemoteLayerTreeTransaction& transaction, PlatformCALayer& rootLayer, WebCore::FrameIdentifier rootFrameID)
 {
     TraceScope tracingScope(BuildTransactionStart, BuildTransactionEnd);
 
     PlatformCALayerRemote& rootLayerRemote = downcast<PlatformCALayerRemote>(rootLayer);
     transaction.setRootLayerID(rootLayerRemote.layerID());
+    if (auto* rootFrame = WebProcess::singleton().webFrame(rootFrameID))
+        transaction.setRemoteContextHostedIdentifier(rootFrame->layerHostingContextIdentifier());
 
     m_currentTransaction = &transaction;
     rootLayerRemote.recursiveBuildTransaction(*this, transaction);
+    m_backingStoreCollection->prepareBackingStoresForDisplay(transaction);
+
+    bool paintedAnyBackingStore = m_backingStoreCollection->paintReachableBackingStoreContents();
+    if (paintedAnyBackingStore)
+        m_nextRenderingUpdateRequiresSynchronousImageDecoding = false;
+
     m_currentTransaction = nullptr;
 
-    transaction.setCreatedLayers(copyToVector(m_createdLayers.values()));
+    transaction.setCreatedLayers(moveToVector(std::exchange(m_createdLayers, { }).values()));
     transaction.setDestroyedLayerIDs(WTFMove(m_destroyedLayers));
-    
-    m_createdLayers.clear();
 }
 
 void RemoteLayerTreeContext::layerPropertyChangedWhileBuildingTransaction(PlatformCALayerRemote& layer)
@@ -168,23 +210,28 @@ void RemoteLayerTreeContext::willStartAnimationOnLayer(PlatformCALayerRemote& la
     m_layersWithAnimations.add(layer.layerID(), &layer);
 }
 
-void RemoteLayerTreeContext::animationDidStart(WebCore::GraphicsLayer::PlatformLayerID layerID, const String& key, MonotonicTime startTime)
+void RemoteLayerTreeContext::animationDidStart(WebCore::PlatformLayerIdentifier layerID, const String& key, MonotonicTime startTime)
 {
     auto it = m_layersWithAnimations.find(layerID);
     if (it != m_layersWithAnimations.end())
-        it->value->animationStarted(key, startTime);
+        RefPtr { it->value.get() }->animationStarted(key, startTime);
 }
 
-void RemoteLayerTreeContext::animationDidEnd(WebCore::GraphicsLayer::PlatformLayerID layerID, const String& key)
+void RemoteLayerTreeContext::animationDidEnd(WebCore::PlatformLayerIdentifier layerID, const String& key)
 {
     auto it = m_layersWithAnimations.find(layerID);
     if (it != m_layersWithAnimations.end())
-        it->value->animationEnded(key);
+        RefPtr { it->value.get() }->animationEnded(key);
 }
 
 RemoteRenderingBackendProxy& RemoteLayerTreeContext::ensureRemoteRenderingBackendProxy()
 {
     return m_webPage.ensureRemoteRenderingBackendProxy();
+}
+
+void RemoteLayerTreeContext::gpuProcessConnectionWasDestroyed()
+{
+    m_backingStoreCollection->gpuProcessConnectionWasDestroyed();
 }
 
 } // namespace WebKit

@@ -35,18 +35,6 @@
 
 namespace WebKit {
 
-#if PLATFORM(COCOA)
-bool isFeatureFlagEnabled(const char*, bool defaultValue = false);
-#endif
-
-#if HAVE(INCREMENTAL_PDF_APIS)
-bool defaultIncrementalPDFEnabled();
-#endif
-
-#if ENABLE(WEBXR)
-bool defaultWebXREnabled();
-#endif
-
 #if PLATFORM(IOS_FAMILY)
 bool defaultAllowsInlineMediaPlayback();
 bool defaultAllowsInlineMediaPlaybackAfterFullscreen();
@@ -55,6 +43,7 @@ bool defaultInlineMediaPlaybackRequiresPlaysInlineAttribute();
 bool defaultJavaScriptCanOpenWindowsAutomatically();
 bool defaultPassiveTouchListenersAsDefaultOnDocument();
 bool defaultRequiresUserGestureToLoadVideo();
+bool defaultShowModalDialogEnabled();
 bool defaultWebSQLEnabled();
 bool defaultAllowContentSecurityPolicySourceStarToMatchAnyProtocol();
 #endif
@@ -64,6 +53,7 @@ bool defaultLoadDeferringEnabled();
 bool defaultWindowFocusRestricted();
 bool defaultUsePreHTML5ParserQuirks();
 bool defaultNeedsAdobeFrameReloadingQuirk();
+bool defaultScrollAnimatorEnabled();
 bool defaultTreatsAnyTextCSSLinkAsStylesheet();
 bool defaultNeedsFrameNameFallbackToIdQuirk();
 bool defaultNeedsKeyboardEventDisambiguationQuirks();
@@ -71,24 +61,19 @@ bool defaultNeedsKeyboardEventDisambiguationQuirks();
 
 bool defaultAttachmentElementEnabled();
 bool defaultShouldRestrictBaseURLSchemes();
-bool defaultUseLegacyBackgroundSizeShorthandBehavior();
 bool defaultAllowDisplayOfInsecureContent();
 bool defaultAllowRunningOfInsecureContent();
 bool defaultShouldConvertInvalidURLsToBlank();
+bool defaultPopoverAttributeEnabled();
+bool defaultSearchInputIncrementalAttributeAndSearchEventEnabled();
 
 #if PLATFORM(MAC)
 bool defaultPassiveWheelListenersAsDefaultOnDocument();
 bool defaultWheelEventGesturesBecomeNonBlocking();
 #endif
 
-#if ENABLE(MEDIA_SOURCE)
-bool defaultWebMParserEnabled();
-bool defaultWebMWebAudioEnabled();
-#endif
-
-#if ENABLE(VP9)
-bool defaultVP8DecoderEnabled();
-bool defaultVP9DecoderEnabled();
+#if ENABLE(MEDIA_SOURCE) && PLATFORM(IOS_FAMILY)
+bool defaultMediaSourceEnabled();
 #endif
 
 } // namespace WebKit

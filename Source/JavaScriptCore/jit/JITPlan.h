@@ -28,6 +28,7 @@
 #if ENABLE(JIT)
 
 #include "CompilationResult.h"
+#include "JITCode.h"
 #include "JITCompilationKey.h"
 #include "JITCompilationMode.h"
 #include "JITPlanStage.h"
@@ -56,10 +57,25 @@ public:
     JITCompilationMode mode() const { return m_mode; }
 
     JITPlanStage stage() const { return m_stage; }
+    bool isDFG() const { return ::JSC::isDFG(m_mode); }
     bool isFTL() const { return ::JSC::isFTL(m_mode); }
+    bool isUnlinked() const { return ::JSC::isUnlinked(m_mode); }
 
     enum class Tier { Baseline = 0, DFG = 1, FTL = 2, Count = 3 };
     Tier tier() const;
+    JITType jitType() const
+    {
+        switch (tier()) {
+        case Tier::Baseline:
+            return JITType::BaselineJIT;
+        case Tier::DFG:
+            return JITType::DFGJIT;
+        case Tier::FTL:
+            return JITType::FTLJIT;
+        default:
+            return JITType::None;
+        }
+    }
 
     JITCompilationKey key();
 
@@ -80,6 +96,16 @@ public:
     virtual bool iterateCodeBlocksForGC(AbstractSlotVisitor&, const Function<void(CodeBlock*)>&);
     virtual bool checkLivenessAndVisitChildren(AbstractSlotVisitor&);
 
+    bool safepointKeepsDependenciesLive() const;
+
+    template<typename Functor>
+    void addMainThreadFinalizationTask(const Functor& functor)
+    {
+        m_mainThreadFinalizationTasks.append(createSharedTask<void()>(functor));
+    }
+
+    void runMainThreadFinalizationTasks();
+
 protected:
     bool computeCompileTimes() const;
     bool reportCompileTimes() const;
@@ -93,6 +119,7 @@ protected:
     VM* m_vm;
     CodeBlock* m_codeBlock;
     JITWorklistThread* m_thread { nullptr };
+    Vector<RefPtr<SharedTask<void()>>> m_mainThreadFinalizationTasks;
 };
 
 } // namespace JSC

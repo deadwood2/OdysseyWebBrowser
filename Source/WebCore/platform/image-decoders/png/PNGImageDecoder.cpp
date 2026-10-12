@@ -47,13 +47,12 @@
 #include "PNGImageDecoder.h"
 
 #include "Color.h"
-#include "PlatformDisplay.h"
 #include <png.h>
 #include <wtf/StdLibExtras.h>
 #include <wtf/UniqueArray.h>
 
 #if USE(LCMS)
-#include <lcms2.h>
+#include "LCMSUniquePtr.h"
 #endif
 
 #if defined(PNG_LIBPNG_VER_MAJOR) && defined(PNG_LIBPNG_VER_MINOR) && (PNG_LIBPNG_VER_MAJOR > 1 || (PNG_LIBPNG_VER_MAJOR == 1 && PNG_LIBPNG_VER_MINOR >= 4))
@@ -111,7 +110,6 @@ static void PNGAPI pngComplete(png_structp png, png_infop)
     static_cast<PNGImageDecoder*>(png_get_progressive_ptr(png))->pngComplete();
 }
 
-#if ENABLE(APNG)
 // Called when we have the frame header.
 static void PNGAPI frameHeader(png_structp png, png_infop)
 {
@@ -124,26 +122,23 @@ static int PNGAPI readChunks(png_structp png, png_unknown_chunkp chunk)
     static_cast<PNGImageDecoder*>(png_get_user_chunk_ptr(png))->readChunks(chunk);
     return 1;
 }
-#endif
 
 class PNGImageReader {
     WTF_MAKE_FAST_ALLOCATED;
 public:
     PNGImageReader(PNGImageDecoder* decoder)
-        : m_readOffset(0)
+        : m_png(png_create_read_struct(PNG_LIBPNG_VER_STRING, 0, decodingFailed, decodingWarning))
+        , m_info(png_create_info_struct(m_png))
+        , m_readOffset(0)
         , m_currentBufferSize(0)
         , m_decodingSizeOnly(false)
         , m_hasAlpha(false)
     {
-        m_png = png_create_read_struct(PNG_LIBPNG_VER_STRING, 0, decodingFailed, decodingWarning);
-        m_info = png_create_info_struct(m_png);
         png_set_progressive_read_fn(m_png, decoder, headerAvailable, rowAvailable, pngComplete);
-#if ENABLE(APNG)
         png_byte apngChunks[]= {"acTL\0fcTL\0fdAT\0"};
         png_set_keep_unknown_chunks(m_png, 1, apngChunks, 3);
         png_set_read_user_chunk_fn(m_png, static_cast<png_voidp>(decoder), readChunks);
         decoder->init();
-#endif
     }
 
     ~PNGImageReader()
@@ -160,7 +155,7 @@ public:
         m_readOffset = 0;
     }
 
-    bool decode(const SharedBuffer::DataSegment& data, bool sizeOnly, unsigned haltAtFrame)
+    bool decode(const SharedBuffer& data, bool sizeOnly, unsigned haltAtFrame)
     {
         m_decodingSizeOnly = sizeOnly;
         PNGImageDecoder* decoder = static_cast<PNGImageDecoder*>(png_get_progressive_ptr(m_png));
@@ -173,7 +168,7 @@ public:
         auto bytesToUse = data.size() - bytesToSkip;
         m_readOffset += bytesToUse;
         m_currentBufferSize = m_readOffset;
-        png_process_data(m_png, m_info, reinterpret_cast<png_bytep>(const_cast<uint8_t*>(data.data() + bytesToSkip)), bytesToUse);
+        png_process_data(m_png, m_info, reinterpret_cast<png_bytep>(const_cast<uint8_t*>(data.span().subspan(bytesToSkip).data())), bytesToUse);
         // We explicitly specify the superclass encodedDataStatus() because we
         // merely want to check if we've managed to set the size, not
         // (recursively) trigger additional decoding if we haven't.
@@ -209,7 +204,6 @@ PNGImageDecoder::PNGImageDecoder(AlphaOption alphaOption, GammaAndColorProfileOp
     : ScalableImageDecoder(alphaOption, gammaAndColorProfileOption)
     , m_doNothingOnFailure(false)
     , m_currentFrame(0)
-#if ENABLE(APNG)
     , m_png(nullptr)
     , m_info(nullptr)
     , m_isAnimated(false)
@@ -231,7 +225,6 @@ PNGImageDecoder::PNGImageDecoder(AlphaOption alphaOption, GammaAndColorProfileOp
     , m_delayDenominator(1)
     , m_dispose(0)
     , m_blend(0)
-#endif
 {
 }
 
@@ -240,7 +233,6 @@ PNGImageDecoder::~PNGImageDecoder()
     clear();
 }
 
-#if ENABLE(APNG)
 RepetitionCount PNGImageDecoder::repetitionCount() const
 {
     // Signal no repetition if the PNG image is not animated.
@@ -254,20 +246,14 @@ RepetitionCount PNGImageDecoder::repetitionCount() const
 
     return m_playCount;
 }
-#endif
 
 ScalableImageDecoderFrame* PNGImageDecoder::frameBufferAtIndex(size_t index)
 {
-#if ENABLE(APNG)
     if (ScalableImageDecoder::encodedDataStatus() < EncodedDataStatus::SizeAvailable)
         return nullptr;
 
     if (index >= frameCount())
         index = frameCount() - 1;
-#else
-    if (index)
-        return nullptr;
-#endif
 
     if (m_frameBufferCache.isEmpty())
         m_frameBufferCache.grow(1);
@@ -282,14 +268,7 @@ void PNGImageDecoder::clear()
 {
     m_reader = nullptr;
 #if USE(LCMS)
-    if (m_iccTransform) {
-        cmsDeleteTransform(m_iccTransform);
-        m_iccTransform = nullptr;
-    }
-    if (m_iccProfile) {
-        cmsCloseProfile(m_iccProfile);
-        m_iccProfile = nullptr;
-    }
+    m_iccTransform.reset();
 #endif
 }
 
@@ -332,7 +311,6 @@ void PNGImageDecoder::headerAvailable()
 
     // The options we set here match what Mozilla does.
 
-#if ENABLE(APNG)
     m_hasInfo = true;
     if (m_isAnimated) {
         png_save_uint_32(m_dataIHDR, 13);
@@ -345,11 +323,9 @@ void PNGImageDecoder::headerAvailable()
         m_dataIHDR[19] = filterType;
         m_dataIHDR[20] = interlaceType;
     }
-#endif
 
     // Expand to ensure we use 24-bit for RGB and 32-bit for RGBA.
     if (colorType == PNG_COLOR_TYPE_PALETTE) {
-#if ENABLE(APNG)
         if (m_isAnimated) {
             png_colorp palette;
             int paletteSize = 0;
@@ -360,7 +336,6 @@ void PNGImageDecoder::headerAvailable()
             memcpy(m_dataPLTE + 8, palette, paletteSize);
             m_sizePLTE = paletteSize + 12;
         }
-#endif
         png_set_expand(png);
     }
 
@@ -372,7 +347,6 @@ void PNGImageDecoder::headerAvailable()
     png_color_16p transValues;
     if (png_get_valid(png, info, PNG_INFO_tRNS)) {
         png_get_tRNS(png, info, &trns, &trnsCount, &transValues);
-#if ENABLE(APNG)
         if (m_isAnimated) {
             if (colorType == PNG_COLOR_TYPE_RGB) {
                 png_save_uint_16(m_datatRNS + 8, transValues->red);
@@ -389,7 +363,6 @@ void PNGImageDecoder::headerAvailable()
             memcpy(m_datatRNS + 4, "tRNS", 4);
             m_sizetRNS = trnsCount + 12;
         }
-#endif
         png_set_expand(png);
     }
 
@@ -407,9 +380,7 @@ void PNGImageDecoder::headerAvailable()
             png_set_gAMA(png, info, gamma);
         }
         png_set_gamma(png, cDefaultGamma, gamma);
-#if ENABLE(APNG)
         m_gamma = static_cast<int>(gamma * 100000);
-#endif
     } else
         png_set_gamma(png, cDefaultGamma, cInverseGamma);
 
@@ -420,11 +391,10 @@ void PNGImageDecoder::headerAvailable()
         png_uint_32 iccProfileDataSize;
         int compressionType;
         if (png_get_iCCP(png, info, &iccProfileTitle, &compressionType, &iccProfileData, &iccProfileDataSize)) {
-            m_iccProfile = cmsOpenProfileFromMem(iccProfileData, iccProfileDataSize);
-            if (m_iccProfile) {
-                auto* displayProfile = PlatformDisplay::sharedDisplay().colorProfile();
-                if (cmsGetColorSpace(m_iccProfile) == cmsSigRgbData && cmsGetColorSpace(displayProfile) == cmsSigRgbData)
-                    m_iccTransform = cmsCreateTransform(m_iccProfile, TYPE_BGRA_8, displayProfile, TYPE_BGRA_8, INTENT_RELATIVE_COLORIMETRIC, 0);
+            auto iccProfile = LCMSProfilePtr(cmsOpenProfileFromMem(iccProfileData, iccProfileDataSize));
+            if (iccProfile && cmsGetColorSpace(iccProfile.get()) == cmsSigRgbData) {
+                auto srgbProfile = LCMSProfilePtr(cmsCreate_sRGBProfile());
+                m_iccTransform = LCMSTransformPtr(cmsCreateTransform(iccProfile.get(), TYPE_BGRA_8, srgbProfile.get(), TYPE_BGRA_8, INTENT_RELATIVE_COLORIMETRIC, 0));
             }
         }
     }
@@ -459,10 +429,8 @@ void PNGImageDecoder::rowAvailable(unsigned char* rowBuffer, unsigned rowIndex, 
         return;
 
     // Initialize the framebuffer if needed.
-#if ENABLE(APNG)
     if (m_currentFrame >= frameCount())
         return;
-#endif
     auto& buffer = m_frameBufferCache[m_currentFrame];
     if (buffer.isInvalid()) {
         png_structp png = m_reader->pngPtr();
@@ -485,15 +453,13 @@ void PNGImageDecoder::rowAvailable(unsigned char* rowBuffer, unsigned rowIndex, 
         buffer.setDecodingStatus(DecodingStatus::Partial);
         buffer.setHasAlpha(false);
 
-#if ENABLE(APNG)
         if (m_currentFrame)
             initFrameBuffer(m_currentFrame);
-#endif
     }
 
     /* libpng comments (here to explain what follows).
      *
-     * this function is called for every row in the image.  If the
+     * this function is called for every row in the image. If the
      * image is interlacing, and you turned on the interlace handler,
      * this function will be called for every row in every pass.
      * Some of these rows will not be changed from the previous pass.
@@ -517,31 +483,29 @@ void PNGImageDecoder::rowAvailable(unsigned char* rowBuffer, unsigned rowIndex, 
      * png_progressive_combine_row() passing in the row and the
      * old row.  You can call this function for NULL rows (it will
      * just return) and for non-interlaced images (it just does the
-     * memcpy for you) if it will make the code easier.  Thus, you
+     * memcpy for you) if it will make the code easier. Thus, you
      * can just do this for all cases:
      *
      *    png_progressive_combine_row(png_ptr, old_row, new_row);
      *
-     * where old_row is what was displayed for previous rows.  Note
+     * where old_row is what was displayed for previous rows. Note
      * that the first pass (pass == 0 really) will completely cover
-     * the old row, so the rows do not have to be initialized.  After
+     * the old row, so the rows do not have to be initialized. After
      * the first pass (and only for interlaced images), you will have
      * to pass the current row, and the function will combine the
      * old row and the new row.
      */
 
     bool hasAlpha = m_reader->hasAlpha();
-    unsigned colorChannels = hasAlpha ? 4 : 3;
     png_bytep row = rowBuffer;
 
     if (png_bytep interlaceBuffer = m_reader->interlaceBuffer()) {
+        unsigned colorChannels = hasAlpha ? 4 : 3;
         row = interlaceBuffer + (rowIndex * colorChannels * size().width());
-#if ENABLE(APNG)
         if (m_currentFrame) {
             png_progressive_combine_row(m_png, row, rowBuffer);
             return; // Only do incremental image display for the first frame.
         }
-#endif
         png_progressive_combine_row(m_reader->pngPtr(), row, rowBuffer);
     }
 
@@ -567,7 +531,7 @@ void PNGImageDecoder::rowAvailable(unsigned char* rowBuffer, unsigned rowIndex, 
 
 #if USE(LCMS)
     if (m_iccTransform)
-        cmsDoTransform(m_iccTransform, destRow, destRow, width);
+        cmsDoTransform(m_iccTransform.get(), destRow, destRow, width);
 #endif
 
     if (nonTrivialAlphaMask && !buffer.hasAlpha())
@@ -576,14 +540,12 @@ void PNGImageDecoder::rowAvailable(unsigned char* rowBuffer, unsigned rowIndex, 
 
 void PNGImageDecoder::pngComplete()
 {
-#if ENABLE(APNG)
     if (m_isAnimated) {
         if (!processingFinish() && m_frameCount == m_currentFrame)
             return;
 
         fallbackNotAnimated();
     }
-#endif
     if (!m_frameBufferCache.isEmpty())
         m_frameBufferCache.first().setDecodingStatus(DecodingStatus::Complete);
 }
@@ -608,7 +570,6 @@ void PNGImageDecoder::decode(bool onlySize, unsigned haltAtFrame, bool allDataRe
         clear();
 }
 
-#if ENABLE(APNG)
 void PNGImageDecoder::readChunks(png_unknown_chunkp chunk)
 {
     if (!memcmp(chunk->name, "acTL", 4) && chunk->size == 8) {
@@ -857,12 +818,12 @@ void PNGImageDecoder::frameComplete()
     if (m_currentFrame && interlaceBuffer) {
         IntRect rect = buffer.backingStore()->frameRect();
         bool hasAlpha = m_reader->hasAlpha();
-        unsigned colorChannels = hasAlpha ? 4 : 3;
         bool nonTrivialAlpha = false;
         if (m_blend && !hasAlpha)
             m_blend = 0;
 
         png_bytep row = interlaceBuffer;
+        unsigned colorChannels = hasAlpha ? 4 : 3;
         for (int y = rect.y(); y < rect.maxY(); ++y, row += colorChannels * size().width()) {
             png_bytep pixel = row;
             auto* destRow = buffer.backingStore()->pixelAt(rect.x(), y);
@@ -877,7 +838,7 @@ void PNGImageDecoder::frameComplete()
             }
 #if USE(LCMS)
             if (m_iccTransform)
-                cmsDoTransform(m_iccTransform, destRow, destRow, rect.maxX());
+                cmsDoTransform(m_iccTransform.get(), destRow, destRow, rect.maxX());
 #endif
         }
 
@@ -959,6 +920,5 @@ void PNGImageDecoder::fallbackNotAnimated()
     m_playCount = 0;
     m_currentFrame = 0;
 }
-#endif
 
 } // namespace WebCore

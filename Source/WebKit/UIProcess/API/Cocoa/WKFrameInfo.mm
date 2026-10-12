@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,10 +28,14 @@
 
 #import "WKSecurityOriginInternal.h"
 #import "WKWebViewInternal.h"
+#import "WebFrameProxy.h"
+#import "WebPageProxy.h"
 #import "_WKFrameHandleInternal.h"
 #import <WebCore/WebCoreObjCExtras.h>
 
 @implementation WKFrameInfo
+
+WK_OBJECT_DISABLE_DISABLE_KVC_IVAR_ACCESS;
 
 - (void)dealloc
 {
@@ -61,7 +65,7 @@
 - (WKSecurityOrigin *)securityOrigin
 {
     auto& data = _frameInfo->securityOrigin();
-    auto apiOrigin = API::SecurityOrigin::create(data.protocol, data.host, data.port);
+    auto apiOrigin = API::SecurityOrigin::create(data);
     return retainPtr(wrapper(apiOrigin.get())).autorelease();
 }
 
@@ -89,12 +93,37 @@
 
 - (_WKFrameHandle *)_handle
 {
-    return retainPtr(wrapper(_frameInfo->handle())).autorelease();
+    return wrapper(_frameInfo->handle()).autorelease();
 }
 
 - (_WKFrameHandle *)_parentFrameHandle
 {
-    return retainPtr(wrapper(_frameInfo->parentFrameHandle())).autorelease();
+    return wrapper(_frameInfo->parentFrameHandle()).autorelease();
+}
+
+- (pid_t)_processIdentifier
+{
+    return _frameInfo->processID();
+}
+
+- (BOOL)_isLocalFrame
+{
+    return _frameInfo->isLocalFrame();
+}
+
+- (BOOL)_isFocused
+{
+    return _frameInfo->isFocused();
+}
+
+- (BOOL)_errorOccurred
+{
+    return _frameInfo->errorOccurred();
+}
+
+- (NSString *)_title
+{
+    return _frameInfo->title();
 }
 
 @end

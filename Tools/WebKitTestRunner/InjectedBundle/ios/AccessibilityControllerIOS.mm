@@ -24,7 +24,7 @@
  */
 
 #import "config.h"
-#import "AccessibilityCommonMac.h"
+#import "AccessibilityCommonCocoa.h"
 #import "AccessibilityController.h"
 #import "AccessibilityNotificationHandler.h"
 #import "InjectedBundle.h"
@@ -33,12 +33,20 @@
 #import <JavaScriptCore/JSStringRefCF.h>
 #import <UIKit/UIAccessibility.h>
 #import <WebKit/WKBundle.h>
+#import <WebKit/WKBundleFramePrivate.h>
 #import <WebKit/WKBundlePage.h>
 #import <WebKit/WKBundlePagePrivate.h>
 
 namespace WTR {
 
-bool AccessibilityController::addNotificationListener(JSValueRef functionCallback)
+RefPtr<AccessibilityUIElement> AccessibilityController::focusedElement(JSContextRef context)
+{
+    PlatformUIElement root = static_cast<PlatformUIElement>(WKAccessibilityRootObject(WKBundleFrameForJavaScriptContext(context)));
+    auto rootElement = AccessibilityUIElement::create(root);
+    return rootElement->focusedElement();
+}
+
+bool AccessibilityController::addNotificationListener(JSContextRef context, JSValueRef functionCallback)
 {
     if (!functionCallback)
         return false;
@@ -48,7 +56,7 @@ bool AccessibilityController::addNotificationListener(JSValueRef functionCallbac
     if (m_globalNotificationHandler)
         return false;
 
-    m_globalNotificationHandler = adoptNS([[AccessibilityNotificationHandler alloc] init]);
+    m_globalNotificationHandler = adoptNS([[AccessibilityNotificationHandler alloc] initWithContext:context]);
     [m_globalNotificationHandler setCallback:functionCallback];
     [m_globalNotificationHandler startObserving];
     
@@ -59,7 +67,6 @@ bool AccessibilityController::removeNotificationListener()
 {
     return false;
 }
-
 
 JSRetainPtr<JSStringRef> AccessibilityController::platformName()
 {
@@ -92,16 +99,19 @@ void AccessibilityController::injectAccessibilityPreference(JSStringRef, JSStrin
 {
 }
 
-RefPtr<AccessibilityUIElement> AccessibilityController::accessibleElementById(JSStringRef idAttribute)
+RefPtr<AccessibilityUIElement> AccessibilityController::accessibleElementById(JSContextRef context, JSStringRef idAttribute)
 {
-    auto page = InjectedBundle::singleton().page()->page();
-    id root = static_cast<PlatformUIElement>(WKAccessibilityRootObject(page));
+    PlatformUIElement root = static_cast<PlatformUIElement>(WKAccessibilityRootObject(WKBundleFrameForJavaScriptContext(context)));
 
     id result = findAccessibleObjectById(root, [NSString stringWithJSStringRef:idAttribute]);
     if (result)
         return AccessibilityUIElement::create(result);
 
     return nullptr;
+}
+
+void AccessibilityController::overrideClient(JSStringRef)
+{
 }
 
 } // namespace WTR

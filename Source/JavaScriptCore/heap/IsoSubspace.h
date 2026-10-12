@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2017-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,64 +26,81 @@
 #pragma once
 
 #include "BlockDirectory.h"
+#include "IsoMemoryAllocatorBase.h"
 #include "Subspace.h"
 #include "SubspaceAccess.h"
 #include <wtf/SinglyLinkedListWithTail.h>
+#include <wtf/TZoneMalloc.h>
 
 namespace JSC {
 
-class IsoAlignedMemoryAllocator;
 class IsoCellSet;
 
+namespace GCClient {
+class IsoSubspace;
+}
+
 class IsoSubspace : public Subspace {
+    WTF_MAKE_TZONE_ALLOCATED_EXPORT(IsoSubspace, JS_EXPORT_PRIVATE);
 public:
-    JS_EXPORT_PRIVATE IsoSubspace(CString name, Heap&, HeapCellType*, size_t size, uint8_t numberOfLowerTierCells);
+    JS_EXPORT_PRIVATE IsoSubspace(CString name, Heap&, const HeapCellType&, size_t size, bool preciseOnly, uint8_t numberOfLowerTierPreciseCells, std::unique_ptr<IsoMemoryAllocatorBase>&& = nullptr);
     JS_EXPORT_PRIVATE ~IsoSubspace() override;
 
     size_t cellSize() { return m_directory.cellSize(); }
 
-    Allocator allocatorFor(size_t, AllocatorForMode) override;
-    Allocator allocatorForNonVirtual(size_t, AllocatorForMode);
-
-    void* allocate(VM&, size_t, GCDeferralContext*, AllocationFailureMode) override;
-    void* allocateNonVirtual(VM&, size_t, GCDeferralContext*, AllocationFailureMode);
-
-    void sweepLowerTierCell(PreciseAllocation*);
+    void sweepLowerTierPreciseCell(PreciseAllocation*);
     void clearIsoCellSetBit(PreciseAllocation*);
 
-    void* tryAllocateFromLowerTier();
-    void destroyLowerTierFreeList();
+    void* tryAllocatePreciseOrLowerTierPrecise(size_t cellSize);
+    void destroyLowerTierPreciseFreeList();
 
     void sweep();
 
-    template<typename Func> void forEachLowerTierFreeListedPreciseAllocation(const Func&);
+    template<typename Func> void forEachLowerTierPreciseFreeListedPreciseAllocation(const Func&);
 
 private:
     friend class IsoCellSet;
+    friend class GCClient::IsoSubspace;
     
     void didResizeBits(unsigned newSize) override;
     void didRemoveBlock(unsigned blockIndex) override;
     void didBeginSweepingToFreeList(MarkedBlock::Handle*) override;
-    
+
     BlockDirectory m_directory;
-    LocalAllocator m_localAllocator;
-    std::unique_ptr<IsoAlignedMemoryAllocator> m_isoAlignedMemoryAllocator;
-    SentinelLinkedList<PreciseAllocation, PackedRawSentinelNode<PreciseAllocation>> m_lowerTierFreeList;
-    SentinelLinkedList<IsoCellSet, PackedRawSentinelNode<IsoCellSet>> m_cellSets;
+    std::unique_ptr<IsoMemoryAllocatorBase> m_isoAlignedMemoryAllocator;
+    SentinelLinkedList<PreciseAllocation, BasicRawSentinelNode<PreciseAllocation>> m_lowerTierPreciseFreeList;
+    SentinelLinkedList<IsoCellSet, BasicRawSentinelNode<IsoCellSet>> m_cellSets;
 };
 
-ALWAYS_INLINE Allocator IsoSubspace::allocatorForNonVirtual(size_t size, AllocatorForMode)
+
+namespace GCClient {
+
+class IsoSubspace {
+    WTF_MAKE_NONCOPYABLE(IsoSubspace);
+    WTF_MAKE_FAST_ALLOCATED;
+public:
+    JS_EXPORT_PRIVATE IsoSubspace(JSC::IsoSubspace&);
+    JS_EXPORT_PRIVATE ~IsoSubspace() = default;
+
+    size_t cellSize() { return m_localAllocator.cellSize(); }
+
+    Allocator allocatorFor(size_t, AllocatorForMode);
+
+    void* allocate(VM&, size_t, GCDeferralContext*, AllocationFailureMode);
+
+private:
+    LocalAllocator m_localAllocator;
+};
+
+ALWAYS_INLINE Allocator IsoSubspace::allocatorFor(size_t size, AllocatorForMode)
 {
-    RELEASE_ASSERT(WTF::roundUpToMultipleOf<MarkedBlock::atomSize>(size) == cellSize());
+    RELEASE_ASSERT(size <= cellSize());
     return Allocator(&m_localAllocator);
 }
 
-#define ISO_SUBSPACE_INIT(heap, heapCellType, type) ("Isolated " #type " Space", (heap), (heapCellType), sizeof(type), type::numberOfLowerTierCells)
+} // namespace GCClient
 
-template<typename T>
-struct isAllocatedFromIsoSubspace {
-    static constexpr bool value = std::is_same<std::result_of_t<decltype(T::template subspaceFor<T, SubspaceAccess::OnMainThread>)&(VM&)>, IsoSubspace*>::value;
-};
+#define ISO_SUBSPACE_INIT(heap, heapCellType, type) ("IsoSpace " #type, (heap), (heapCellType), sizeof(type), type::usePreciseAllocationsOnly, type::numberOfLowerTierPreciseCells)
 
 } // namespace JSC
 

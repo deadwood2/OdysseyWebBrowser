@@ -22,21 +22,22 @@
 
 #include "CSSFontFaceSrcValue.h"
 #include "CSSValueList.h"
-#include "ElementIterator.h"
+#include "ElementChildIteratorInlines.h"
+#include "SVGElementTypeHelpers.h"
 #include "SVGFontFaceElement.h"
 #include "SVGFontFaceNameElement.h"
 #include "SVGFontFaceUriElement.h"
 #include "SVGNames.h"
-#include <wtf/IsoMallocInlines.h>
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(SVGFontFaceSrcElement);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(SVGFontFaceSrcElement);
 
 using namespace SVGNames;
     
 inline SVGFontFaceSrcElement::SVGFontFaceSrcElement(const QualifiedName& tagName, Document& document)
-    : SVGElement(tagName, document)
+    : SVGElement(tagName, document, makeUniqueRef<PropertyRegistry>(*this))
 {
     ASSERT(hasTagName(font_face_srcTag));
 }
@@ -46,26 +47,26 @@ Ref<SVGFontFaceSrcElement> SVGFontFaceSrcElement::create(const QualifiedName& ta
     return adoptRef(*new SVGFontFaceSrcElement(tagName, document));
 }
 
-Ref<CSSValueList> SVGFontFaceSrcElement::srcValue() const
+Ref<CSSValueList> SVGFontFaceSrcElement::createSrcValue() const
 {
-    Ref<CSSValueList> list = CSSValueList::createCommaSeparated();
+    CSSValueListBuilder list;
     for (auto& child : childrenOfType<SVGElement>(*this)) {
-        RefPtr<CSSFontFaceSrcValue> srcValue;
-        if (is<SVGFontFaceUriElement>(child))
-            srcValue = downcast<SVGFontFaceUriElement>(child).srcValue();
-        else if (is<SVGFontFaceNameElement>(child))
-            srcValue = downcast<SVGFontFaceNameElement>(child).srcValue();
-        if (srcValue && srcValue->resource().length())
-            list->append(srcValue.releaseNonNull());
+        if (RefPtr element = dynamicDowncast<SVGFontFaceUriElement>(child)) {
+            if (auto srcValue = element->createSrcValue(); !srcValue->isEmpty())
+                list.append(WTFMove(srcValue));
+        } else if (RefPtr element = dynamicDowncast<SVGFontFaceNameElement>(child)) {
+            if (auto srcValue = element->createSrcValue(); !srcValue->isEmpty())
+                list.append(WTFMove(srcValue));
+        }
     }
-    return list;
+    return CSSValueList::createCommaSeparated(WTFMove(list));
 }
 
 void SVGFontFaceSrcElement::childrenChanged(const ChildChange& change)
 {
     SVGElement::childrenChanged(change);
-    if (is<SVGFontFaceElement>(parentNode()))
-        downcast<SVGFontFaceElement>(*parentNode()).rebuildFontFace();
+    if (RefPtr parent = dynamicDowncast<SVGFontFaceElement>(parentNode()))
+        parent->rebuildFontFace();
 }
 
 }

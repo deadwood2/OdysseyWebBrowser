@@ -31,14 +31,16 @@ class RenderStyle;
 
 namespace Style {
 
-enum class Change {
+enum class Change : uint8_t {
     None,
     NonInherited,
+    FastPathInherited,
     Inherited,
+    Descendants,
     Renderer
 };
 
-Change determineChange(const RenderStyle&, const RenderStyle&);
+WEBCORE_EXPORT Change determineChange(const RenderStyle&, const RenderStyle&);
 
 }
 }

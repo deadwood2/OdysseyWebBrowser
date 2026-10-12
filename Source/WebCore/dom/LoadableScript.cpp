@@ -35,29 +35,37 @@
 
 namespace WebCore {
 
+LoadableScript::LoadableScript(const AtomString& nonce, ReferrerPolicy policy, RequestPriority fetchPriority, const AtomString& crossOriginMode, const String& charset, const AtomString& initiatorType, bool isInUserAgentShadowTree)
+    : ScriptElementCachedScriptFetcher(nonce, policy, fetchPriority, crossOriginMode, charset, initiatorType, isInUserAgentShadowTree)
+{
+}
+
+LoadableScript::~LoadableScript() = default;
+
 void LoadableScript::addClient(LoadableScriptClient& client)
 {
-    m_clients.add(&client);
+    m_clients.add(client);
     if (isLoaded()) {
-        Ref<LoadableScript> protectedThis(*this);
+        Ref protectedThis { *this };
         client.notifyFinished(*this);
     }
 }
 
 void LoadableScript::removeClient(LoadableScriptClient& client)
 {
-    m_clients.remove(&client);
+    m_clients.remove(client);
 }
 
 void LoadableScript::notifyClientFinished()
 {
-    RefPtr<LoadableScript> protectedThis(this);
-
-    Vector<LoadableScriptClient*> vector;
-    for (auto& pair : m_clients)
-        vector.append(pair.key);
-    for (auto& client : vector)
-        client->notifyFinished(*this);
+    Ref protectedThis { *this };
+    auto clients = WTF::map(m_clients, [](auto& entry) -> WeakPtr<LoadableScriptClient> {
+        return entry.key;
+    });
+    for (auto& client : clients) {
+        if (client)
+            client->notifyFinished(*this);
+    }
 }
 
 }

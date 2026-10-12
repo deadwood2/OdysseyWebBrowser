@@ -1,7 +1,5 @@
 #pragma once
 
-#include "config.h"
-
 #if ENABLE(VIDEO)
 
 #include "AcinerellaDecoder.h"
@@ -65,7 +63,7 @@ protected:
 
 	void onFrameDecoded(const AcinerellaDecodedFrame &frame) override;
 	void onDecoderChanged(RefPtr<AcinerellaPointer> acinerella) override;
-	void flush() override;
+	void flush(bool willSeek) override;
 	void onCoolDown() override;
 
 	void pullThreadEntryPoint();
@@ -83,7 +81,7 @@ protected:
 	BinarySemaphore m_frameEvent;
 	
 	uint32_t        m_bufferedSamples = 0;
-	volatile float  m_bufferedSeconds = 0.f;
+	AcinerellaThreadsafeNumber<double>  m_bufferedSeconds = 0.f;
 	volatile bool   m_playing = false;
 	int             m_frameWidth;
 	int             m_frameHeight;
@@ -103,6 +101,7 @@ protected:
 	bool            m_canDropKeyFrames = false;
 	bool            m_didShowFirstFrame = false;
 	bool            m_frameSizeTransition = false;
+    bool            m_ismjpeg = false;
 	
 	int             m_paintX, m_paintY, m_paintX2 = 0, m_paintY2;
 	int             m_outerX, m_outerY, m_outerX2 = 0, m_outerY2;

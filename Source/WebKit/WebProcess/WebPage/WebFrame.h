@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,20 +29,33 @@
 #include "DownloadID.h"
 #include "IdentifierTypes.h"
 #include "PolicyDecision.h"
-#include "ShareableBitmap.h"
 #include "TransactionID.h"
 #include "WKBase.h"
-#include "WebFrameLoaderClient.h"
+#include "WebLocalFrameLoaderClient.h"
 #include <JavaScriptCore/ConsoleTypes.h>
 #include <JavaScriptCore/JSBase.h>
-#include <WebCore/FrameLoaderClient.h>
+#include <WebCore/AdvancedPrivacyProtections.h>
 #include <WebCore/FrameLoaderTypes.h>
 #include <WebCore/HitTestRequest.h>
+#include <WebCore/LayerHostingContextIdentifier.h>
+#include <WebCore/LocalFrameLoaderClient.h>
+#include <WebCore/MarkupExclusionRule.h>
+#include <WebCore/ProcessIdentifier.h>
+#include <WebCore/ShareableBitmap.h>
 #include <wtf/Forward.h>
 #include <wtf/HashMap.h>
 #include <wtf/RefPtr.h>
 #include <wtf/RetainPtr.h>
 #include <wtf/WeakPtr.h>
+
+namespace WebKit {
+class LoadListener;
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebKit::LoadListener> : std::true_type { };
+}
 
 namespace API {
 class Array;
@@ -52,48 +65,83 @@ namespace WebCore {
 class CertificateInfo;
 class Frame;
 class HTMLFrameOwnerElement;
+class HandleUserInputEventResult;
 class IntPoint;
 class IntRect;
+class LocalFrame;
+class PlatformMouseEvent;
+class RemoteFrame;
+struct GlobalWindowIdentifier;
 }
 
 namespace WebKit {
 
+class InjectedBundleCSSStyleDeclarationHandle;
 class InjectedBundleHitTestResult;
 class InjectedBundleNodeHandle;
 class InjectedBundleRangeHandle;
 class InjectedBundleScriptWorld;
+class WebKeyboardEvent;
+class WebImage;
+class WebMouseEvent;
 class WebPage;
+class WebRemoteFrameClient;
 struct FrameInfoData;
+struct FrameTreeNodeData;
+struct ProvisionalFrameCreationParameters;
 struct WebsitePoliciesData;
+
+// Simple listener class used by plug-ins to know when frames finish or fail loading.
+class LoadListener : public CanMakeWeakPtr<LoadListener> {
+public:
+    virtual ~LoadListener() { }
+
+    virtual void didFinishLoad(WebFrame*) = 0;
+    virtual void didFailLoad(WebFrame*, bool wasCancelled) = 0;
+};
 
 class WebFrame : public API::ObjectImpl<API::Object::Type::BundleFrame>, public CanMakeWeakPtr<WebFrame> {
 public:
-    static Ref<WebFrame> create() { return adoptRef(*new WebFrame); }
-    static Ref<WebFrame> createSubframe(WebPage*, const String& frameName, WebCore::HTMLFrameOwnerElement*);
+    static Ref<WebFrame> create(WebPage& page, WebCore::FrameIdentifier frameID) { return adoptRef(*new WebFrame(page, frameID)); }
+    static Ref<WebFrame> createSubframe(WebPage&, WebFrame& parent, const AtomString& frameName, WebCore::HTMLFrameOwnerElement&);
+    static Ref<WebFrame> createRemoteSubframe(WebPage&, WebFrame& parent, WebCore::FrameIdentifier, const String& frameName);
     ~WebFrame();
 
     void initWithCoreMainFrame(WebPage&, WebCore::Frame&);
 
     // Called when the FrameLoaderClient (and therefore the WebCore::Frame) is being torn down.
     void invalidate();
+    ScopeExit<Function<void()>> makeInvalidator();
 
     WebPage* page() const;
+    RefPtr<WebPage> protectedPage() const;
 
-    static WebFrame* fromCoreFrame(const WebCore::Frame&);
+    static RefPtr<WebFrame> fromCoreFrame(const WebCore::Frame&);
+    WebCore::LocalFrame* coreLocalFrame() const;
+    RefPtr<WebCore::LocalFrame> protectedCoreLocalFrame() const;
+    WebCore::RemoteFrame* coreRemoteFrame() const;
     WebCore::Frame* coreFrame() const;
 
-    FrameInfoData info() const;
-    WebCore::FrameIdentifier frameID() const { return m_frameID; }
+    void createProvisionalFrame(ProvisionalFrameCreationParameters&&);
+    void commitProvisionalFrame();
+    void destroyProvisionalFrame();
+    void loadDidCommitInAnotherProcess(std::optional<WebCore::LayerHostingContextIdentifier>);
+    WebCore::LocalFrame* provisionalFrame() { return m_provisionalFrame.get(); }
 
-    enum class ForNavigationAction { No, Yes };
-    uint64_t setUpPolicyListener(WebCore::PolicyCheckIdentifier, WebCore::FramePolicyFunction&&, ForNavigationAction);
+    FrameInfoData info() const;
+    FrameTreeNodeData frameTreeData() const;
+
+    WebCore::FrameIdentifier frameID() const;
+
+    enum class ForNavigationAction : bool { No, Yes };
+    uint64_t setUpPolicyListener(WebCore::FramePolicyFunction&&, ForNavigationAction);
     void invalidatePolicyListeners();
     void didReceivePolicyDecision(uint64_t listenerID, PolicyDecision&&);
 
-    FormSubmitListenerIdentifier setUpWillSubmitFormListener(CompletionHandler<void()>&&);
-    void continueWillSubmitForm(FormSubmitListenerIdentifier);
+    void didFinishLoadInAnotherProcess();
+    void removeFromTree();
 
-    void startDownload(const WebCore::ResourceRequest&, const String& suggestedName = { });
+    void startDownload(const WebCore::ResourceRequest&, const String& suggestedName = { }, WebCore::FromDownloadAttribute = WebCore::FromDownloadAttribute::No);
     void convertMainResourceLoadToDownload(WebCore::DocumentLoader*, const WebCore::ResourceRequest&, const WebCore::ResourceResponse&);
 
     void addConsoleMessage(MessageSource, MessageLevel, const String&, uint64_t requestID = 0);
@@ -106,15 +154,19 @@ public:
 
     // WKBundleFrame API and SPI functions
     bool isMainFrame() const;
+    bool isRootFrame() const;
     String name() const;
     URL url() const;
     WebCore::CertificateInfo certificateInfo() const;
     String innerText() const;
     bool isFrameSet() const;
-    WebFrame* parentFrame() const;
+    RefPtr<WebFrame> parentFrame() const;
     Ref<API::Array> childFrames();
     JSGlobalContextRef jsContext();
+    JSGlobalContextRef jsContextForWorld(WebCore::DOMWrapperWorld&);
     JSGlobalContextRef jsContextForWorld(InjectedBundleScriptWorld*);
+    JSGlobalContextRef jsContextForServiceWorkerWorld(WebCore::DOMWrapperWorld&);
+    JSGlobalContextRef jsContextForServiceWorkerWorld(InjectedBundleScriptWorld*);
     WebCore::IntRect contentBounds() const;
     WebCore::IntRect visibleContentBounds() const;
     WebCore::IntRect visibleContentBoundsExcludingScrollbars() const;
@@ -139,12 +191,12 @@ public:
     bool containsAnyFormElements() const;
     bool containsAnyFormControls() const;
     void stopLoading();
-    bool handlesPageScaleGesture() const;
-    bool requiresUnifiedScaleFactor() const;
-    void setAccessibleName(const String&);
+    void setAccessibleName(const AtomString&);
 
-    static WebFrame* frameForContext(JSContextRef);
+    static RefPtr<WebFrame> frameForContext(JSContextRef);
+    static RefPtr<WebFrame> contentFrameForWindowOrFrameElement(JSContextRef, JSValueRef);
 
+    JSValueRef jsWrapperForWorld(InjectedBundleCSSStyleDeclarationHandle*, InjectedBundleScriptWorld*);
     JSValueRef jsWrapperForWorld(InjectedBundleNodeHandle*, InjectedBundleScriptWorld*);
     JSValueRef jsWrapperForWorld(InjectedBundleRangeHandle*, InjectedBundleScriptWorld*);
 
@@ -161,32 +213,25 @@ public:
     String mimeTypeForResourceWithURL(const URL&) const;
 
     void setTextDirection(const String&);
+    void updateRemoteFrameSize(WebCore::IntSize);
 
-    void documentLoaderDetached(uint64_t navigationID);
-
-    // Simple listener class used by plug-ins to know when frames finish or fail loading.
-    class LoadListener : public CanMakeWeakPtr<LoadListener> {
-    public:
-        virtual ~LoadListener() { }
-
-        virtual void didFinishLoad(WebFrame*) = 0;
-        virtual void didFailLoad(WebFrame*, bool wasCancelled) = 0;
-    };
-    void setLoadListener(LoadListener* loadListener) { m_loadListener = makeWeakPtr(loadListener); }
+    void setLoadListener(LoadListener* loadListener) { m_loadListener = loadListener; }
     LoadListener* loadListener() const { return m_loadListener.get(); }
     
 #if PLATFORM(COCOA)
     typedef bool (*FrameFilterFunction)(WKBundleFrameRef, WKBundleFrameRef subframe, void* context);
-    RetainPtr<CFDataRef> webArchiveData(FrameFilterFunction, void* context);
+    RetainPtr<CFDataRef> webArchiveData(FrameFilterFunction, void* context, const Vector<WebCore::MarkupExclusionRule>& exclusionRules = { }, const String& mainResourceFileName = { });
 #endif
 
-    RefPtr<ShareableBitmap> createSelectionSnapshot() const;
+    RefPtr<WebImage> createSelectionSnapshot() const;
 
 #if PLATFORM(IOS_FAMILY)
     TransactionID firstLayerTreeTransactionIDAfterDidCommitLoad() const { return m_firstLayerTreeTransactionIDAfterDidCommitLoad; }
     void setFirstLayerTreeTransactionIDAfterDidCommitLoad(TransactionID transactionID) { m_firstLayerTreeTransactionIDAfterDidCommitLoad = transactionID; }
 #endif
 
+    WebLocalFrameLoaderClient* localFrameLoaderClient() const;
+    WebRemoteFrameClient* remoteFrameClient() const;
     WebFrameLoaderClient* frameLoaderClient() const;
 
 #if ENABLE(APP_BOUND_DOMAINS)
@@ -196,30 +241,46 @@ public:
     std::optional<NavigatingToAppBoundDomain> isTopFrameNavigatingToAppBoundDomain() const;
 #endif
 
+    Markable<WebCore::LayerHostingContextIdentifier> layerHostingContextIdentifier() { return m_layerHostingContextIdentifier; }
+
+    OptionSet<WebCore::AdvancedPrivacyProtections> advancedPrivacyProtections() const;
+    std::optional<OptionSet<WebCore::AdvancedPrivacyProtections>> originatorAdvancedPrivacyProtections() const;
+
+    bool handleContextMenuEvent(const WebCore::PlatformMouseEvent&);
+    WebCore::HandleUserInputEventResult handleMouseEvent(const WebMouseEvent&);
+    bool handleKeyEvent(const WebKeyboardEvent&);
+
+    bool isFocused() const;
+
+    String frameTextForTesting(bool);
 private:
-    WebFrame();
+    WebFrame(WebPage&, WebCore::FrameIdentifier);
+
+    void setLayerHostingContextIdentifier(WebCore::LayerHostingContextIdentifier identifier) { m_layerHostingContextIdentifier = identifier; }
+
+    inline WebCore::DocumentLoader* policySourceDocumentLoader() const;
 
     WeakPtr<WebCore::Frame> m_coreFrame;
+    WeakPtr<WebPage> m_page;
+    RefPtr<WebCore::LocalFrame> m_provisionalFrame;
 
     struct PolicyCheck {
-        WebCore::PolicyCheckIdentifier corePolicyIdentifier;
         ForNavigationAction forNavigationAction { ForNavigationAction::No };
         WebCore::FramePolicyFunction policyFunction;
     };
     HashMap<uint64_t, PolicyCheck> m_pendingPolicyChecks;
 
-    HashMap<FormSubmitListenerIdentifier, CompletionHandler<void()>> m_willSubmitFormCompletionHandlers;
     std::optional<DownloadID> m_policyDownloadID;
 
     WeakPtr<LoadListener> m_loadListener;
-    
-    WebCore::FrameIdentifier m_frameID;
+
+    const WebCore::FrameIdentifier m_frameID;
 
 #if PLATFORM(IOS_FAMILY)
     TransactionID m_firstLayerTreeTransactionIDAfterDidCommitLoad;
 #endif
     std::optional<NavigatingToAppBoundDomain> m_isNavigatingToAppBoundDomain;
-
+    Markable<WebCore::LayerHostingContextIdentifier> m_layerHostingContextIdentifier;
 };
 
 } // namespace WebKit

@@ -25,10 +25,9 @@
 
 #pragma once
 
+#include <span>
 #include <wtf/FileSystem.h>
-#include <wtf/FunctionDispatcher.h>
 #include <wtf/SHA1.h>
-#include <wtf/Span.h>
 #include <wtf/ThreadSafeRefCounted.h>
 #include <wtf/text/WTFString.h>
 
@@ -41,20 +40,22 @@
 #endif
 
 #if USE(CURL)
+#include <variant>
 #include <wtf/Box.h>
-#include <wtf/Variant.h>
 #endif
 
-namespace WebKit {
-
+namespace WebCore {
 class SharedMemory;
+}
+
+namespace WebKit {
 
 namespace NetworkCache {
 
 class Data {
 public:
     Data() { }
-    Data(const uint8_t*, size_t);
+    Data(std::span<const uint8_t>);
 
     ~Data() { }
 
@@ -68,20 +69,20 @@ public:
 #if USE(GLIB)
     Data(GRefPtr<GBytes>&&, FileSystem::PlatformFileHandle fd = FileSystem::invalidPlatformFileHandle);
 #elif USE(CURL)
-    Data(Variant<Vector<uint8_t>, FileSystem::MappedFileData>&&);
+    Data(std::variant<Vector<uint8_t>, FileSystem::MappedFileData>&&);
+    Data(Vector<uint8_t>&& data) : Data(std::variant<Vector<uint8_t>, FileSystem::MappedFileData> { WTFMove(data) }) { }
 #endif
     bool isNull() const;
     bool isEmpty() const { return !m_size; }
 
-    const uint8_t* data() const;
+    std::span<const uint8_t> span() const;
     size_t size() const { return m_size; }
-    Span<const uint8_t> span() const { return { data(), size() }; }
     bool isMap() const { return m_isMap; }
-    RefPtr<SharedMemory> tryCreateSharedMemory() const;
+    RefPtr<WebCore::SharedMemory> tryCreateSharedMemory() const;
 
     Data subrange(size_t offset, size_t) const;
 
-    bool apply(const Function<bool(Span<const uint8_t>)>&) const;
+    bool apply(const Function<bool(std::span<const uint8_t>)>&) const;
 
     Data mapToFile(const String& path) const;
 
@@ -101,7 +102,7 @@ private:
     FileSystem::PlatformFileHandle m_fileDescriptor { FileSystem::invalidPlatformFileHandle };
 #endif
 #if USE(CURL)
-    Box<Variant<Vector<uint8_t>, FileSystem::MappedFileData>> m_buffer;
+    Box<std::variant<Vector<uint8_t>, FileSystem::MappedFileData>> m_buffer;
 #endif
     mutable const uint8_t* m_data { nullptr };
     size_t m_size { 0 };
@@ -111,7 +112,6 @@ private:
 Data concatenate(const Data&, const Data&);
 bool bytesEqual(const Data&, const Data&);
 Data adoptAndMapFile(FileSystem::PlatformFileHandle, size_t offset, size_t);
-Data mapFile(const char* path);
 Data mapFile(const String& path);
 
 using Salt = FileSystem::Salt;

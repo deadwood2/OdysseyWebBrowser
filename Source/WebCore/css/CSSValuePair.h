@@ -26,57 +26,68 @@
 #pragma once
 
 #include "CSSValue.h"
+#include <wtf/Function.h>
 
 namespace WebCore {
 
-/**
- * Represents a pair of CSS values.
- */
-class CSSValuePair : public CSSValue {
+class CSSValuePair final : public CSSValue {
 public:
-    enum class IdenticalValueEncoding : uint8_t {
-        DoNotCoalesce,
-        Coalesce
-    };
+    static Ref<CSSValuePair> create(Ref<CSSValue>, Ref<CSSValue>);
+    static Ref<CSSValuePair> createSlashSeparated(Ref<CSSValue>, Ref<CSSValue>);
+    static Ref<CSSValuePair> createNoncoalescing(Ref<CSSValue>, Ref<CSSValue>);
 
-    static Ref<CSSValuePair> create(Ref<CSSValue>&& first, Ref<CSSValue>&& second, ValueSeparator separator)
-    {
-        return adoptRef(*new CSSValuePair(WTFMove(first), WTFMove(second), separator));
-    }
-    static Ref<CSSValuePair> create(Ref<CSSValue>&& first, Ref<CSSValue>&& second, ValueSeparator separator, IdenticalValueEncoding encoding)
-    {
-        return adoptRef(*new CSSValuePair(WTFMove(first), WTFMove(second), separator, encoding));
-    }
-
-    Ref<CSSValue> first() const { return m_first; }
-    Ref<CSSValue> second() const { return m_second; }
+    const CSSValue& first() const { return m_first; }
+    const CSSValue& second() const { return m_second; }
+    Ref<CSSValue> protectedFirst() const { return m_first; }
+    Ref<CSSValue> protectedSecond() const { return m_second; }
 
     String customCSSText() const;
-    bool equals(const CSSValuePair& other) const;
+    bool equals(const CSSValuePair&) const;
+    bool canBeCoalesced() const;
+
+    IterationStatus customVisitChildren(const Function<IterationStatus(CSSValue&)>& func) const
+    {
+        if (func(m_first.get()) == IterationStatus::Done)
+            return IterationStatus::Done;
+        if (func(m_second.get()) == IterationStatus::Done)
+            return IterationStatus::Done;
+        return IterationStatus::Continue;
+    }
 
 private:
-    explicit CSSValuePair(Ref<CSSValue>&& first, Ref<CSSValue>&& second, ValueSeparator separator)
-        : CSSValue(ValuePairClass)
-        , m_first(WTFMove(first))
-        , m_second(WTFMove(second))
-    {
-        m_valueSeparator = separator;
-    }
+    friend bool CSSValue::addHash(Hasher&) const;
 
-    explicit CSSValuePair(Ref<CSSValue>&& first, Ref<CSSValue>&& second, ValueSeparator separator, IdenticalValueEncoding encoding)
-        : CSSValue(ValuePairClass)
-        , m_encoding(encoding)
-        , m_first(WTFMove(first))
-        , m_second(WTFMove(second))
-    {
-        m_valueSeparator = separator;
-    }
+    enum class IdenticalValueSerialization : bool { DoNotCoalesce, Coalesce };
+    CSSValuePair(ValueSeparator, Ref<CSSValue>, Ref<CSSValue>, IdenticalValueSerialization);
 
-    IdenticalValueEncoding m_encoding { IdenticalValueEncoding::Coalesce };
+    bool addDerivedHash(Hasher&) const;
+
+    // FIXME: Store coalesce bit in CSSValue to cut down on object size.
+    bool m_coalesceIdenticalValues { true };
     Ref<CSSValue> m_first;
     Ref<CSSValue> m_second;
 };
 
+inline const CSSValue& CSSValue::first() const
+{
+    return downcast<CSSValuePair>(*this).first();
+}
+
+inline Ref<CSSValue> CSSValue::protectedFirst() const
+{
+    return downcast<CSSValuePair>(*this).protectedFirst();
+}
+
+inline const CSSValue& CSSValue::second() const
+{
+    return downcast<CSSValuePair>(*this).second();
+}
+
+inline Ref<CSSValue> CSSValue::protectedSecond() const
+{
+    return downcast<CSSValuePair>(*this).protectedSecond();
+}
+
 } // namespace WebCore
 
-SPECIALIZE_TYPE_TRAITS_CSS_VALUE(CSSValuePair, isValuePair())
+SPECIALIZE_TYPE_TRAITS_CSS_VALUE(CSSValuePair, isPair())

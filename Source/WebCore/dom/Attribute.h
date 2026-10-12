@@ -24,7 +24,9 @@
 
 #pragma once
 
+#include "CommonAtomStrings.h"
 #include "QualifiedName.h"
+#include <wtf/Hasher.h>
 
 namespace WebCore {
 
@@ -43,13 +45,14 @@ public:
     // as the Attribute stays in place. For example, calling a function that mutates
     // an Element's internal attribute storage may invalidate them.
     const AtomString& value() const { return m_value; }
-    static ptrdiff_t valueMemoryOffset() { return OBJECT_OFFSETOF(Attribute, m_value); }
+    static constexpr ptrdiff_t valueMemoryOffset() { return OBJECT_OFFSETOF(Attribute, m_value); }
     const AtomString& prefix() const { return m_name.prefix(); }
     const AtomString& localName() const { return m_name.localName(); }
+    const AtomString& localNameLowercase() const { return m_name.localNameLowercase(); }
     const AtomString& namespaceURI() const { return m_name.namespaceURI(); }
 
     const QualifiedName& name() const { return m_name; }
-    static ptrdiff_t nameMemoryOffset() { return OBJECT_OFFSETOF(Attribute, m_name); }
+    static constexpr ptrdiff_t nameMemoryOffset() { return OBJECT_OFFSETOF(Attribute, m_name); }
 
     bool isEmpty() const { return m_value.isEmpty(); }
     static bool nameMatchesFilter(const QualifiedName&, const AtomString& filterPrefix, const AtomString& filterLocalName, const AtomString& filterNamespaceURI);
@@ -74,6 +77,11 @@ private:
     AtomString m_value;
 };
 
+inline void add(Hasher& hasher, const Attribute& attribute)
+{
+    add(hasher, attribute.name(), attribute.value());
+}
+
 inline bool Attribute::nameMatchesFilter(const QualifiedName& name, const AtomString& filterPrefix, const AtomString& filterLocalName, const AtomString& filterNamespaceURI)
 {
     if (filterLocalName != name.localName())
@@ -87,3 +95,10 @@ inline bool Attribute::matches(const AtomString& prefix, const AtomString& local
 }
 
 } // namespace WebCore
+
+namespace WTF {
+
+template<>
+struct VectorTraits<WebCore::Attribute> : SimpleClassVectorTraits { };
+
+} // namespace WTF

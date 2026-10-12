@@ -46,4 +46,5 @@ WebContentMode webContentMode(WKContentMode);
 }
 
 @property (class, nonatomic, readonly) WKWebpagePreferences *defaultPreferences;
+
 @end

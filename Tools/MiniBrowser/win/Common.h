@@ -27,26 +27,12 @@
 
 #include "stdafx.h"
 #include "MainWindow.h"
-
-enum class BrowserWindowType {
-    WebKit,
-    WebKitLegacy
-};
+#include <knownfolders.h>
 
 struct CommandLineOptions {
     bool usesLayeredWebView { };
     bool useFullDesktop { };
-    BrowserWindowType windowType;
     _bstr_t requestedURL;
-
-    CommandLineOptions()
-#if ENABLE(WEBKIT)
-        : windowType(BrowserWindowType::WebKit)
-#else
-        : windowType(BrowserWindowType::WebKitLegacy)
-#endif
-    {
-    }
 };
 
 struct Credential {
@@ -63,6 +49,7 @@ struct ProxySettings {
 
 void computeFullDesktopFrame();
 bool getAppDataFolder(_bstr_t& directory);
+bool getKnownFolderPath(REFKNOWNFOLDERID, std::wstring&);
 CommandLineOptions parseCommandLine();
 void createCrashReport(EXCEPTION_POINTERS*);
 std::optional<Credential> askCredential(HWND, const std::wstring& realm);

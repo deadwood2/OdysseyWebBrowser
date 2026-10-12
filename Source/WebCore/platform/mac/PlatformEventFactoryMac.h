@@ -50,7 +50,8 @@ WEBCORE_EXPORT int windowsKeyCodeForKeyEvent(NSEvent *);
 WEBCORE_EXPORT String keyIdentifierForKeyEvent(NSEvent *);
 WEBCORE_EXPORT String keyForKeyEvent(NSEvent *);
 WEBCORE_EXPORT String codeForKeyEvent(NSEvent *);
-WEBCORE_EXPORT WallTime eventTimeStampSince1970(NSEvent *);
+WEBCORE_EXPORT WallTime eventTimeStampSince1970(NSTimeInterval);
+WEBCORE_EXPORT IntPoint unadjustedMovementForEvent(NSEvent *);
 
 WEBCORE_EXPORT OptionSet<PlatformEvent::Modifier> modifiersForEvent(NSEvent *);
 WEBCORE_EXPORT void getWheelEventDeltas(NSEvent *, float& deltaX, float& deltaY, BOOL& continuous);

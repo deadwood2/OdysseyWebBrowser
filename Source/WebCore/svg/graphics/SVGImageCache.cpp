@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2011 Research In Motion Limited. All rights reserved.
- * Copyright (C) 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2023 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -21,11 +21,11 @@
 #include "config.h"
 #include "SVGImageCache.h"
 
-#include "FrameView.h"
 #include "GraphicsContext.h"
 #include "ImageBuffer.h"
 #include "LayoutSize.h"
-#include "RenderSVGRoot.h"
+#include "LegacyRenderSVGRoot.h"
+#include "LocalFrameView.h"
 #include "SVGImage.h"
 #include "SVGImageForContainer.h"
 
@@ -54,10 +54,14 @@ void SVGImageCache::setContainerContextForClient(const CachedImageClient& client
     ASSERT(!containerSize.isEmpty());
     ASSERT(containerZoom);
 
+    // SVG container has width or height less than 1 pixel.
+    if (flooredIntSize(containerSize).isEmpty())
+        return;
+
     FloatSize containerSizeWithoutZoom(containerSize);
     containerSizeWithoutZoom.scale(1 / containerZoom);
 
-    m_imageForContainerMap.set(&client, SVGImageForContainer::create(m_svgImage, containerSizeWithoutZoom, containerZoom, imageURL));
+    m_imageForContainerMap.set(&client, SVGImageForContainer::create(protectedSVGImage().get(), containerSizeWithoutZoom, containerZoom, imageURL));
 }
 
 Image* SVGImageCache::findImageForRenderer(const RenderObject* renderer) const
@@ -65,9 +69,14 @@ Image* SVGImageCache::findImageForRenderer(const RenderObject* renderer) const
     return renderer ? m_imageForContainerMap.get(renderer) : nullptr;
 }
 
+RefPtr<SVGImage> SVGImageCache::protectedSVGImage() const
+{
+    return m_svgImage.get();
+}
+
 FloatSize SVGImageCache::imageSizeForRenderer(const RenderObject* renderer) const
 {
-    auto* image = findImageForRenderer(renderer);
+    SUPPRESS_UNCOUNTED_LOCAL auto* image = findImageForRenderer(renderer);
     return image ? image->size() : m_svgImage->size();
 }
 

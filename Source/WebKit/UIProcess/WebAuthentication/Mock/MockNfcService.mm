@@ -177,7 +177,7 @@ static NSData* NFReaderSessionTransceive(id, SEL, NSData *)
 
 #endif // HAVE(NEAR_FIELD)
 
-MockNfcService::MockNfcService(Observer& observer, const WebCore::MockWebAuthenticationConfiguration& configuration)
+MockNfcService::MockNfcService(AuthenticatorTransportServiceObserver& observer, const WebCore::MockWebAuthenticationConfiguration& configuration)
     : NfcService(observer)
     , m_configuration(configuration)
 {
@@ -201,7 +201,7 @@ void MockNfcService::receiveStopPolling()
 
 void MockNfcService::receiveStartPolling()
 {
-    RunLoop::main().dispatch([weakThis = makeWeakPtr(*this)] {
+    RunLoop::main().dispatch([weakThis = WeakPtr { *this }] {
         if (!weakThis)
             return;
         weakThis->detectTags();
@@ -258,7 +258,8 @@ void MockNfcService::detectTags() const
         if (configuration.nfc->multiplePhysicalTags)
             [tags addObject:adoptNS([[WKMockNFTag alloc] initWithType:NFTagTypeGeneric4A tagID:adoptNS([[NSData alloc] initWithBytes:tagID2 length:sizeof(tagID2)]).get()]).get()];
 
-        [globalNFReaderSessionDelegate readerSession:nil didDetectTags:tags.get()];
+        auto readerSession = adoptNS([allocNFReaderSessionInstance() init]);
+        [globalNFReaderSessionDelegate readerSession:readerSession.get() didDetectTags:tags.get()];
     });
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), callback.get());
 #endif // HAVE(NEAR_FIELD)

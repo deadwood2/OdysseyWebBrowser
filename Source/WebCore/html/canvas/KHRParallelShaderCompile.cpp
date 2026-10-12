@@ -28,29 +28,23 @@
 #if ENABLE(WEBGL)
 #include "KHRParallelShaderCompile.h"
 
-#include "ExtensionsGL.h"
-#include <wtf/IsoMallocInlines.h>
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(KHRParallelShaderCompile);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(KHRParallelShaderCompile);
 
 KHRParallelShaderCompile::KHRParallelShaderCompile(WebGLRenderingContextBase& context)
-    : WebGLExtension(context)
+    : WebGLExtension(context, WebGLExtensionName::KHRParallelShaderCompile)
 {
-    context.graphicsContextGL()->getExtensions().ensureEnabled("GL_KHR_parallel_shader_compile"_s);
+    context.protectedGraphicsContextGL()->ensureExtensionEnabled("GL_KHR_parallel_shader_compile"_s);
 }
 
 KHRParallelShaderCompile::~KHRParallelShaderCompile() = default;
 
-WebGLExtension::ExtensionName KHRParallelShaderCompile::getName() const
+bool KHRParallelShaderCompile::supported(GraphicsContextGL& context)
 {
-    return KHRParallelShaderCompileName;
-}
-
-bool KHRParallelShaderCompile::supported(const WebGLRenderingContextBase& context)
-{
-    return context.graphicsContextGL()->getExtensions().supports("GL_KHR_parallel_shader_compile"_s);
+    return context.supportsExtension("GL_KHR_parallel_shader_compile"_s);
 }
     
 } // namespace WebCore

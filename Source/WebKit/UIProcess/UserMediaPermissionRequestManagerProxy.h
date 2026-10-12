@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2014 Igalia S.L.
- * Copyright (C) 2016-2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2022 Apple Inc. All rights reserved.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Lesser General Public
@@ -22,6 +22,8 @@
 #include "UserMediaPermissionCheckProxy.h"
 #include "UserMediaPermissionRequestProxy.h"
 #include <WebCore/MediaProducer.h>
+#include <WebCore/PermissionDescriptor.h>
+#include <WebCore/PermissionState.h>
 #include <WebCore/RealtimeMediaSourceCenter.h>
 #include <WebCore/RealtimeMediaSourceFactory.h>
 #include <WebCore/SecurityOrigin.h>
@@ -31,38 +33,51 @@
 #include <wtf/LoggerHelper.h>
 #include <wtf/RunLoop.h>
 #include <wtf/Seconds.h>
+#include <wtf/TZoneMalloc.h>
 #include <wtf/WeakPtr.h>
+
+namespace WebKit {
+class UserMediaPermissionRequestManagerProxy;
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebKit::UserMediaPermissionRequestManagerProxy> : std::true_type { };
+}
 
 namespace WebCore {
 class CaptureDevice;
+class SecurityOrigin;
+
+enum class MediaConstraintType : uint8_t;
+enum class PermissionName : uint8_t;
+
+struct CaptureDeviceWithCapabilities;
+struct ClientOrigin;
 struct MediaConstraints;
 struct MediaStreamRequest;
-class SecurityOrigin;
 };
 
 namespace WebKit {
 
 class WebPageProxy;
 
-enum MediaDevicePermissionRequestIdentifierType { };
-using MediaDevicePermissionRequestIdentifier = ObjectIdentifier<MediaDevicePermissionRequestIdentifierType>;
+enum class MediaDevicePermissionRequestIdentifierType { };
+using MediaDevicePermissionRequestIdentifier = LegacyNullableObjectIdentifier<MediaDevicePermissionRequestIdentifierType>;
 
 class UserMediaPermissionRequestManagerProxy
-#if ENABLE(MEDIA_STREAM)
-    : public WebCore::AudioCaptureFactory::ExtensiveObserver
-#else
     : public CanMakeWeakPtr<UserMediaPermissionRequestManagerProxy>
-#endif
 #if !RELEASE_LOG_DISABLED
     , private LoggerHelper
 #endif
 {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED(UserMediaPermissionRequestManagerProxy);
 public:
     explicit UserMediaPermissionRequestManagerProxy(WebPageProxy&);
     ~UserMediaPermissionRequestManagerProxy();
 
-    WebPageProxy& page() const { return m_page; }
+    WebPageProxy& page() const;
+    Ref<WebPageProxy> protectedPage() const;
 
 #if ENABLE(MEDIA_STREAM)
     static void forEach(const WTF::Function<void(UserMediaPermissionRequestManagerProxy&)>&);
@@ -75,12 +90,14 @@ public:
     void requestUserMediaPermissionForFrame(WebCore::UserMediaRequestIdentifier, WebCore::FrameIdentifier, Ref<WebCore::SecurityOrigin>&&  userMediaDocumentOrigin, Ref<WebCore::SecurityOrigin>&& topLevelDocumentOrigin, WebCore::MediaStreamRequest&&);
 
     void resetAccess(std::optional<WebCore::FrameIdentifier> mainFrameID = { });
+    void didCommitLoadForFrame(WebCore::FrameIdentifier);
     void viewIsBecomingVisible();
 
     void grantRequest(UserMediaPermissionRequestProxy&);
-    void denyRequest(UserMediaPermissionRequestProxy&, UserMediaPermissionRequestProxy::UserMediaAccessDenialReason, const String& invalidConstraint = { });
+    void denyRequest(UserMediaPermissionRequestProxy&, UserMediaPermissionRequestProxy::UserMediaAccessDenialReason, const String& message = { });
+    void denyRequest(UserMediaPermissionRequestProxy&, WebCore::MediaConstraintType);
 
-    void enumerateMediaDevicesForFrame(WebCore::FrameIdentifier, Ref<WebCore::SecurityOrigin>&& userMediaDocumentOrigin, Ref<WebCore::SecurityOrigin>&& topLevelDocumentOrigin, CompletionHandler<void(const Vector<WebCore::CaptureDevice>&, const String&)>&&);
+    void enumerateMediaDevicesForFrame(WebCore::FrameIdentifier, Ref<WebCore::SecurityOrigin>&& userMediaDocumentOrigin, Ref<WebCore::SecurityOrigin>&& topLevelDocumentOrigin, CompletionHandler<void(const Vector<WebCore::CaptureDeviceWithCapabilities>&, WebCore::MediaDeviceHashSalts&&)>&&);
 
     void stopCapture();
     void scheduleNextRejection();
@@ -88,7 +105,7 @@ public:
     void clearCachedState();
     void captureDevicesChanged();
 
-    void captureStateChanged(WebCore::MediaProducer::MediaStateFlags oldState, WebCore::MediaProducer::MediaStateFlags newState);
+    void captureStateChanged(WebCore::MediaProducerMediaStateFlags oldState, WebCore::MediaProducerMediaStateFlags newState);
     void syncWithWebCorePrefs() const;
 
     enum class RequestAction {
@@ -97,6 +114,8 @@ public:
         Prompt
     };
 
+    bool canAudioCaptureSucceed() const;
+    bool canVideoCaptureSucceed() const;
     void setMockCaptureDevicesEnabledOverride(std::optional<bool>);
     bool hasPendingCapture() const { return m_hasPendingCapture; }
 
@@ -111,13 +130,24 @@ public:
         bool isScreenCaptureDenied;
     };
 
+    std::optional<WebCore::PermissionState> filterPermissionQuery(const WebCore::ClientOrigin&, const WebCore::PermissionDescriptor&, WebCore::PermissionState);
+
+    bool shouldChangeDeniedToPromptForCamera(const WebCore::ClientOrigin&) const;
+    bool shouldChangeDeniedToPromptForMicrophone(const WebCore::ClientOrigin&) const;
+    bool shouldChangePromptToGrantForCamera(const WebCore::ClientOrigin&) const;
+    bool shouldChangePromptToGrantForMicrophone(const WebCore::ClientOrigin&) const;
+
+    void clearUserMediaPermissionRequestHistory(WebCore::PermissionName);
+
 private:
 #if !RELEASE_LOG_DISABLED
     const Logger& logger() const final;
     const void* logIdentifier() const final { return m_logIdentifier; }
-    const char* logClassName() const override { return "UserMediaPermissionRequestManagerProxy"; }
+    ASCIILiteral logClassName() const override { return "UserMediaPermissionRequestManagerProxy"_s; }
     WTFLogChannel& logChannel() const final;
 #endif
+
+    void denyRequest(UserMediaPermissionRequestProxy&, UserMediaPermissionRequestProxy::UserMediaAccessDenialReason, const String& message, WebCore::MediaConstraintType);
 
     Ref<UserMediaPermissionRequestProxy> createPermissionRequest(WebCore::UserMediaRequestIdentifier, WebCore::FrameIdentifier mainFrameID, WebCore::FrameIdentifier, Ref<WebCore::SecurityOrigin>&& userMediaDocumentOrigin, Ref<WebCore::SecurityOrigin>&& topLevelDocumentOrigin, Vector<WebCore::CaptureDevice>&& audioDevices, Vector<WebCore::CaptureDevice>&& videoDevices, WebCore::MediaStreamRequest&&);
 #if ENABLE(MEDIA_STREAM)
@@ -132,20 +162,22 @@ private:
 
     RequestAction getRequestAction(const UserMediaPermissionRequestProxy&);
 
-    bool wasGrantedVideoOrAudioAccess(WebCore::FrameIdentifier, const WebCore::SecurityOrigin& userMediaDocumentOrigin, const WebCore::SecurityOrigin& topLevelDocumentOrigin);
+    bool wasGrantedVideoOrAudioAccess(WebCore::FrameIdentifier);
 
-    void computeFilteredDeviceList(bool revealIdsAndLabels, CompletionHandler<void(Vector<WebCore::CaptureDevice>&&)>&&);
-    void platformGetMediaStreamDevices(CompletionHandler<void(Vector<WebCore::CaptureDevice>&&)>&&);
+    void computeFilteredDeviceList(bool revealIdsAndLabels, CompletionHandler<void(Vector<WebCore::CaptureDeviceWithCapabilities>&&)>&&);
+    void platformGetMediaStreamDevices(bool revealIdsAndLabels, CompletionHandler<void(Vector<WebCore::CaptureDeviceWithCapabilities>&&)>&&);
 
     void processUserMediaPermissionRequest();
-    void processUserMediaPermissionInvalidRequest(const String& invalidConstraint);
-    void processUserMediaPermissionValidRequest(Vector<WebCore::CaptureDevice>&& audioDevices, Vector<WebCore::CaptureDevice>&& videoDevices, String&& deviceIdentifierHashSalt);
+    void processUserMediaPermissionInvalidRequest(WebCore::MediaConstraintType invalidConstraint);
+    void processUserMediaPermissionValidRequest(Vector<WebCore::CaptureDevice>&& audioDevices, Vector<WebCore::CaptureDevice>&& videoDevices, WebCore::MediaDeviceHashSalts&&);
     void startProcessingUserMediaPermissionRequest(Ref<UserMediaPermissionRequestProxy>&&);
 
     static void requestSystemValidation(const WebPageProxy&, UserMediaPermissionRequestProxy&, CompletionHandler<void(bool)>&&);
 
-    void platformValidateUserMediaRequestConstraints(WebCore::RealtimeMediaSourceCenter::ValidConstraintsHandler&& validHandler, WebCore::RealtimeMediaSourceCenter::InvalidConstraintsHandler&& invalidHandler, String&& deviceIDHashSalt);
+    void platformValidateUserMediaRequestConstraints(WebCore::RealtimeMediaSourceCenter::ValidConstraintsHandler&& validHandler, WebCore::RealtimeMediaSourceCenter::InvalidConstraintsHandler&& invalidHandler, WebCore::MediaDeviceHashSalts&&);
 #endif
+
+    bool mockCaptureDevicesEnabled() const;
 
     void watchdogTimerFired();
 
@@ -153,22 +185,25 @@ private:
     void decidePolicyForUserMediaPermissionRequest();
     void updateStoredRequests(UserMediaPermissionRequestProxy&);
 
+    String ephemeralDeviceHashSaltForFrame(WebCore::FrameIdentifier);
+
     RefPtr<UserMediaPermissionRequestProxy> m_currentUserMediaRequest;
     Deque<Ref<UserMediaPermissionRequestProxy>> m_pendingUserMediaRequests;
     HashSet<MediaDevicePermissionRequestIdentifier> m_pendingDeviceRequests;
 
-    WebPageProxy& m_page;
+    WeakRef<WebPageProxy> m_page;
 
-    RunLoop::Timer<UserMediaPermissionRequestManagerProxy> m_rejectionTimer;
+    RunLoop::Timer m_rejectionTimer;
     Deque<Ref<UserMediaPermissionRequestProxy>> m_pendingRejections;
 
     Vector<Ref<UserMediaPermissionRequestProxy>> m_pregrantedRequests;
     Vector<Ref<UserMediaPermissionRequestProxy>> m_grantedRequests;
+    HashMap<WebCore::FrameIdentifier, String> m_frameEphemeralHashSalts;
 
     Vector<DeniedRequest> m_deniedRequests;
 
-    WebCore::MediaProducer::MediaStateFlags m_captureState;
-    RunLoop::Timer<UserMediaPermissionRequestManagerProxy> m_watchdogTimer;
+    WebCore::MediaProducerMediaStateFlags m_captureState;
+    RunLoop::Timer m_watchdogTimer;
     Seconds m_currentWatchdogInterval;
 #if !RELEASE_LOG_DISABLED
     Ref<const Logger> m_logger;
@@ -180,6 +215,7 @@ private:
 #endif
     uint64_t m_hasPendingCapture { 0 };
     std::optional<bool> m_mockDevicesEnabledOverride;
+    HashSet<WebCore::FrameIdentifier> m_grantedFrames;
 };
 
 String convertEnumerationToString(UserMediaPermissionRequestManagerProxy::RequestAction);

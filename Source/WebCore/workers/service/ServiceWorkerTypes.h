@@ -25,19 +25,20 @@
 
 #pragma once
 
-#if ENABLE(SERVICE_WORKER)
-
-#include "DocumentIdentifier.h"
 #include "ProcessIdentifier.h"
+#include "ProcessQualified.h"
+#include "ScriptBuffer.h"
+#include "ScriptExecutionContextIdentifier.h"
 #include "ServiceWorkerIdentifier.h"
+#include <variant>
 #include <wtf/ObjectIdentifier.h>
-#include <wtf/Variant.h>
+#include <wtf/RobinHoodHashMap.h>
+#include <wtf/URLHash.h>
 
 namespace WebCore {
 
 struct ServiceWorkerData;
 struct ServiceWorkerClientData;
-struct ServiceWorkerClientIdentifier;
 
 enum class ServiceWorkerRegistrationState : uint8_t {
     Installing = 0,
@@ -46,6 +47,7 @@ enum class ServiceWorkerRegistrationState : uint8_t {
 };
 
 enum class ServiceWorkerState : uint8_t {
+    Parsed,
     Installing,
     Installed,
     Activating,
@@ -53,74 +55,45 @@ enum class ServiceWorkerState : uint8_t {
     Redundant,
 };
 
-enum class ServiceWorkerClientFrameType {
+enum class ServiceWorkerClientFrameType : uint8_t {
     Auxiliary,
     TopLevel,
     Nested,
     None
 };
 
+enum class ServiceWorkerIsInspectable : bool { No, Yes };
 enum class ShouldNotifyWhenResolved : bool { No, Yes };
 
-enum ServiceWorkerRegistrationIdentifierType { };
-using ServiceWorkerRegistrationIdentifier = ObjectIdentifier<ServiceWorkerRegistrationIdentifierType>;
+enum class ServiceWorkerRegistrationIdentifierType { };
+using ServiceWorkerRegistrationIdentifier = LegacyNullableAtomicObjectIdentifier<ServiceWorkerRegistrationIdentifierType>;
 
-enum ServiceWorkerJobIdentifierType { };
-using ServiceWorkerJobIdentifier = ObjectIdentifier<ServiceWorkerJobIdentifierType>;
+enum class ServiceWorkerJobIdentifierType { };
+using ServiceWorkerJobIdentifier = LegacyNullableAtomicObjectIdentifier<ServiceWorkerJobIdentifierType>;
 
-enum SWServerToContextConnectionIdentifierType { };
-using SWServerToContextConnectionIdentifier = ObjectIdentifier<SWServerToContextConnectionIdentifierType>;
+enum class SWServerToContextConnectionIdentifierType { };
+using SWServerToContextConnectionIdentifier = LegacyNullableObjectIdentifier<SWServerToContextConnectionIdentifierType>;
 
 using SWServerConnectionIdentifierType = ProcessIdentifierType;
-using SWServerConnectionIdentifier = ObjectIdentifier<SWServerConnectionIdentifierType>;
+using SWServerConnectionIdentifier = LegacyNullableObjectIdentifier<SWServerConnectionIdentifierType>;
 
-using DocumentOrWorkerIdentifier = Variant<DocumentIdentifier, ServiceWorkerIdentifier>;
+using ServiceWorkerOrClientData = std::variant<ServiceWorkerData, ServiceWorkerClientData>;
 
-using ServiceWorkerOrClientData = Variant<ServiceWorkerData, ServiceWorkerClientData>;
-using ServiceWorkerOrClientIdentifier = Variant<ServiceWorkerIdentifier, ServiceWorkerClientIdentifier>;
+// FIXME: It should be possible to replace ServiceWorkerOrClientIdentifier with ScriptExecutionContextIdentifier entirely.
+using ServiceWorkerOrClientIdentifier = std::variant<ServiceWorkerIdentifier, ScriptExecutionContextIdentifier>;
+
+struct ServiceWorkerScripts {
+    ServiceWorkerScripts isolatedCopy() const
+    {
+        MemoryCompactRobinHoodHashMap<WTF::URL, ScriptBuffer> isolatedImportedScripts;
+        for (auto& [url, script] : importedScripts)
+            isolatedImportedScripts.add(url.isolatedCopy(), script.isolatedCopy());
+        return { identifier, mainScript.isolatedCopy(), WTFMove(isolatedImportedScripts) };
+    }
+
+    ServiceWorkerIdentifier identifier;
+    ScriptBuffer mainScript;
+    MemoryCompactRobinHoodHashMap<WTF::URL, ScriptBuffer> importedScripts;
+};
 
 } // namespace WebCore
-
-namespace WTF {
-
-template <> struct EnumTraits<WebCore::ServiceWorkerClientFrameType> {
-    using values = EnumValues<
-        WebCore::ServiceWorkerClientFrameType,
-        WebCore::ServiceWorkerClientFrameType::Auxiliary,
-        WebCore::ServiceWorkerClientFrameType::TopLevel,
-        WebCore::ServiceWorkerClientFrameType::Nested,
-        WebCore::ServiceWorkerClientFrameType::None
-    >;
-};
-
-template <> struct EnumTraits<WebCore::ServiceWorkerRegistrationState> {
-    using values = EnumValues<
-        WebCore::ServiceWorkerRegistrationState,
-        WebCore::ServiceWorkerRegistrationState::Installing,
-        WebCore::ServiceWorkerRegistrationState::Waiting,
-        WebCore::ServiceWorkerRegistrationState::Active
-    >;
-};
-
-template <> struct EnumTraits<WebCore::ServiceWorkerState> {
-    using values = EnumValues<
-        WebCore::ServiceWorkerState,
-        WebCore::ServiceWorkerState::Installing,
-        WebCore::ServiceWorkerState::Installed,
-        WebCore::ServiceWorkerState::Activating,
-        WebCore::ServiceWorkerState::Activated,
-        WebCore::ServiceWorkerState::Redundant
-    >;
-};
-
-template <> struct EnumTraits<WebCore::ShouldNotifyWhenResolved> {
-    using values = EnumValues<
-        WebCore::ShouldNotifyWhenResolved,
-        WebCore::ShouldNotifyWhenResolved::No,
-        WebCore::ShouldNotifyWhenResolved::Yes
-    >;
-};
-
-} // namespace WTF
-
-#endif // ENABLE(SERVICE_WORKER)

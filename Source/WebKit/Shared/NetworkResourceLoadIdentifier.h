@@ -29,7 +29,7 @@
 
 namespace WebKit {
 
-enum NetworkResourceLoadIdentifierType { };
-using NetworkResourceLoadIdentifier = ObjectIdentifier<NetworkResourceLoadIdentifierType>;
+struct NetworkResourceLoadIdentifierType;
+using NetworkResourceLoadIdentifier = LegacyNullableObjectIdentifier<NetworkResourceLoadIdentifierType>;
 
 }

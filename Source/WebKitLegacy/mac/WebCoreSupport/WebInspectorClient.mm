@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2020 Apple Inc.  All rights reserved.
+ * Copyright (C) 2006-2022 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -46,15 +46,16 @@
 #import <SecurityInterface/SFCertificatePanel.h>
 #import <SecurityInterface/SFCertificateView.h>
 #import <WebCore/CertificateInfo.h>
-#import <WebCore/Frame.h>
 #import <WebCore/InspectorController.h>
 #import <WebCore/InspectorFrontendClient.h>
+#import <WebCore/LocalFrame.h>
 #import <WebCore/Page.h>
 #import <WebCore/ScriptController.h>
 #import <WebCore/Settings.h>
 #import <WebKitLegacy/DOMExtensions.h>
 #import <algorithm>
 #import <wtf/NakedPtr.h>
+#import <wtf/cocoa/SpanCocoa.h>
 #import <wtf/text/Base64.h>
 
 using namespace WebCore;
@@ -100,21 +101,22 @@ WebInspectorClient::WebInspectorClient(WebView* inspectedWebView)
 {
 }
 
+WebInspectorClient::~WebInspectorClient() = default;
+
 void WebInspectorClient::inspectedPageDestroyed()
 {
-    delete this;
 }
 
 FrontendChannel* WebInspectorClient::openLocalFrontend(InspectorController* inspectedPageController)
 {
-    RetainPtr<WebInspectorWindowController> windowController = adoptNS([[WebInspectorWindowController alloc] initWithInspectedWebView:m_inspectedWebView isUnderTest:inspectedPageController->isUnderTest()]);
+    RetainPtr<WebInspectorWindowController> windowController = adoptNS([[WebInspectorWindowController alloc] initWithInspectedWebView:m_inspectedWebView.get().get() isUnderTest:inspectedPageController->isUnderTest()]);
     [windowController.get() setInspectorClient:this];
 
     m_frontendPage = core([windowController.get() frontendWebView]);
-    m_frontendClient = makeUnique<WebInspectorFrontendClient>(m_inspectedWebView, windowController.get(), inspectedPageController, m_frontendPage, createFrontendSettings());
+    m_frontendClient = makeUnique<WebInspectorFrontendClient>(m_inspectedWebView.get().get(), windowController.get(), inspectedPageController, m_frontendPage.get(), createFrontendSettings());
 
     RetainPtr<WebInspectorFrontend> webInspectorFrontend = adoptNS([[WebInspectorFrontend alloc] initWithFrontendClient:m_frontendClient.get()]);
-    [[m_inspectedWebView inspector] setFrontend:webInspectorFrontend.get()];
+    [[m_inspectedWebView.get() inspector] setFrontend:webInspectorFrontend.get()];
 
     m_frontendPage->inspectorController().setInspectorFrontendClient(m_frontendClient.get());
 
@@ -127,7 +129,7 @@ void WebInspectorClient::bringFrontendToFront()
     m_frontendClient->bringToFront();
 }
 
-void WebInspectorClient::didResizeMainFrame(Frame*)
+void WebInspectorClient::didResizeMainFrame(LocalFrame*)
 {
     if (m_frontendClient)
         m_frontendClient->attachAvailabilityChanged(canAttach());
@@ -156,13 +158,13 @@ void WebInspectorClient::hideHighlight()
 
 void WebInspectorClient::didSetSearchingForNode(bool enabled)
 {
-    WebInspector *inspector = [m_inspectedWebView inspector];
+    WebInspector *inspector = [m_inspectedWebView.get() inspector];
 
     ASSERT(isMainThread());
 
     if (enabled) {
-        [[m_inspectedWebView window] makeKeyAndOrderFront:nil];
-        [[m_inspectedWebView window] makeFirstResponder:m_inspectedWebView];
+        [[m_inspectedWebView.get() window] makeKeyAndOrderFront:nil];
+        [[m_inspectedWebView.get() window] makeFirstResponder:m_inspectedWebView.get().get()];
         [[NSNotificationCenter defaultCenter] postNotificationName:WebInspectorDidStartSearchingForNode object:inspector];
     } else
         [[NSNotificationCenter defaultCenter] postNotificationName:WebInspectorDidStopSearchingForNode object:inspector];
@@ -205,11 +207,11 @@ void WebInspectorFrontendClient::frontendLoaded()
 
     InspectorFrontendClientLocal::frontendLoaded();
 
-    WebFrame *frame = [m_inspectedWebView mainFrame];
+    WebFrame *frame = [m_inspectedWebView.get() mainFrame];
 
-    WebFrameLoadDelegateImplementationCache* implementations = WebViewGetFrameLoadDelegateImplementations(m_inspectedWebView);
+    WebFrameLoadDelegateImplementationCache* implementations = WebViewGetFrameLoadDelegateImplementations(m_inspectedWebView.get().get());
     if (implementations->didClearInspectorWindowObjectForFrameFunc)
-        CallFrameLoadDelegate(implementations->didClearInspectorWindowObjectForFrameFunc, m_inspectedWebView,
+        CallFrameLoadDelegate(implementations->didClearInspectorWindowObjectForFrameFunc, m_inspectedWebView.get().get(),
                               @selector(webView:didClearInspectorWindowObject:forFrame:), [frame windowObject], frame);
 
     bool attached = [m_frontendWindowController.get() attached];
@@ -253,7 +255,7 @@ void WebInspectorFrontendClient::closeWindow()
 
 void WebInspectorFrontendClient::reopen()
 {
-    WebInspector* inspector = [m_inspectedWebView inspector];
+    WebInspector* inspector = [m_inspectedWebView.get() inspector];
     [inspector close:nil];
     [inspector show:nil];
 }
@@ -349,11 +351,7 @@ void WebInspectorFrontendClient::showCertificate(const CertificateInfo& certific
     if (!window)
         window = [NSApp keyWindow];
 
-#if HAVE(SEC_TRUST_SERIALIZATION)
-    [certificatePanel beginSheetForWindow:window modalDelegate:nil didEndSelector:NULL contextInfo:nullptr trust:certificateInfo.trust() showGroup:YES];
-#else
-    [certificatePanel beginSheetForWindow:window modalDelegate:nil didEndSelector:NULL contextInfo:nullptr certificates:(NSArray *)certificateInfo.certificateChain() showGroup:YES];
-#endif
+    [certificatePanel beginSheetForWindow:window modalDelegate:nil didEndSelector:NULL contextInfo:nullptr trust:certificateInfo.trust().get() showGroup:YES];
 
     // This must be called after the trust panel has been displayed, because the certificateView doesn't exist beforehand.
     SFCertificateView *certificateView = [certificatePanel certificateView];
@@ -383,15 +381,34 @@ void WebInspectorFrontendClient::updateWindowTitle() const
     [[m_frontendWindowController.get() window] setTitle:title];
 }
 
-void WebInspectorFrontendClient::save(const String& suggestedURL, const String& content, bool base64Encoded, bool forceSaveDialog)
+bool WebInspectorFrontendClient::canSave(InspectorFrontendClient::SaveMode saveMode)
 {
+    switch (saveMode) {
+    case InspectorFrontendClient::SaveMode::SingleFile:
+        return true;
+
+    case InspectorFrontendClient::SaveMode::FileVariants:
+        return false;
+    }
+
+    ASSERT_NOT_REACHED();
+    return false;
+}
+
+void WebInspectorFrontendClient::save(Vector<InspectorFrontendClient::SaveData>&& saveDatas, bool forceSaveAs)
+{
+    // FIXME: Share with WebInspectorUIProxyMac.
+
+    ASSERT(saveDatas.size() == 1);
+
+    auto suggestedURL = saveDatas[0].url;
     ASSERT(!suggestedURL.isEmpty());
 
     NSURL *platformURL = m_suggestedToActualURLMap.get(suggestedURL).get();
     if (!platformURL) {
         platformURL = [NSURL URLWithString:suggestedURL];
         // The user must confirm new filenames before we can save to them.
-        forceSaveDialog = true;
+        forceSaveAs = true;
     }
 
     ASSERT(platformURL);
@@ -400,7 +417,8 @@ void WebInspectorFrontendClient::save(const String& suggestedURL, const String& 
 
     // Necessary for the block below.
     String suggestedURLCopy = suggestedURL;
-    String contentCopy = content;
+    String contentCopy = saveDatas[0].content;
+    bool base64Encoded = saveDatas[0].base64Encoded;
 
     auto saveToURL = ^(NSURL *actualURL) {
         ASSERT(actualURL);
@@ -408,18 +426,16 @@ void WebInspectorFrontendClient::save(const String& suggestedURL, const String& 
         m_suggestedToActualURLMap.set(suggestedURLCopy, actualURL);
 
         if (base64Encoded) {
-            auto decodedData = base64Decode(content, Base64DecodeOptions::ValidatePadding);
+            auto decodedData = base64Decode(contentCopy, { Base64DecodeOption::ValidatePadding });
             if (!decodedData)
                 return;
-            RetainPtr<NSData> dataContent = adoptNS([[NSData alloc] initWithBytes:decodedData->data() length:decodedData->size()]);
+            RetainPtr dataContent = toNSData(decodedData->span());
             [dataContent writeToURL:actualURL atomically:YES];
         } else
             [contentCopy writeToURL:actualURL atomically:YES encoding:NSUTF8StringEncoding error:NULL];
-
-        core([m_frontendWindowController frontendWebView])->mainFrame().script().executeScriptIgnoringException([NSString stringWithFormat:@"InspectorFrontendAPI.savedURL(\"%@\")", actualURL.absoluteString]);
     };
 
-    if (!forceSaveDialog) {
+    if (!forceSaveAs) {
         saveToURL(platformURL);
         return;
     }
@@ -448,23 +464,6 @@ void WebInspectorFrontendClient::save(const String& suggestedURL, const String& 
         completionHandler([panel runModal]);
 }
 
-void WebInspectorFrontendClient::append(const String& suggestedURL, const String& content)
-{
-    ASSERT(!suggestedURL.isEmpty());
-
-    RetainPtr<NSURL> actualURL = m_suggestedToActualURLMap.get(suggestedURL);
-    // do not append unless the user has already confirmed this filename in save().
-    if (!actualURL)
-        return;
-
-    NSFileHandle *handle = [NSFileHandle fileHandleForWritingToURL:actualURL.get() error:NULL];
-    [handle seekToEndOfFile];
-    [handle writeData:[content dataUsingEncoding:NSUTF8StringEncoding]];
-    [handle closeFile];
-
-    core([m_frontendWindowController frontendWebView])->mainFrame().script().executeScriptIgnoringException([NSString stringWithFormat:@"InspectorFrontendAPI.appendedToURL(\"%@\")", [actualURL absoluteString]]);
-}
-
 // MARK: -
 
 @implementation WebInspectorWindowController
@@ -481,12 +480,10 @@ void WebInspectorFrontendClient::append(const String& suggestedURL, const String
     [preferences setAutosaves:NO];
     [preferences setDefaultFixedFontSize:11];
     [preferences setFixedFontFamily:@"Menlo"];
-    [preferences setJavaEnabled:NO];
     [preferences setJavaScriptEnabled:YES];
     [preferences setLoadsImagesAutomatically:YES];
     [preferences setMinimumFontSize:0];
     [preferences setMinimumLogicalFontSize:9];
-    [preferences setPlugInsEnabled:NO];
     [preferences setTabsToLinks:NO];
     [preferences setUserStyleSheetEnabled:NO];
     [preferences setAllowFileAccessFromFileURLs:YES];
@@ -562,6 +559,10 @@ void WebInspectorFrontendClient::append(const String& suggestedURL, const String
     [window setMinFullScreenContentSize:NSMakeSize(minimumFullScreenWidth, minimumWindowHeight)];
     [window setCollectionBehavior:([window collectionBehavior] | NSWindowCollectionBehaviorFullScreenAllowsTiling)];
 
+#if HAVE(STAGE_MANAGER_NS_WINDOW_COLLECTION_BEHAVIORS)
+    [window setCollectionBehavior:([window collectionBehavior] | NSWindowCollectionBehaviorAuxiliary)];
+#endif
+    
     [window setTitlebarAppearsTransparent:YES];
 
     [self setWindow:window.get()];

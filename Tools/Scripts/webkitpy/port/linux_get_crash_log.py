@@ -55,12 +55,13 @@ class GDBCrashLogGenerator(object):
 
     def _get_gdb_output(self, coredump_path):
         process_name = self._filesystem.join(os.path.dirname(str(self._path_to_driver())), self.name)
-        cmd = ['gdb', '-ex', 'thread apply all bt 1024', '--batch', process_name, coredump_path]
+        # GDB may use quite a lot of CPU to generate a backtrace so give it less priority than other tester process to help avoiding timeouts.
+        cmd = ['nice', 'gdb', '-ex', 'thread apply all bt 1024', '--batch', process_name, coredump_path]
         proc = self._executive.popen(cmd, stdin=None, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = proc.communicate()
         errors = [stderr_line.strip().decode('utf8', 'ignore') for stderr_line in stderr.splitlines()]
         if proc.returncode != 0:
-            stdout = ('ERROR: The gdb process exited with non-zero return code %s\n\n' % proc.returncode) + stdout
+            stdout = (b'ERROR: The gdb process exited with non-zero return code %s\n\n' % str(proc.returncode).encode('utf8', 'ignore')) + stdout
         return (stdout.decode('utf8', 'ignore'), errors)
 
     def _get_tmp_file_name(self, coredumpctl, filename):
@@ -80,7 +81,7 @@ class GDBCrashLogGenerator(object):
                 time.sleep(1)
 
             try:
-                info = self._executive.run_command(coredumpctl + ['info', "--since=" + time.strftime("%a %Y-%m-%d %H:%M:%S %Z", time.localtime(self.newer_than))],
+                info = self._executive.run_command(coredumpctl + ['info', '--since=@%f' % self.newer_than],
                     return_stderr=True)
             except (ScriptError, OSError):
                 continue
@@ -121,7 +122,8 @@ class GDBCrashLogGenerator(object):
 
         proc = self._executive.popen(cmd, stdin=None, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         crash_log, stderr = proc.communicate()
-        errors = string_utils.decode(str(stderr or '<empty>'), errors='ignore').splitlines()
+        crash_log = string_utils.decode(crash_log, errors='ignore')
+        errors = string_utils.decode(stderr or '<empty>', errors='ignore').splitlines()
         return crash_log, errors
 
     def generate_crash_log(self, stdout, stderr):
@@ -153,10 +155,12 @@ class GDBCrashLogGenerator(object):
                 coredump_path = list(reversed(sorted(dumps)))[0]
                 if not self.newer_than or self._filesystem.mtime(coredump_path) > self.newer_than:
                     crash_log, errors = self._get_gdb_output(coredump_path)
+                    if os.environ.get('WEBKIT_CORE_DUMPS_AUTODELETE', '0') == '1':
+                        os.remove(coredump_path)
         elif coredumpctl:
             crash_log, errors = self._get_trace_from_systemd(coredumpctl, pid_representation)
 
-        stderr_lines = errors + string_utils.decode(str(stderr or '<empty>'), errors='ignore').splitlines()
+        stderr_lines = errors + string_utils.decode(stderr or '<empty>', errors='ignore').splitlines()
         errors_str = '\n'.join(('STDERR: ' + stderr_line) for stderr_line in stderr_lines)
         cppfilt_proc = self._executive.popen(
             ['c++filt'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)

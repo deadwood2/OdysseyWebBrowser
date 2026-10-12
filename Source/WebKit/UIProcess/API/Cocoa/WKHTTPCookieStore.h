@@ -31,7 +31,13 @@ NS_ASSUME_NONNULL_BEGIN
 
 @class WKHTTPCookieStore;
 
+typedef NS_ENUM(NSInteger, WKCookiePolicy) {
+    WKCookiePolicyAllow,
+    WKCookiePolicyDisallow,
+} NS_SWIFT_NAME(WKHTTPCookieStore.CookiePolicy) WK_API_AVAILABLE(macos(14.0), ios(17.0));
+
 WK_API_AVAILABLE(macos(10.13), ios(11.0))
+WK_SWIFT_UI_ACTOR
 @protocol WKHTTPCookieStoreObserver <NSObject>
 @optional
 - (void)cookiesDidChangeInCookieStore:(WKHTTPCookieStore *)cookieStore;
@@ -41,6 +47,7 @@ WK_API_AVAILABLE(macos(10.13), ios(11.0))
  A WKHTTPCookieStore object allows managing the HTTP cookies associated with a particular WKWebsiteDataStore.
  */
 WK_CLASS_AVAILABLE(macos(10.13), ios(11.0))
+WK_SWIFT_UI_ACTOR
 @interface WKHTTPCookieStore : NSObject
 
 - (instancetype)init NS_UNAVAILABLE;
@@ -48,18 +55,18 @@ WK_CLASS_AVAILABLE(macos(10.13), ios(11.0))
 /*! @abstract Fetches all stored cookies.
  @param completionHandler A block to invoke with the fetched cookies.
  */
-- (void)getAllCookies:(void (^)(NSArray<NSHTTPCookie *> *))completionHandler;
+- (void)getAllCookies:(WK_SWIFT_UI_ACTOR void (^)(NSArray<NSHTTPCookie *> *))completionHandler;
 
 /*! @abstract Set a cookie.
  @param cookie The cookie to set.
  @param completionHandler A block to invoke once the cookie has been stored.
  */
-- (void)setCookie:(NSHTTPCookie *)cookie completionHandler:(nullable void (^)(void))completionHandler;
+- (void)setCookie:(NSHTTPCookie *)cookie completionHandler:(nullable WK_SWIFT_UI_ACTOR void (^)(void))completionHandler;
 
 /*! @abstract Delete the specified cookie.
  @param completionHandler A block to invoke once the cookie has been deleted.
  */
-- (void)deleteCookie:(NSHTTPCookie *)cookie completionHandler:(nullable void (^)(void))completionHandler WK_SWIFT_ASYNC_NAME(deleteCookie(_:));
+- (void)deleteCookie:(NSHTTPCookie *)cookie completionHandler:(nullable WK_SWIFT_UI_ACTOR void (^)(void))completionHandler WK_SWIFT_ASYNC_NAME(deleteCookie(_:));
 
 /*! @abstract Adds a WKHTTPCookieStoreObserver object with the cookie store.
  @param observer The observer object to add.
@@ -72,6 +79,17 @@ WK_CLASS_AVAILABLE(macos(10.13), ios(11.0))
  @param observer The observer to remove.
  */
 - (void)removeObserver:(id<WKHTTPCookieStoreObserver>)observer;
+
+/*! @abstract Set whether cookies are allowed.
+  @param policy A value indicating whether cookies are allowed. The default value is WKCookiePolicyAllow.
+  @param completionHandler A block to invoke once the cookie policy has been set.
+  */
+- (void)setCookiePolicy:(WKCookiePolicy)policy completionHandler:(nullable WK_SWIFT_UI_ACTOR void (^)(void))completionHandler WK_API_AVAILABLE(macos(14.0), ios(17.0));
+
+/*! @abstract Get whether cookies are allowed.
+ @param completionHandler A block to invoke with the value of whether cookies are allowed.
+ */
+- (void)getCookiePolicy:(WK_SWIFT_UI_ACTOR void (^)(WKCookiePolicy))completionHandler WK_SWIFT_ASYNC_NAME(getter:cookiePolicy()) WK_API_AVAILABLE(macos(14.0), ios(17.0));
 
 @end
 

@@ -23,19 +23,12 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef WebCoreInstanceHandle_h
-#define WebCoreInstanceHandle_h
+#pragma once
 
-typedef struct HINSTANCE__* HINSTANCE;
+#include "windows.h"
 
 namespace WebCore {
 
-// The global DLL or application instance used for all windows.
-extern HINSTANCE s_instanceHandle;
-
-inline void setInstanceHandle(HINSTANCE instanceHandle) { s_instanceHandle = instanceHandle; }
-inline HINSTANCE instanceHandle() { return s_instanceHandle; }
+HINSTANCE instanceHandle();
     
 }
-
-#endif // WebCoreInstanceHandle_h

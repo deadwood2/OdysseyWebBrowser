@@ -1,4 +1,4 @@
-# Copyright (C) 2018-2020 Apple Inc. All rights reserved.
+# Copyright (C) 2018-2024 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -22,7 +22,10 @@
 
 import os
 
-is_test_mode_enabled = os.getenv('EWS_PRODUCTION') is None
+import ews.common.util as util
+
+is_test_mode_enabled = util.load_password('EWS_PRODUCTION') is None
+custom_suffix = util.get_custom_suffix()
 
 BUG_SERVER_HOST = 'bugs.webkit.org'
 BUG_SERVER_URL = 'https://{}/'.format(BUG_SERVER_HOST)
@@ -31,17 +34,20 @@ PATCH_FOLDER = '/tmp/'
 if is_test_mode_enabled:
     BUILDBOT_SERVER_HOST = 'localhost'
 else:
-    BUILDBOT_SERVER_HOST = 'ews-build.webkit.org'
+    BUILDBOT_SERVER_HOST = f'ews-build.webkit{custom_suffix}.org'
+
+BUILDBOT_TRY_HOST = util.load_password('BUILDBOT_TRY_HOST', default=BUILDBOT_SERVER_HOST)
+
 BUILDBOT_SERVER_PORT = '5555'
 COMMIT_QUEUE_PORT = '5557'
-BUILDBOT_TRY_USERNAME = os.getenv('BUILDBOT_TRY_USERNAME', 'sampleuser')
-BUILDBOT_TRY_PASSWORD = os.getenv('BUILDBOT_TRY_PASSWORD', 'samplepass')
+BUILDBOT_TRY_USERNAME = util.load_password('BUILDBOT_TRY_USERNAME', default='sampleuser')
+BUILDBOT_TRY_PASSWORD = util.load_password('BUILDBOT_TRY_PASSWORD', default='samplepass')
 
 SUCCESS = 0
 ERR_UNEXPECTED = -1
-ERR_EXISTING_PATCH = -2
-ERR_NON_EXISTING_PATCH = -3
-ERR_INVALID_PATCH_ID = -4
-ERR_OBSOLETE_PATCH = -5
-ERR_UNABLE_TO_FETCH_PATCH = -6
+ERR_EXISTING_CHANGE = -2
+ERR_NON_EXISTING_CHANGE = -3
+ERR_INVALID_CHANGE_ID = -4
+ERR_OBSOLETE_CHANGE = -5
+ERR_UNABLE_TO_FETCH_CHANGE = -6
 ERR_BUG_CLOSED = -7

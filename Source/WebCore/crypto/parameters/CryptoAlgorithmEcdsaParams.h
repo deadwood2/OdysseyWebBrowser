@@ -28,16 +28,14 @@
 #include "CryptoAlgorithmParameters.h"
 #include <JavaScriptCore/JSObject.h>
 #include <JavaScriptCore/Strong.h>
-#include <wtf/Variant.h>
-
-#if ENABLE(WEB_CRYPTO)
+#include <variant>
 
 namespace WebCore {
 
 class CryptoAlgorithmEcdsaParams final : public CryptoAlgorithmParameters {
 public:
     // FIXME: Consider merging hash and hashIdentifier.
-    Variant<JSC::Strong<JSC::JSObject>, String> hash;
+    std::variant<JSC::Strong<JSC::JSObject>, String> hash;
     CryptoAlgorithmIdentifier hashIdentifier;
 
     Class parametersClass() const final { return Class::EcdsaParams; }
@@ -55,5 +53,3 @@ public:
 } // namespace WebCore
 
 SPECIALIZE_TYPE_TRAITS_CRYPTO_ALGORITHM_PARAMETERS(EcdsaParams)
-
-#endif // ENABLE(WEB_CRYPTO)

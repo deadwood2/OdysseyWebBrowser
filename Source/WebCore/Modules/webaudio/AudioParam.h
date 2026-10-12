@@ -32,7 +32,7 @@
 #include "AudioParamTimeline.h"
 #include "AudioSummingJunction.h"
 #include "AutomationRate.h"
-#include <JavaScriptCore/Float32Array.h>
+#include <JavaScriptCore/Forward.h>
 #include <sys/types.h>
 #include <wtf/LoggerHelper.h>
 #include <wtf/RefCounted.h>
@@ -128,7 +128,7 @@ private:
 #if !RELEASE_LOG_DISABLED
     const Logger& logger() const final { return m_logger.get(); }
     const void* logIdentifier() const final { return m_logIdentifier; }
-    const char* logClassName() const final { return "AudioParam"; }
+    ASCIILiteral logClassName() const final { return "AudioParam"_s; }
     WTFLogChannel& logChannel() const final;
 #endif
     

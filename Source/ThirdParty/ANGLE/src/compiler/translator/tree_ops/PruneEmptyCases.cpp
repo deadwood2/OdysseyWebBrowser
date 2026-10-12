@@ -52,7 +52,7 @@ bool AreEmptyBlocks(const TIntermSequence *statements)
 class PruneEmptyCasesTraverser : private TIntermTraverser
 {
   public:
-    ANGLE_NO_DISCARD static bool apply(TCompiler *compiler, TIntermBlock *root);
+    [[nodiscard]] static bool apply(TCompiler *compiler, TIntermBlock *root);
 
   private:
     PruneEmptyCasesTraverser();
@@ -104,8 +104,8 @@ bool PruneEmptyCasesTraverser::visitSwitch(Visit visit, TIntermSwitch *node)
         {
             TIntermSequence emptyReplacement;
             ASSERT(getParentNode()->getAsBlock());
-            mMultiReplacements.push_back(NodeReplaceWithMultipleEntry(getParentNode()->getAsBlock(),
-                                                                      node, emptyReplacement));
+            mMultiReplacements.emplace_back(getParentNode()->getAsBlock(), node,
+                                            std::move(emptyReplacement));
         }
         return false;
     }

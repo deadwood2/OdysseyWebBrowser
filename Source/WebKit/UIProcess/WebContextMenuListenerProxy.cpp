@@ -33,8 +33,8 @@
 namespace WebKit {
 using namespace WebCore;
 
-WebContextMenuListenerProxy::WebContextMenuListenerProxy(WebContextMenuListenerProxy::Client& client)
-    : m_client(makeWeakPtr(client))
+WebContextMenuListenerProxy::WebContextMenuListenerProxy(WebContextMenuListenerProxyClient& client)
+    : m_client(client)
 {
 }
 

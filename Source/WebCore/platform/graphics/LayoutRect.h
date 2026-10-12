@@ -34,6 +34,7 @@
 #include "IntRect.h"
 #include "LayoutPoint.h"
 #include "LengthBox.h"
+#include <wtf/ArgumentCoder.h>
 #include <wtf/Forward.h>
 
 namespace WTF {
@@ -44,7 +45,7 @@ namespace WebCore {
 
 class LayoutRect {
 public:
-    LayoutRect() { }
+    LayoutRect() = default;
     LayoutRect(const LayoutPoint& location, const LayoutSize& size)
         : m_location(location), m_size(size) { }
     template<typename T1, typename T2, typename U1, typename U2>
@@ -57,28 +58,6 @@ public:
     LayoutRect(const IntRect& rect) : m_location(rect.location()), m_size(rect.size()) { }
     
     WEBCORE_EXPORT explicit LayoutRect(const FloatRect&); // don't do this implicitly since it's lossy
-
-    template<class Encoder>
-    void encode(Encoder& encoder) const
-    {
-        encoder << m_location << m_size;
-    }
-
-    template<class Decoder>
-    static std::optional<LayoutRect> decode(Decoder& decoder)
-    {
-        std::optional<LayoutPoint> layoutPoint;
-        decoder >> layoutPoint;
-        if (!layoutPoint)
-            return std::nullopt;
-
-        std::optional<LayoutSize> layoutSize;
-        decoder >> layoutSize;
-        if (!layoutSize)
-            return std::nullopt;
-
-        return {{ *layoutPoint, *layoutSize }};
-    }
 
     LayoutPoint location() const { return m_location; }
     LayoutSize size() const { return m_size; }
@@ -114,6 +93,8 @@ public:
         m_location.move(-box.left(), -box.top());
         m_size.expand(box.left() + box.right(), box.top() + box.bottom());
     }
+    void expandToInfiniteY();
+    void expandToInfiniteX();
     template<typename T, typename U> void expand(T dw, U dh) { m_size.expand(dw, dh); }
     void contract(const LayoutSize& size) { m_size -= size; }
     void contract(const LayoutBoxExtent& box)
@@ -220,10 +201,13 @@ public:
         // Return a rect that is slightly smaller than the true max rect to allow pixelSnapping to round up to the nearest IntRect without overflowing.
         return LayoutRect(LayoutUnit::nearlyMin() / 2, LayoutUnit::nearlyMin() / 2, LayoutUnit::nearlyMax(), LayoutUnit::nearlyMax());
     }
-    
+
     operator FloatRect() const { return FloatRect(m_location, m_size); }
 
+    friend bool operator==(const LayoutRect&, const LayoutRect&) = default;
+
 private:
+    friend struct IPC::ArgumentCoder<WebCore::LayoutRect, void>;
     void setLocationAndSizeFromEdges(LayoutUnit left, LayoutUnit top, LayoutUnit right, LayoutUnit bottom);
 
     LayoutPoint m_location;
@@ -245,16 +229,6 @@ inline LayoutRect unionRect(const LayoutRect& a, const LayoutRect& b)
 }
 
 LayoutRect unionRect(const Vector<LayoutRect>&);
-
-inline bool operator==(const LayoutRect& a, const LayoutRect& b)
-{
-    return a.location() == b.location() && a.size() == b.size();
-}
-
-inline bool operator!=(const LayoutRect& a, const LayoutRect& b)
-{
-    return a.location() != b.location() || a.size() != b.size();
-}
 
 inline bool LayoutRect::isInfinite() const
 {

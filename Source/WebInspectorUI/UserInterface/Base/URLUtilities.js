@@ -289,6 +289,24 @@ WI.truncateURL = function(url, multiline = false, dataURIMaxSize = 6)
     return header + firstChunk + middleChunk + lastChunk;
 };
 
+WI.urlWithoutExtension = function(urlString)
+{
+    let url = null;
+    try {
+        url = new URL(urlString);
+    } catch { }
+    if (!url)
+        return urlString;
+
+    let firstDotInLastPathComponentIndex = url.pathname.indexOf(".", url.pathname.lastIndexOf("/"));
+    if (firstDotInLastPathComponentIndex !== -1)
+        url.pathname = url.pathname.substring(0, firstDotInLastPathComponentIndex);
+
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+};
+
 WI.urlWithoutFragment = function(urlString)
 {
     try {
@@ -308,6 +326,35 @@ WI.urlWithoutFragment = function(urlString)
 
     return urlString;
 };
+
+WI.urlWithoutUserQueryOrFragment = function(urlString)
+{
+    try {
+        let url = new URL(urlString);
+
+        if (url.username) {
+            url.username = "";
+        }
+        if (url.password) {
+            url.password = "";
+        }
+        if (url.search) {
+            url.search = "";
+        }
+        if (url.hash) {
+            url.hash = "";
+        }
+
+        let result = url.toString();
+        if (result.endsWith("#"))
+            return result.substring(0, result.length - 1);
+
+        return result;
+
+    } catch { }
+
+    return urlString;
+}
 
 WI.displayNameForHost = function(host)
 {

@@ -31,6 +31,7 @@
 #include "Element.h"
 #include "NodeRenderStyle.h"
 #include "RenderElement.h"
+#include "SVGElement.h"
 #include "Text.h"
 
 namespace WebCore {
@@ -41,7 +42,9 @@ Update::Update(Document& document)
 {
 }
 
-const ElementUpdates* Update::elementUpdates(const Element& element) const
+Update::~Update() = default;
+
+const ElementUpdate* Update::elementUpdate(const Element& element) const
 {
     auto it = m_elements.find(&element);
     if (it == m_elements.end())
@@ -49,7 +52,7 @@ const ElementUpdates* Update::elementUpdates(const Element& element) const
     return &it->value;
 }
 
-ElementUpdates* Update::elementUpdates(const Element& element)
+ElementUpdate* Update::elementUpdate(const Element& element)
 {
     auto it = m_elements.find(&element);
     if (it == m_elements.end())
@@ -67,8 +70,8 @@ const TextUpdate* Update::textUpdate(const Text& text) const
 
 const RenderStyle* Update::elementStyle(const Element& element) const
 {
-    if (auto* updates = elementUpdates(element))
-        return updates->update.style.get();
+    if (auto* update = elementUpdate(element))
+        return update->style.get();
     auto* renderer = element.renderer();
     if (!renderer)
         return nullptr;
@@ -77,23 +80,26 @@ const RenderStyle* Update::elementStyle(const Element& element) const
 
 RenderStyle* Update::elementStyle(const Element& element)
 {
-    if (auto* updates = elementUpdates(element))
-        return updates->update.style.get();
+    if (auto* update = elementUpdate(element))
+        return update->style.get();
     auto* renderer = element.renderer();
     if (!renderer)
         return nullptr;
     return &renderer->mutableStyle();
 }
 
-void Update::addElement(Element& element, Element* parent, ElementUpdates&& elementUpdates)
+void Update::addElement(Element& element, Element* parent, ElementUpdate&& elementUpdate)
 {
-    ASSERT(!m_elements.contains(&element));
     ASSERT(composedTreeAncestors(element).first() == parent);
+    ASSERT(!m_elements.contains(&element));
 
     m_roots.remove(&element);
     addPossibleRoot(parent);
 
-    m_elements.add(&element, WTFMove(elementUpdates));
+    if (elementUpdate.mayNeedRebuildRoot)
+        addPossibleRebuildRoot(element, parent);
+
+    m_elements.add(&element, WTFMove(elementUpdate));
 }
 
 void Update::addText(Text& text, Element* parent, TextUpdate&& textUpdate)
@@ -122,15 +128,36 @@ void Update::addText(Text& text, TextUpdate&& textUpdate)
     addText(text, composedTreeAncestors(text).first(), WTFMove(textUpdate));
 }
 
+void Update::addSVGRendererUpdate(SVGElement& element)
+{
+    auto parent = composedTreeAncestors(element).first();
+    m_roots.remove(&element);
+    addPossibleRoot(parent);
+    element.setNeedsSVGRendererUpdate(true);
+}
+
+void Update::addInitialContainingBlockUpdate(std::unique_ptr<RenderStyle> style)
+{
+    m_initialContainingBlockUpdate = WTFMove(style);
+}
+
 void Update::addPossibleRoot(Element* element)
 {
     if (!element) {
         m_roots.add(m_document.ptr());
         return;
     }
-    if (m_elements.contains(element))
+    if (element->needsSVGRendererUpdate() || m_elements.contains(element))
         return;
     m_roots.add(element);
+}
+
+void Update::addPossibleRebuildRoot(Element& element, Element* parent)
+{
+    if (parent && m_rebuildRoots.contains(parent))
+        return;
+
+    m_rebuildRoots.add(&element);
 }
 
 }

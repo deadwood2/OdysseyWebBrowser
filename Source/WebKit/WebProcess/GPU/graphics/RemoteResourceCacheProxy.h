@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Apple Inc.  All rights reserved.
+ * Copyright (C) 2020-2023 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,71 +28,78 @@
 #if ENABLE(GPU_PROCESS)
 
 #include "RenderingUpdateID.h"
-#include <WebCore/NativeImage.h>
-#include <WebCore/RenderingResourceIdentifier.h>
+#include <WebCore/RenderingResource.h>
 #include <wtf/HashMap.h>
 
 namespace WebCore {
+class DecomposedGlyphs;
+class Filter;
 class Font;
+class Gradient;
 class ImageBuffer;
+class NativeImage;
+struct FontCustomPlatformData;
 }
 
 namespace WebKit {
 
+class RemoteImageBufferProxy;
 class RemoteRenderingBackendProxy;
 
-class RemoteResourceCacheProxy : public WebCore::NativeImage::Observer {
+class RemoteResourceCacheProxy : public WebCore::RenderingResourceObserver {
 public:
     RemoteResourceCacheProxy(RemoteRenderingBackendProxy&);
     ~RemoteResourceCacheProxy();
 
-    void cacheImageBuffer(WebCore::ImageBuffer&);
-    WebCore::ImageBuffer* cachedImageBuffer(WebCore::RenderingResourceIdentifier);
-    void releaseImageBuffer(WebCore::RenderingResourceIdentifier);
+    void cacheImageBuffer(RemoteImageBufferProxy&);
+    RefPtr<RemoteImageBufferProxy> cachedImageBuffer(WebCore::RenderingResourceIdentifier) const;
+    void forgetImageBuffer(WebCore::RenderingResourceIdentifier);
+
+    WebCore::NativeImage* cachedNativeImage(WebCore::RenderingResourceIdentifier) const;
 
     void recordNativeImageUse(WebCore::NativeImage&);
     void recordFontUse(WebCore::Font&);
     void recordImageBufferUse(WebCore::ImageBuffer&);
+    void recordDecomposedGlyphsUse(WebCore::DecomposedGlyphs&);
+    void recordGradientUse(WebCore::Gradient&);
+    void recordFilterUse(WebCore::Filter&);
+    void recordFontCustomPlatformDataUse(const WebCore::FontCustomPlatformData&);
 
-    void finalizeRenderingUpdate();
+    void didPaintLayers();
 
     void remoteResourceCacheWasDestroyed();
-    void releaseAllRemoteFonts();
     void releaseMemory();
+    void releaseAllImageResources();
+    
+    unsigned imagesCount() const;
+
+    void clear();
 
 private:
-    struct ImageBufferState {
-        WeakPtr<WebCore::ImageBuffer> imageBuffer;
-        uint64_t useCount;
-    };
-    using ImageBufferHashMap = HashMap<WebCore::RenderingResourceIdentifier, ImageBufferState>;
+    using ImageBufferHashMap = HashMap<WebCore::RenderingResourceIdentifier, ThreadSafeWeakPtr<RemoteImageBufferProxy>>;
+    using RenderingResourceHashMap = HashMap<WebCore::RenderingResourceIdentifier, ThreadSafeWeakPtr<WebCore::RenderingResource>>;
+    using FontHashMap = HashMap<WebCore::RenderingResourceIdentifier, uint64_t>;
 
-    struct NativeImageState {
-        WeakPtr<WebCore::NativeImage> image;
-        uint64_t useCount;
-    };
-    using NativeImageHashMap = HashMap<WebCore::RenderingResourceIdentifier, NativeImageState>;
-
-    struct FontState {
-        RenderingUpdateID lastRenderingUpdateVersionUsedWithin;
-        uint64_t useCount;
-    };
-    using FontHashMap = HashMap<WebCore::RenderingResourceIdentifier, FontState>;
-    
-    void releaseNativeImage(WebCore::RenderingResourceIdentifier) override;
+    void releaseRenderingResource(WebCore::RenderingResourceIdentifier) override;
+    void clearRenderingResourceMap();
     void clearNativeImageMap();
 
     void finalizeRenderingUpdateForFonts();
     void prepareForNextRenderingUpdate();
     void clearFontMap();
+    void clearFontCustomPlatformDataMap();
+    void clearImageBufferBackends();
 
     ImageBufferHashMap m_imageBuffers;
-    NativeImageHashMap m_nativeImages;
+    RenderingResourceHashMap m_renderingResources;
     FontHashMap m_fonts;
+    FontHashMap m_fontCustomPlatformDatas;
 
     unsigned m_numberOfFontsUsedInCurrentRenderingUpdate { 0 };
+    unsigned m_numberOfFontCustomPlatformDatasUsedInCurrentRenderingUpdate { 0 };
 
     RemoteRenderingBackendProxy& m_remoteRenderingBackendProxy;
+    uint64_t m_renderingUpdateID;
 };
 
 } // namespace WebKit

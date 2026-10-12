@@ -1,4 +1,4 @@
-# Copyright (C) 2014-2020 Apple Inc. All rights reserved.
+# Copyright (C) 2014-2022 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -21,6 +21,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import logging
+import re
 import time
 
 from webkitpy.port import port_testcase
@@ -29,6 +30,7 @@ from webkitpy.common.system.filesystem_mock import MockFileSystem
 from webkitpy.common.system.executive_mock import MockExecutive, MockExecutive2, MockProcess, ScriptError
 from webkitpy.common.system.systemhost_mock import MockSystemHost
 from webkitpy.common.version_name_map import VersionNameMap
+from webkitpy.layout_tests.controllers.layout_test_runner import TestShard
 
 from webkitcorepy import OutputCapture
 
@@ -38,6 +40,17 @@ class DarwinTest(port_testcase.PortTestCase):
     def assert_skipped_file_search_paths(self, port_name, expected_paths, use_webkit2=False):
         port = self.make_port(port_name=port_name, options=MockOptions(webkit_test_runner=use_webkit2))
         self.assertEqual(port._skipped_file_search_paths(), expected_paths)
+
+    def test_sharding_groups(self):
+        port = self.make_port()
+        self.assertEqual(sorted(port.sharding_groups().keys()), ['media'])
+        self.assertEqual('media', port.group_for_shard(TestShard('media/something', [])))
+        self.assertEqual('media', port.group_for_shard(TestShard('webaudio/something', [])))
+        self.assertEqual('media', port.group_for_shard(TestShard('fast/media/something', [])))
+        self.assertEqual('media', port.group_for_shard(TestShard('media-session/something', [])))
+        self.assertEqual('media', port.group_for_shard(TestShard('imported/mediacapture-fromelement/something', [])))
+        self.assertEqual('media', port.group_for_shard(TestShard('something/media', [])))
+        self.assertEqual(None, port.group_for_shard(TestShard('fast/something', [])))
 
     def test_default_timeout_ms(self):
         super(DarwinTest, self).test_default_timeout_ms()
@@ -154,3 +167,19 @@ class DarwinTest(port_testcase.PortTestCase):
     def test_get_crash_log(self):
         port = self.make_port(port_name=self.port_name)
         port._get_crash_log('DumpRenderTree', 1234, None, None, time.time(), wait_for_log=False)
+
+    def test_stderr_patterns_to_strip(self):
+        content = '\n'.join([
+            'Some log line',
+            'nil host used in call to allowsAnyHTTPSCertificateForHost',
+            'nil host used in call to allowsSpecificHTTPSCertificateForHost',
+            'Some other log line',
+            '',
+        ])
+        port = self.make_port(port_name=self.port_name)
+        for pattern in port.stderr_patterns_to_strip():
+            content = re.sub(pattern[0], pattern[1], content)
+
+        self.assertEqual(
+            content, 'Some log line\nSome other log line\n'
+        )

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2024 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,7 +29,12 @@
 #import "WebKit2Initialize.h"
 #import <JavaScriptCore/ExecutableAllocator.h>
 #import <wtf/OSObjectPtr.h>
+#import <wtf/WTFProcess.h>
+#import <wtf/cocoa/RuntimeApplicationChecksCocoa.h>
+
+#if !USE(RUNNINGBOARD)
 #import <wtf/spi/darwin/XPCSPI.h>
+#endif
 
 // FIXME: This should be moved to an SPI header.
 #if USE(APPLE_INTERNAL_SDK)
@@ -40,9 +45,8 @@ extern "C" OS_NOTHROW void voucher_replace_default_voucher(void);
 
 #define WEBCONTENT_SERVICE_INITIALIZER WebContentServiceInitializer
 #define NETWORK_SERVICE_INITIALIZER NetworkServiceInitializer
-#define PLUGIN_SERVICE_INITIALIZER PluginServiceInitializer
 #define GPU_SERVICE_INITIALIZER GPUServiceInitializer
-#define WEBAUTHN_SERVICE_INITIALIZER WebAuthnServiceInitializer
+#define MODEL_SERVICE_INITIALIZER ModelServiceInitializer
 
 namespace WebKit {
 
@@ -62,12 +66,12 @@ public:
     virtual bool getProcessIdentifier(WebCore::ProcessIdentifier&);
     virtual bool getClientIdentifier(String& clientIdentifier);
     virtual bool getClientBundleIdentifier(String& clientBundleIdentifier);
-    virtual bool getClientSDKVersion(uint32_t& clientSDKVersion);
     virtual bool getClientProcessName(String& clientProcessName);
+    virtual bool getClientSDKAlignedBehaviors(SDKAlignedBehaviors&);
     virtual bool getExtraInitializationData(HashMap<String, String>& extraInitializationData);
 
 protected:
-    bool hasEntitlement(const char* entitlement);
+    bool hasEntitlement(ASCIILiteral entitlement);
     bool isClientSandboxed();
 
     OSObjectPtr<xpc_connection_t> m_connection;
@@ -80,65 +84,54 @@ void initializeAuxiliaryProcess(AuxiliaryProcessInitializationParameters&& param
     XPCServiceType::singleton().initialize(WTFMove(parameters));
 }
 
-#if PLATFORM(MAC)
-OSObjectPtr<os_transaction_t>& osTransaction();
+#if !USE(RUNNINGBOARD)
+void setOSTransaction(OSObjectPtr<os_transaction_t>&&);
 #endif
 
-template<typename XPCServiceType, typename XPCServiceInitializerDelegateType>
-void XPCServiceInitializer(OSObjectPtr<xpc_connection_t> connection, xpc_object_t initializerMessage, xpc_object_t priorityBoostMessage)
-{
-    if (initializerMessage) {
-        if (xpc_dictionary_get_bool(initializerMessage, "configure-jsc-for-testing"))
-            JSC::Config::configureForTesting();
-        if (xpc_dictionary_get_bool(initializerMessage, "disable-jit"))
-            JSC::ExecutableAllocator::setJITEnabled(false);
-        if (xpc_dictionary_get_bool(initializerMessage, "enable-shared-array-buffer")) {
-            JSC::Options::initialize();
-            JSC::Options::AllowUnfinalizedAccessScope scope;
-            JSC::Options::useSharedArrayBuffer() = true;
-        }
-    }
+enum class EnableLockdownMode: bool { No, Yes };
 
+void setJSCOptions(xpc_object_t initializerMessage, EnableLockdownMode);
+
+template<typename XPCServiceType, typename XPCServiceInitializerDelegateType>
+void XPCServiceInitializer(OSObjectPtr<xpc_connection_t> connection, xpc_object_t initializerMessage)
+{
     XPCServiceInitializerDelegateType delegate(WTFMove(connection), initializerMessage);
 
     // We don't want XPC to be in charge of whether the process should be terminated or not,
-    // so ensure that we have an outstanding transaction here. This is not needed on iOS because
-    // the UIProcess takes process assertions on behalf of its child processes.
-#if PLATFORM(MAC)
-    osTransaction() = adoptOSObject(os_transaction_create("WebKit XPC Service"));
+    // so ensure that we have an outstanding transaction here. This is not needed when using
+    // RunningBoard because the UIProcess takes process assertions on behalf of its child processes.
+#if !USE(RUNNINGBOARD)
+    setOSTransaction(adoptOSObject(os_transaction_create("WebKit XPC Service")));
 #endif
 
     InitializeWebKit2();
 
     if (!delegate.checkEntitlements())
-        exit(EXIT_FAILURE);
+        exitProcess(EXIT_FAILURE);
 
     AuxiliaryProcessInitializationParameters parameters;
-    if (priorityBoostMessage)
-        parameters.priorityBoostMessage = priorityBoostMessage;
 
     if (!delegate.getConnectionIdentifier(parameters.connectionIdentifier))
-        exit(EXIT_FAILURE);
+        exitProcess(EXIT_FAILURE);
 
     if (!delegate.getClientIdentifier(parameters.clientIdentifier))
-        exit(EXIT_FAILURE);
+        exitProcess(EXIT_FAILURE);
 
     // The host process may not have a bundle identifier (e.g. a command line app), so don't require one.
     delegate.getClientBundleIdentifier(parameters.clientBundleIdentifier);
-
-    if (!delegate.getClientSDKVersion(parameters.clientSDKVersion))
-        exit(EXIT_FAILURE);
+    
+    delegate.getClientSDKAlignedBehaviors(parameters.clientSDKAlignedBehaviors);
 
     WebCore::ProcessIdentifier processIdentifier;
     if (!delegate.getProcessIdentifier(processIdentifier))
-        exit(EXIT_FAILURE);
+        exitProcess(EXIT_FAILURE);
     parameters.processIdentifier = processIdentifier;
 
     if (!delegate.getClientProcessName(parameters.uiProcessName))
-        exit(EXIT_FAILURE);
+        exitProcess(EXIT_FAILURE);
 
     if (!delegate.getExtraInitializationData(parameters.extraInitializationData))
-        exit(EXIT_FAILURE);
+        exitProcess(EXIT_FAILURE);
 
     // Set the task default voucher to the current value (as propagated by XPC).
     voucher_replace_default_voucher();
@@ -150,11 +143,16 @@ void XPCServiceInitializer(OSObjectPtr<xpc_connection_t> connection, xpc_object_
 
     parameters.processType = XPCServiceType::processType;
 
+    if (initializerMessage) {
+        bool enableLockdownMode = parameters.extraInitializationData.get<HashTranslatorASCIILiteral>("enable-lockdown-mode"_s) == "1"_s;
+        setJSCOptions(initializerMessage, enableLockdownMode ? EnableLockdownMode::Yes : EnableLockdownMode::No);
+    }
+
     initializeAuxiliaryProcess<XPCServiceType>(WTFMove(parameters));
 }
 
 int XPCServiceMain(int, const char**);
-
-void XPCServiceExit(OSObjectPtr<xpc_object_t>&& priorityBoostMessage);
+void XPCServiceEventHandler(xpc_connection_t peer);
+void XPCServiceExit();
 
 } // namespace WebKit

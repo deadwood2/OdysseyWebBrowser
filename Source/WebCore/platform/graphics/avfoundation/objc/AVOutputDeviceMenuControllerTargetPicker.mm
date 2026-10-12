@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2020-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -57,9 +57,9 @@ static NSString *externalOutputDevicePickedKeyName = @"externalOutputDevicePicke
 
 namespace WebCore {
 
-AVOutputDeviceMenuControllerTargetPicker::AVOutputDeviceMenuControllerTargetPicker(AVPlaybackTargetPicker::Client& client)
+AVOutputDeviceMenuControllerTargetPicker::AVOutputDeviceMenuControllerTargetPicker(AVPlaybackTargetPickerClient& client)
     : AVPlaybackTargetPicker(client)
-    , m_outputDeviceMenuControllerDelegate(adoptNS([[WebAVOutputDeviceMenuControllerHelper alloc] initWithCallback:makeWeakPtr(*this)]))
+    , m_outputDeviceMenuControllerDelegate(adoptNS([[WebAVOutputDeviceMenuControllerHelper alloc] initWithCallback:*this]))
 {
 }
 
@@ -77,13 +77,13 @@ AVOutputDeviceMenuController *AVOutputDeviceMenuControllerTargetPicker::devicePi
         RetainPtr<AVOutputContext> context = adoptNS([PAL::allocAVOutputContextInstance() init]);
         m_outputDeviceMenuController = adoptNS([allocAVOutputDeviceMenuControllerInstance() initWithOutputContext:context.get()]);
 
-        [m_outputDeviceMenuController.get() addObserver:m_outputDeviceMenuControllerDelegate.get() forKeyPath:externalOutputDeviceAvailableKeyName options:NSKeyValueObservingOptionNew context:nullptr];
-        [m_outputDeviceMenuController.get() addObserver:m_outputDeviceMenuControllerDelegate.get() forKeyPath:externalOutputDevicePickedKeyName options:NSKeyValueObservingOptionNew context:nullptr];
+        [m_outputDeviceMenuController addObserver:m_outputDeviceMenuControllerDelegate.get() forKeyPath:externalOutputDeviceAvailableKeyName options:NSKeyValueObservingOptionNew context:nullptr];
+        [m_outputDeviceMenuController addObserver:m_outputDeviceMenuControllerDelegate.get() forKeyPath:externalOutputDevicePickedKeyName options:NSKeyValueObservingOptionNew context:nullptr];
 
-        ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
         if (m_outputDeviceMenuController.get().externalOutputDeviceAvailable)
             availableDevicesDidChange();
-        ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_END
     }
 
     return m_outputDeviceMenuController.get();
@@ -101,16 +101,16 @@ void AVOutputDeviceMenuControllerTargetPicker::currentDeviceDidChange()
         client()->currentDeviceChanged();
 }
 
-void AVOutputDeviceMenuControllerTargetPicker::showPlaybackTargetPicker(NSView *, const FloatRect& location, bool hasActiveRoute, bool useDarkAppearance, bool)
+void AVOutputDeviceMenuControllerTargetPicker::showPlaybackTargetPicker(NSView *, const FloatRect& location, bool hasActiveRoute, bool useDarkAppearance)
 {
     if (!client() || m_showingMenu)
         return;
 
     m_showingMenu = true;
 
-    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     bool targetSelected = [devicePicker() showMenuForRect:location appearanceName:(useDarkAppearance ? NSAppearanceNameVibrantDark : NSAppearanceNameVibrantLight) allowReselectionOfSelectedOutputDevice:!hasActiveRoute];
-    ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_END
 
     if (!client())
         return;
@@ -145,14 +145,14 @@ void AVOutputDeviceMenuControllerTargetPicker::invalidatePlaybackTargets()
 
 bool AVOutputDeviceMenuControllerTargetPicker::externalOutputDeviceAvailable()
 {
-    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     return devicePicker().externalOutputDeviceAvailable;
-    ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_END
 }
 
 AVOutputContext * AVOutputDeviceMenuControllerTargetPicker::outputContext()
 {
-    return m_outputDeviceMenuController ? [m_outputDeviceMenuController.get() outputContext] : nullptr;
+    return m_outputDeviceMenuController ? [m_outputDeviceMenuController outputContext] : nullptr;
 }
 
 } // namespace WebCore

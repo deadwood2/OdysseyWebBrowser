@@ -40,8 +40,8 @@
 #include <wtf/URL.h>
 #include <wtf/UUID.h>
 #include <wtf/text/CString.h>
+#include <wtf/text/MakeString.h>
 #include <wtf/text/StringBuilder.h>
-#include <wtf/text/StringConcatenateNumbers.h>
 
 namespace WebCore {
 
@@ -87,8 +87,8 @@ static unsigned urlHostHash(const URL& url)
 {
     StringView host = url.host();
     if (host.is8Bit())
-        return AlreadyHashed::avoidDeletedValue(StringHasher::computeHashAndMaskTop8Bits(host.characters8(), host.length()));
-    return AlreadyHashed::avoidDeletedValue(StringHasher::computeHashAndMaskTop8Bits(host.characters16(), host.length()));
+        return AlreadyHashed::avoidDeletedValue(StringHasher::computeHashAndMaskTop8Bits(host.span8()));
+    return AlreadyHashed::avoidDeletedValue(StringHasher::computeHashAndMaskTop8Bits(host.span16()));
 }
 
 ApplicationCacheGroup* ApplicationCacheStorage::loadCacheGroup(const URL& manifestURL)
@@ -567,7 +567,7 @@ void ApplicationCacheStorage::verifySchemaVersion()
     SQLiteTransaction setDatabaseVersion(m_database);
     setDatabaseVersion.begin();
 
-    auto statement = m_database.prepareStatementSlow(makeString("PRAGMA user_version=%", schemaVersion));
+    auto statement = m_database.prepareStatementSlow(makeString("PRAGMA user_version="_s, schemaVersion));
     if (!statement)
         return;
     
@@ -586,7 +586,7 @@ void ApplicationCacheStorage::openDatabase(bool createIfDoesNotExist)
     if (m_cacheDirectory.isNull())
         return;
 
-    m_cacheFile = FileSystem::pathByAppendingComponent(m_cacheDirectory, "ApplicationCache.db");
+    m_cacheFile = FileSystem::pathByAppendingComponent(m_cacheDirectory, "ApplicationCache.db"_s);
     if (!createIfDoesNotExist && !FileSystem::fileExists(m_cacheFile))
         return;
 
@@ -783,7 +783,6 @@ bool ApplicationCacheStorage::store(ApplicationCacheResource* resource, unsigned
     auto dataStatement = m_database.prepareStatement("INSERT INTO CacheResourceData (data, path) VALUES (?, ?)"_s);
     if (!dataStatement)
         return false;
-    
 
     String fullPath;
     if (!resource->path().isEmpty())
@@ -799,12 +798,12 @@ bool ApplicationCacheStorage::store(ApplicationCacheResource* resource, unsigned
         String flatFileDirectory = FileSystem::pathByAppendingComponent(m_cacheDirectory, m_flatFileSubdirectoryName);
         FileSystem::makeAllDirectories(flatFileDirectory);
 
-        String extension;
+        StringView extension;
         
         String fileName = resource->response().suggestedFilename();
         size_t dotIndex = fileName.reverseFind('.');
         if (dotIndex != notFound && dotIndex < (fileName.length() - 1))
-            extension = fileName.substring(dotIndex);
+            extension = StringView(fileName).substring(dotIndex);
 
         String path;
         if (!writeDataToUniqueFileInDirectory(resource->data(), flatFileDirectory, path, extension))
@@ -814,8 +813,10 @@ bool ApplicationCacheStorage::store(ApplicationCacheResource* resource, unsigned
         resource->setPath(fullPath);
         dataStatement->bindText(2, path);
     } else {
-        if (resource->data().size())
-            dataStatement->bindBlob(1, resource->data());
+        if (resource->data().size()) {
+            auto contiguousData = resource->data().makeContiguous();
+            dataStatement->bindBlob(1, contiguousData->span());
+        }
     }
     
     if (!dataStatement->executeCommand()) {
@@ -873,12 +874,12 @@ bool ApplicationCacheStorage::store(ApplicationCacheResource* resource, unsigned
     
     if (!executeStatement(entryStatement.value()))
         return false;
-    
+
     // Did we successfully write the resource data to a file? If so,
     // release the resource's data and free up a potentially large amount
     // of memory:
     if (!fullPath.isEmpty())
-        resource->data().clear();
+        resource->clear();
 
     resource->setStorageID(resourceId);
     return true;
@@ -1053,15 +1054,15 @@ bool ApplicationCacheStorage::storeNewestCache(ApplicationCacheGroup& group)
 }
 
 template<typename CharacterType>
-static inline void parseHeader(const CharacterType* header, unsigned headerLength, ResourceResponse& response)
+static inline void parseHeader(std::span<const CharacterType> header, ResourceResponse& response)
 {
-    ASSERT(find(header, headerLength, ':') != notFound);
-    unsigned colonPosition = find(header, headerLength, ':');
+    auto colonPosition = WTF::find(header, ':');
+    ASSERT(colonPosition != notFound);
 
     // Save memory by putting the header names into atom strings so each is stored only once,
     // even though the setHTTPHeaderField function does not require an atom string.
-    AtomString headerName { header, colonPosition };
-    String headerValue { header + colonPosition + 1, headerLength - colonPosition - 1 };
+    AtomString headerName { header.first(colonPosition) };
+    String headerValue(header.subspan(colonPosition + 1));
 
     response.setHTTPHeaderField(headerName, headerValue);
 }
@@ -1074,18 +1075,18 @@ static inline void parseHeaders(const String& headers, ResourceResponse& respons
         ASSERT(startPos != endPos);
 
         if (headers.is8Bit())
-            parseHeader(headers.characters8() + startPos, endPos - startPos, response);
+            parseHeader(headers.span8().subspan(startPos, endPos - startPos), response);
         else
-            parseHeader(headers.characters16() + startPos, endPos - startPos, response);
+            parseHeader(headers.span16().subspan(startPos, endPos - startPos), response);
         
         startPos = endPos + 1;
     }
     
     if (startPos != headers.length()) {
         if (headers.is8Bit())
-            parseHeader(headers.characters8(), headers.length(), response);
+            parseHeader(headers.span8(), response);
         else
-            parseHeader(headers.characters16(), headers.length(), response);
+            parseHeader(headers.span16(), response);
     }
 }
     
@@ -1270,31 +1271,28 @@ void ApplicationCacheStorage::deleteTables()
 bool ApplicationCacheStorage::shouldStoreResourceAsFlatFile(ApplicationCacheResource* resource)
 {
     auto& type = resource->response().mimeType();
-    return startsWithLettersIgnoringASCIICase(type, "audio/") || startsWithLettersIgnoringASCIICase(type, "video/");
+    return startsWithLettersIgnoringASCIICase(type, "audio/"_s) || startsWithLettersIgnoringASCIICase(type, "video/"_s);
 }
     
-bool ApplicationCacheStorage::writeDataToUniqueFileInDirectory(SharedBuffer& data, const String& directory, String& path, const String& fileExtension)
+bool ApplicationCacheStorage::writeDataToUniqueFileInDirectory(FragmentedSharedBuffer& data, const String& directory, String& path, StringView fileExtension)
 {
     String fullPath;
     
     do {
-        path = FileSystem::encodeForFileName(createCanonicalUUIDString()) + fileExtension;
-        // Guard against the above function being called on a platform which does not implement
-        // createCanonicalUUIDString().
-        ASSERT(!path.isEmpty());
+        path = makeString(WTF::UUID::createVersion4(), fileExtension);
         if (path.isEmpty())
             return false;
         
         fullPath = FileSystem::pathByAppendingComponent(directory, path);
     } while (FileSystem::parentPath(fullPath) != directory || FileSystem::fileExists(fullPath));
     
-    FileSystem::PlatformFileHandle handle = FileSystem::openFile(fullPath, FileSystem::FileOpenMode::Write);
+    FileSystem::PlatformFileHandle handle = FileSystem::openFile(fullPath, FileSystem::FileOpenMode::Truncate);
     if (!handle)
         return false;
     
     int64_t writtenBytes = 0;
-    data.forEachSegment([&](auto& segment) {
-        writtenBytes += FileSystem::writeToFile(handle, segment.data(), segment.size());
+    data.forEachSegment([&](auto segment) {
+        writtenBytes += FileSystem::writeToFile(handle, segment);
     });
     FileSystem::closeFile(handle);
     
@@ -1496,7 +1494,7 @@ void ApplicationCacheStorage::deleteCacheForOrigin(const SecurityOriginData& sec
         return;
     }
 
-    URL originURL(URL(), securityOrigin.toString());
+    URL originURL = securityOrigin.toURL();
 
     for (const auto& url : *urls) {
         if (!protocolHostAndPortAreEqual(url, originURL))

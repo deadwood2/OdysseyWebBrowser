@@ -26,9 +26,9 @@
 #import "config.h"
 #import <WebKit/WKFoundation.h>
 
+#import "DeprecatedGlobalValues.h"
 #import "HTTPServer.h"
 #import "PlatformUtilities.h"
-#import "TCPServer.h"
 #import "Test.h"
 #import "TestNavigationDelegate.h"
 #import "TestURLSchemeHandler.h"
@@ -45,8 +45,6 @@
 #import <WebKit/_WKFrameTreeNode.h>
 #import <WebKit/_WKProcessPoolConfiguration.h>
 #import <wtf/RetainPtr.h>
-
-static bool isDone;
 
 TEST(WKWebView, EvaluateJavaScriptBlockCrash)
 {
@@ -324,12 +322,40 @@ TEST(WKWebView, EvaluateJavaScriptInWorldsWithGlobalObjectAvailableInCrossOrigin
     
     __block bool done = false;
     [webView _frames:^(_WKFrameTreeNode *mainFrame) {
-        [webView _evaluateJavaScript:@"window.worldName" inFrame:mainFrame.childFrames[0] inContentWorld:[WKContentWorld worldWithName:@"testName"] completionHandler:^(id result, NSError *error) {
+        [webView _evaluateJavaScript:@"window.worldName" inFrame:mainFrame.childFrames[0].info inContentWorld:[WKContentWorld worldWithName:@"testName"] completionHandler:^(id result, NSError *error) {
             EXPECT_WK_STREQ(result, "testName");
             done = true;
         }];
     }];
     TestWebKitAPI::Util::run(&done);
+}
+
+TEST(WebKit, GetFrameInfo_detachedFrame)
+{
+    auto webView = adoptNS([TestWKWebView new]);
+    [webView synchronouslyLoadHTMLString:@"<iframe id='testFrame' src='about:blank'></iframe>"];
+
+    __block bool done = false;
+    [webView _frames:^(_WKFrameTreeNode *mainFrame) {
+        EXPECT_EQ(mainFrame.childFrames.count, 1U);
+        done = true;
+    }];
+    TestWebKitAPI::Util::run(&done);
+    auto pid = [webView _webProcessIdentifier];
+
+    [webView evaluateJavaScript:@"document.getElementById('testFrame').remove();" completionHandler:nil];
+
+    __block bool hasChildFrame = true;
+    do {
+        done = false;
+        [webView _frames:^(_WKFrameTreeNode *mainFrame) {
+            hasChildFrame = mainFrame.childFrames.count > 0;
+            done = true;
+        }];
+        TestWebKitAPI::Util::run(&done);
+    } while (hasChildFrame);
+
+    EXPECT_EQ(pid, [webView _webProcessIdentifier]);
 }
 
 TEST(WebKit, EvaluateJavaScriptInAttachments)
@@ -338,14 +364,12 @@ TEST(WebKit, EvaluateJavaScriptInAttachments)
     // Evaluating JavaScript in such a document should fail and result in an error.
 
     using namespace TestWebKitAPI;
-    TCPServer server([](int socket) {
-        NSString *response = @"HTTP/1.1 200 OK\r\n"
+    HTTPServer server(HTTPServer::UseCoroutines::Yes, [](Connection connection) -> Task {
+        co_await connection.awaitableReceiveHTTPRequest();
+        co_await connection.awaitableSend("HTTP/1.1 200 OK\r\n"
             "Content-Length: 12\r\n"
             "Content-Disposition: attachment; filename=fromHeader.txt;\r\n\r\n"
-            "Hello world!";
-
-        TCPServer::read(socket);
-        TCPServer::write(socket, response.UTF8String, response.length);
+            "Hello world!"_s);
     });
     auto webView = adoptNS([TestWKWebView new]);
     [webView synchronouslyLoadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:[NSString stringWithFormat:@"http://127.0.0.1:%d/", server.port()]]]];
@@ -361,7 +385,7 @@ TEST(WebKit, EvaluateJavaScriptInAttachments)
 }
 
 // FIXME: Re-enable this test for iOS once webkit.org/b/207874 is resolved
-#if !PLATFORM(IOS)
+#if !(PLATFORM(IOS) || PLATFORM(VISION))
 TEST(WebKit, AllowsContentJavaScript)
 {
     RetainPtr<TestWKWebView> webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600)]);
@@ -390,7 +414,7 @@ TEST(WebKit, AllowsContentJavaScript)
     TestWebKitAPI::Util::run(&done);
 
     TestWebKitAPI::HTTPServer server({
-        { "/script", { "var foo = 'bar'" } }
+        { "/script"_s, { "var foo = 'bar'"_s } }
     });
     preferences.get().allowsContentJavaScript = YES;
     [webView synchronouslyLoadHTMLString:[NSString stringWithFormat:@"<script src='http://127.0.0.1:%d/script'></script>", server.port()] preferences:preferences.get()];
@@ -459,6 +483,20 @@ TEST(WebKit, AllowsContentJavaScriptFromDefaultPreferences)
         done = true;
     }];
     TestWebKitAPI::Util::run(&done);
+}
+
+TEST(WebKit, AllowsContentJavaScriptAffectsNoscriptElements)
+{
+    RetainPtr preferences = adoptNS([[WKWebpagePreferences alloc] init]);
+    [preferences setAllowsContentJavaScript:NO];
+
+    RetainPtr configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+    [configuration setDefaultWebpagePreferences:preferences.get()];
+
+    RetainPtr webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
+
+    [webView synchronouslyLoadHTMLString:@"<noscript>this text should be inserted into the DOM</noscript>"];
+    EXPECT_WK_STREQ([webView contentsAsString], "this text should be inserted into the DOM");
 }
 
 TEST(WebKit, SPIJavascriptMarkupVsAPIContentJavaScript)

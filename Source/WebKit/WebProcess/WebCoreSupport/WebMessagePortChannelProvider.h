@@ -26,13 +26,18 @@
 #pragma once
 
 #include <WebCore/MessagePortChannelProvider.h>
+#include <WebCore/MessagePortIdentifier.h>
+#include <WebCore/MessageWithMessagePorts.h>
+#include <wtf/TZoneMalloc.h>
 
 namespace WebKit {
 
 class WebMessagePortChannelProvider final : public WebCore::MessagePortChannelProvider {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED(WebMessagePortChannelProvider);
 public:
     static WebMessagePortChannelProvider& singleton();
+
+    void messagePortSentToRemote(const WebCore::MessagePortIdentifier&);
 
 private:
     WebMessagePortChannelProvider();
@@ -42,9 +47,10 @@ private:
     void entangleLocalPortInThisProcessToRemote(const WebCore::MessagePortIdentifier& local, const WebCore::MessagePortIdentifier& remote) final;
     void messagePortDisentangled(const WebCore::MessagePortIdentifier& local) final;
     void messagePortClosed(const WebCore::MessagePortIdentifier& local) final;
-    void takeAllMessagesForPort(const WebCore::MessagePortIdentifier&, CompletionHandler<void(Vector<WebCore::MessageWithMessagePorts>&&, Function<void()>&&)>&&) final;
+    void takeAllMessagesForPort(const WebCore::MessagePortIdentifier&, CompletionHandler<void(Vector<WebCore::MessageWithMessagePorts>&&, CompletionHandler<void()>&&)>&&) final;
     void postMessageToRemote(WebCore::MessageWithMessagePorts&&, const WebCore::MessagePortIdentifier& remoteTarget) final;
-    void checkRemotePortForActivity(const WebCore::MessagePortIdentifier& remoteTarget, CompletionHandler<void(HasActivity)>&& callback) final;
+
+    HashMap<WebCore::MessagePortIdentifier, Vector<WebCore::MessageWithMessagePorts>> m_inProcessPortMessages;
 };
 
 } // namespace WebKit

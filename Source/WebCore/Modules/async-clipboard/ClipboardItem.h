@@ -39,6 +39,7 @@ class Clipboard;
 class ClipboardItemDataSource;
 class DeferredPromise;
 class DOMPromise;
+class WeakPtrImplWithEventTargetData;
 class Navigator;
 class PasteboardCustomData;
 class ScriptExecutionContext;
@@ -54,7 +55,7 @@ public:
         PresentationStyle presentationStyle { PresentationStyle::Unspecified };
     };
 
-    static Ref<ClipboardItem> create(Vector<KeyValuePair<String, RefPtr<DOMPromise>>>&&, const Options&);
+    static Ref<ClipboardItem> create(Vector<KeyValuePair<String, Ref<DOMPromise>>>&&, const Options&);
     static Ref<ClipboardItem> create(Clipboard&, const PasteboardItemInfo&);
     static Ref<Blob> blobFromString(ScriptExecutionContext*, const String& stringData, const String& type);
 
@@ -68,10 +69,10 @@ public:
     Clipboard* clipboard();
 
 private:
-    ClipboardItem(Vector<KeyValuePair<String, RefPtr<DOMPromise>>>&&, const Options&);
+    ClipboardItem(Vector<KeyValuePair<String, Ref<DOMPromise>>>&&, const Options&);
     ClipboardItem(Clipboard&, const PasteboardItemInfo&);
 
-    WeakPtr<Clipboard> m_clipboard;
+    WeakPtr<Clipboard, WeakPtrImplWithEventTargetData> m_clipboard;
     WeakPtr<Navigator> m_navigator;
     std::unique_ptr<ClipboardItemDataSource> m_dataSource;
     PresentationStyle m_presentationStyle { PresentationStyle::Unspecified };

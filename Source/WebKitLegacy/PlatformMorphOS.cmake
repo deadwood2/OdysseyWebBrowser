@@ -1,5 +1,4 @@
-add_definitions(-DUSE_CAIRO=1 -DUSE_CURL=1 -DWEBKIT_EXPORTS=1 -DWEBCORE_EXPORT=WTF_EXPORT_DECLARATION -DPAL_EXPORT=WTF_EXPORT_DECLARATION -DWTF_EXPORT=WTF_EXPORT_DECLARATION
-	-DJS_EXPORT_PRIVATE=WTF_EXPORT -DUSE_SYSTEM_MALLOC -DMORPHOS_MINIMAL=${MORPHOS_MINIMAL})
+add_definitions(-DUSE_CAIRO=1 -DUSE_CURL=1 -DWEBKIT_EXPORTS=1 -DUSE_SYSTEM_MALLOC -DMORPHOS_MINIMAL=${MORPHOS_MINIMAL})
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ")
 
@@ -32,11 +31,13 @@ list(APPEND WebKitLegacy_SOURCES_Classes
     morphos/BackForwardClient.cpp
     morphos/WebApplicationCache.cpp
     morphos/storage/WebDatabaseProvider.cpp
+    morphos/storage/WebStorageTrackerClient.cpp
     morphos/WebDocumentLoader.cpp
     morphos/CacheModel.cpp
     morphos/WebDragClient.cpp
     morphos/PopupMenu.cpp
     morphos/Gamepad.cpp
+    morphos/NetworkSession.cpp
 )
 
 list(APPEND WebKitLegacy_SOURCES_Classes
@@ -60,6 +61,7 @@ list(APPEND WebKitLegacy_SOURCES_Classes
 )
 
 list(APPEND WebKitLegacy_SOURCES_WebCoreSupport
+    morphos/WebCoreSupport/LegacyHistoryItemClient.cpp
     morphos/WebCoreSupport/WebVisitedLinkStore.cpp
     morphos/WebCoreSupport/WebEditorClient.cpp
     morphos/WebCoreSupport/WebChromeClient.cpp
@@ -72,7 +74,29 @@ list(APPEND WebKitLegacy_SOURCES_WebCoreSupport
     morphos/WebCoreSupport/WebPageGroup.cpp
     morphos/WebCoreSupport/WebProgressTrackerClient.cpp
     morphos/WebCoreSupport/WebNotificationClient.cpp
+    morphos/WebCoreSupport/WebCryptoClient.cpp
 )
+
+#list(APPEND WebKitLegacy_SOURCES_WebCoreSupport
+#    morphos/cache/CacheStorageEngine.cpp
+#    morphos/cache/CacheStorageEngineCache.cpp
+#    morphos/cache/CacheStorageEngineCaches.cpp
+#    morphos/cache/NetworkCacheCoders.cpp
+#    morphos/cache/NetworkCacheDataCurl.cpp
+#    morphos/cache/NetworkCacheIOChannelCurl.cpp
+#    morphos/cache/NetworkCacheSubresourcesEntry.cpp
+#    morphos/cache/NetworkCacheBlobStorage.cpp
+#    morphos/cache/NetworkCacheEntry.cpp
+#    morphos/cache/NetworkCacheKey.cpp
+#    morphos/cache/PrefetchCache.cpp
+#    morphos/cache/NetworkCacheData.cpp
+#    morphos/cache/NetworkCacheFileSystem.cpp
+#    morphos/cache/NetworkCacheStorage.cpp
+##    morphos/cache/NetworkCache.cpp
+#    morphos/cache/CacheStorageEngineConnection.cpp
+#    morphos/cache/WebCacheStorageProvider.cpp
+#    morphos/cache/WebCacheStorageConnection.cpp
+#    )
 
 if (NOT MORPHOS_MINIMAL)
 	list(APPEND WebKitLegacy_ABP
@@ -91,7 +115,7 @@ endif()
 
 list(APPEND WebKitLegacy_SOURCES ${WebKitLegacy_INCLUDES} ${WebKitLegacy_SOURCES_Classes} ${WebKitLegacy_SOURCES_WebCoreSupport} ${WebKitLegacy_ABP})
 
-set(MM_FLAGS "-Wno-ignored-attributes -Wno-protocol -Wundeclared-selector -fobjc-call-cxx-cdtors -fobjc-exceptions -fconstant-string-class=OBConstantString -DDEBUG=0")
+set(MM_FLAGS "-Wno-protocol -Wundeclared-selector -fobjc-call-cxx-cdtors -fobjc-exceptions -fconstant-string-class=OBConstantString -DDEBUG=0")
 
 set_source_files_properties(morphos/WkWebView.mm PROPERTIES COMPILE_FLAGS ${MM_FLAGS})
 set_source_files_properties(morphos/WkNetworkRequestMutable.mm PROPERTIES COMPILE_FLAGS ${MM_FLAGS})

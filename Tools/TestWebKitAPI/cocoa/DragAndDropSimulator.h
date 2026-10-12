@@ -31,7 +31,7 @@
 #import <wtf/BlockPtr.h>
 
 #if PLATFORM(IOS_FAMILY)
-#import "UIKitSPI.h"
+#import "UIKitSPIForTesting.h"
 #import <UIKit/NSItemProvider+UIKitAdditions.h>
 #endif
 
@@ -125,12 +125,15 @@ typedef NSDictionary<NSNumber *, NSValue *> *ProgressToCGPointValueMap;
 
 #if PLATFORM(MAC)
 
+- (void)writePromisedWebLoc:(NSURL *)url;
+
 @property (nonatomic, readonly) id <NSDraggingInfo> draggingInfo;
 @property (nonatomic, readonly) NSPoint initialDragImageLocationInView;
 @property (nonatomic, readonly) NSDragOperation currentDragOperation;
 @property (nonatomic, strong) NSPasteboard *externalDragPasteboard;
 @property (nonatomic, strong) NSImage *externalDragImage;
 @property (nonatomic, readonly) NSArray<NSURL *> *externalPromisedFiles;
+@property (nonatomic, copy) dispatch_block_t willBeginDraggingHandler;
 @property (nonatomic, copy) dispatch_block_t willEndDraggingHandler;
 
 - (void)writePromisedFiles:(NSArray<NSURL *> *)fileURLs;
@@ -142,5 +145,15 @@ typedef NSDictionary<NSNumber *, NSValue *> *ProgressToCGPointValueMap;
 - (BOOL)containsDraggedType:(NSString *)type;
 
 @end
+
+#if !PLATFORM(MACCATALYST)
+
+@interface DragAndDropSimulator (DOMElementDrag)
+
+- (void)runFromElement:(NSString *)startSelector toElement:(NSString *)endSelector;
+
+@end
+
+#endif // !PLATFORM(MACCATALYST)
 
 #endif // ENABLE(DRAG_SUPPORT)

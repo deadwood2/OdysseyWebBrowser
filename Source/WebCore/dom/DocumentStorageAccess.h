@@ -25,27 +25,29 @@
 
 #pragma once
 
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
-
 #include "RegistrableDomain.h"
 #include "Supplementable.h"
 #include <wtf/WeakPtr.h>
+
+namespace WebCore {
+class DocumentStorageAccess;
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebCore::DocumentStorageAccess> : std::true_type { };
+}
 
 namespace WebCore {
 
 class DeferredPromise;
 class Document;
 class UserGestureIndicator;
+class WeakPtrImplWithEventTargetData;
 
-enum class StorageAccessWasGranted : bool {
-    No,
-    Yes
-};
+enum class StorageAccessWasGranted : uint8_t { No, Yes, YesWithException };
 
-enum class StorageAccessPromptWasShown : bool {
-    No,
-    Yes
-};
+enum class StorageAccessPromptWasShown : bool { No, Yes };
 
 enum class StorageAccessScope : bool {
     PerFrame,
@@ -63,9 +65,6 @@ struct RequestStorageAccessResult {
     StorageAccessScope scope;
     RegistrableDomain topFrameDomain;
     RegistrableDomain subFrameDomain;
-    
-    template<class Encoder> void encode(Encoder&) const;
-    template<class Decoder> static std::optional<RequestStorageAccessResult> decode(Decoder&);
 };
 
 const unsigned maxNumberOfTimesExplicitlyDeniedStorageAccess = 2;
@@ -95,59 +94,22 @@ private:
     void requestStorageAccessQuirk(RegistrableDomain&& requestingDomain, CompletionHandler<void(StorageAccessWasGranted)>&&);
 
     static DocumentStorageAccess* from(Document&);
-    static const char* supplementName();
+    static ASCIILiteral supplementName();
     bool hasFrameSpecificStorageAccess() const;
     void setWasExplicitlyDeniedFrameSpecificStorageAccess() { ++m_numberOfTimesExplicitlyDeniedFrameSpecificStorageAccess; };
     bool isAllowedToRequestStorageAccess() { return m_numberOfTimesExplicitlyDeniedFrameSpecificStorageAccess < maxNumberOfTimesExplicitlyDeniedStorageAccess; };
     void enableTemporaryTimeUserGesture();
     void consumeTemporaryTimeUserGesture();
 
+    Ref<Document> protectedDocument() const;
+
     std::unique_ptr<UserGestureIndicator> m_temporaryUserGesture;
     
-    Document& m_document;
+    WeakRef<Document, WeakPtrImplWithEventTargetData> m_document;
 
     uint8_t m_numberOfTimesExplicitlyDeniedFrameSpecificStorageAccess = 0;
 
     StorageAccessScope m_storageAccessScope = StorageAccessScope::PerPage;
 };
 
-template<class Encoder>
-void RequestStorageAccessResult::encode(Encoder& encoder) const
-{
-    encoder << wasGranted << promptWasShown << scope << topFrameDomain << subFrameDomain;
-}
-
-template<class Decoder>
-std::optional<RequestStorageAccessResult> RequestStorageAccessResult::decode(Decoder& decoder)
-{
-    std::optional<StorageAccessWasGranted> wasGranted;
-    decoder >> wasGranted;
-    if (!wasGranted)
-        return std::nullopt;
-
-    std::optional<StorageAccessPromptWasShown> promptWasShown;
-    decoder >> promptWasShown;
-    if (!promptWasShown)
-        return std::nullopt;
-
-    std::optional<StorageAccessScope> scope;
-    decoder >> scope;
-    if (!scope)
-        return std::nullopt;
-
-    std::optional<RegistrableDomain> topFrameDomain;
-    decoder >> topFrameDomain;
-    if (!topFrameDomain)
-        return std::nullopt;
-
-    std::optional<RegistrableDomain> subFrameDomain;
-    decoder >> subFrameDomain;
-    if (!subFrameDomain)
-        return std::nullopt;
-
-    return { { WTFMove(*wasGranted), WTFMove(*promptWasShown), WTFMove(*scope), WTFMove(*topFrameDomain), WTFMove(*subFrameDomain) } };
-}
-
 } // namespace WebCore
-
-#endif // ENABLE(RESOURCE_LOAD_STATISTICS)

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008-2021 Apple Inc. All Rights Reserved.
+ * Copyright (C) 2008-2023 Apple Inc. All Rights Reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,37 +23,17 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-// FIXME: On Windows, we require all WebKit source files to include config.h
-// before including any other files. Failing to include config.h will leave
-// USE_CF undefined, causing build failures in this file. But Mac doesn't have
-// a config.h for WebKit, so we can't include the Windows one here. For now we
-// define USE_CF manually here, but it would be good to find a better solution,
-// likely by making "config.h" a "prefix file" in the Windows build configuration.
-#ifndef USE_CF
-#define USE_CF 1
-#endif
-
-#include <wtf/Platform.h>
-
-#if PLATFORM(WIN) && !defined(USE_CG)
-#define USE_CG 1
-#endif
-
-// NOTE: These need to appear up top, as they declare macros used in the JS and WTF headers.
-#include <JavaScriptCore/JSExportMacros.h>
-#include <wtf/ExportMacros.h>
-
 #include "WebInspectorClient.h"
 
 #include <CoreFoundation/CoreFoundation.h>
-#include <WebCore/Frame.h>
 #include <WebCore/InspectorFrontendClientLocal.h>
+#include <WebCore/LocalFrame.h>
 #include <WebCore/Page.h>
 #include <wtf/RetainPtr.h>
 #include <wtf/cf/TypeCastsCF.h>
 
-static constexpr const char* inspectorStartsAttachedSetting = "inspectorStartsAttached";
-static constexpr const char* inspectorAttachDisabledSetting = "inspectorAttachDisabled";
+static constexpr auto inspectorStartsAttachedSetting = "inspectorStartsAttached"_s;
+static constexpr auto inspectorAttachDisabledSetting = "inspectorAttachDisabled"_s;
 
 static RetainPtr<CFStringRef> createKeyForPreferences(const String& key)
 {
@@ -89,12 +69,12 @@ void WebInspectorClient::sendMessageToFrontend(const String& message)
 
 bool WebInspectorClient::inspectorAttachDisabled()
 {
-    return loadSetting(inspectorAttachDisabledSetting) == "true";
+    return loadSetting(inspectorAttachDisabledSetting) == "true"_s;
 }
 
 void WebInspectorClient::setInspectorAttachDisabled(bool disabled)
 {
-    storeSetting(inspectorAttachDisabledSetting, disabled ? "true" : "false");
+    storeSetting(inspectorAttachDisabledSetting, disabled ? "true"_s : "false"_s);
 }
 
 void WebInspectorClient::deleteInspectorStartsAttached()
@@ -104,12 +84,12 @@ void WebInspectorClient::deleteInspectorStartsAttached()
 
 bool WebInspectorClient::inspectorStartsAttached()
 {
-    return loadSetting(inspectorStartsAttachedSetting) == "true";
+    return loadSetting(inspectorStartsAttachedSetting) == "true"_s;
 }
 
 void WebInspectorClient::setInspectorStartsAttached(bool attached)
 {
-    storeSetting(inspectorStartsAttachedSetting, attached ? "true" : "false");
+    storeSetting(inspectorStartsAttachedSetting, attached ? "true"_s : "false"_s);
 }
 
 void WebInspectorClient::deleteInspectorAttachDisabled()

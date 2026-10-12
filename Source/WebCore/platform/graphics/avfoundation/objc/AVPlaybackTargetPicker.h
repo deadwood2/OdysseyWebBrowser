@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2020-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,30 +33,41 @@ OBJC_CLASS AVOutputContext;
 OBJC_CLASS NSView;
 
 namespace WebCore {
+class AVPlaybackTargetPicker;
+class AVPlaybackTargetPickerClient;
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebCore::AVPlaybackTargetPicker> : std::true_type { };
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebCore::AVPlaybackTargetPickerClient> : std::true_type { };
+}
+
+namespace WebCore {
 
 class FloatRect;
+
+class AVPlaybackTargetPickerClient : public CanMakeWeakPtr<AVPlaybackTargetPickerClient> {
+protected:
+    virtual ~AVPlaybackTargetPickerClient() = default;
+
+public:
+    virtual void pickerWasDismissed() = 0;
+    virtual void availableDevicesChanged() = 0;
+    virtual void currentDeviceChanged() = 0;
+};
 
 class AVPlaybackTargetPicker : public CanMakeWeakPtr<AVPlaybackTargetPicker> {
     WTF_MAKE_FAST_ALLOCATED;
     WTF_MAKE_NONCOPYABLE(AVPlaybackTargetPicker);
 public:
-    class Client : public CanMakeWeakPtr<Client> {
-    protected:
-        virtual ~Client() = default;
-
-    public:
-        virtual void pickerWasDismissed() = 0;
-        virtual void availableDevicesChanged() = 0;
-        virtual void currentDeviceChanged() = 0;
-    };
-
-    explicit AVPlaybackTargetPicker(Client& client)
-        : m_client(makeWeakPtr(&client))
+    explicit AVPlaybackTargetPicker(AVPlaybackTargetPickerClient& client)
+        : m_client(client)
     {
     }
     virtual ~AVPlaybackTargetPicker() = default;
 
-    virtual void showPlaybackTargetPicker(NSView *, const FloatRect&, bool checkActiveRoute, bool useDarkAppearancebool, bool useiTunesAVOutputContext) = 0;
+    virtual void showPlaybackTargetPicker(NSView *, const FloatRect&, bool checkActiveRoute, bool useDarkAppearancebool) = 0;
     virtual void startingMonitoringPlaybackTargets() = 0;
     virtual void stopMonitoringPlaybackTargets() = 0;
     virtual void invalidatePlaybackTargets() = 0;
@@ -64,10 +75,10 @@ public:
 
     virtual AVOutputContext* outputContext() = 0;
 
-    WeakPtr<AVPlaybackTargetPicker::Client> client() const { return m_client; }
+    WeakPtr<AVPlaybackTargetPickerClient> client() const { return m_client; }
 
 private:
-    WeakPtr<AVPlaybackTargetPicker::Client> m_client;
+    WeakPtr<AVPlaybackTargetPickerClient> m_client;
 };
 
 } // namespace WebCore

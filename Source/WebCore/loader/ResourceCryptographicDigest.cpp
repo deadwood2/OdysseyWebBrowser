@@ -39,11 +39,11 @@ template<typename CharacterType> static std::optional<ResourceCryptographicDiges
     // FIXME: This would be much cleaner with a lookup table of pairs of label / algorithm enum values, but I can't
     // figure out how to keep the labels compiletime strings for skipExactlyIgnoringASCIICase.
 
-    if (skipExactlyIgnoringASCIICase(buffer, "sha256"))
+    if (skipExactlyIgnoringASCIICase(buffer, "sha256"_s))
         return ResourceCryptographicDigest::Algorithm::SHA256;
-    if (skipExactlyIgnoringASCIICase(buffer, "sha384"))
+    if (skipExactlyIgnoringASCIICase(buffer, "sha384"_s))
         return ResourceCryptographicDigest::Algorithm::SHA384;
-    if (skipExactlyIgnoringASCIICase(buffer, "sha512"))
+    if (skipExactlyIgnoringASCIICase(buffer, "sha512"_s))
         return ResourceCryptographicDigest::Algorithm::SHA512;
 
     return std::nullopt;
@@ -69,9 +69,9 @@ template<typename CharacterType> static std::optional<ResourceCryptographicDiges
     if (buffer.position() == beginHashValue)
         return std::nullopt;
 
-    StringView hashValue(beginHashValue, buffer.position() - beginHashValue);
+    StringView hashValue(std::span(beginHashValue, buffer.position()));
 
-    if (auto digest = base64Decode(hashValue, Base64DecodeOptions::ValidatePadding))
+    if (auto digest = base64Decode(hashValue))
         return ResourceCryptographicDigest { *algorithm, WTFMove(*digest) };
 
     if (auto digest = base64URLDecode(hashValue))
@@ -110,7 +110,7 @@ template<typename CharacterType> static std::optional<EncodedResourceCryptograph
     if (buffer.position() == beginHashValue)
         return std::nullopt;
 
-    return EncodedResourceCryptographicDigest { *algorithm, String(beginHashValue, buffer.position() - beginHashValue) };
+    return EncodedResourceCryptographicDigest { *algorithm, String({ beginHashValue, buffer.position() }) };
 }
 
 std::optional<EncodedResourceCryptographicDigest> parseEncodedCryptographicDigest(StringParsingBuffer<UChar>& buffer)
@@ -125,7 +125,7 @@ std::optional<EncodedResourceCryptographicDigest> parseEncodedCryptographicDiges
 
 std::optional<ResourceCryptographicDigest> decodeEncodedResourceCryptographicDigest(const EncodedResourceCryptographicDigest& encodedDigest)
 {
-    if (auto digest = base64Decode(encodedDigest.digest, Base64DecodeOptions::ValidatePadding))
+    if (auto digest = base64Decode(encodedDigest.digest))
         return ResourceCryptographicDigest { encodedDigest.algorithm, WTFMove(*digest) };
 
     if (auto digest = base64URLDecode(encodedDigest.digest))
@@ -148,19 +148,19 @@ static PAL::CryptoDigest::Algorithm toCryptoDigestAlgorithm(ResourceCryptographi
     return PAL::CryptoDigest::Algorithm::SHA_512;
 }
 
-ResourceCryptographicDigest cryptographicDigestForBytes(ResourceCryptographicDigest::Algorithm algorithm, const void* bytes, size_t length)
+ResourceCryptographicDigest cryptographicDigestForBytes(ResourceCryptographicDigest::Algorithm algorithm, std::span<const uint8_t> bytes)
 {
     auto cryptoDigest = PAL::CryptoDigest::create(toCryptoDigestAlgorithm(algorithm));
-    cryptoDigest->addBytes(bytes, length);
+    cryptoDigest->addBytes(bytes);
     return { algorithm, cryptoDigest->computeHash() };
 }
 
-ResourceCryptographicDigest cryptographicDigestForSharedBuffer(ResourceCryptographicDigest::Algorithm algorithm, const SharedBuffer* buffer)
+ResourceCryptographicDigest cryptographicDigestForSharedBuffer(ResourceCryptographicDigest::Algorithm algorithm, const FragmentedSharedBuffer* buffer)
 {
     auto cryptoDigest = PAL::CryptoDigest::create(toCryptoDigestAlgorithm(algorithm));
     if (buffer) {
-        buffer->forEachSegment([&](auto& segment) {
-            cryptoDigest->addBytes(segment.data(), segment.size());
+        buffer->forEachSegment([&](auto segment) {
+            cryptoDigest->addBytes(segment);
         });
     }
     return { algorithm, cryptoDigest->computeHash() };

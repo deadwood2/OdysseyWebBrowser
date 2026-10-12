@@ -35,8 +35,22 @@
 #import "WebActionDisablingCALayerDelegate.h"
 #import "WebTextIndicatorLayer.h"
 #import <pal/spi/cg/CoreGraphicsSPI.h>
-#import <pal/spi/cocoa/NSColorSPI.h>
 #import <pal/spi/cocoa/QuartzCoreSPI.h>
+#import <pal/spi/mac/NSColorSPI.h>
+
+@interface WebTextIndicatorView : NSView
+
+@end
+
+@implementation WebTextIndicatorView
+
+- (BOOL)isFlipped
+{
+    return YES;
+}
+
+@end
+
 
 using namespace WebCore;
 
@@ -108,7 +122,7 @@ void TextIndicatorWindow::setTextIndicator(Ref<TextIndicator> textIndicator, CGR
     NSRect frame = NSMakeRect(0, 0, [m_textIndicatorWindow frame].size.width, [m_textIndicatorWindow frame].size.height);
     m_textIndicatorLayer = adoptNS([[WebTextIndicatorLayer alloc] initWithFrame:frame
         textIndicator:*m_textIndicator margin:NSMakeSize(horizontalMargin, verticalMargin) offset:fractionalTextOffset]);
-    m_textIndicatorView = adoptNS([[NSView alloc] initWithFrame:frame]);
+    m_textIndicatorView = adoptNS([[WebTextIndicatorView alloc] initWithFrame:frame]);
     [m_textIndicatorView setLayer:m_textIndicatorLayer.get()];
     [m_textIndicatorView setWantsLayer:YES];
     [m_textIndicatorWindow setContentView:m_textIndicatorView.get()];

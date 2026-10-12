@@ -29,6 +29,7 @@
 #include "PasteboardContext.h"
 #include "PasteboardCustomData.h"
 #include "PasteboardItemInfo.h"
+#include "SharedBuffer.h"
 #include <wtf/HashMap.h>
 #include <wtf/ListHashSet.h>
 #include <wtf/Noncopyable.h>
@@ -64,9 +65,9 @@ namespace WebCore {
 class DocumentFragment;
 class DragData;
 class Element;
-class Frame;
+class LocalFrame;
 class PasteboardStrategy;
-class SharedBuffer;
+class FragmentedSharedBuffer;
 
 struct SimpleRange;
 
@@ -78,8 +79,6 @@ enum ShouldSerializeSelectedTextForDataTransfer { DefaultSelectedTextType, Inclu
 
 struct PasteboardWebContent {
 #if PLATFORM(COCOA)
-    WEBCORE_EXPORT PasteboardWebContent();
-    WEBCORE_EXPORT ~PasteboardWebContent();
     String contentOrigin;
     bool canSmartCopyOrDelete;
     RefPtr<SharedBuffer> dataInWebArchiveFormat;
@@ -88,8 +87,7 @@ struct PasteboardWebContent {
     RefPtr<SharedBuffer> dataInAttributedStringFormat;
     String dataInHTMLFormat;
     String dataInStringFormat;
-    Vector<String> clientTypes;
-    Vector<RefPtr<SharedBuffer>> clientData;
+    Vector<std::pair<String, RefPtr<WebCore::SharedBuffer>>> clientTypesAndData;
 #endif
 #if PLATFORM(GTK)
     String contentOrigin;
@@ -119,8 +117,6 @@ struct PasteboardURL {
 };
 
 struct PasteboardImage {
-    WEBCORE_EXPORT PasteboardImage();
-    WEBCORE_EXPORT ~PasteboardImage();
     RefPtr<Image> image;
 #if PLATFORM(MAC)
     RefPtr<SharedBuffer> dataInWebArchiveFormat;
@@ -132,26 +128,31 @@ struct PasteboardImage {
 #if !(PLATFORM(GTK) || PLATFORM(WIN))
     RefPtr<SharedBuffer> resourceData;
     String resourceMIMEType;
-    Vector<String> clientTypes;
-    Vector<RefPtr<SharedBuffer>> clientData;
+    Vector<std::pair<String, RefPtr<WebCore::SharedBuffer>>> clientTypesAndData;
 #endif
     String suggestedName;
     FloatSize imageSize;
+};
+
+struct PasteboardBuffer {
+#if PLATFORM(COCOA)
+    String contentOrigin;
+#endif
+    String type;
+    RefPtr<SharedBuffer> data;
 };
 
 // For reading from the pasteboard.
 
 class PasteboardWebContentReader {
 public:
-    String contentOrigin;
-
     virtual ~PasteboardWebContentReader() = default;
 
 #if PLATFORM(COCOA) || PLATFORM(GTK)
     virtual bool readFilePath(const String&, PresentationSize preferredPresentationSize = { }, const String& contentType = { }) = 0;
     virtual bool readFilePaths(const Vector<String>&) = 0;
     virtual bool readHTML(const String&) = 0;
-    virtual bool readImage(Ref<SharedBuffer>&&, const String& type, PresentationSize preferredPresentationSize = { }) = 0;
+    virtual bool readImage(Ref<FragmentedSharedBuffer>&&, const String& type, PresentationSize preferredPresentationSize = { }) = 0;
     virtual bool readURL(const URL&, const String& title) = 0;
     virtual bool readPlainText(const String&) = 0;
 #endif
@@ -160,8 +161,14 @@ public:
     virtual bool readWebArchive(SharedBuffer&) = 0;
     virtual bool readRTFD(SharedBuffer&) = 0;
     virtual bool readRTF(SharedBuffer&) = 0;
-    virtual bool readDataBuffer(SharedBuffer&, const String& type, const String& name, PresentationSize preferredPresentationSize = { }) = 0;
+    virtual bool readDataBuffer(SharedBuffer&, const String& type, const AtomString& name, PresentationSize preferredPresentationSize = { }) = 0;
 #endif
+
+    const String& contentOrigin() const { return m_contentOrigin; }
+    void setContentOrigin(const String& contentOrigin) { m_contentOrigin = contentOrigin; }
+
+private:
+    String m_contentOrigin;
 };
 
 struct PasteboardPlainText {
@@ -227,6 +234,7 @@ public:
     virtual WEBCORE_EXPORT void write(const PasteboardURL&);
     virtual WEBCORE_EXPORT void writeTrustworthyWebURLsPboardType(const PasteboardURL&);
     virtual WEBCORE_EXPORT void write(const PasteboardImage&);
+    virtual WEBCORE_EXPORT void write(const PasteboardBuffer&);
     virtual WEBCORE_EXPORT void write(const PasteboardWebContent&);
 
     virtual WEBCORE_EXPORT void writeCustomData(const Vector<PasteboardCustomData>&);
@@ -243,18 +251,19 @@ public:
     WEBCORE_EXPORT static std::unique_ptr<Pasteboard> createForDragAndDrop(std::unique_ptr<PasteboardContext>&&);
     WEBCORE_EXPORT static std::unique_ptr<Pasteboard> create(const DragData&);
 
-    virtual void setDragImage(DragImage, const IntPoint& hotSpot);
+    WEBCORE_EXPORT virtual void setDragImage(DragImage, const IntPoint& hotSpot);
 #endif
 
 #if PLATFORM(WIN)
-    RefPtr<DocumentFragment> documentFragment(Frame&, const SimpleRange&, bool allowPlainText, bool& chosePlainText); // FIXME: Layering violation.
+    RefPtr<DocumentFragment> documentFragment(LocalFrame&, const SimpleRange&, bool allowPlainText, bool& chosePlainText); // FIXME: Layering violation.
     void writeImage(Element&, const URL&, const String& title); // FIXME: Layering violation.
-    void writeSelection(const SimpleRange&, bool canSmartCopyOrDelete, Frame&, ShouldSerializeSelectedTextForDataTransfer = DefaultSelectedTextType); // FIXME: Layering violation.
+    void writeSelection(const SimpleRange&, bool canSmartCopyOrDelete, LocalFrame&, ShouldSerializeSelectedTextForDataTransfer = DefaultSelectedTextType); // FIXME: Layering violation.
 #endif
 
 #if PLATFORM(GTK)
     const SelectionData& selectionData() const;
     static std::unique_ptr<Pasteboard> createForGlobalSelection(std::unique_ptr<PasteboardContext>&&);
+    int64_t changeCount() const;
 #endif
 
 #if OS(MORPHOS)
@@ -281,19 +290,27 @@ public:
     WEBCORE_EXPORT static NSArray *supportedFileUploadPasteboardTypes();
     int64_t changeCount() const;
     const PasteboardCustomData& readCustomData();
-#else
+#elif !PLATFORM(GTK)
     int64_t changeCount() const { return 0; }
 #endif
 
 #if PLATFORM(COCOA)
     const String& name() const { return m_pasteboardName; }
+#elif PLATFORM(GTK)
+    const String& name() const { return m_name; }
 #else
     const String& name() const { return emptyString(); }
 #endif
 
+#if PLATFORM(MAC)
+    WEBCORE_EXPORT static RefPtr<SharedBuffer> bufferConvertedToPasteboardType(const PasteboardBuffer&, const String& pasteboardType);
+#else
+    static RefPtr<SharedBuffer> bufferConvertedToPasteboardType(const PasteboardBuffer& pasteboardBuffer, const String&) { return pasteboardBuffer.data; };
+#endif
+
 #if PLATFORM(WIN)
     COMPtr<IDataObject> dataObject() const { return m_dataObject; }
-    void setExternalDataObject(IDataObject*);
+    WEBCORE_EXPORT void setExternalDataObject(IDataObject*);
     const DragDataMap& dragDataMap() const { return m_dragDataMap; }
     void writeURLToWritableDataObject(const URL&, const String&);
     COMPtr<WCDataObject> writableDataObject() const { return m_writableDataObject; }
@@ -304,7 +321,7 @@ public:
     std::optional<PasteboardItemInfo> pasteboardItemInfo(size_t index) const;
 
     String readString(size_t index, const String& type);
-    RefPtr<WebCore::SharedBuffer> readBuffer(size_t index, const String& type);
+    RefPtr<WebCore::SharedBuffer> readBuffer(std::optional<size_t> index, const String& type);
     URL readURL(size_t index, String& title);
 
     const PasteboardContext* context() const { return m_context.get(); }
@@ -324,7 +341,7 @@ private:
 
 #if PLATFORM(WIN)
     void finishCreatingPasteboard();
-    void writeRangeToDataObject(const SimpleRange&, Frame&); // FIXME: Layering violation.
+    void writeRangeToDataObject(const SimpleRange&, LocalFrame&); // FIXME: Layering violation.
     void writeURLToDataObject(const URL&, const String&);
     void writePlainTextToDataObject(const String&, SmartReplaceOption);
     std::optional<PasteboardCustomData> readPasteboardCustomData();
@@ -344,6 +361,7 @@ private:
 #if PLATFORM(GTK)
     std::optional<SelectionData> m_selectionData;
     String m_name;
+    int64_t m_changeCount { 0 };
 #endif
 
 #if OS(MORPHOS)
@@ -374,12 +392,13 @@ private:
 #if PLATFORM(IOS_FAMILY)
 extern NSString *WebArchivePboardType;
 extern NSString *UIColorPboardType;
+extern NSString *UIImagePboardType;
 #endif
 
 #if PLATFORM(MAC)
-extern const char* const WebArchivePboardType;
-extern const char* const WebURLNamePboardType;
-extern const char* const WebURLsWithTitlesPboardType;
+extern const ASCIILiteral WebArchivePboardType;
+extern const ASCIILiteral WebURLNamePboardType;
+extern const ASCIILiteral WebURLsWithTitlesPboardType;
 #endif
 
 #if !PLATFORM(GTK)

@@ -31,7 +31,6 @@
 #include "RemoteCDMFactory.h"
 #include "RemoteCDMInstanceConfiguration.h"
 #include "RemoteCDMInstanceIdentifier.h"
-#include "SharedBufferCopy.h"
 #include <WebCore/CDMInstance.h>
 
 namespace WebKit {
@@ -50,7 +49,7 @@ private:
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) final;
 
     // Messages
-    void unrequestedInitializationDataReceived(const String&, IPC::SharedBufferCopy&&);
+    void unrequestedInitializationDataReceived(const String&, Ref<WebCore::SharedBuffer>&&);
 
     ImplementationType implementationType() const final { return ImplementationType::Remote; }
     void initializeWithConfiguration(const WebCore::CDMKeySystemConfiguration&, AllowDistinctiveIdentifiers, AllowPersistentState, SuccessCallback&&) final;

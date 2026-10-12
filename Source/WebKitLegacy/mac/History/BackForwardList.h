@@ -28,21 +28,23 @@
 #pragma once
 
 #include <WebCore/BackForwardClient.h>
+#include <WebCore/FrameIdentifier.h>
 #include <wtf/HashSet.h>
 #include <wtf/Vector.h>
+#include <wtf/WeakPtr.h>
 
 OBJC_CLASS WebView;
 
 typedef HashSet<RefPtr<WebCore::HistoryItem>> HistoryItemHashSet;
 
-class BackForwardList : public WebCore::BackForwardClient {
+class BackForwardList : public WebCore::BackForwardClient, public CanMakeWeakPtr<BackForwardList> {
 public: 
     static Ref<BackForwardList> create(WebView *webView) { return adoptRef(*new BackForwardList(webView)); }
     virtual ~BackForwardList();
 
     WebView *webView() { return m_webView; }
 
-    void addItem(Ref<WebCore::HistoryItem>&&) override;
+    void addItem(WebCore::FrameIdentifier, Ref<WebCore::HistoryItem>&&) override;
     void goBack();
     void goForward();
     void goToItem(WebCore::HistoryItem&) override;
@@ -61,7 +63,7 @@ public:
     void setEnabled(bool);
     unsigned backListCount() const override;
     unsigned forwardListCount() const override;
-    bool containsItem(WebCore::HistoryItem&);
+    bool containsItem(const WebCore::HistoryItem&) const final;
 
     void close() override;
     bool closed();

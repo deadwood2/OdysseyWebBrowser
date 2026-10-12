@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2017 Metrological Group B.V.
  * Copyright (C) 2017 Igalia S.L.
+ * Copyright (C) 2022 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -50,7 +51,7 @@ public:
     bool hasPlatformContext() const final;
     GraphicsContextCairo* platformContext() const final;
 
-    void updateState(const GraphicsContextState&, GraphicsContextState::StateChangeFlags);
+    void didUpdateState(GraphicsContextState&);
 
     void setLineCap(LineCap) final;
     void setLineDash(const DashArray&, float) final;
@@ -58,10 +59,9 @@ public:
     void setMiterLimit(float) final;
 
     using GraphicsContext::fillRect;
-    void fillRect(const FloatRect&) final;
+    void fillRect(const FloatRect&, RequiresClipToRect = RequiresClipToRect::Yes) final;
+    void fillRect(const FloatRect&, Gradient&, const AffineTransform&, RequiresClipToRect = RequiresClipToRect::Yes) final;
     void fillRect(const FloatRect&, const Color&) final;
-    void fillRect(const FloatRect&, Gradient&) final;
-    void fillRect(const FloatRect&, const Color&, CompositeOperator, BlendMode = BlendMode::Normal) final;
     void fillRoundedRectImpl(const FloatRoundedRect&, const Color&) final;
     void fillRectWithRoundedHole(const FloatRect&, const FloatRoundedRect&, const Color&) final;
     void fillPath(const Path&) final;
@@ -69,10 +69,8 @@ public:
     void strokePath(const Path&) final;
     void clearRect(const FloatRect&) final;
 
-    void drawGlyphs(const Font&, const GlyphBufferGlyph*, const GlyphBufferAdvance*, unsigned numGlyphs, const FloatPoint&, FontSmoothingMode) final;
-
-    void drawNativeImage(NativeImage&, const FloatSize&, const FloatRect&, const FloatRect&, const ImagePaintingOptions&) final;
-    void drawPattern(NativeImage&, const FloatSize& imageSize, const FloatRect& destRect, const FloatRect& srcRect, const AffineTransform&, const FloatPoint& phase, const FloatSize& spacing, const ImagePaintingOptions&) final;
+    void drawNativeImageInternal(NativeImage&, const FloatRect&, const FloatRect&, ImagePaintingOptions) final;
+    void drawPattern(NativeImage&, const FloatRect& destRect, const FloatRect& srcRect, const AffineTransform&, const FloatPoint& phase, const FloatSize& spacing, ImagePaintingOptions) final;
 
     void drawRect(const FloatRect&, float) final;
     void drawLine(const FloatPoint&, const FloatPoint&) final;
@@ -80,11 +78,11 @@ public:
     void drawDotsForDocumentMarker(const FloatRect&, DocumentMarkerLineStyle) final;
     void drawEllipse(const FloatRect&) final;
 
-    void drawFocusRing(const Path&, float, float, const Color&) final;
-    void drawFocusRing(const Vector<FloatRect>&, float, float, const Color&) final;
+    void drawFocusRing(const Path&, float outlineWidth, const Color&) final;
+    void drawFocusRing(const Vector<FloatRect>&, float outlineOffset, float outlineWidth, const Color&) final;
 
-    void save() final;
-    void restore() final;
+    void save(GraphicsContextState::Purpose = GraphicsContextState::Purpose::SaveRestore) final;
+    void restore(GraphicsContextState::Purpose = GraphicsContextState::Purpose::SaveRestore) final;
 
     void translate(float, float) final;
     void rotate(float) final;
@@ -97,31 +95,32 @@ public:
     void beginTransparencyLayer(float) final;
     void endTransparencyLayer() final;
 
+    void resetClip() final;
     void clip(const FloatRect&) final;
     void clipOut(const FloatRect&) final;
     void clipOut(const Path&) final;
     void clipPath(const Path&, WindRule) final;
     IntRect clipBounds() const final;
     void clipToImageBuffer(ImageBuffer&, const FloatRect&) final;
-
+    
 #if OS(MORPHOS)
 	RenderingMode renderingMode() const final { return RenderingMode::Unaccelerated; }
 #else
     RenderingMode renderingMode() const final;
 #endif
 
-    FloatRect roundToDevicePixels(const FloatRect&, GraphicsContext::RoundingMode) final;
-
     cairo_t* cr() const;
     Vector<float>& layers();
     void pushImageMask(cairo_surface_t*, const FloatRect&);
 
+    // Exposed as public because freestanding functions use this.
+    using GraphicsContext::nativeImageForDrawing;
 private:
     RefPtr<cairo_t> m_cr;
 
     class CairoState;
     CairoState* m_cairoState;
-    WTF::Vector<CairoState> m_cairoStateStack;
+    Vector<CairoState> m_cairoStateStack;
 
     // Transparency layers.
     Vector<float> m_layers;

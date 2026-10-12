@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2017 Oleksandr Skachkov <gskachkov@gmail.com>.
+ * Copyright (C) 2021-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -32,7 +33,7 @@
 
 namespace JSC {
 
-const ClassInfo AsyncFromSyncIteratorPrototype::s_info = { "AsyncFromSyncIterator", &Base::s_info, &asyncFromSyncIteratorPrototypeTable, nullptr, CREATE_METHOD_TABLE(AsyncFromSyncIteratorPrototype) };
+const ClassInfo AsyncFromSyncIteratorPrototype::s_info = { "AsyncFromSyncIterator"_s, &Base::s_info, &asyncFromSyncIteratorPrototypeTable, nullptr, CREATE_METHOD_TABLE(AsyncFromSyncIteratorPrototype) };
 
 AsyncFromSyncIteratorPrototype::AsyncFromSyncIteratorPrototype(VM& vm, Structure* structure)
     : Base(vm, structure)
@@ -47,15 +48,9 @@ AsyncFromSyncIteratorPrototype::AsyncFromSyncIteratorPrototype(VM& vm, Structure
 @end
 */
 
-void AsyncFromSyncIteratorPrototype::finishCreation(VM& vm)
-{
-    Base::finishCreation(vm);
-    ASSERT(inherits(vm, info()));
-}
-
 AsyncFromSyncIteratorPrototype* AsyncFromSyncIteratorPrototype::create(VM& vm, JSGlobalObject*, Structure* structure)
 {
-    AsyncFromSyncIteratorPrototype* prototype = new (NotNull, allocateCell<AsyncFromSyncIteratorPrototype>(vm.heap)) AsyncFromSyncIteratorPrototype(vm, structure);
+    AsyncFromSyncIteratorPrototype* prototype = new (NotNull, allocateCell<AsyncFromSyncIteratorPrototype>(vm)) AsyncFromSyncIteratorPrototype(vm, structure);
     prototype->finishCreation(vm);
     return prototype;
 }

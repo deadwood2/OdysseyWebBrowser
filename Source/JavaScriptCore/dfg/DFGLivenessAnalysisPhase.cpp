@@ -51,7 +51,7 @@ typedef IndexSparseSet<unsigned, DefaultIndexSparseSetTraits<unsigned>, UnsafeVe
 class LivenessAnalysisPhase : public Phase {
 public:
     LivenessAnalysisPhase(Graph& graph)
-        : Phase(graph, "liveness analysis")
+        : Phase(graph, "liveness analysis"_s)
         , m_dirtyBlocks(m_graph.numBlocks())
         , m_indexing(*m_graph.m_indexingCache)
         , m_liveAtHead(m_graph)
@@ -91,20 +91,14 @@ public:
                 continue;
 
             {
-                const Vector<unsigned, 0, UnsafeVectorOverflow, 1>& liveAtHeadIndices = m_liveAtHead[blockIndex];
-                Vector<NodeFlowProjection>& liveAtHead = block->ssa->liveAtHead;
-                liveAtHead.shrink(0);
-                liveAtHead.reserveCapacity(liveAtHeadIndices.size());
-                for (unsigned index : liveAtHeadIndices)
-                    liveAtHead.uncheckedAppend(m_indexing.nodeProjection(index));
+                block->ssa->liveAtHead = m_liveAtHead[blockIndex].map([this](auto index) {
+                    return m_indexing.nodeProjection(index);
+                });
             }
             {
-                const LiveSet& liveAtTailIndices = m_liveAtTail[blockIndex];
-                Vector<NodeFlowProjection>& liveAtTail = block->ssa->liveAtTail;
-                liveAtTail.shrink(0);
-                liveAtTail.reserveCapacity(liveAtTailIndices.size());
-                for (unsigned index : m_liveAtTail[blockIndex])
-                    liveAtTail.uncheckedAppend(m_indexing.nodeProjection(index));
+                block->ssa->liveAtTail = WTF::map(m_liveAtTail[blockIndex], [this](auto index) {
+                    return m_indexing.nodeProjection(index);
+                });
             }
         }
 
@@ -159,9 +153,7 @@ private:
             m_workset->remove(liveIndexAtHead);
         ASSERT(!m_workset->isEmpty());
 
-        liveAtHead.reserveCapacity(liveAtHead.size() + m_workset->size());
-        for (unsigned newValue : *m_workset)
-            liveAtHead.uncheckedAppend(newValue);
+        liveAtHead.appendRange(m_workset->begin(), m_workset->end());
 
         bool changedPredecessor = false;
         for (BasicBlock* predecessor : block->predecessors) {
@@ -191,10 +183,12 @@ private:
 
 } // anonymous namespace
 
-bool performLivenessAnalysis(Graph& graph)
+bool performGraphPackingAndLivenessAnalysis(Graph& graph)
 {
     graph.packNodeIndices();
-
+#ifndef NDEBUG
+    graph.clearAbstractValues();
+#endif
     return runPhase<LivenessAnalysisPhase>(graph);
 }
 

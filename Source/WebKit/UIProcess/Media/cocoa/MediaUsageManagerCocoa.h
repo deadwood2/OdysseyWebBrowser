@@ -28,13 +28,14 @@
 #if ENABLE(MEDIA_USAGE)
 
 #include "MediaUsageManager.h"
+#include <wtf/TZoneMallocInlines.h>
 
 OBJC_CLASS USVideoUsage;
 
 namespace WebKit {
 
 class MediaUsageManagerCocoa : public MediaUsageManager {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED_INLINE(MediaUsageManagerCocoa);
 public:
     MediaUsageManagerCocoa() = default;
     virtual ~MediaUsageManagerCocoa();
@@ -44,6 +45,9 @@ private:
     void addMediaSession(WebCore::MediaSessionIdentifier, const String&, const URL&) final;
     void updateMediaUsage(WebCore::MediaSessionIdentifier, const WebCore::MediaUsageInfo&) final;
     void removeMediaSession(WebCore::MediaSessionIdentifier) final;
+#if !HAVE(CGS_FIX_FOR_RADAR_97530095)
+    bool isPlayingVideoInViewport() const final;
+#endif
 
     struct SessionMediaUsage {
         WTF_MAKE_STRUCT_FAST_ALLOCATED;

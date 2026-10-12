@@ -30,17 +30,12 @@
 #include "ImageBitmap.h"
 #include "ImageBuffer.h"
 #include "InspectorInstrumentation.h"
-#include <wtf/IsoMallocInlines.h>
+#include "OffscreenCanvas.h"
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(ImageBitmapRenderingContext);
-
-#if USE(IOSURFACE_CANVAS_BACKING_STORE)
-static RenderingMode bufferRenderingMode = RenderingMode::Accelerated;
-#else
-static RenderingMode bufferRenderingMode = RenderingMode::Unaccelerated;
-#endif
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(ImageBitmapRenderingContext);
 
 std::unique_ptr<ImageBitmapRenderingContext> ImageBitmapRenderingContext::create(CanvasBase& canvas, ImageBitmapRenderingContextSettings&& settings)
 {
@@ -55,22 +50,18 @@ ImageBitmapRenderingContext::ImageBitmapRenderingContext(CanvasBase& canvas, Ima
     : CanvasRenderingContext(canvas)
     , m_settings(WTFMove(settings))
 {
-    setOutputBitmap(nullptr);
 }
 
 ImageBitmapRenderingContext::~ImageBitmapRenderingContext() = default;
 
-HTMLCanvasElement* ImageBitmapRenderingContext::canvas() const
+ImageBitmapCanvas ImageBitmapRenderingContext::canvas()
 {
     auto& base = canvasBase();
-    if (!is<HTMLCanvasElement>(base))
-        return nullptr;
+#if ENABLE(OFFSCREEN_CANVAS)
+    if (auto* offscreenCanvas = dynamicDowncast<OffscreenCanvas>(base))
+        return offscreenCanvas;
+#endif
     return &downcast<HTMLCanvasElement>(base);
-}
-
-bool ImageBitmapRenderingContext::isAccelerated() const
-{
-    return bufferRenderingMode == RenderingMode::Accelerated;
 }
 
 void ImageBitmapRenderingContext::setOutputBitmap(RefPtr<ImageBitmap> imageBitmap)
@@ -78,28 +69,15 @@ void ImageBitmapRenderingContext::setOutputBitmap(RefPtr<ImageBitmap> imageBitma
     // 1. If a bitmap argument was not provided, then:
 
     if (!imageBitmap) {
-
         // 1.1. Set context's bitmap mode to blank.
-
-        m_bitmapMode = BitmapMode::Blank;
-
         // 1.2. Let canvas be the canvas element to which context is bound.
-
         // 1.3. Set context's output bitmap to be transparent black with an
         //      intrinsic width equal to the numeric value of canvas's width attribute
         //      and an intrinsic height equal to the numeric value of canvas's height
         //      attribute, those values being interpreted in CSS pixels.
-
-        // FIXME: What is the point of creating a full size transparent buffer that
-        // can never be changed? Wouldn't a 1x1 buffer give the same rendering? The
-        // only reason I can think of is toDataURL(), but that doesn't seem like
-        // a good enough argument to waste memory.
-
-        canvas()->setImageBufferAndMarkDirty(ImageBuffer::create(FloatSize(canvas()->width(), canvas()->height()), bufferRenderingMode, 1, DestinationColorSpace::SRGB(), PixelFormat::BGRA8));
-
+        setBlank();
         // 1.4. Set the output bitmap's origin-clean flag to true.
-
-        canvas()->setOriginClean();
+        canvasBase().setOriginClean();
         return;
     }
 
@@ -115,10 +93,10 @@ void ImageBitmapRenderingContext::setOutputBitmap(RefPtr<ImageBitmap> imageBitma
     //      bitmap data to be referenced by context's output bitmap.
 
     if (imageBitmap->originClean())
-        canvas()->setOriginClean();
+        canvasBase().setOriginClean();
     else
-        canvas()->setOriginTainted();
-    canvas()->setImageBufferAndMarkDirty(imageBitmap->takeImageBuffer());
+        canvasBase().setOriginTainted();
+    canvasBase().setImageBufferAndMarkDirty(imageBitmap->takeImageBuffer());
 }
 
 ExceptionOr<void> ImageBitmapRenderingContext::transferFromImageBitmap(RefPtr<ImageBitmap> imageBitmap)
@@ -139,7 +117,7 @@ ExceptionOr<void> ImageBitmapRenderingContext::transferFromImageBitmap(RefPtr<Im
     //    then throw an "InvalidStateError" DOMException and abort these steps.
 
     if (imageBitmap->isDetached())
-        return Exception { InvalidStateError };
+        return Exception { ExceptionCode::InvalidStateError };
 
     // 4. Run the steps to set an ImageBitmapRenderingContext's output bitmap,
     //    with the context argument equal to bitmapContext, and the bitmap
@@ -158,6 +136,28 @@ ExceptionOr<void> ImageBitmapRenderingContext::transferFromImageBitmap(RefPtr<Im
     imageBitmap->close();
 
     return { };
+}
+
+void ImageBitmapRenderingContext::setBlank()
+{
+    m_bitmapMode = BitmapMode::Blank;
+    // FIXME: What is the point of creating a full size transparent buffer that
+    // can never be changed? Wouldn't a 1x1 buffer give the same rendering? The
+    // only reason I can think of is toDataURL(), but that doesn't seem like
+    // a good enough argument to waste memory.
+    auto buffer = ImageBuffer::create(FloatSize(canvasBase().width(), canvasBase().height()), RenderingPurpose::Unspecified, 1, DestinationColorSpace::SRGB(), ImageBufferPixelFormat::BGRA8, bufferOptionsForRendingMode(RenderingMode::Unaccelerated));
+    canvasBase().setImageBufferAndMarkDirty(WTFMove(buffer));
+}
+
+RefPtr<ImageBuffer> ImageBitmapRenderingContext::transferToImageBuffer()
+{
+    if (!canvasBase().hasCreatedImageBuffer())
+        return canvasBase().allocateImageBuffer();
+    RefPtr result = canvasBase().buffer();
+    if (!result)
+        return nullptr;
+    setBlank();
+    return result;
 }
 
 }

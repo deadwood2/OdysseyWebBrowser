@@ -30,59 +30,70 @@
 
 #include "DOMWrapperWorld.h"
 #include "EventLoop.h"
-#include "JSDOMGlobalObjectTask.h"
+#include "JSDOMExceptionHandling.h"
 #include "JSDOMGuardedObject.h"
 #include "JSMicrotaskCallback.h"
+#include "JSTrustedScript.h"
+#include "TrustedType.h"
 #include "WorkerGlobalScope.h"
 #include "WorkerThread.h"
+#include <JavaScriptCore/GlobalObjectMethodTable.h>
 #include <JavaScriptCore/JSCInlines.h>
 #include <JavaScriptCore/JSCJSValueInlines.h>
-#include <JavaScriptCore/JSProxy.h>
+#include <JavaScriptCore/JSGlobalProxy.h>
 #include <JavaScriptCore/Microtask.h>
 #include <wtf/Language.h>
 
 namespace WebCore {
 using namespace JSC;
 
-const ClassInfo JSWorkerGlobalScopeBase::s_info = { "WorkerGlobalScope", &JSDOMGlobalObject::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSWorkerGlobalScopeBase) };
+const ClassInfo JSWorkerGlobalScopeBase::s_info = { "WorkerGlobalScope"_s, &JSDOMGlobalObject::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSWorkerGlobalScopeBase) };
 
-const GlobalObjectMethodTable JSWorkerGlobalScopeBase::s_globalObjectMethodTable = {
-    &supportsRichSourceInfo,
-    &shouldInterruptScript,
-    &javaScriptRuntimeFlags,
-    &queueMicrotaskToEventLoop,
-    &shouldInterruptScriptBeforeTimeout,
-    &moduleLoaderImportModule,
-    &moduleLoaderResolve,
-    &moduleLoaderFetch,
-    &moduleLoaderCreateImportMetaProperties,
-    &moduleLoaderEvaluate,
-    &promiseRejectionTracker,
-    &reportUncaughtExceptionAtEventLoop,
-    &currentScriptExecutionOwner,
-    &scriptExecutionStatus,
-    [] { return defaultLanguage(); },
+const GlobalObjectMethodTable* JSWorkerGlobalScopeBase::globalObjectMethodTable()
+{
+    static constexpr GlobalObjectMethodTable table = {
+        &supportsRichSourceInfo,
+        &shouldInterruptScript,
+        &javaScriptRuntimeFlags,
+        &queueMicrotaskToEventLoop,
+        &shouldInterruptScriptBeforeTimeout,
+        &moduleLoaderImportModule,
+        &moduleLoaderResolve,
+        &moduleLoaderFetch,
+        &moduleLoaderCreateImportMetaProperties,
+        &moduleLoaderEvaluate,
+        &promiseRejectionTracker,
+        &reportUncaughtExceptionAtEventLoop,
+        &currentScriptExecutionOwner,
+        &scriptExecutionStatus,
+        &reportViolationForUnsafeEval,
+        [] { return defaultLanguage(); },
 #if ENABLE(WEBASSEMBLY)
-    &compileStreaming,
-    &instantiateStreaming,
+        &compileStreaming,
+        &instantiateStreaming,
 #else
-    nullptr,
-    nullptr,
+        nullptr,
+        nullptr,
 #endif
+        deriveShadowRealmGlobalObject,
+        codeForEval,
+        canCompileStrings,
+    };
+    return &table;
 };
 
 JSWorkerGlobalScopeBase::JSWorkerGlobalScopeBase(JSC::VM& vm, JSC::Structure* structure, RefPtr<WorkerGlobalScope>&& impl)
-    : JSDOMGlobalObject(vm, structure, normalWorld(vm), &s_globalObjectMethodTable)
+    : JSDOMGlobalObject(vm, structure, normalWorld(vm), globalObjectMethodTable())
     , m_wrapped(WTFMove(impl))
 {
 }
 
-void JSWorkerGlobalScopeBase::finishCreation(VM& vm, JSProxy* proxy)
+void JSWorkerGlobalScopeBase::finishCreation(VM& vm, JSGlobalProxy* proxy)
 {
     m_proxy.set(vm, this, proxy);
 
     Base::finishCreation(vm, m_proxy.get());
-    ASSERT(inherits(vm, info()));
+    ASSERT(inherits(info()));
 }
 
 template<typename Visitor>
@@ -131,6 +142,26 @@ JSC::ScriptExecutionStatus JSWorkerGlobalScopeBase::scriptExecutionStatus(JSC::J
 {
     ASSERT_UNUSED(owner, globalObject == owner);
     return jsCast<JSWorkerGlobalScopeBase*>(globalObject)->scriptExecutionContext()->jscScriptExecutionStatus();
+}
+
+void JSWorkerGlobalScopeBase::reportViolationForUnsafeEval(JSC::JSGlobalObject* globalObject, JSC::JSString* source)
+{
+    return JSGlobalObject::reportViolationForUnsafeEval(globalObject, source);
+}
+
+String JSWorkerGlobalScopeBase::codeForEval(JSC::JSGlobalObject* globalObject, JSC::JSValue value)
+{
+    VM& vm = globalObject->vm();
+
+    if (auto* script = JSTrustedScript::toWrapped(vm, value))
+        return script->toString();
+
+    return nullString();
+}
+
+bool JSWorkerGlobalScopeBase::canCompileStrings(JSC::JSGlobalObject* globalObject, JSC::CompilationType compilationType, String codeString, JSC::JSValue bodyArgument)
+{
+    return JSDOMGlobalObject::canCompileStrings(globalObject, compilationType, codeString, bodyArgument);
 }
 
 void JSWorkerGlobalScopeBase::queueMicrotaskToEventLoop(JSGlobalObject& object, Ref<JSC::Microtask>&& task)

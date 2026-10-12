@@ -61,11 +61,18 @@
 @property (assign) BOOL altMode;
 @property (assign) BOOL immediate;
 
+@property (retain) NSPersonNameComponents *authorNameComponents;
+
 @property (copy) NSArray *allowedActionUTIs;
 
 - (DDActionContext *)contextForView:(NSView *)view altMode:(BOOL)altMode interactionStartedHandler:(void (^)(void))interactionStartedHandler interactionChangedHandler:(void (^)(void))interactionChangedHandler interactionStoppedHandler:(void (^)(void))interactionStoppedHandler;
 
 @end
+
+#if HAVE(SECURE_ACTION_CONTEXT)
+@interface DDSecureActionContext : DDActionContext
+@end
+#endif
 
 @interface DDActionsManager : NSObject
 
@@ -113,6 +120,12 @@ typedef NSUInteger DDHighlightStyle;
 @end
 
 #endif // !HAVE(DATA_DETECTORS_MAC_ACTION)
+
+#if HAVE(SECURE_ACTION_CONTEXT)
+using WKDDActionContext = DDSecureActionContext;
+#else
+using WKDDActionContext = DDActionContext;
+#endif
 
 #endif // PLATFORM(MAC)
 

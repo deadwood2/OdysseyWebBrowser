@@ -25,11 +25,10 @@
 
 #pragma once
 
-#if ENABLE(PDFKIT_PLUGIN)
+#if ENABLE(LEGACY_PDFKIT_PLUGIN)
 
-#import <Quartz/Quartz.h>
+#import <PDFKit/PDFKit.h>
 
-@class CPReadingModel;
 @class PDFViewLayout;
 
 typedef NS_ENUM(NSInteger, PDFLayerControllerCursorType) {
@@ -68,6 +67,7 @@ typedef NS_ENUM(NSInteger, PDFLayerControllerCursorType) {
 @property (retain) PDFDocument *document;
 @property (retain) id<PDFLayerControllerDelegate> delegate;
 @property (nonatomic, strong) NSString *URLFragment;
+@property (nonatomic, class) bool useIOSurfaceForTiles;
 
 - (void)setFrameSize:(CGSize)size;
 
@@ -86,11 +86,9 @@ typedef NS_ENUM(NSInteger, PDFLayerControllerCursorType) {
 
 - (void)snapshotInContext:(CGContextRef)context;
 
-#if ENABLE(UI_PROCESS_PDF_HUD)
 - (void)setDisplaysPDFHUDController:(BOOL)displaysController;
 - (void)zoomIn:(id)atPoint;
 - (void)zoomOut:(id)atPoint;
-#endif
 
 - (void)magnifyWithMagnification:(CGFloat)magnification atPoint:(CGPoint)point immediately:(BOOL)immediately;
 
@@ -145,7 +143,6 @@ typedef NS_ENUM(NSInteger, PDFLayerControllerCursorType) {
 
 // Accessibility
 
-- (CPReadingModel *)readingModel;
 - (id)accessibilityFocusedUIElement;
 - (NSArray *)accessibilityAttributeNames;
 - (BOOL)accessibilityIsAttributeSettable:(NSString *)attribute;
@@ -177,4 +174,4 @@ typedef NS_ENUM(NSInteger, PDFLayerControllerCursorType) {
 - (id)accessibilityNode;
 @end
 
-#endif // ENABLE(PDFKIT_PLUGIN)
+#endif // ENABLE(LEGACY_PDFKIT_PLUGIN)

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011, 2014-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2011-2022 Apple Inc. All rights reserved.
  * Copyright (C) 2011 Nokia Corporation and/or its subsidiary(-ies).
  *
  * Redistribution and use in source and binary forms, with or without
@@ -28,17 +28,22 @@
 #import "EventSenderProxy.h"
 
 #import "CoreGraphicsTestSPI.h"
+#import "ModifierKeys.h"
 #import "PlatformWebView.h"
 #import "StringFunctions.h"
 #import "TestController.h"
 #import "TestRunnerWKWebView.h"
 #import "WebKitTestRunnerWindow.h"
 #import <Carbon/Carbon.h>
+#import <WebCore/PlatformMouseEvent.h>
 #import <WebKit/WKString.h>
 #import <WebKit/WKPagePrivate.h>
 #import <WebKit/WKWebView.h>
+#import <WebKit/WKWebViewPrivate.h>
+#import <WebKit/WKWebViewPrivateForTesting.h>
 #import <pal/spi/cocoa/IOKitSPI.h>
 #import <wtf/RetainPtr.h>
+#import <wtf/cocoa/TypeCastsCocoa.h>
 
 @interface NSApplication (Details)
 - (void)_setCurrentEvent:(NSEvent *)event;
@@ -68,7 +73,10 @@
 
 - (id)initPressureEventAtLocation:(NSPoint)location globalLocation:(NSPoint)globalLocation stage:(NSInteger)stage pressure:(float)pressure stageTransition:(float)stageTransition phase:(NSEventPhase)phase time:(NSTimeInterval)time eventNumber:(NSInteger)eventNumber window:(NSWindow *)window;
 - (id)initMagnifyEventAtLocation:(NSPoint)location globalLocation:(NSPoint)globalLocation magnification:(CGFloat)magnification phase:(NSEventPhase)phase time:(NSTimeInterval)time eventNumber:(NSInteger)eventNumber window:(NSWindow *)window;
+- (id)initSmartMagnifyEventAtLocation:(NSPoint)location globalLocation:(NSPoint)globalLocation time:(NSTimeInterval)time eventNumber:(NSInteger)eventNumber window:(NSWindow *)window;
+
 - (NSTimeInterval)timestamp;
+
 @end
 
 static CGSGesturePhase EventSenderCGGesturePhaseFromNSEventPhase(NSEventPhase phase)
@@ -149,6 +157,25 @@ static CGSGesturePhase EventSenderCGGesturePhaseFromNSEventPhase(NSEventPhase ph
 
     return self;
 }
+
+- (id)initSmartMagnifyEventAtLocation:(NSPoint)location globalLocation:(NSPoint)globalLocation time:(NSTimeInterval)time eventNumber:(NSInteger)eventNumber window:(NSWindow *)window
+{
+    auto cgEvent = adoptCF(CGEventCreate(nullptr));
+    CGEventSetType(cgEvent.get(), (CGEventType)kCGSEventGesture);
+    CGEventSetIntegerValueField(cgEvent.get(), kCGEventGestureHIDType, kIOHIDEventTypeZoomToggle);
+
+    if (!(self = [super _initWithCGEvent:cgEvent.get() eventRef:nullptr]))
+        return nil;
+
+    _eventSender_type = NSEventTypeSmartMagnify;
+    _eventSender_location = location;
+    _eventSender_locationInWindow = globalLocation;
+    _eventSender_timestamp = time;
+    _eventSender_window = window;
+
+    return self;
+}
+
 
 - (CGFloat)stageTransition
 {
@@ -238,13 +265,6 @@ enum MouseButton {
     NoMouseButton = -2
 };
 
-struct KeyMappingEntry {
-    int macKeyCode;
-    int macNumpadKeyCode;
-    unichar character;
-    NSString* characterName;
-};
-
 static NSEventType eventTypeForMouseButtonAndAction(int button, MouseAction action)
 {
     switch (button) {
@@ -280,9 +300,9 @@ static NSEventType eventTypeForMouseButtonAndAction(int button, MouseAction acti
     return static_cast<NSEventType>(0);
 }
 
-static int buildModifierFlags(WKEventModifiers modifiers)
+static NSEventModifierFlags buildModifierFlags(WKEventModifiers modifiers)
 {
-    int flags = 0;
+    NSEventModifierFlags flags = 0;
     if (modifiers & kWKEventModifiersControlKey)
         flags |= NSEventModifierFlagControl;
     if (modifiers & kWKEventModifiersShiftKey)
@@ -342,13 +362,13 @@ void EventSenderProxy::mouseDown(unsigned buttonNumber, WKEventModifiers modifie
                                          context:[NSGraphicsContext currentContext] 
                                      eventNumber:++m_eventNumber 
                                       clickCount:m_clickCount 
-                                        pressure:0.0];
+                                        pressure:WebCore::ForceAtClick];
 
-    NSView *targetView = [m_testController->mainWebView()->platformView() hitTest:[event locationInWindow]];
-    if (targetView) {
+    m_targetView = [m_testController->mainWebView()->platformView() hitTest:[event locationInWindow]];
+    if (m_targetView) {
         auto eventPressedMouseButtonsSwizzler = makeUnique<ClassMethodSwizzler>([NSEvent class], @selector(pressedMouseButtons), reinterpret_cast<IMP>(swizzledEventPressedMouseButtons));
         [NSApp _setCurrentEvent:event];
-        [targetView mouseDown:event];
+        [m_targetView mouseDown:event];
         [NSApp _setCurrentEvent:nil];
         if (buttonNumber == LeftMouseButton)
             m_leftMouseButtonDown = true;
@@ -370,17 +390,17 @@ void EventSenderProxy::mouseUp(unsigned buttonNumber, WKEventModifiers modifiers
                                       clickCount:m_clickCount 
                                         pressure:0.0];
 
-    NSView *targetView = [m_testController->mainWebView()->platformView() hitTest:[event locationInWindow]];
+    m_targetView = [m_testController->mainWebView()->platformView() hitTest:[event locationInWindow]];
     // FIXME: Silly hack to teach WKTR to respect capturing mouse events outside the WKView.
     // The right solution is just to use NSApplication's built-in event sending methods, 
     // instead of rolling our own algorithm for selecting an event target.
-    if (!targetView)
-        targetView = m_testController->mainWebView()->platformView();
+    if (!m_targetView)
+        m_targetView = m_testController->mainWebView()->platformView();
 
-    ASSERT(targetView);
+    ASSERT(m_targetView);
     auto eventPressedMouseButtonsSwizzler = makeUnique<ClassMethodSwizzler>([NSEvent class], @selector(pressedMouseButtons), reinterpret_cast<IMP>(swizzledEventPressedMouseButtons));
     [NSApp _setCurrentEvent:event];
-    [targetView mouseUp:event];
+    [m_targetView mouseUp:event];
     [NSApp _setCurrentEvent:nil];
     if (buttonNumber == LeftMouseButton)
         m_leftMouseButtonDown = false;
@@ -400,7 +420,7 @@ void EventSenderProxy::sendMouseDownToStartPressureEvents()
         context:[NSGraphicsContext currentContext]
         eventNumber:++m_eventNumber
         clickCount:m_clickCount
-        pressure:0.0];
+        pressure:WebCore::ForceAtClick];
 
     [NSApp sendEvent:event];
 }
@@ -605,21 +625,21 @@ void EventSenderProxy::mouseMoveTo(double x, double y, WKStringRef pointerType)
 
     CGEventRef cgEvent = event.CGEvent;
     CGEventSetIntegerValueField(cgEvent, kCGMouseEventDeltaX, newMousePosition.x - m_position.x);
-    CGEventSetIntegerValueField(cgEvent, kCGMouseEventDeltaY, newMousePosition.y - m_position.y);
+    CGEventSetIntegerValueField(cgEvent, kCGMouseEventDeltaY, -1 * (newMousePosition.y - m_position.y));
     event = [NSEvent eventWithCGEvent:cgEvent];
     m_position.x = newMousePosition.x;
     m_position.y = newMousePosition.y;
 
     NSPoint windowLocation = event.locationInWindow;
     // Always target drags at the WKWebView to allow for drag-scrolling outside the view.
-    NSView *targetView = isDrag ? m_testController->mainWebView()->platformView() : [m_testController->mainWebView()->platformView() hitTest:windowLocation];
-    if (targetView) {
+    m_targetView = isDrag ? m_testController->mainWebView()->platformView() : [m_testController->mainWebView()->platformView() hitTest:windowLocation];
+    if (m_targetView) {
         auto eventPressedMouseButtonsSwizzler = makeUnique<ClassMethodSwizzler>([NSEvent class], @selector(pressedMouseButtons), reinterpret_cast<IMP>(swizzledEventPressedMouseButtons));
         [NSApp _setCurrentEvent:event];
         if (isDrag)
-            [targetView mouseDragged:event];
+            [m_targetView mouseDragged:event];
         else
-            [targetView mouseMoved:event];
+            [checked_objc_cast<WKWebView>(m_targetView.get()) _simulateMouseMove:event];
         [NSApp _setCurrentEvent:nil];
     } else
         WTFLogAlways("mouseMoveTo failed to find a target view at %f,%f\n", windowLocation.x, windowLocation.y);
@@ -632,203 +652,18 @@ void EventSenderProxy::leapForward(int milliseconds)
 
 void EventSenderProxy::keyDown(WKStringRef key, WKEventModifiers modifiers, unsigned keyLocation)
 {
-    NSString* character = toWTFString(key);
-
-    NSString *eventCharacter = character;
-    unsigned short keyCode = 0;
-    if ([character isEqualToString:@"leftArrow"]) {
-        const unichar ch = NSLeftArrowFunctionKey;
-        eventCharacter = [NSString stringWithCharacters:&ch length:1];
-        keyCode = 0x7B;
-    } else if ([character isEqualToString:@"rightArrow"]) {
-        const unichar ch = NSRightArrowFunctionKey;
-        eventCharacter = [NSString stringWithCharacters:&ch length:1];
-        keyCode = 0x7C;
-    } else if ([character isEqualToString:@"upArrow"]) {
-        const unichar ch = NSUpArrowFunctionKey;
-        eventCharacter = [NSString stringWithCharacters:&ch length:1];
-        keyCode = 0x7E;
-    } else if ([character isEqualToString:@"downArrow"]) {
-        const unichar ch = NSDownArrowFunctionKey;
-        eventCharacter = [NSString stringWithCharacters:&ch length:1];
-        keyCode = 0x7D;
-    } else if ([character isEqualToString:@"pageUp"]) {
-        const unichar ch = NSPageUpFunctionKey;
-        eventCharacter = [NSString stringWithCharacters:&ch length:1];
-        keyCode = 0x74;
-    } else if ([character isEqualToString:@"pageDown"]) {
-        const unichar ch = NSPageDownFunctionKey;
-        eventCharacter = [NSString stringWithCharacters:&ch length:1];
-        keyCode = 0x79;
-    } else if ([character isEqualToString:@"home"]) {
-        const unichar ch = NSHomeFunctionKey;
-        eventCharacter = [NSString stringWithCharacters:&ch length:1];
-        keyCode = 0x73;
-    } else if ([character isEqualToString:@"end"]) {
-        const unichar ch = NSEndFunctionKey;
-        eventCharacter = [NSString stringWithCharacters:&ch length:1];
-        keyCode = 0x77;
-    } else if ([character isEqualToString:@"insert"]) {
-        const unichar ch = NSInsertFunctionKey;
-        eventCharacter = [NSString stringWithCharacters:&ch length:1];
-        keyCode = 0x72;
-    } else if ([character isEqualToString:@"delete"]) {
-        const unichar ch = NSDeleteFunctionKey;
-        eventCharacter = [NSString stringWithCharacters:&ch length:1];
-        keyCode = 0x75;
-    } else if ([character isEqualToString:@"printScreen"]) {
-        const unichar ch = NSPrintScreenFunctionKey;
-        eventCharacter = [NSString stringWithCharacters:&ch length:1];
-        keyCode = 0x0; // There is no known virtual key code for PrintScreen.
-    } else if ([character isEqualToString:@"cyrillicSmallLetterA"]) {
-        const unichar ch = 0x0430;
-        eventCharacter = [NSString stringWithCharacters:&ch length:1];
-        keyCode = 0x3; // Shares key with "F" on Russian layout.
-    } else if ([character isEqualToString:@"leftControl"]) {
-        const unichar ch = 0xFFE3;
-        eventCharacter = [NSString stringWithCharacters:&ch length:1];
-        keyCode = 0x3B;
-    } else if ([character isEqualToString:@"leftShift"]) {
-        const unichar ch = 0xFFE1;
-        eventCharacter = [NSString stringWithCharacters:&ch length:1];
-        keyCode = 0x38;
-    } else if ([character isEqualToString:@"leftAlt"]) {
-        const unichar ch = 0xFFE7;
-        eventCharacter = [NSString stringWithCharacters:&ch length:1];
-        keyCode = 0x3A;
-    } else if ([character isEqualToString:@"rightControl"]) {
-        const unichar ch = 0xFFE4;
-        eventCharacter = [NSString stringWithCharacters:&ch length:1];
-        keyCode = 0x3E;
-    } else if ([character isEqualToString:@"rightShift"]) {
-        const unichar ch = 0xFFE2;
-        eventCharacter = [NSString stringWithCharacters:&ch length:1];
-        keyCode = 0x3C;
-    } else if ([character isEqualToString:@"rightAlt"]) {
-        const unichar ch = 0xFFE8;
-        eventCharacter = [NSString stringWithCharacters:&ch length:1];
-        keyCode = 0x3D;
-    } else if ([character isEqualToString:@"escape"]) {
-        const unichar ch = 0x1B;
-        eventCharacter = [NSString stringWithCharacters:&ch length:1];
-        keyCode = 0x35;
-    }
-
-    // Compare the input string with the function-key names defined by the DOM spec (i.e. "F1",...,"F24").
-    // If the input string is a function-key name, set its key code.
-    for (unsigned i = 1; i <= 24; i++) {
-        if ([character isEqualToString:[NSString stringWithFormat:@"F%u", i]]) {
-            const unichar ch = NSF1FunctionKey + (i - 1);
-            eventCharacter = [NSString stringWithCharacters:&ch length:1];
-            switch (i) {
-                case 1: keyCode = 0x7A; break;
-                case 2: keyCode = 0x78; break;
-                case 3: keyCode = 0x63; break;
-                case 4: keyCode = 0x76; break;
-                case 5: keyCode = 0x60; break;
-                case 6: keyCode = 0x61; break;
-                case 7: keyCode = 0x62; break;
-                case 8: keyCode = 0x64; break;
-                case 9: keyCode = 0x65; break;
-                case 10: keyCode = 0x6D; break;
-                case 11: keyCode = 0x67; break;
-                case 12: keyCode = 0x6F; break;
-                case 13: keyCode = 0x69; break;
-                case 14: keyCode = 0x6B; break;
-                case 15: keyCode = 0x71; break;
-                case 16: keyCode = 0x6A; break;
-                case 17: keyCode = 0x40; break;
-                case 18: keyCode = 0x4F; break;
-                case 19: keyCode = 0x50; break;
-                case 20: keyCode = 0x5A; break;
-            }
-        }
-    }
-
-    // FIXME: No keyCode is set for most keys.
-    if ([character isEqualToString:@"\t"])
-        keyCode = 0x30;
-    else if ([character isEqualToString:@" "])
-        keyCode = 0x31;
-    else if ([character isEqualToString:@"\r"])
-        keyCode = 0x24;
-    else if ([character isEqualToString:@"\n"])
-        keyCode = 0x4C;
-    else if ([character isEqualToString:@"\x8"])
-        keyCode = 0x33;
-    else if ([character isEqualToString:@"a"])
-        keyCode = 0x00;
-    else if ([character isEqualToString:@"b"])
-        keyCode = 0x0B;
-    else if ([character isEqualToString:@"d"])
-        keyCode = 0x02;
-    else if ([character isEqualToString:@"e"])
-        keyCode = 0x0E;
-    else if ([character isEqualToString:@"\x1b"])
-        keyCode = 0x1B;
-    else if ([character isEqualToString:@":"])
-        keyCode = 0x29;
-    else if ([character isEqualToString:@";"])
-        keyCode = 0x29;
-    else if ([character isEqualToString:@","])
-        keyCode = 0x2B;
-
-    KeyMappingEntry table[] = {
-        {0x2F, 0x41, '.', nil},
-        {0,    0x43, '*', nil},
-        {0,    0x45, '+', nil},
-        {0,    0x47, NSClearLineFunctionKey, @"clear"},
-        {0x2C, 0x4B, '/', nil},
-        {0,    0x4C, 3, @"enter" },
-        {0x1B, 0x4E, '-', nil},
-        {0x18, 0x51, '=', nil},
-        {0x1D, 0x52, '0', nil},
-        {0x12, 0x53, '1', nil},
-        {0x13, 0x54, '2', nil},
-        {0x14, 0x55, '3', nil},
-        {0x15, 0x56, '4', nil},
-        {0x17, 0x57, '5', nil},
-        {0x16, 0x58, '6', nil},
-        {0x1A, 0x59, '7', nil},
-        {0x1C, 0x5B, '8', nil},
-        {0x19, 0x5C, '9', nil},
-    };
-    for (unsigned i = 0; i < WTF_ARRAY_LENGTH(table); ++i) {
-        NSString* currentCharacterString = [NSString stringWithCharacters:&table[i].character length:1];
-        if ([character isEqualToString:currentCharacterString] || [character isEqualToString:table[i].characterName]) {
-            if (keyLocation == 0x03 /*DOM_KEY_LOCATION_NUMPAD*/)
-                keyCode = table[i].macNumpadKeyCode;
-            else
-                keyCode = table[i].macKeyCode;
-            eventCharacter = currentCharacterString;
-            break;
-        }
-    }
-
-    NSString *charactersIgnoringModifiers = eventCharacter;
-
-    int modifierFlags = 0;
-
-    if ([character length] == 1 && [character characterAtIndex:0] >= 'A' && [character characterAtIndex:0] <= 'Z') {
-        modifierFlags |= NSEventModifierFlagShift;
-        charactersIgnoringModifiers = [character lowercaseString];
-    }
-
-    modifierFlags |= buildModifierFlags(modifiers);
-
-    if (keyLocation == 0x03 /*DOM_KEY_LOCATION_NUMPAD*/)
-        modifierFlags |= NSEventModifierFlagNumericPad;
+    RetainPtr<ModifierKeys> modifierKeys = [ModifierKeys modifierKeysWithKey:toWTFString(key) modifiers:buildModifierFlags(modifiers) keyLocation:keyLocation];
 
     NSEvent *event = [NSEvent keyEventWithType:NSEventTypeKeyDown
-                        location:NSMakePoint(5, 5)
-                        modifierFlags:modifierFlags
-                        timestamp:absoluteTimeForEventTime(currentEventTime())
-                        windowNumber:[m_testController->mainWebView()->platformWindow() windowNumber]
-                        context:[NSGraphicsContext currentContext]
-                        characters:eventCharacter
-                        charactersIgnoringModifiers:charactersIgnoringModifiers
-                        isARepeat:NO
-                        keyCode:keyCode];
+        location:NSMakePoint(5, 5)
+        modifierFlags:modifierKeys->modifierFlags
+        timestamp:absoluteTimeForEventTime(currentEventTime())
+        windowNumber:[m_testController->mainWebView()->platformWindow() windowNumber]
+        context:[NSGraphicsContext currentContext]
+        characters:modifierKeys->eventCharacter.get()
+        charactersIgnoringModifiers:modifierKeys->charactersIgnoringModifiers.get()
+        isARepeat:NO
+        keyCode:modifierKeys->keyCode];
 
     [NSApp _setCurrentEvent:event];
     [[m_testController->mainWebView()->platformWindow() firstResponder] keyDown:event];
@@ -836,14 +671,54 @@ void EventSenderProxy::keyDown(WKStringRef key, WKEventModifiers modifiers, unsi
 
     event = [NSEvent keyEventWithType:NSEventTypeKeyUp
                         location:NSMakePoint(5, 5)
-                        modifierFlags:modifierFlags
+                        modifierFlags:modifierKeys->modifierFlags
                         timestamp:absoluteTimeForEventTime(currentEventTime())
                         windowNumber:[m_testController->mainWebView()->platformWindow() windowNumber]
                         context:[NSGraphicsContext currentContext]
-                        characters:eventCharacter
-                        charactersIgnoringModifiers:charactersIgnoringModifiers
+                        characters:modifierKeys->eventCharacter.get()
+                        charactersIgnoringModifiers:modifierKeys->charactersIgnoringModifiers.get()
                         isARepeat:NO
-                        keyCode:keyCode];
+                        keyCode:modifierKeys->keyCode];
+
+    [NSApp _setCurrentEvent:event];
+    [[m_testController->mainWebView()->platformWindow() firstResponder] keyUp:event];
+    [NSApp _setCurrentEvent:nil];
+}
+
+void EventSenderProxy::rawKeyDown(WKStringRef key, WKEventModifiers modifiers, unsigned keyLocation)
+{
+    RetainPtr<ModifierKeys> modifierKeys = [ModifierKeys modifierKeysWithKey:toWTFString(key) modifiers:buildModifierFlags(modifiers) keyLocation:keyLocation];
+
+    NSEvent *event = [NSEvent keyEventWithType:NSEventTypeKeyDown
+        location:NSMakePoint(5, 5)
+        modifierFlags:modifierKeys->modifierFlags
+        timestamp:absoluteTimeForEventTime(currentEventTime())
+        windowNumber:[m_testController->mainWebView()->platformWindow() windowNumber]
+        context:[NSGraphicsContext currentContext]
+        characters:modifierKeys->eventCharacter.get()
+        charactersIgnoringModifiers:modifierKeys->charactersIgnoringModifiers.get()
+        isARepeat:NO
+        keyCode:modifierKeys->keyCode];
+
+    [NSApp _setCurrentEvent:event];
+    [[m_testController->mainWebView()->platformWindow() firstResponder] keyDown:event];
+    [NSApp _setCurrentEvent:nil];
+}
+
+void EventSenderProxy::rawKeyUp(WKStringRef key, WKEventModifiers modifiers, unsigned keyLocation)
+{
+    RetainPtr<ModifierKeys> modifierKeys = [ModifierKeys modifierKeysWithKey:toWTFString(key) modifiers:buildModifierFlags(modifiers) keyLocation:keyLocation];
+
+    NSEvent *event = [NSEvent keyEventWithType:NSEventTypeKeyUp
+        location:NSMakePoint(5, 5)
+        modifierFlags:modifierKeys->modifierFlags
+        timestamp:absoluteTimeForEventTime(currentEventTime())
+        windowNumber:[m_testController->mainWebView()->platformWindow() windowNumber]
+        context:[NSGraphicsContext currentContext]
+        characters:modifierKeys->eventCharacter.get()
+        charactersIgnoringModifiers:modifierKeys->charactersIgnoringModifiers.get()
+        isARepeat:NO
+        keyCode:modifierKeys->keyCode];
 
     [NSApp _setCurrentEvent:event];
     [[m_testController->mainWebView()->platformWindow() firstResponder] keyUp:event];
@@ -901,6 +776,104 @@ void EventSenderProxy::mouseScrollByWithWheelAndMomentumPhases(int x, int y, int
     } else {
         NSPoint windowLocation = [event locationInWindow];
         WTFLogAlways("mouseScrollByWithWheelAndMomentumPhases failed to find the target view at %f,%f\n", windowLocation.x, windowLocation.y);
+    }
+}
+
+static CGGesturePhase cgScrollPhaseFromPhase(EventSenderProxy::WheelEventPhase phase)
+{
+    switch (phase) {
+    case EventSenderProxy::WheelEventPhase::None:
+        return kCGGesturePhaseNone;
+    case EventSenderProxy::WheelEventPhase::Began:
+        return kCGGesturePhaseBegan;
+    case EventSenderProxy::WheelEventPhase::Changed:
+        return kCGGesturePhaseChanged;
+    case EventSenderProxy::WheelEventPhase::Ended:
+        return kCGGesturePhaseEnded;
+    case EventSenderProxy::WheelEventPhase::Cancelled:
+        return kCGGesturePhaseCancelled;
+    case EventSenderProxy::WheelEventPhase::MayBegin:
+        return kCGGesturePhaseMayBegin;
+    }
+    ASSERT_NOT_REACHED();
+    return kCGGesturePhaseNone;
+}
+
+static CGMomentumScrollPhase cgMomentumPhaseFromPhase(EventSenderProxy::WheelEventPhase phase)
+{
+    switch (phase) {
+    case EventSenderProxy::WheelEventPhase::None:
+        return kCGMomentumScrollPhaseNone;
+    case EventSenderProxy::WheelEventPhase::Began:
+        return kCGMomentumScrollPhaseBegin;
+    case EventSenderProxy::WheelEventPhase::Changed:
+        return kCGMomentumScrollPhaseContinue;
+    case EventSenderProxy::WheelEventPhase::Ended:
+        return kCGMomentumScrollPhaseEnd;
+    case EventSenderProxy::WheelEventPhase::Cancelled:
+    case EventSenderProxy::WheelEventPhase::MayBegin:
+        break;
+    }
+
+    ASSERT_NOT_REACHED();
+    return kCGMomentumScrollPhaseNone;
+}
+
+void EventSenderProxy::sendWheelEvent(EventTimestamp timestamp, double windowX, double windowY, double deltaX, double deltaY, WheelEventPhase phase, WheelEventPhase momentumPhase)
+{
+    constexpr uint32_t wheelCount = 2;
+    auto cgScrollEvent = adoptCF(CGEventCreateScrollWheelEvent2(nullptr, kCGScrollEventUnitPixel, wheelCount, deltaY, deltaX, 0));
+    CGEventSetTimestamp(cgScrollEvent.get(), timestamp);
+
+    // Set the CGEvent location in flipped coords relative to the first screen, which
+    // compensates for the behavior of +[NSEvent eventWithCGEvent:] when the event has
+    // no associated window. See <rdar://problem/17180591>.
+    CGPoint flippedWindowMousePosition = CGPointMake(windowX, [[[NSScreen screens] objectAtIndex:0] frame].size.height - windowY);
+    CGEventSetLocation(cgScrollEvent.get(), flippedWindowMousePosition);
+
+    CGEventSetIntegerValueField(cgScrollEvent.get(), kCGScrollWheelEventIsContinuous, 1);
+    CGEventSetIntegerValueField(cgScrollEvent.get(), kCGScrollWheelEventScrollPhase, cgScrollPhaseFromPhase(phase));
+    CGEventSetIntegerValueField(cgScrollEvent.get(), kCGScrollWheelEventMomentumPhase, cgMomentumPhaseFromPhase(momentumPhase));
+
+    const char* markerMessage = nullptr;
+    if (phase == WheelEventPhase::Ended || phase == WheelEventPhase::Cancelled)
+        markerMessage = "SentWheelPhaseEndOrCancel";
+    else if (momentumPhase == WheelEventPhase::Ended)
+        markerMessage = "SentWheelMomentumPhaseEnd";
+
+    if (markerMessage)
+        WKPagePostMessageToInjectedBundle(m_testController->mainWebView()->page(), toWK("WheelEventMarker").get(), toWK(markerMessage).get());
+
+    NSEvent* event = [NSEvent eventWithCGEvent:cgScrollEvent.get()];
+    // Our event should have the correct settings:
+    if (NSView *targetView = [m_testController->mainWebView()->platformView() hitTest:[event locationInWindow]]) {
+        [NSApp _setCurrentEvent:event];
+        [targetView scrollWheel:event];
+        [NSApp _setCurrentEvent:nil];
+    } else {
+        NSPoint windowLocation = [event locationInWindow];
+        WTFLogAlways("EventSenderProxy::sendWheelEvent failed to find the target view at %f,%f\n", windowLocation.x, windowLocation.y);
+    }
+}
+
+void EventSenderProxy::smartMagnify()
+{
+    auto* mainWebView = m_testController->mainWebView();
+    NSView *platformView = mainWebView->platformView();
+
+    auto event = adoptNS([[EventSenderSyntheticEvent alloc] initSmartMagnifyEventAtLocation:NSMakePoint(m_position.x, m_position.y)
+        globalLocation:([mainWebView->platformWindow() convertRectToScreen:NSMakeRect(m_position.x, m_position.y, 1, 1)].origin)
+        time:absoluteTimeForEventTime(currentEventTime())
+        eventNumber:++m_eventNumber
+        window:platformView.window]);
+
+    if (NSView *targetView = [platformView hitTest:[event locationInWindow]]) {
+        [NSApp _setCurrentEvent:event.get()];
+        [targetView smartMagnifyWithEvent:event.get()];
+        [NSApp _setCurrentEvent:nil];
+    } else {
+        NSPoint windowLocation = [event locationInWindow];
+        WTFLogAlways("gestureStart failed to find the target view at %f,%f\n", windowLocation.x, windowLocation.y);
     }
 }
 
@@ -976,5 +949,16 @@ void EventSenderProxy::scaleGestureEnd(double scale)
 }
 
 #endif // ENABLE(MAC_GESTURE_EVENTS)
+
+void EventSenderProxy::waitForPendingMouseEvents()
+{
+    if (RetainPtr targetView = std::exchange(m_targetView, nullptr)) {
+        __block bool doneProcessingMouseEvents = false;
+        [checked_objc_cast<WKWebView>(targetView.get()) _doAfterProcessingAllPendingMouseEvents:^{
+            doneProcessingMouseEvents = true;
+        }];
+        m_testController->runUntil(doneProcessingMouseEvents, 100_ms);
+    }
+}
 
 } // namespace WTR

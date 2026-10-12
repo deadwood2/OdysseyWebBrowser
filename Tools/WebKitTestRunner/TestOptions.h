@@ -45,22 +45,26 @@ public:
 
     bool allowTopNavigationToDataURLs() const { return boolWebPreferenceFeatureValue("AllowTopNavigationToDataURLs", true); }
     bool enableAttachmentElement() const { return boolWebPreferenceFeatureValue("AttachmentElementEnabled", false); }
+    bool enableAttachmentWideLayout() const { return boolWebPreferenceFeatureValue("AttachmentWideLayoutEnabled", false); }
     bool punchOutWhiteBackgroundsInDarkMode() const { return boolWebPreferenceFeatureValue("PunchOutWhiteBackgroundsInDarkMode", false); }
     bool useServiceWorkerShortTimeout() const { return boolWebPreferenceFeatureValue("ShouldUseServiceWorkerShortTimeout", false); }
     bool accessibilityIsolatedTreeMode() const { return boolWebPreferenceFeatureValue("IsAccessibilityIsolatedTreeEnabled", false); }
 
     bool allowsLinkPreview() const { return boolTestRunnerFeatureValue("allowsLinkPreview"); }
+    bool appHighlightsEnabled() const { return boolTestRunnerFeatureValue("appHighlightsEnabled"); }
+    bool allowTestOnlyIPC() const { return boolTestRunnerFeatureValue("allowTestOnlyIPC"); }
     bool dumpJSConsoleLogInStdErr() const { return boolTestRunnerFeatureValue("dumpJSConsoleLogInStdErr"); }
     bool editable() const { return boolTestRunnerFeatureValue("editable"); }
     bool enableInAppBrowserPrivacy() const { return boolTestRunnerFeatureValue("enableInAppBrowserPrivacy"); }
     bool enableProcessSwapOnNavigation() const { return boolTestRunnerFeatureValue("enableProcessSwapOnNavigation"); }
-    bool enableProcessSwapOnWindowOpen() const { return boolTestRunnerFeatureValue("enableProcessSwapOnWindowOpen"); }
-    bool appHighlightsEnabled() const { return boolTestRunnerFeatureValue("appHighlightsEnabled"); }
+    bool findInteractionEnabled() const { return boolTestRunnerFeatureValue("findInteractionEnabled") ; }
     bool ignoreSynchronousMessagingTimeouts() const { return boolTestRunnerFeatureValue("ignoreSynchronousMessagingTimeouts"); }
     bool ignoresViewportScaleLimits() const { return boolTestRunnerFeatureValue("ignoresViewportScaleLimits"); }
     bool isAppBoundWebView() const { return boolTestRunnerFeatureValue("isAppBoundWebView"); }
     bool isAppInitiated() const { return boolTestRunnerFeatureValue("isAppInitiated"); }
+    bool advancedPrivacyProtectionsEnabled() const { return boolTestRunnerFeatureValue("advancedPrivacyProtectionsEnabled"); }
     bool runSingly() const { return boolTestRunnerFeatureValue("runSingly"); }
+    bool runInCrossOriginFrame() const { return boolTestRunnerFeatureValue("runInCrossOriginFrame"); }
     bool shouldHandleRunOpenPanel() const { return boolTestRunnerFeatureValue("shouldHandleRunOpenPanel"); }
     bool shouldPresentPopovers() const { return boolTestRunnerFeatureValue("shouldPresentPopovers"); }
     bool shouldShowSpellCheckingDots() const { return boolTestRunnerFeatureValue("spellCheckingDots"); }
@@ -72,24 +76,37 @@ public:
     bool useEphemeralSession() const { return boolTestRunnerFeatureValue("useEphemeralSession"); }
     bool useFlexibleViewport() const { return boolTestRunnerFeatureValue("useFlexibleViewport"); }
     bool useRemoteLayerTree() const { return boolTestRunnerFeatureValue("useRemoteLayerTree"); }
+    bool noUseRemoteLayerTree() const { return boolTestRunnerFeatureValue("noUseRemoteLayerTree"); }
     bool useThreadedScrolling() const { return boolTestRunnerFeatureValue("useThreadedScrolling"); }
+    bool suppressInputAccessoryView() const { return boolTestRunnerFeatureValue("suppressInputAccessoryView"); }
+    bool allowsInlinePredictions() const { return boolTestRunnerFeatureValue("allowsInlinePredictions"); }
+    bool showsScrollIndicators() const { return boolTestRunnerFeatureValue("showsScrollIndicators"); }
+    bool longPressActionsEnabled() const { return boolTestRunnerFeatureValue("longPressActionsEnabled"); }
+    bool enhancedWindowingEnabled() const { return boolTestRunnerFeatureValue("enhancedWindowingEnabled"); }
+    bool textExtractionEnabled() const { return boolTestRunnerFeatureValue("textExtractionEnabled"); }
     double contentInsetTop() const { return doubleTestRunnerFeatureValue("contentInset.top"); }
+    double obscuredInsetTop() const { return doubleTestRunnerFeatureValue("obscuredInset.top"); }
     double horizontalSystemMinimumLayoutMargin() const { return doubleTestRunnerFeatureValue("horizontalSystemMinimumLayoutMargin"); }
     double deviceScaleFactor() const { return doubleTestRunnerFeatureValue("deviceScaleFactor"); }
     double viewHeight() const { return doubleTestRunnerFeatureValue("viewHeight"); }
     double viewWidth() const { return doubleTestRunnerFeatureValue("viewWidth"); }
+    uint16_t insecureUpgradePort() const { return uint16TestRunnerFeatureValue("insecureUpgradePort"); };
+    uint16_t secureUpgradePort() const { return uint16TestRunnerFeatureValue("secureUpgradePort"); };
     std::string additionalSupportedImageTypes() const { return stringTestRunnerFeatureValue("additionalSupportedImageTypes"); }
     std::string applicationBundleIdentifier() const { return stringTestRunnerFeatureValue("applicationBundleIdentifier"); }
     std::string applicationManifest() const { return stringTestRunnerFeatureValue("applicationManifest"); }
     std::string contentMode() const { return stringTestRunnerFeatureValue("contentMode"); }
+    std::string contentSecurityPolicyExtensionMode() const { return stringTestRunnerFeatureValue("contentSecurityPolicyExtensionMode"); }
     std::string dragInteractionPolicy() const { return stringTestRunnerFeatureValue("dragInteractionPolicy"); }
+    std::string focusStartsInputSessionPolicy() const { return stringTestRunnerFeatureValue("focusStartsInputSessionPolicy"); }
     std::string jscOptions() const { return stringTestRunnerFeatureValue("jscOptions"); }
+    std::string captionDisplayMode() const { return stringTestRunnerFeatureValue("captionDisplayMode"); }
     std::string standaloneWebApplicationURL() const { return stringTestRunnerFeatureValue("standaloneWebApplicationURL"); }
     std::vector<std::string> overrideLanguages() const { return stringVectorTestRunnerFeatureValue("language"); }
 
     bool shouldEnableProcessSwapOnNavigation() const
     {
-        return enableProcessSwapOnNavigation() || enableProcessSwapOnWindowOpen();
+        return enableProcessSwapOnNavigation();
     }
 
     const std::unordered_map<std::string, bool>& boolWebPreferenceFeatures() const { return m_features.boolWebPreferenceFeatures; }
@@ -103,6 +120,7 @@ private:
     bool boolWebPreferenceFeatureValue(std::string key, bool defaultValue) const;
     bool boolTestRunnerFeatureValue(std::string key) const;
     double doubleTestRunnerFeatureValue(std::string key) const;
+    uint16_t uint16TestRunnerFeatureValue(std::string key) const;
     std::string stringTestRunnerFeatureValue(std::string key) const;
     std::vector<std::string> stringVectorTestRunnerFeatureValue(std::string key) const;
 

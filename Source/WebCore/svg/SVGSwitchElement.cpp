@@ -22,17 +22,18 @@
 #include "config.h"
 #include "SVGSwitchElement.h"
 
-#include "ElementIterator.h"
+#include "ElementChildIteratorInlines.h"
+#include "LegacyRenderSVGTransformableContainer.h"
 #include "RenderSVGTransformableContainer.h"
-#include "SVGNames.h"
-#include <wtf/IsoMallocInlines.h>
+#include "SVGElementTypeHelpers.h"
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(SVGSwitchElement);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(SVGSwitchElement);
 
 inline SVGSwitchElement::SVGSwitchElement(const QualifiedName& tagName, Document& document)
-    : SVGGraphicsElement(tagName, document)
+    : SVGGraphicsElement(tagName, document, makeUniqueRef<PropertyRegistry>(*this))
 {
     ASSERT(hasTagName(SVGNames::switchTag));
 }
@@ -57,7 +58,9 @@ bool SVGSwitchElement::childShouldCreateRenderer(const Node& child) const
 
 RenderPtr<RenderElement> SVGSwitchElement::createElementRenderer(RenderStyle&& style, const RenderTreePosition&)
 {
-    return createRenderer<RenderSVGTransformableContainer>(*this, WTFMove(style));
+    if (document().settings().layerBasedSVGEngineEnabled())
+        return createRenderer<RenderSVGTransformableContainer>(*this, WTFMove(style));
+    return createRenderer<LegacyRenderSVGTransformableContainer>(*this, WTFMove(style));
 }
 
 }

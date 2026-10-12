@@ -42,6 +42,11 @@ public:
     {
     }
 
+    ResourceResponse(ResourceResponseBase&& base)
+        : ResourceResponseBase(WTFMove(base))
+    {
+    }
+
     ResourceResponse(SoupMessage*, const CString& sniffedContentType = CString());
 
     void updateSoupMessageHeaders(SoupMessageHeaders*) const;
@@ -59,7 +64,7 @@ private:
 
     void doUpdateResourceResponse() { }
     String platformSuggestedFilename() const;
-    CertificateInfo platformCertificateInfo() const;
+    CertificateInfo platformCertificateInfo(std::span<const std::byte>) const;
 };
 
 } // namespace WebCore

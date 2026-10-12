@@ -35,7 +35,7 @@
 #include <wtf/glib/WTFGType.h>
 
 /**
- * SECTION: JSCClass
+ * JSCClass:
  * @short_description: JavaScript custom class
  * @title: JSCClass
  * @see_also: JSCContext
@@ -65,17 +65,13 @@ typedef struct _JSCClassPrivate {
     JSC::Weak<JSC::JSObject> prototype;
 } JSCClassPrivate;
 
-struct _JSCClass {
-    GObject parent;
-
-    JSCClassPrivate* priv;
-};
-
+#if !ENABLE(2022_GLIB_API)
 struct _JSCClassClass {
     GObjectClass parent_class;
 };
+#endif
 
-WEBKIT_DEFINE_TYPE(JSCClass, jsc_class, G_TYPE_OBJECT)
+WEBKIT_DEFINE_FINAL_TYPE(JSCClass, jsc_class, G_TYPE_OBJECT, GObject)
 
 class VTableExceptionHandler {
 public:
@@ -110,10 +106,9 @@ private:
 
 static bool isWrappedObject(JSC::JSObject* jsObject)
 {
-    JSC::JSGlobalObject* globalObject = jsObject->globalObject();
     if (jsObject->isGlobalObject())
-        return jsObject->inherits<JSC::JSCallbackObject<JSC::JSAPIWrapperGlobalObject>>(globalObject->vm());
-    return jsObject->inherits<JSC::JSCallbackObject<JSC::JSAPIWrapperObject>>(globalObject->vm());
+        return jsObject->inherits<JSC::JSCallbackObject<JSC::JSAPIWrapperGlobalObject>>();
+    return jsObject->inherits<JSC::JSCallbackObject<JSC::JSAPIWrapperObject>>();
 }
 
 static JSClassRef wrappedObjectClass(JSC::JSObject* jsObject)
@@ -149,8 +144,8 @@ static JSValueRef getProperty(JSContextRef callerContext, JSObjectRef object, JS
 
     VTableExceptionHandler exceptionHandler(context.get(), exception);
 
-    JSClassRef jsClass = wrappedObjectClass(jsObject);
-    for (auto* jscClass = jscContextGetRegisteredClass(context.get(), jsClass); jscClass; jscClass = jscClass->priv->parentClass) {
+    RefPtr jsClass = wrappedObjectClass(jsObject);
+    for (auto* jscClass = jscContextGetRegisteredClass(context.get(), jsClass.get()); jscClass; jscClass = jscClass->priv->parentClass) {
         if (!jscClass->priv->vtable)
             continue;
 
@@ -177,8 +172,8 @@ static bool setProperty(JSContextRef callerContext, JSObjectRef object, JSString
     VTableExceptionHandler exceptionHandler(context.get(), exception);
 
     GRefPtr<JSCValue> propertyValue;
-    JSClassRef jsClass = wrappedObjectClass(jsObject);
-    for (auto* jscClass = jscContextGetRegisteredClass(context.get(), jsClass); jscClass; jscClass = jscClass->priv->parentClass) {
+    RefPtr jsClass = wrappedObjectClass(jsObject);
+    for (auto* jscClass = jscContextGetRegisteredClass(context.get(), jsClass.get()); jscClass; jscClass = jscClass->priv->parentClass) {
         if (!jscClass->priv->vtable)
             continue;
 
@@ -204,8 +199,8 @@ static bool hasProperty(JSContextRef callerContext, JSObjectRef object, JSString
     if (!instance)
         return false;
 
-    JSClassRef jsClass = wrappedObjectClass(jsObject);
-    for (auto* jscClass = jscContextGetRegisteredClass(context.get(), jsClass); jscClass; jscClass = jscClass->priv->parentClass) {
+    RefPtr jsClass = wrappedObjectClass(jsObject);
+    for (auto* jscClass = jscContextGetRegisteredClass(context.get(), jsClass.get()); jscClass; jscClass = jscClass->priv->parentClass) {
         if (!jscClass->priv->vtable)
             continue;
 
@@ -232,8 +227,8 @@ static bool deleteProperty(JSContextRef callerContext, JSObjectRef object, JSStr
 
     VTableExceptionHandler exceptionHandler(context.get(), exception);
 
-    JSClassRef jsClass = wrappedObjectClass(jsObject);
-    for (auto* jscClass = jscContextGetRegisteredClass(context.get(), jsClass); jscClass; jscClass = jscClass->priv->parentClass) {
+    RefPtr jsClass = wrappedObjectClass(jsObject);
+    for (auto* jscClass = jscContextGetRegisteredClass(context.get(), jsClass.get()); jscClass; jscClass = jscClass->priv->parentClass) {
         if (!jscClass->priv->vtable)
             continue;
 
@@ -257,8 +252,8 @@ static void getPropertyNames(JSContextRef callerContext, JSObjectRef object, JSP
     if (!instance)
         return;
 
-    JSClassRef jsClass = wrappedObjectClass(jsObject);
-    for (auto* jscClass = jscContextGetRegisteredClass(context.get(), jsClass); jscClass; jscClass = jscClass->priv->parentClass) {
+    RefPtr jsClass = wrappedObjectClass(jsObject);
+    for (auto* jscClass = jscContextGetRegisteredClass(context.get(), jsClass.get()); jscClass; jscClass = jscClass->priv->parentClass) {
         if (!jscClass->priv->vtable)
             continue;
 
@@ -338,8 +333,7 @@ static void jsc_class_class_init(JSCClassClass* klass)
         PROP_CONTEXT,
         g_param_spec_object(
             "context",
-            "JSCContext",
-            "JSC Context",
+            nullptr, nullptr,
             JSC_TYPE_CONTEXT,
             static_cast<GParamFlags>(WEBKIT_PARAM_WRITABLE | G_PARAM_CONSTRUCT_ONLY)));
 
@@ -352,8 +346,7 @@ static void jsc_class_class_init(JSCClassClass* klass)
         PROP_NAME,
         g_param_spec_string(
             "name",
-            "Name",
-            "The class name",
+            nullptr, nullptr,
             nullptr,
             static_cast<GParamFlags>(WEBKIT_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY)));
 
@@ -366,8 +359,7 @@ static void jsc_class_class_init(JSCClassClass* klass)
         PROP_PARENT,
         g_param_spec_object(
             "parent",
-            "Partent",
-            "The parent class",
+            nullptr, nullptr,
             JSC_TYPE_CLASS,
             static_cast<GParamFlags>(WEBKIT_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY)));
 }
@@ -485,9 +477,9 @@ GRefPtr<JSCClass> jscClassCreate(JSCContext* context, const char* name, JSCClass
     GUniquePtr<char> prototypeName(g_strdup_printf("%sPrototype", priv->name.data()));
     JSClassDefinition prototypeDefinition = kJSClassDefinitionEmpty;
     prototypeDefinition.className = prototypeName.get();
-    JSClassRef prototypeClass = JSClassCreate(&prototypeDefinition);
-    priv->prototype = jscContextGetOrCreateJSWrapper(context, prototypeClass);
-    JSClassRelease(prototypeClass);
+    RefPtr prototypeClass = JSClassCreate(&prototypeDefinition);
+    priv->prototype = jscContextGetOrCreateJSWrapper(context, prototypeClass.get());
+    JSClassRelease(prototypeClass.get());
 
     if (priv->parentClass)
         JSObjectSetPrototype(jscContextGetJSContext(context), toRef(priv->prototype.get()), toRef(priv->parentClass->priv->prototype.get()));
@@ -557,7 +549,7 @@ static GRefPtr<JSCValue> jscClassCreateConstructor(JSCClass* jscClass, const cha
         closure = adoptGRef(g_cclosure_new(callback, userData, reinterpret_cast<GClosureNotify>(reinterpret_cast<GCallback>(destroyNotify))));
     JSCClassPrivate* priv = jscClass->priv;
     JSC::JSGlobalObject* globalObject = toJS(priv->context);
-    JSC::VM& vm = globalObject->vm();
+    Ref vm = globalObject->vm();
     JSC::JSLockHolder locker(vm);
     auto* functionObject = JSC::JSCCallbackFunction::create(vm, globalObject, String::fromUTF8(name),
         JSC::JSCCallbackFunction::Type::Constructor, jscClass, WTFMove(closure), returnType, WTFMove(parameters));
@@ -575,7 +567,7 @@ static GRefPtr<JSCValue> jscClassCreateConstructor(JSCClass* jscClass, const cha
  * @jsc_class: a #JSCClass
  * @name: (nullable): the constructor name or %NULL
  * @callback: (scope async): a #GCallback to be called to create an instance of @jsc_class
- * @user_data: (closure): user data to pass to @callback
+ * @user_data: user data to pass to @callback
  * @destroy_notify: (nullable): destroy notifier for @user_data
  * @return_type: the #GType of the constructor return value
  * @n_params: the number of parameter types to follow or 0 if constructor doesn't receive parameters.
@@ -607,12 +599,9 @@ JSCValue* jsc_class_add_constructor(JSCClass* jscClass, const char* name, GCallb
 
     va_list args;
     va_start(args, paramCount);
-    Vector<GType> parameters;
-    if (paramCount) {
-        parameters.reserveInitialCapacity(paramCount);
-        for (unsigned i = 0; i < paramCount; ++i)
-            parameters.uncheckedAppend(va_arg(args, GType));
-    }
+    Vector<GType> parameters(paramCount, [&](size_t) -> GType {
+        return va_arg(args, GType);
+    });
     va_end(args);
 
     return jscClassCreateConstructor(jscClass, name ? name : priv->name.data(), callback, userData, destroyNotify, returnType, WTFMove(parameters)).leakRef();
@@ -624,7 +613,7 @@ JSCValue* jsc_class_add_constructor(JSCClass* jscClass, const char* name, GCallb
  * @jsc_class: a #JSCClass
  * @name: (nullable): the constructor name or %NULL
  * @callback: (scope async): a #GCallback to be called to create an instance of @jsc_class
- * @user_data: (closure): user data to pass to @callback
+ * @user_data: user data to pass to @callback
  * @destroy_notify: (nullable): destroy notifier for @user_data
  * @return_type: the #GType of the constructor return value
  * @n_parameters: the number of parameters
@@ -655,12 +644,9 @@ JSCValue* jsc_class_add_constructorv(JSCClass* jscClass, const char* name, GCall
     if (!name)
         name = priv->name.data();
 
-    Vector<GType> parameters;
-    if (parametersCount) {
-        parameters.reserveInitialCapacity(parametersCount);
-        for (unsigned i = 0; i < parametersCount; ++i)
-            parameters.uncheckedAppend(parameterTypes[i]);
-    }
+    Vector<GType> parameters(parametersCount, [&](size_t i) -> GType {
+        return parameterTypes[i];
+    });
 
     return jscClassCreateConstructor(jscClass, name ? name : priv->name.data(), callback, userData, destroyNotify, returnType, WTFMove(parameters)).leakRef();
 }
@@ -670,7 +656,7 @@ JSCValue* jsc_class_add_constructorv(JSCClass* jscClass, const char* name, GCall
  * @jsc_class: a #JSCClass
  * @name: (nullable): the constructor name or %NULL
  * @callback: (scope async): a #GCallback to be called to create an instance of @jsc_class
- * @user_data: (closure): user data to pass to @callback
+ * @user_data: user data to pass to @callback
  * @destroy_notify: (nullable): destroy notifier for @user_data
  * @return_type: the #GType of the constructor return value
  *
@@ -706,7 +692,7 @@ static void jscClassAddMethod(JSCClass* jscClass, const char* name, GCallback ca
     JSCClassPrivate* priv = jscClass->priv;
     GRefPtr<GClosure> closure = adoptGRef(g_cclosure_new(callback, userData, reinterpret_cast<GClosureNotify>(reinterpret_cast<GCallback>(destroyNotify))));
     JSC::JSGlobalObject* globalObject = toJS(priv->context);
-    JSC::VM& vm = globalObject->vm();
+    Ref vm = globalObject->vm();
     JSC::JSLockHolder locker(vm);
     auto* functionObject = toRef(JSC::JSCCallbackFunction::create(vm, globalObject, String::fromUTF8(name),
         JSC::JSCCallbackFunction::Type::Method, jscClass, WTFMove(closure), returnType, WTFMove(parameters)));
@@ -722,7 +708,7 @@ static void jscClassAddMethod(JSCClass* jscClass, const char* name, GCallback ca
  * @jsc_class: a #JSCClass
  * @name: the method name
  * @callback: (scope async): a #GCallback to be called to invoke method @name of @jsc_class
- * @user_data: (closure): user data to pass to @callback
+ * @user_data: user data to pass to @callback
  * @destroy_notify: (nullable): destroy notifier for @user_data
  * @return_type: the #GType of the method return value, or %G_TYPE_NONE if the method is void.
  * @n_params: the number of parameter types to follow or 0 if the method doesn't receive parameters.
@@ -747,12 +733,9 @@ void jsc_class_add_method(JSCClass* jscClass, const char* name, GCallback callba
 
     va_list args;
     va_start(args, paramCount);
-    Vector<GType> parameters;
-    if (paramCount) {
-        parameters.reserveInitialCapacity(paramCount);
-        for (unsigned i = 0; i < paramCount; ++i)
-            parameters.uncheckedAppend(va_arg(args, GType));
-    }
+    Vector<GType> parameters(paramCount, [&](size_t) -> GType {
+            return va_arg(args, GType);
+    });
     va_end(args);
 
     jscClassAddMethod(jscClass, name, callback, userData, destroyNotify, returnType, WTFMove(parameters));
@@ -763,7 +746,7 @@ void jsc_class_add_method(JSCClass* jscClass, const char* name, GCallback callba
  * @jsc_class: a #JSCClass
  * @name: the method name
  * @callback: (scope async): a #GCallback to be called to invoke method @name of @jsc_class
- * @user_data: (closure): user data to pass to @callback
+ * @user_data: user data to pass to @callback
  * @destroy_notify: (nullable): destroy notifier for @user_data
  * @return_type: the #GType of the method return value, or %G_TYPE_NONE if the method is void.
  * @n_parameters: the number of parameter types to follow or 0 if the method doesn't receive parameters.
@@ -787,12 +770,9 @@ void jsc_class_add_methodv(JSCClass* jscClass, const char* name, GCallback callb
     g_return_if_fail(!parametersCount || parameterTypes);
     g_return_if_fail(jscClass->priv->context);
 
-    Vector<GType> parameters;
-    if (parametersCount) {
-        parameters.reserveInitialCapacity(parametersCount);
-        for (unsigned i = 0; i < parametersCount; ++i)
-            parameters.uncheckedAppend(parameterTypes[i]);
-    }
+    Vector<GType> parameters(parametersCount, [&](size_t i) -> GType {
+        return parameterTypes[i];
+    });
 
     jscClassAddMethod(jscClass, name, callback, userData, destroyNotify, returnType, WTFMove(parameters));
 }
@@ -802,7 +782,7 @@ void jsc_class_add_methodv(JSCClass* jscClass, const char* name, GCallback callb
  * @jsc_class: a #JSCClass
  * @name: the method name
  * @callback: (scope async): a #GCallback to be called to invoke method @name of @jsc_class
- * @user_data: (closure): user data to pass to @callback
+ * @user_data: user data to pass to @callback
  * @destroy_notify: (nullable): destroy notifier for @user_data
  * @return_type: the #GType of the method return value, or %G_TYPE_NONE if the method is void.
  *
@@ -833,7 +813,7 @@ void jsc_class_add_method_variadic(JSCClass* jscClass, const char* name, GCallba
  * @property_type: the #GType of the property value
  * @getter: (scope async) (nullable): a #GCallback to be called to get the property value
  * @setter: (scope async) (nullable): a #GCallback to be called to set the property value
- * @user_data: (closure): user data to pass to @getter and @setter
+ * @user_data: user data to pass to @getter and @setter
  * @destroy_notify: (nullable): destroy notifier for @user_data
  *
  * Add a property with @name to @jsc_class. When the property value needs to be getted, @getter is called
@@ -859,5 +839,5 @@ void jsc_class_add_property(JSCClass* jscClass, const char* name, GType property
 
     auto context = jscContextGetOrCreate(priv->context);
     GRefPtr<JSCValue> prototype = jscContextGetOrCreateValue(context.get(), toRef(priv->prototype.get()));
-    jsc_value_object_define_property_accessor(prototype.get(), name, JSC_VALUE_PROPERTY_CONFIGURABLE, propertyType, getter, setter, userData, destroyNotify);
+    jscValueAddPropertyAccessor(prototype.get(), name, propertyType, getter, setter, userData, destroyNotify);
 }

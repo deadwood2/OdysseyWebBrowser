@@ -1,4 +1,4 @@
-# Copyright (C) 2011, 2016 Apple Inc. All rights reserved.
+# Copyright (C) 2011-2023 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -31,17 +31,18 @@ require "self_hash"
 class SourceFile
     @@fileNames = []
     
-    attr_reader :name, :fileNumber
+    attr_reader :name, :basename, :fileNumber
 
     def SourceFile.outputDotFileList(outp)
         @@fileNames.each_index {
             | index |
-            outp.puts "\".file #{index+1} \\\"#{@@fileNames[index]}\\\"\\n\""
+            $asm.putStr "\".file #{index+1} \\\"#{@@fileNames[index]}\\\"\\n\""
         }
     end
 
     def initialize(fileName)
         @name = Pathname.new(fileName)
+        @basename = File.basename(fileName)
         pathName = "#{@name.realpath}"
         fileNumber = @@fileNames.index(pathName)
         if not fileNumber
@@ -67,11 +68,11 @@ class CodeOrigin
     end
 
     def debugDirective
-        $emitWinAsm ? nil : "\".loc #{@sourceFile.fileNumber} #{lineNumber}\\n\""
+        "\".loc #{@sourceFile.fileNumber} #{lineNumber}\\n\""
     end
 
     def to_s
-        "#{fileName}:#{lineNumber}"
+        "#{@sourceFile.basename}:#{lineNumber}"
     end
 end
 
@@ -84,14 +85,14 @@ class IncludeFile
         directory = nil
         @@includeDirs.each {
             | includePath |
-            fileName = includePath + (moduleName + ".asm")
+            fileName = File.join(includePath, moduleName + ".asm")
             directory = includePath unless not File.file?(fileName)
         }
         if not directory
             directory = defaultDir
         end
 
-        @fileName = directory + (moduleName + ".asm")
+        @fileName = File.join(directory, moduleName + ".asm")
     end
 
     def self.processIncludeOptions()
@@ -159,7 +160,23 @@ def lex(str, file)
     while not str.empty?
         case str
         when /\A\#([^\n]*)/
-            # comment, ignore
+            # ASM style single line comment, ignore
+        when /\A\/\*(\*(?!\/)|[^*])*\*\//
+            # C-style block comment, ignore
+            whitespaceFound = true
+            str = $~.post_match
+            comment = $&
+            done = comment.empty?
+            while not done
+                case comment
+                when /\n/
+                    lineNumber += 1
+                    comment = $~.post_match
+                else
+                    done = true
+                end
+            end
+            next
         when /\A\/\/\ ?([^\n]*)/
             # annotation
             annotation = $1
@@ -259,13 +276,16 @@ end
 #
 
 class Parser
-    def initialize(data, fileName)
+    def initialize(data, fileName, options, sources=nil)
         @tokens = lex(data, fileName)
         @idx = 0
         @annotation = nil
         # FIXME: CMake does not currently set BUILT_PRODUCTS_DIR.
         # https://bugs.webkit.org/show_bug.cgi?id=229340
         @buildProductsDirectory = ENV['BUILT_PRODUCTS_DIR'];
+        @headersFolderPath = ENV['WK_LIBRARY_HEADERS_FOLDER_PATH'];
+        @options = options
+        @sources = sources
     end
     
     def parseError(*comment)
@@ -355,7 +375,9 @@ class Parser
     
     def parseVariable
         if isRegister(@tokens[@idx])
-            if @tokens[@idx] =~ FPR_PATTERN || @tokens[@idx] =~ WASM_FPR_PATTERN
+            if @tokens[@idx] =~ VEC_PATTERN
+                result = VecRegisterID.forName(@tokens[@idx].codeOrigin, @tokens[@idx].string)
+            elsif @tokens[@idx] =~ FPR_PATTERN || @tokens[@idx] =~ WASM_FPR_PATTERN
                 result = FPRegisterID.forName(@tokens[@idx].codeOrigin, @tokens[@idx].string)
             else
                 result = RegisterID.forName(@tokens[@idx].codeOrigin, @tokens[@idx].string)
@@ -711,6 +733,40 @@ class Parser
                 name = @tokens[@idx].string
                 @idx += 1
                 Label.setAsGlobal(codeOrigin, name)
+            elsif @tokens[@idx] == "globalexport"
+                codeOrigin = @tokens[@idx].codeOrigin
+                @idx += 1
+                skipNewLine
+                parseError unless isLabel(@tokens[@idx])
+                name = @tokens[@idx].string
+                @idx += 1
+                Label.setAsGlobalExport(codeOrigin, name)
+            elsif @tokens[@idx] == "unalignedglobal"
+                codeOrigin = @tokens[@idx].codeOrigin
+                @idx += 1
+                skipNewLine
+                parseError unless isLabel(@tokens[@idx])
+                name = @tokens[@idx].string
+                @idx += 1
+                Label.setAsUnalignedGlobal(codeOrigin, name)
+            elsif @tokens[@idx] == "aligned"
+                codeOrigin = @tokens[@idx].codeOrigin
+                @idx += 1
+                skipNewLine
+                parseError unless isLabel(@tokens[@idx])
+                name = @tokens[@idx].string
+                @idx += 1
+                align = @tokens[@idx].string
+                @idx += 1
+                Label.setAsAligned(codeOrigin, name, align)
+            elsif @tokens[@idx] == "unalignedglobalexport"
+                codeOrigin = @tokens[@idx].codeOrigin
+                @idx += 1
+                skipNewLine
+                parseError unless isLabel(@tokens[@idx])
+                name = @tokens[@idx].string
+                @idx += 1
+                Label.setAsUnalignedGlobalExport(codeOrigin, name)
             elsif isInstruction @tokens[@idx]
                 codeOrigin = @tokens[@idx].codeOrigin
                 name = @tokens[@idx].string
@@ -830,14 +886,18 @@ class Parser
                 parseError unless isIdentifier(@tokens[@idx])
                 moduleName = @tokens[@idx].string
                 @idx += 1
-                additionsDirectoryName = "#{@buildProductsDirectory}/usr/local/include/WebKitAdditions/"
+                if @options[:webkit_additions_path]
+                    additionsDirectoryName = @options[:webkit_additions_path]
+                else
+                    additionsDirectoryName = "#{@buildProductsDirectory}#{@headersFolderPath}/WebKitAdditions/"
+                end
                 fileName = IncludeFile.new(moduleName, additionsDirectoryName).fileName
-                if not File.exists?(fileName)
+                if not File.exist?(fileName)
                     fileName = IncludeFile.new(moduleName, @tokens[@idx].codeOrigin.fileName.dirname).fileName
                 end
-                fileExists = File.exists?(fileName)
+                fileExists = File.exist?(fileName)
                 raise "File not found: #{fileName}" if not fileExists and not isOptional
-                list << parse(fileName) if fileExists
+                list << parse(fileName, @options, @sources) if fileExists
             else
                 parseError "Expecting terminal #{final} #{comment}"
             end
@@ -845,7 +905,7 @@ class Parser
         Sequence.new(firstCodeOrigin, list)
     end
 
-    def parseIncludes(final, comment)
+    def parseIncludes(final, comment, options)
         firstCodeOrigin = @tokens[@idx].codeOrigin
         fileList = []
         fileList << @tokens[@idx].codeOrigin.fileName
@@ -862,14 +922,21 @@ class Parser
                 parseError unless isIdentifier(@tokens[@idx])
                 moduleName = @tokens[@idx].string
                 @idx += 1
-                additionsDirectoryName = "#{@buildProductsDirectory}/usr/local/include/WebKitAdditions/"
+                if @options[:webkit_additions_path]
+                    additionsDirectoryName = @options[:webkit_additions_path]
+                else
+                    additionsDirectoryName = "#{@buildProductsDirectory}#{@headersFolderPath}/WebKitAdditions/"
+                end
                 fileName = IncludeFile.new(moduleName, additionsDirectoryName).fileName
-                if not File.exists?(fileName)
+                if not File.exist?(fileName)
                     fileName = IncludeFile.new(moduleName, @tokens[@idx].codeOrigin.fileName.dirname).fileName
                 end
-                fileExists = File.exists?(fileName)
+                fileExists = File.exist?(fileName)
                 raise "File not found: #{fileName}" if not fileExists and not isOptional
-                fileList << fileName if fileExists
+                if fileExists
+                    parser = Parser.new(readTextFile(fileName), SourceFile.new(fileName), options)
+                    fileList << parser.parseIncludes(nil, "", options)
+                end
             else
                 @idx += 1
             end
@@ -890,18 +957,20 @@ def readTextFile(fileName)
     return data
 end
 
-def parseData(data, fileName)
-    parser = Parser.new(data, SourceFile.new(fileName))
+def parseData(data, fileName, options, sources)
+    parser = Parser.new(data, SourceFile.new(fileName), options, sources)
     parser.parseSequence(nil, "")
 end
 
-def parse(fileName)
-    parseData(readTextFile(fileName), fileName)
+def parse(fileName, options, sources=nil)
+    sources << fileName if sources
+    parseData(readTextFile(fileName), fileName, options, sources)
 end
 
-def parseHash(fileName)
-    parser = Parser.new(readTextFile(fileName), SourceFile.new(fileName))
-    fileList = parser.parseIncludes(nil, "")
+def parseHash(fileName, options)
+    parser = Parser.new(readTextFile(fileName), SourceFile.new(fileName), options)
+    fileList = parser.parseIncludes(nil, "", options)
+    fileList.flatten!
     fileListHash(fileList)
 end
 

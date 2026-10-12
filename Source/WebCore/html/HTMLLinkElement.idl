@@ -34,18 +34,19 @@
     [PutForwards=value] readonly attribute DOMTokenList sizes;
     [CEReactions=NotNeeded, Reflect] attribute DOMString target;
     [CEReactions=NotNeeded, Reflect] attribute DOMString type;
-    [CEReactions=NotNeeded] attribute DOMString as;
-    [CEReactions=NotNeeded] attribute DOMString? crossOrigin;
-    [CEReactions=NotNeeded, Reflect, EnabledBySetting=LinkPreloadResponsiveImages] attribute DOMString imageSrcset;
-    [CEReactions=NotNeeded, Reflect, EnabledBySetting=LinkPreloadResponsiveImages] attribute DOMString imageSizes;
-    [EnabledBySetting=ReferrerPolicyAttribute, ImplementedAs=referrerPolicyForBindings, CEReactions=NotNeeded] attribute DOMString referrerPolicy;
+    [CEReactions=NotNeeded] attribute [AtomString] DOMString as;
+    [CEReactions=NotNeeded] attribute [AtomString] DOMString? crossOrigin;
+    [CEReactions=NotNeeded, Reflect, EnabledBySetting=LinkPreloadResponsiveImagesEnabled] attribute DOMString imageSrcset;
+    [CEReactions=NotNeeded, Reflect, EnabledBySetting=LinkPreloadResponsiveImagesEnabled] attribute DOMString imageSizes;
+    [CEReactions=NotNeeded, ImplementedAs=referrerPolicyForBindings] attribute [AtomString] DOMString referrerPolicy;
+    [PutForwards=value] readonly attribute DOMTokenList blocking;
+    [CEReactions=NotNeeded, EnabledBySetting=FetchPriorityEnabled, ImplementedAs=fetchPriorityForBindings] attribute [AtomString] DOMString fetchPriority;
 
     // DOM Level 2 Style
     readonly attribute StyleSheet sheet;
 
     [PutForwards=value] readonly attribute DOMTokenList relList;
 
-    [Reflect] attribute DOMString nonce;
-    [CEReactions=NotNeeded, Reflect, EnabledBySetting=SubresourceIntegrity] attribute DOMString integrity;
+    [CEReactions=NotNeeded, Reflect] attribute DOMString integrity;
 };
 

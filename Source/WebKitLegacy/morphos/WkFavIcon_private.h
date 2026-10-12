@@ -23,6 +23,6 @@ struct BitMap;
 	BOOL        _useAlpha;
 }
 
-+ (WkFavIconPrivate *)cacheIconWithData:(WebCore::SharedBuffer *)data forHost:(OBString *)host;
++ (WkFavIconPrivate *)cacheIconWithData:(RefPtr<WebCore::SharedBuffer>&&)data forHost:(OBString *)host;
 
 @end

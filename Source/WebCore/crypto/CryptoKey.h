@@ -25,8 +25,6 @@
 
 #pragma once
 
-#if ENABLE(WEB_CRYPTO)
-
 #include "CryptoAesKeyAlgorithm.h"
 #include "CryptoAlgorithmIdentifier.h"
 #include "CryptoEcKeyAlgorithm.h"
@@ -36,27 +34,32 @@
 #include "CryptoKeyUsage.h"
 #include "CryptoRsaHashedKeyAlgorithm.h"
 #include "CryptoRsaKeyAlgorithm.h"
+#include <variant>
 #include <wtf/Forward.h>
 #include <wtf/ThreadSafeRefCounted.h>
 #include <wtf/TypeCasts.h>
-#include <wtf/Variant.h>
 #include <wtf/Vector.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
+class WebCoreOpaqueRoot;
+
 enum class CryptoKeyClass {
     AES,
     EC,
     HMAC,
+    OKP,
     RSA,
     Raw,
 };
 
+enum class UseCryptoKit : bool { No, Yes };
+
 class CryptoKey : public ThreadSafeRefCounted<CryptoKey> {
 public:
     using Type = CryptoKeyType;
-    using KeyAlgorithm = Variant<CryptoKeyAlgorithm, CryptoAesKeyAlgorithm, CryptoEcKeyAlgorithm, CryptoHmacKeyAlgorithm, CryptoRsaHashedKeyAlgorithm, CryptoRsaKeyAlgorithm>;
+    using KeyAlgorithm = std::variant<CryptoKeyAlgorithm, CryptoAesKeyAlgorithm, CryptoEcKeyAlgorithm, CryptoHmacKeyAlgorithm, CryptoRsaHashedKeyAlgorithm, CryptoRsaKeyAlgorithm>;
 
     CryptoKey(CryptoAlgorithmIdentifier, Type, bool extractable, CryptoKeyUsageBitmap);
     virtual ~CryptoKey();
@@ -87,11 +90,11 @@ inline auto CryptoKey::type() const -> Type
     return m_type;
 }
 
+WebCoreOpaqueRoot root(CryptoKey*);
+
 } // namespace WebCore
 
 #define SPECIALIZE_TYPE_TRAITS_CRYPTO_KEY(ToClassName, KeyClass) \
 SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::ToClassName) \
     static bool isType(const WebCore::CryptoKey& key) { return key.keyClass() == WebCore::KeyClass; } \
 SPECIALIZE_TYPE_TRAITS_END()
-
-#endif // ENABLE(WEB_CRYPTO)

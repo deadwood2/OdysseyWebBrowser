@@ -30,6 +30,20 @@ if (USE_LIBWEBRTC)
     include_directories(${CMAKE_CURRENT_BINARY_DIR}/ThirdParty/libwebrtc)
 endif ()
 
+if (USE_SKIA)
+    add_subdirectory(ThirdParty/skia)
+endif ()
+
+if (USE_SYSTEM_SYSPROF_CAPTURE)
+    find_package(SysProfCapture)
+    if (NOT SysProfCapture_FOUND)
+        message(FATAL_ERROR "system libsysprof-capture-4 not found, "
+                            "consider using USE_SYSTEM_SYSPROF_CAPTURE=NO")
+    endif ()
+elseif (USE_SYSPROF_CAPTURE)
+    add_subdirectory(ThirdParty/libsysprof-capture)
+endif ()
+
 if (ENABLE_WEBINSPECTORUI)
     add_subdirectory(WebInspectorUI)
 endif ()

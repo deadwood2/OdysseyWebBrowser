@@ -25,7 +25,7 @@
 
 #pragma once
 
-#include "LayoutRect.h"
+#include "RenderElement.h"
 
 namespace WebCore {
 
@@ -34,20 +34,21 @@ class RenderLayerModelObject;
 
 class LayoutRepainter {
 public:
-    LayoutRepainter(RenderElement&, bool checkForRepaint);
-
-    bool checkForRepaint() const { return m_checkForRepaint; }
+    enum class CheckForRepaint : uint8_t { No, Yes };
+    enum class ShouldAlwaysIssueFullRepaint : uint8_t { No, Yes };
+    LayoutRepainter(RenderElement&, std::optional<CheckForRepaint> checkForRepaintOverride = { }, std::optional<ShouldAlwaysIssueFullRepaint> = { }, RepaintOutlineBounds = RepaintOutlineBounds::Yes);
 
     // Return true if it repainted.
     bool repaintAfterLayout();
 
 private:
-    RenderElement& m_object;
-    RenderLayerModelObject* m_repaintContainer;
+    RenderElement& m_renderer;
+    const RenderLayerModelObject* m_repaintContainer { nullptr };
     // We store these values as LayoutRects, but the final invalidations will be pixel snapped
-    LayoutRect m_oldBounds;
-    LayoutRect m_oldOutlineBox;
-    bool m_checkForRepaint;
+    RenderObject::RepaintRects m_oldRects;
+    bool m_checkForRepaint { true };
+    bool m_forceFullRepaint { false };
+    RepaintOutlineBounds m_repaintOutlineBounds;
 };
 
 } // namespace WebCore

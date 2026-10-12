@@ -27,27 +27,31 @@
 
 #import <pal/spi/cocoa/AVKitSPI.h>
 
+NS_ASSUME_NONNULL_BEGIN
+
 namespace WebCore {
 class PlaybackSessionModel;
-class PlaybackSessionInterfaceAVKit;
+class PlaybackSessionInterfaceIOS;
 }
+
+@class AVTimeRange;
 
 @interface WebAVMediaSelectionOption : NSObject
-@property (retain) NSString *localizedDisplayName;
+- (instancetype)initWithMediaType:(AVMediaType)type displayName:(NSString *)displayName;
+
+@property (nonatomic, readonly) NSString *displayName;
+@property (nonatomic, readonly) NSString *localizedDisplayName;
+@property (nonatomic, readonly) AVMediaType mediaType;
+
 @end
 
-WEBCORE_EXPORT @interface WebAVPlayerController : NSObject {
-    WebAVMediaSelectionOption *_currentAudioMediaSelectionOption;
-    WebAVMediaSelectionOption *_currentLegibleMediaSelectionOption;
-    BOOL _pictureInPictureInterrupted;
-    BOOL _muted;
-}
+@interface WebAVPlayerController : NSObject
 
 - (void)setAllowsPictureInPicture:(BOOL)allowsPictureInPicture;
 
-@property (retain) AVPlayerController* playerControllerProxy;
-@property (assign) WebCore::PlaybackSessionModel* delegate;
-@property (assign) WebCore::PlaybackSessionInterfaceAVKit* playbackSessionInterface;
+@property (retain) AVPlayerController *playerControllerProxy;
+@property (assign, nullable /*weak*/) WebCore::PlaybackSessionModel* delegate;
+@property (assign, nullable /*weak*/) WebCore::PlaybackSessionInterfaceIOS* playbackSessionInterface;
 
 @property (readonly) BOOL canScanForward;
 @property BOOL canScanBackward;
@@ -57,6 +61,8 @@ WEBCORE_EXPORT @interface WebAVPlayerController : NSObject {
 @property (readonly) BOOL canSeekFrameBackward;
 @property (readonly) BOOL canSeekFrameForward;
 @property (readonly) BOOL hasContentChapters;
+@property (readonly) BOOL isSeeking;
+@property (readonly) NSTimeInterval seekToTime;
 
 @property BOOL canPlay;
 @property (getter=isPlaying) BOOL playing;
@@ -106,6 +112,36 @@ WEBCORE_EXPORT @interface WebAVPlayerController : NSObject {
 
 - (void)setDefaultPlaybackRate:(double)defaultPlaybackRate fromJavaScript:(BOOL)fromJavaScript;
 - (void)setRate:(double)rate fromJavaScript:(BOOL)fromJavaScript;
+
+#if PLATFORM(APPLETV)
+// FIXME (116592344): Remove these declarations once AVPlayerController API is available on tvOS.
+@property (nonatomic, readonly, getter=isEffectiveRateNonZero) BOOL effectiveRateNonZero;
+@property (nonatomic, readonly) CMTime forwardPlaybackEndTime;
+@property (nonatomic, readonly) CMTime backwardPlaybackEndTime;
+@property (nonatomic, readonly) BOOL isSeekingTV;
+@property (nonatomic, readonly) BOOL hasStartAndEndDates;
+@property (nonatomic, readonly, nullable) AVTimeRange *timeRangeSeekable;
+@property (readonly, nullable) NSValue *overrideForForwardPlaybackEndTime;
+@property (readonly, nullable) NSValue *overrideForReversePlaybackEndTime;
+@property (readonly) double timebaseRate;
+@property (readonly, nullable) NSArray *externalMetadata;
+@property (readonly) BOOL isPlaybackLikelyToKeepUp;
+@property (readonly) AVPlayerControllerTimeControlStatus timeControlStatus;
+@property (readonly) NSTimeInterval displayedDuration;
+@property (nonatomic, readonly) NSTimeInterval contentDurationCached;
+@property (nonatomic, readonly) NSTimeInterval currentDisplayTime;
+@property (nonatomic, readonly) NSDate *currentOrEstimatedDate;
+@property (nonatomic, readonly) AVTimeRange *displayTimeRangeForNavigation;
+@property (nonatomic, readonly) BOOL isContentDurationIndefinite;
+@property (nonatomic, readonly) AVTimeRange *timeRangeForNavigation;
+@property (nonatomic) float activeRate;
+#endif // PLATFORM(APPLETV)
+
 @end
 
-#endif
+Class webAVPlayerControllerClass();
+RetainPtr<WebAVPlayerController> createWebAVPlayerController();
+
+NS_ASSUME_NONNULL_END
+
+#endif // PLATFORM(COCOA) && HAVE(AVKIT)

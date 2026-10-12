@@ -33,6 +33,8 @@ namespace WTF {
 
 WallTime MonotonicTime::approximateWallTime() const
 {
+    if (isInfinity())
+        return WallTime::fromRawSeconds(m_value);
     return *this - now() + WallTime::now();
 }
 

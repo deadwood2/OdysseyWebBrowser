@@ -44,7 +44,7 @@ private:
 	std::optional<FramesPerSecond> displayNominalFramesPerSecond() final;
 
     explicit DisplayRefreshMonitorMorphOS(PlatformDisplayID);
-    RunLoop::Timer<DisplayRefreshMonitorMorphOS> m_timer;
+    RunLoop::Timer m_timer;
     DisplayUpdate m_currentUpdate;
 };
 

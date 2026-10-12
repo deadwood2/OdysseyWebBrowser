@@ -32,19 +32,23 @@ class StyleSheet;
 class CSSStyleSheet;
 
 class ProcessingInstruction final : public CharacterData, private CachedStyleSheetClient {
-    WTF_MAKE_ISO_ALLOCATED(ProcessingInstruction);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(ProcessingInstruction);
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(ProcessingInstruction);
 public:
-    static Ref<ProcessingInstruction> create(Document&, const String& target, const String& data);
+    using CharacterData::weakPtrFactory;
+    using CharacterData::WeakValueType;
+    using CharacterData::WeakPtrImplType;
+
+    static Ref<ProcessingInstruction> create(Document&, String&& target, String&& data);
     virtual ~ProcessingInstruction();
 
     const String& target() const { return m_target; }
 
     void setCreatedByParser(bool createdByParser) { m_createdByParser = createdByParser; }
 
-    void finishParsingChildren() override;
-
     const String& localHref() const { return m_localHref; }
     StyleSheet* sheet() const { return m_sheet.get(); }
+    RefPtr<StyleSheet> protectedSheet() const;
 
     bool isCSS() const { return m_isCSS; }
 #if ENABLE(XSLT)
@@ -53,10 +57,9 @@ public:
 
 private:
     friend class CharacterData;
-    ProcessingInstruction(Document&, const String& target, const String& data);
+    ProcessingInstruction(Document&, String&& target, String&& data);
 
     String nodeName() const override;
-    NodeType nodeType() const override;
     Ref<Node> cloneNodeInternal(Document&, CloningOperation) override;
 
     InsertedIntoAncestorResult insertedIntoAncestor(InsertionType, ContainerNode&) override;
@@ -80,7 +83,7 @@ private:
     String m_localHref;
     String m_title;
     String m_media;
-    CachedResourceHandle<CachedResource> m_cachedSheet { nullptr };
+    CachedResourceHandle<CachedResource> m_cachedSheet;
     RefPtr<StyleSheet> m_sheet;
     bool m_loading { false };
     bool m_alternate { false };
@@ -89,7 +92,6 @@ private:
 #if ENABLE(XSLT)
     bool m_isXSL { false };
 #endif
-    bool m_isHandlingBeforeLoad { false };
 };
 
 } // namespace WebCore

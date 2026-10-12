@@ -29,6 +29,8 @@
 
 #import "APIInspectorExtensionClient.h"
 #import "WKFoundation.h"
+#import <WebCore/FrameIdentifier.h>
+#import <wtf/TZoneMalloc.h>
 #import <wtf/WeakObjCPtr.h>
 
 @class _WKInspectorExtension;
@@ -37,7 +39,7 @@
 namespace WebKit {
 
 class InspectorExtensionDelegate {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED(InspectorExtensionDelegate);
 public:
     InspectorExtensionDelegate(_WKInspectorExtension *, id <_WKInspectorExtensionDelegate>);
     ~InspectorExtensionDelegate();
@@ -47,15 +49,17 @@ public:
 
 private:
     class InspectorExtensionClient final : public API::InspectorExtensionClient {
-        WTF_MAKE_FAST_ALLOCATED;
+        WTF_MAKE_TZONE_ALLOCATED(InspectorExtensionClient);
     public:
         explicit InspectorExtensionClient(InspectorExtensionDelegate&);
         ~InspectorExtensionClient();
 
     private:
         // API::InspectorExtensionClient
-        void didShowExtensionTab(const Inspector::ExtensionTabID&) override;
+        void didShowExtensionTab(const Inspector::ExtensionTabID&, WebCore::FrameIdentifier) override;
         void didHideExtensionTab(const Inspector::ExtensionTabID&) override;
+        void didNavigateExtensionTab(const Inspector::ExtensionTabID&, const URL&) override;
+        void inspectedPageDidNavigate(const URL&) override;
 
         InspectorExtensionDelegate& m_inspectorExtensionDelegate;
     };
@@ -66,6 +70,8 @@ private:
     struct {
         bool inspectorExtensionDidShowTabWithIdentifier : 1;
         bool inspectorExtensionDidHideTabWithIdentifier : 1;
+        bool inspectorExtensionDidNavigateTabWithIdentifier : 1;
+        bool inspectorExtensionInspectedPageDidNavigate : 1;
     } m_delegateMethods;
 };
 

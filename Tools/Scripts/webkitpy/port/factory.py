@@ -34,7 +34,6 @@ import fnmatch
 import optparse
 import re
 
-from webkitpy.port import builders
 from webkitpy.port import config
 from webkitpy.common.system import executive
 from webkitpy.common.system import filesystem
@@ -53,6 +52,9 @@ def platform_options(use_globs=False):
         optparse.make_option('--ipad-simulator', action='store_const', dest='platform',
             const=('ipad-simulator'),
             help=('Alias for --platform=ipad-simulator')),
+        optparse.make_option('--visionos-simulator', action='store_const', dest='platform',
+            const=('visionos-simulator'),
+            help=('Alias for --platform=visionos-simulator')),
         optparse.make_option('--simulator', action='store_const', dest='platform',
             const=('ios-simulator'),
             help=('DEPRECATED alias for --platform=ios-simulator')),
@@ -62,12 +64,12 @@ def platform_options(use_globs=False):
         optparse.make_option('--wpe', action='store_const', dest='platform',
             const=('wpe*' if use_globs else 'wpe'),
             help=('Alias for --platform=wpe')),
+        optparse.make_option('--win', action='store_const', dest='platform',
+            const=('win'),
+            help=('Alias for --platform=win')),
         optparse.make_option('--wincairo', action='store_const', dest='platform',
-            const=('wincairo'),
-            help=('Alias for --platform=wincairo')),
-        optparse.make_option('--ftw', action='store_const', dest='platform',
-            const=('ftw'),
-            help=('Alias for --platform=ftw')),
+            const=('win'),
+            help=('Alias for --platform=win')),
         optparse.make_option('--maccatalyst', action='store_const', dest='platform',
             const=('maccatalyst'),
             help=('Alias for --platform=maccatalyst')),
@@ -95,12 +97,6 @@ def configuration_options():
     ]
 
 
-def _builder_options(builder_name):
-    configuration = "Debug" if re.search(r"[d|D](ebu|b)g", builder_name) else "Release"
-    is_webkit2 = builder_name.find("WK2") != -1
-    return optparse.Values({'builder_name': builder_name, 'configuration': configuration, 'webkit_test_runner': is_webkit2})
-
-
 class PortFactory(object):
     # Order matters.  For port classes that have a port_name with a
     # common prefix, the more specific port class should be listed
@@ -113,12 +109,11 @@ class PortFactory(object):
         'ios_device.IOSDevicePort',
         'watch_simulator.WatchSimulatorPort',
         'watch_device.WatchDevicePort',
+        'visionos_simulator.VisionOSSimulatorPort',
         'jsc_only.JscOnlyPort',
         'mac.MacCatalystPort',
         'mac.MacPort',
         'test.TestPort',
-        'win.FTWPort',
-        'win.WinCairoPort',
         'win.WinPort',
         'wpe.WPEPort',
     )
@@ -141,6 +136,8 @@ class PortFactory(object):
         port_name is None, this routine attempts to guess at the most
         appropriate port on this platform."""
         port_name = port_name or self._default_port()
+        if port_name == 'wincairo':
+            port_name = 'win'
 
         classes = []
         for port_class in self.PORT_CLASSES:
@@ -167,9 +164,19 @@ class PortFactory(object):
 
         If platform is not specified, we will glob-match all ports"""
         platform = platform or '*'
-        return fnmatch.filter(builders.all_port_names(), platform)
-
-    def get_from_builder_name(self, builder_name):
-        port_name = builders.port_name_for_builder_name(builder_name)
-        assert port_name, "unrecognized builder name '%s'" % builder_name
-        return self.get(port_name, _builder_options(builder_name))
+        all_port_names = [
+            'gtk',
+            'ios-simulator-17',
+            'ios-simulator-17-wk2',
+            'ipad-simulator-17',
+            'ipad-simulator-17-wk2',
+            'mac-monterey-wk1',
+            'mac-monterey-wk2',
+            'mac-sonoma-wk1',
+            'mac-sonoma-wk2',
+            'mac-ventura-wk1',
+            'mac-ventura-wk2',
+            'win-win10',
+            'wpe',
+        ]
+        return fnmatch.filter(all_port_names, platform)

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,10 +29,13 @@
 
 #include "Error.h"
 #include "JSArrayBuffer.h"
-#include "JSArrayBufferView.h"
+#include "JSArrayBufferViewInlines.h"
 #include "JSCJSValue.h"
+#include "JSDataView.h"
 #include "JSSourceCode.h"
+#include "JSWebAssemblyRuntimeError.h"
 #include "WasmFormat.h"
+#include "WasmTypeDefinition.h"
 #include "WebAssemblyFunction.h"
 #include "WebAssemblyWrapperFunction.h"
 
@@ -59,29 +62,39 @@ ALWAYS_INLINE uint32_t toNonWrappingUint32(JSGlobalObject* globalObject, JSValue
     return { };
 }
 
-ALWAYS_INLINE std::pair<const uint8_t*, size_t> getWasmBufferFromValue(JSGlobalObject* globalObject, JSValue value)
+ALWAYS_INLINE std::span<const uint8_t> getWasmBufferFromValue(JSGlobalObject* globalObject, JSValue value, const WebAssemblySourceProviderBufferGuard&)
 {
     VM& vm = getVM(globalObject);
     auto throwScope = DECLARE_THROW_SCOPE(vm);
 
-    if (auto* source = jsDynamicCast<JSSourceCode*>(vm, value)) {
-        auto* provider = static_cast<WebAssemblySourceProvider*>(source->sourceCode().provider());
-        return { provider->data().data(), provider->data().size() };
+    if (auto* source = jsDynamicCast<JSSourceCode*>(value)) {
+        auto* provider = static_cast<BaseWebAssemblySourceProvider*>(source->sourceCode().provider());
+        return { provider->data(), provider->size() };
     }
 
     // If the given bytes argument is not a BufferSource, a TypeError exception is thrown.
-    JSArrayBuffer* arrayBuffer = value.getObject() ? jsDynamicCast<JSArrayBuffer*>(vm, value.getObject()) : nullptr;
-    JSArrayBufferView* arrayBufferView = value.getObject() ? jsDynamicCast<JSArrayBufferView*>(vm, value.getObject()) : nullptr;
+    JSArrayBuffer* arrayBuffer = value.getObject() ? jsDynamicCast<JSArrayBuffer*>(value.getObject()) : nullptr;
+    JSArrayBufferView* arrayBufferView = value.getObject() ? jsDynamicCast<JSArrayBufferView*>(value.getObject()) : nullptr;
     if (!(arrayBuffer || arrayBufferView)) {
         throwException(globalObject, throwScope, createTypeError(globalObject,
-            "first argument must be an ArrayBufferView or an ArrayBuffer"_s, defaultSourceAppender, runtimeTypeForValue(vm, value)));
-        return { nullptr, 0 };
+            "first argument must be an ArrayBufferView or an ArrayBuffer"_s, defaultSourceAppender, runtimeTypeForValue(value)));
+        return { };
     }
 
-    if (arrayBufferView ? arrayBufferView->isDetached() : arrayBuffer->impl()->isDetached()) {
-        throwException(globalObject, throwScope, createTypeError(globalObject,
-            "underlying TypedArray has been detatched from the ArrayBuffer"_s, defaultSourceAppender, runtimeTypeForValue(vm, value)));
-        return { nullptr, 0 };
+    if (arrayBufferView) {
+        if (isTypedArrayType(arrayBufferView->type())) {
+            validateTypedArray(globalObject, arrayBufferView);
+            RETURN_IF_EXCEPTION(throwScope, { });
+        } else {
+            IdempotentArrayBufferByteLengthGetter<std::memory_order_relaxed> getter;
+            if (UNLIKELY(!jsCast<JSDataView*>(arrayBufferView)->viewByteLength(getter))) {
+                throwTypeError(globalObject, throwScope, typedArrayBufferHasBeenDetachedErrorMessage);
+                return { };
+            }
+        }
+    } else if (arrayBuffer->impl()->isDetached()) {
+        throwTypeError(globalObject, throwScope, typedArrayBufferHasBeenDetachedErrorMessage);
+        return { };
     }
 
     uint8_t* base = arrayBufferView ? static_cast<uint8_t*>(arrayBufferView->vector()) : static_cast<uint8_t*>(arrayBuffer->impl()->data());
@@ -92,28 +105,32 @@ ALWAYS_INLINE std::pair<const uint8_t*, size_t> getWasmBufferFromValue(JSGlobalO
 ALWAYS_INLINE Vector<uint8_t> createSourceBufferFromValue(VM& vm, JSGlobalObject* globalObject, JSValue value)
 {
     auto throwScope = DECLARE_THROW_SCOPE(vm);
-    auto [data, byteSize] = getWasmBufferFromValue(globalObject, value);
-    RETURN_IF_EXCEPTION(throwScope, Vector<uint8_t>());
+
+    BaseWebAssemblySourceProvider* provider = nullptr;
+    if (auto* source = jsDynamicCast<JSSourceCode*>(value))
+        provider = static_cast<BaseWebAssemblySourceProvider*>(source->sourceCode().provider());
+    WebAssemblySourceProviderBufferGuard bufferGuard(provider);
+
+    auto data = getWasmBufferFromValue(globalObject, value, bufferGuard);
+    RETURN_IF_EXCEPTION(throwScope, { });
 
     Vector<uint8_t> result;
-    if (!result.tryReserveCapacity(byteSize)) {
+    if (!result.tryReserveInitialCapacity(data.size())) {
         throwException(globalObject, throwScope, createOutOfMemoryError(globalObject));
         return result;
     }
-
-    result.grow(byteSize);
-    memcpy(result.data(), data, byteSize);
+    result.append(data);
     return result;
 }
 
-ALWAYS_INLINE bool isWebAssemblyHostFunction(VM& vm, JSObject* object, WebAssemblyFunction*& wasmFunction, WebAssemblyWrapperFunction*& wasmWrapperFunction)
+ALWAYS_INLINE bool isWebAssemblyHostFunction(JSObject* object, WebAssemblyFunction*& wasmFunction, WebAssemblyWrapperFunction*& wasmWrapperFunction)
 {
-    if (object->inherits<WebAssemblyFunction>(vm)) {
+    if (object->inherits<WebAssemblyFunction>()) {
         wasmFunction = jsCast<WebAssemblyFunction*>(object);
         wasmWrapperFunction = nullptr;
         return true;
     }
-    if (object->inherits<WebAssemblyWrapperFunction>(vm)) {
+    if (object->inherits<WebAssemblyWrapperFunction>()) {
         wasmWrapperFunction = jsCast<WebAssemblyWrapperFunction*>(object);
         wasmFunction = nullptr;
         return true;
@@ -121,27 +138,102 @@ ALWAYS_INLINE bool isWebAssemblyHostFunction(VM& vm, JSObject* object, WebAssemb
     return false;
 }
 
-ALWAYS_INLINE bool isWebAssemblyHostFunction(VM& vm, JSValue value, WebAssemblyFunction*& wasmFunction, WebAssemblyWrapperFunction*& wasmWrapperFunction)
+ALWAYS_INLINE bool isWebAssemblyHostFunction(JSValue value, WebAssemblyFunction*& wasmFunction, WebAssemblyWrapperFunction*& wasmWrapperFunction)
 {
     if (!value.isObject())
         return false;
-    return isWebAssemblyHostFunction(vm, jsCast<JSObject*>(value), wasmFunction, wasmWrapperFunction);
+    return isWebAssemblyHostFunction(jsCast<JSObject*>(value), wasmFunction, wasmWrapperFunction);
 }
 
-ALWAYS_INLINE bool isWebAssemblyHostFunction(VM& vm, JSValue object)
+ALWAYS_INLINE bool isWebAssemblyHostFunction(JSValue object)
 {
     WebAssemblyFunction* unused;
     WebAssemblyWrapperFunction* unused2;
-    return isWebAssemblyHostFunction(vm, object, unused, unused2);
+    return isWebAssemblyHostFunction(object, unused, unused2);
 }
 
 ALWAYS_INLINE JSValue defaultValueForReferenceType(const Wasm::Type type)
 {
     ASSERT(Wasm::isRefType(type));
-    if (type.isExternref())
+    if (Wasm::isExternref(type))
         return jsUndefined();
-    ASSERT(type.isFuncref());
     return jsNull();
+}
+
+ALWAYS_INLINE JSValue toJSValue(JSGlobalObject* globalObject, const Wasm::Type type, uint64_t bits)
+{
+    switch (type.kind) {
+    case Wasm::TypeKind::Void:
+        return jsUndefined();
+    case Wasm::TypeKind::I32:
+        return jsNumber(static_cast<int32_t>(bits));
+    case Wasm::TypeKind::F32:
+        return jsNumber(purifyNaN(bitwise_cast<float>(static_cast<int32_t>(bits))));
+    case Wasm::TypeKind::F64:
+        return jsNumber(purifyNaN(bitwise_cast<double>(bits)));
+    case Wasm::TypeKind::I64:
+        return JSBigInt::createFrom(globalObject, static_cast<int64_t>(bits));
+    case Wasm::TypeKind::Ref:
+    case Wasm::TypeKind::RefNull:
+    case Wasm::TypeKind::Externref:
+    case Wasm::TypeKind::Funcref:
+        return bitwise_cast<JSValue>(bits);
+    case Wasm::TypeKind::V128:
+    default:
+        break;
+    }
+    RELEASE_ASSERT_NOT_REACHED();
+    return JSValue();
+}
+
+ALWAYS_INLINE uint64_t fromJSValue(JSGlobalObject* globalObject, const Wasm::Type type, JSValue value)
+{
+    VM& vm = globalObject->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+    switch (type.kind) {
+    case Wasm::TypeKind::I32:
+        RELEASE_AND_RETURN(scope, value.toInt32(globalObject));
+    case Wasm::TypeKind::I64:
+        RELEASE_AND_RETURN(scope, bitwise_cast<uint64_t>(value.toBigInt64(globalObject)));
+    case Wasm::TypeKind::F32:
+        RELEASE_AND_RETURN(scope, bitwise_cast<uint32_t>(value.toFloat(globalObject)));
+    case Wasm::TypeKind::F64:
+        RELEASE_AND_RETURN(scope, bitwise_cast<uint64_t>(value.toNumber(globalObject)));
+    case Wasm::TypeKind::V128:
+        RELEASE_ASSERT_NOT_REACHED();
+    case Wasm::TypeKind::Ref:
+    case Wasm::TypeKind::RefNull:
+    case Wasm::TypeKind::Externref:
+    case Wasm::TypeKind::Funcref: {
+        if (Wasm::isExternref(type)) {
+            if (!type.isNullable() && value.isNull())
+                return throwVMTypeError(globalObject, scope, "Non-null Externref cannot be null"_s);
+        } else if (Wasm::isFuncref(type) || (!Options::useWasmGC() && isRefWithTypeIndex(type))) {
+            WebAssemblyFunction* wasmFunction = nullptr;
+            WebAssemblyWrapperFunction* wasmWrapperFunction = nullptr;
+            if (!isWebAssemblyHostFunction(value, wasmFunction, wasmWrapperFunction) && (!type.isNullable() || !value.isNull()))
+                return throwVMTypeError(globalObject, scope, "Argument value did not match the reference type"_s);
+            if (isRefWithTypeIndex(type) && !value.isNull()) {
+                Wasm::TypeIndex paramIndex = type.index;
+                Wasm::TypeIndex argIndex = wasmFunction ? wasmFunction->typeIndex() : wasmWrapperFunction->typeIndex();
+                if (paramIndex != argIndex)
+                    return throwVMTypeError(globalObject, scope, "Argument value did not match the reference type"_s);
+            }
+        } else {
+            ASSERT(Options::useWasmGC());
+            value = Wasm::internalizeExternref(value);
+            if (!Wasm::TypeInformation::castReference(value, type.isNullable(), type.index)) {
+                // FIXME: provide a better error message here
+                // https://bugs.webkit.org/show_bug.cgi?id=247746
+                return throwVMTypeError(globalObject, scope, "Argument value did not match the reference type"_s);
+            }
+        }
+        break;
+    }
+    default:
+        RELEASE_ASSERT_NOT_REACHED();
+    }
+    RELEASE_AND_RETURN(scope, JSValue::encode(value));
 }
 
 } // namespace JSC

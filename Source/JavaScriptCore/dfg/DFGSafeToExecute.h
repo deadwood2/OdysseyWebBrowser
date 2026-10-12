@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -67,10 +67,13 @@ public:
         case RegExpObjectUse:
         case PromiseObjectUse:
         case ProxyObjectUse:
+        case GlobalProxyUse:
         case DerivedArrayUse:
         case DateObjectUse:
         case MapObjectUse:
         case SetObjectUse:
+        case MapIteratorObjectUse:
+        case SetIteratorObjectUse:
         case WeakMapObjectUse:
         case WeakSetObjectUse:
         case DataViewObjectUse:
@@ -94,6 +97,7 @@ public:
         case DoubleRepAnyIntUse:
         case NotDoubleUse:
         case NeitherDoubleNorHeapBigIntNorStringUse:
+        case NeitherDoubleNorHeapBigIntUse:
             return;
             
         case KnownInt32Use:
@@ -221,6 +225,7 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node, bool igno
     case ArithPow:
     case ArithSqrt:
     case ArithFRound:
+    case ArithF16Round:
     case ArithRound:
     case ArithFloor:
     case ArithCeil:
@@ -237,6 +242,7 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node, bool igno
     case SkipScope:
     case GetGlobalObject:
     case GetGlobalThis:
+    case UnwrapGlobalProxy:
     case GetClosureVar:
     case GetGlobalVar:
     case GetGlobalLexicalVariable:
@@ -256,8 +262,11 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node, bool igno
     case SameValue:
     case CheckTypeInfoFlags:
     case ParseInt:
+    case ToIntegerOrInfinity:
+    case ToLength:
     case OverridesHasInstance:
     case IsEmpty:
+    case IsEmptyStorage:
     case TypeOfIsUndefined:
     case TypeOfIsObject:
     case TypeOfIsFunction:
@@ -271,6 +280,7 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node, bool igno
     case IsConstructor:
     case IsCellWithType:
     case IsTypedArrayView:
+    case HasStructureWithFlags:
     case TypeOf:
     case ToBoolean:
     case LogicalNot:
@@ -280,6 +290,7 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node, bool igno
     case StrCat:
     case CallStringConstructor:
     case MakeRope:
+    case MakeAtomString:
     case GetFromArguments:
     case GetArgument:
     case StringFromCharCode:
@@ -287,6 +298,7 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node, bool igno
     case ExtractCatchLocal:
     case AssertInBounds:
     case CheckInBounds:
+    case CheckInBoundsInt52:
     case ConstantStoragePointer:
     case Check:
     case CheckVarargs:
@@ -304,12 +316,18 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node, bool igno
     case MapHash:
     case NormalizeMapKey:
     case StringSlice:
+    case StringSubstring:
     case ToLowerCase:
-    case GetMapBucket:
-    case GetMapBucketHead:
-    case GetMapBucketNext:
-    case LoadKeyFromMapBucket:
-    case LoadValueFromMapBucket:
+    case MapGet:
+    case LoadMapValue:
+    case MapStorage:
+    case MapIterationNext:
+    case MapIterationEntry:
+    case MapIterationEntryKey:
+    case MapIterationEntryValue:
+    case MapIteratorNext:
+    case MapIteratorKey:
+    case MapIteratorValue:
     case ExtractValueFromWeakMapGet:
     case WeakMapGet:
     case AtomicsIsLockFree:
@@ -318,7 +336,13 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node, bool igno
     case DateGetTime:
     case DataViewGetInt:
     case DataViewGetFloat:
+    case ResolveRope:
+    case NumberIsNaN:
+    case StringIndexOf:
         return true;
+
+    case GlobalIsNaN:
+        return node->child1().useKind() == DoubleRepUse;
 
     case GetButterfly:
         return state.forNode(node->child1()).isType(SpecObject);
@@ -339,7 +363,7 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node, bool igno
         if (value.isInfinite() || value.size() != 1)
             return false;
 
-        return value[0].get() == graph.m_vm.getterSetterStructure;
+        return value[0].get() == graph.m_vm.getterSetterStructure.get();
     }
 
     case BottomValue:
@@ -364,14 +388,18 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node, bool igno
     case FilterDeleteByStatus:
     case FilterCheckPrivateBrandStatus:
     case FilterSetPrivateBrandStatus:
+    case EnumeratorPutByVal:
         // We don't want these to be moved anywhere other than where we put them, since we want them
         // to capture "profiling" at the point in control flow here the user put them.
         return false;
 
     case EnumeratorGetByVal:
     case GetByVal:
+    case GetByValMegamorphic:
     case GetIndexedPropertyStorage:
     case GetArrayLength:
+    case GetUndetachedTypeArrayLength:
+    case GetTypedArrayLengthAsInt52:
     case GetVectorLength:
     case ArrayPop:
     case StringCharAt:
@@ -384,11 +412,13 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node, bool igno
 
     case CheckDetached:
     case GetTypedArrayByteOffset:
+    case GetTypedArrayByteOffsetAsInt52:
         return !(state.forNode(node->child1()).m_type & ~(SpecTypedArrayView));
-            
+
     case PutByValDirect:
     case PutByVal:
     case PutByValAlias:
+    case PutByValMegamorphic:
         return node->arrayMode().modeForPut().alreadyChecked(
             graph, node, state.forNode(graph.varArgChild(node, 0)));
 
@@ -420,6 +450,22 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node, bool igno
         return true;
     }
 
+    case GetWebAssemblyInstanceExports: {
+        if (!state.forNode(node->child1()).isType(SpecCell))
+            return false;
+
+        StructureAbstractValue& value = state.forNode(node->child1()).m_structure;
+        if (value.isInfinite())
+            return false;
+        for (unsigned i = value.size(); i--;) {
+            Structure* structure = value[i].get();
+            if (structure->typeInfo().type() != WebAssemblyInstanceType)
+                return false;
+        }
+
+        return true;
+    }
+
     case GetByOffset:
     case PutByOffset: {
         // If it's an inline property, we need to make sure it's a cell before trusting what the structure set tells us.
@@ -432,7 +478,7 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node, bool igno
         // know anything about inferred types. But if we have a proof derived from watching a
         // structure that has a type proof, then the next case below will deal with it.
         if (state.structureClobberState() == StructuresAreWatched) {
-            if (JSObject* knownBase = node->child2()->dynamicCastConstant<JSObject*>(graph.m_vm)) {
+            if (JSObject* knownBase = node->child2()->dynamicCastConstant<JSObject*>()) {
                 if (graph.isSafeToLoad(knownBase, offset))
                     return true;
             }
@@ -488,15 +534,13 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node, bool igno
         bool isSafe = true;
         const ClassInfo* classInfo = node->requiredDOMJITClassInfo();
         structures.forEach([&] (RegisteredStructure structure) {
-            isSafe &= structure->classInfo()->isSubClassOf(classInfo);
+            isSafe &= structure->classInfoForCells()->isSubClassOf(classInfo);
         });
         return isSafe;
     }
 
     case EnumeratorNextUpdateIndexAndMode:
-    // These technically don't have effects but they'll only ever follow a EnumeratorNextUpdateIndexAndMode so we might as well return false.
-    case EnumeratorNextExtractMode:
-    case EnumeratorNextExtractIndex:
+    case ExtractFromTuple:
     case EnumeratorNextUpdatePropertyName:
     case ToThis:
     case CreateThis:
@@ -507,11 +551,15 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node, bool igno
     case ObjectCreate:
     case ObjectKeys:
     case ObjectGetOwnPropertyNames:
+    case ObjectGetOwnPropertySymbols:
+    case ObjectToString:
+    case ReflectOwnKeys:
     case SetLocal:
     case SetCallee:
     case PutStack:
     case KillStack:
     case MovHint:
+    case ZombieHint:
     case Upsilon:
     case Phi:
     case Flush:
@@ -522,13 +570,17 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node, bool igno
     case DeleteById:
     case DeleteByVal:
     case GetById:
+    case GetByIdMegamorphic:
     case GetByIdWithThis:
+    case GetByIdWithThisMegamorphic:
     case GetByValWithThis:
+    case GetByValWithThisMegamorphic:
     case GetByIdFlush:
     case GetByIdDirect:
     case GetByIdDirectFlush:
     case PutById:
     case PutByIdFlush:
+    case PutByIdMegamorphic:
     case PutByIdWithThis:
     case PutByValWithThis:
     case PutByIdDirect:
@@ -553,6 +605,7 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node, bool igno
     case RegExpExec:
     case RegExpExecNonGlobalOrSticky:
     case RegExpTest:
+    case RegExpTestInline:
     case RegExpMatchFast:
     case RegExpMatchFastGlobal:
     case Call:
@@ -562,10 +615,13 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node, bool igno
     case Construct:
     case DirectConstruct:
     case CallVarargs:
-    case CallEval:
+    case CallDirectEval:
     case TailCallVarargsInlinedCaller:
     case TailCallForwardVarargsInlinedCaller:
     case ConstructVarargs:
+    case CallWasm:
+    case CallCustomAccessorGetter:
+    case CallCustomAccessorSetter:
     case VarargsLength:
     case LoadVarargs:
     case CallForwardVarargs:
@@ -575,19 +631,25 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node, bool igno
     case NewAsyncGenerator:
     case NewArray:
     case NewArrayWithSize:
+    case NewArrayWithConstantSize:
+    case NewArrayWithSpecies:
     case NewArrayBuffer:
     case NewArrayWithSpread:
     case NewInternalFieldObject:
     case Spread:
     case NewRegexp:
+    case NewMap:
+    case NewSet:
     case NewSymbol:
     case ProfileType:
     case ProfileControlFlow:
     case InstanceOf:
+    case InstanceOfMegamorphic:
     case InstanceOfCustom:
     case CallObjectConstructor:
     case ToPrimitive:
     case ToPropertyKey:
+    case ToPropertyKeyOrNumber:
     case ToNumber:
     case ToNumeric:
     case ToObject:
@@ -596,7 +658,9 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node, bool igno
     case SetFunctionName:
     case NewStringObject:
     case InByVal:
+    case InByValMegamorphic:
     case InById:
+    case InByIdMegamorphic:
     case EnumeratorInByVal:
     case EnumeratorHasOwnProperty:
     case HasPrivateName:
@@ -607,12 +671,12 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node, bool igno
     case CreateDirectArguments:
     case CreateScopedArguments:
     case CreateClonedArguments:
-    case CreateArgumentsButterfly:
     case PutToArguments:
     case NewFunction:
     case NewGeneratorFunction:
     case NewAsyncGeneratorFunction:
     case NewAsyncFunction:
+    case NewBoundFunction:
     case Jump:
     case Branch:
     case Switch:
@@ -689,12 +753,20 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node, bool igno
     case DataViewSet:
     case SetAdd:
     case MapSet:
-    case StringReplaceRegExp:
+    case MapOrSetDelete:
     case StringReplace:
+    case StringReplaceRegExp:
     case ArithRandom:
     case ArithIMul:
     case TryGetById:
+    case StringLocaleCompare:
+    case FunctionBind:
+    case DateSetTime:
+    case ArraySpliceExtract:
         return false;
+
+    case StringReplaceString:
+        return node->child3().useKind() == StringUse;
 
     case Inc:
     case Dec:

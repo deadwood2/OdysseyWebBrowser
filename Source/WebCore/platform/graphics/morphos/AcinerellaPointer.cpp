@@ -1,3 +1,5 @@
+#include "config.h"
+
 #include "AcinerellaPointer.h"
 
 #if ENABLE(VIDEO)

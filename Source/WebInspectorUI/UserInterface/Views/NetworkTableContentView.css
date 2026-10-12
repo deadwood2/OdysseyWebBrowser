@@ -23,6 +23,45 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+.network-type-filter-scope-bar.default-item-selected:not(:hover) {
+    --scope-bar-text-color-override: var(--text-color);
+    --scope-bar-background-color-override: transparent;
+    --scope-bar-border-color-override: transparent;
+}
+
+.network-type-filter-scope-bar.default-item-selected:hover {
+    --scope-bar-background-opacity-override: 0.5;
+}
+
+.network-condition-scope-bar.default-item-selected:not(:hover) {
+    --scope-bar-text-color-override: var(--text-color);
+    --scope-bar-background-color-override: transparent;
+    --scope-bar-border-color-override: var(--border-color);
+}
+
+.network-condition-scope-bar.default-item-selected:hover {
+    --scope-bar-background-opacity-override: 0.5;
+}
+
+.network-other-filters-button > .glyph {
+    width: 16px;
+    height: 16px;
+    color: var(--glyph-color);
+    opacity: var(--glyph-opacity);
+}
+
+.network-other-filters-button:active > .glyph {
+    color: var(--glyph-color-pressed);
+}
+
+.network-other-filters-button.active > .glyph {
+    color: var(--glyph-color-active);
+}
+
+.network-other-filters-button.active:active > .glyph {
+    color: var(--glyph-color-active-pressed);
+}
+
 .content-view.tab.network > .content-browser > .navigation-bar .hierarchical-path .icon {
     margin-inline: 8px 4px;
 }
@@ -56,6 +95,26 @@
 
 .network-table > .table li:not(.filler) .cell.name {
     cursor: pointer;
+}
+
+.network-table.highlight-initiated > .table li:not(:hover, .selected, .initiated) .cell {
+    color: var(--text-color-transparent);
+}
+
+.network-table.highlight-initiated > .table li:not(:hover, .selected, .initiated) .cell > * {
+    color: var(--text-color);
+    opacity: 0.4;
+}
+
+.network-table.highlight-initiated > .table li.initiated .cell.name::after {
+    display: inline-block;
+    float: inline-end;
+    width: 4px;
+    height: 4px;
+    margin-top: 8px;
+    content: "";
+    background-color: var(--glyph-color-active);
+    border-radius: 50%;
 }
 
 .network-table > .table .cell.dom-node.name .icon {
@@ -112,7 +171,7 @@ body[dir=rtl] .network-table > .table .cell.dom-node.name .disclosure {
     color: hsla(0, 0%, 100%, 0.9);
 }
 
-.network-table > .table li:not(.selected) .cell:matches(.cache-type, .multiple) {
+.network-table > .table li:not(.selected) .cell:is(.cache-type, .multiple) {
     color: var(--text-color-gray-medium);
 }
 
@@ -163,7 +222,7 @@ body[dir=rtl] .network-table > .table .cell.name > .status {
     color: transparent;
 }
 
-.network-table > .table .header .cell.waterfall:matches(.sort-ascending, .sort-descending) {
+.network-table > .table .header .cell.waterfall:is(.sort-ascending, .sort-descending) {
     background-color: var(--background-color-selected);
 }
 
@@ -277,8 +336,8 @@ body[dir=rtl] .waterfall.network .block {
     --end-radius: 0;
 }
 
-.waterfall.network .block:matches(.mouse-tracking, .filler) + .block:not(.mouse-tracking, .filler),
-.waterfall.network .block:not(.request, .response) + :matches(.request, .response) {
+.waterfall.network .block:is(.mouse-tracking, .filler) + .block:not(.mouse-tracking, .filler),
+.waterfall.network .block:not(.request, .response) + :is(.request, .response) {
     --start-radius: 2px;
 }
 
@@ -360,6 +419,11 @@ body[dir=rtl] .waterfall.network .block {
     padding-inline-start: 4px;
     -webkit-user-select: all;
     font-variant-numeric: tabular-nums;
+}
+
+.network-table .reference-page-link-container {
+    position: absolute;
+    inset-inline-end: 6px;
 }
 
 @media (prefers-color-scheme: dark) {

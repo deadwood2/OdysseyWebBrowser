@@ -43,6 +43,11 @@ WKStringRef WKStringCreateWithUTF8CString(const char* string)
     return WebKit::toAPI(&API::String::create(WTF::String::fromUTF8(string)).leakRef());
 }
 
+WKStringRef WKStringCreateWithUTF8CStringWithLength(const char* string, size_t stringLength)
+{
+    return WebKit::toAPI(&API::String::create(WTF::String::fromUTF8({ string, stringLength })).leakRef());
+}
+
 bool WKStringIsEmpty(WKStringRef stringRef)
 {
     return WebKit::toImpl(stringRef)->stringView().isEmpty();
@@ -58,9 +63,9 @@ size_t WKStringGetCharacters(WKStringRef stringRef, WKChar* buffer, size_t buffe
     static_assert(sizeof(WKChar) == sizeof(UChar), "Size of WKChar must match size of UChar");
 
     unsigned unsignedBufferLength = std::min<size_t>(bufferLength, std::numeric_limits<unsigned>::max());
-    auto substring = WebKit::toImpl(stringRef)->stringView().substring(0, unsignedBufferLength);
+    auto substring = WebKit::toImpl(stringRef)->stringView().left(unsignedBufferLength);
 
-    substring.getCharactersWithUpconvert(reinterpret_cast<UChar*>(buffer));
+    substring.getCharacters(reinterpret_cast<UChar*>(buffer));
     return substring.length();
 }
 
@@ -77,23 +82,24 @@ size_t WKStringGetUTF8CStringImpl(WKStringRef stringRef, char* buffer, size_t bu
     if (!bufferSize)
         return 0;
 
-    auto stringView = WebKit::toImpl(stringRef)->stringView();
+    auto string = WebKit::toImpl(stringRef)->stringView();
 
-    char* p = buffer;
-
-    if (stringView.is8Bit()) {
-        const LChar* characters = stringView.characters8();
-        if (!WTF::Unicode::convertLatin1ToUTF8(&characters, characters + stringView.length(), &p, p + bufferSize - 1))
-            return 0;
-    } else {
-        const UChar* characters = stringView.characters16();
-        auto result = WTF::Unicode::convertUTF16ToUTF8(&characters, characters + stringView.length(), &p, p + bufferSize - 1, strict);
-        if (result != WTF::Unicode::ConversionOK && result != WTF::Unicode::TargetExhausted)
-            return 0;
+    std::span<char8_t> target { byteCast<char8_t>(buffer), bufferSize - 1 };
+    WTF::Unicode::ConversionResult<char8_t> result;
+    if (string.is8Bit())
+        result = WTF::Unicode::convert(string.span8(), target);
+    else {
+        if constexpr (strict == NonStrict)
+            result = WTF::Unicode::convertReplacingInvalidSequences(string.span16(), target);
+        else {
+            result = WTF::Unicode::convert(string.span16(), target);
+            if (result.code == WTF::Unicode::ConversionResultCode::SourceInvalid)
+                return 0;
+        }
     }
 
-    *p++ = '\0';
-    return p - buffer;
+    buffer[result.buffer.size()] = '\0';
+    return result.buffer.size() + 1;
 }
 
 size_t WKStringGetUTF8CString(WKStringRef stringRef, char* buffer, size_t bufferSize)

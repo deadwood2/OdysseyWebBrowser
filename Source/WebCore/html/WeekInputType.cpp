@@ -34,6 +34,7 @@
 
 #include "DateComponents.h"
 #include "Decimal.h"
+#include "ElementInlines.h"
 #include "HTMLInputElement.h"
 #include "HTMLNames.h"
 #include "InputTypeNames.h"
@@ -61,14 +62,14 @@ DateComponentsType WeekInputType::dateType() const
 StepRange WeekInputType::createStepRange(AnyStepHandling anyStepHandling) const
 {
     ASSERT(element());
-    const Decimal stepBase = parseToNumber(element()->attributeWithoutSynchronization(minAttr), weekDefaultStepBase);
+    const Decimal stepBase = findStepBase(weekDefaultStepBase);
     const Decimal minimum = parseToNumber(element()->attributeWithoutSynchronization(minAttr), Decimal::fromDouble(DateComponents::minimumWeek()));
     const Decimal maximum = parseToNumber(element()->attributeWithoutSynchronization(maxAttr), Decimal::fromDouble(DateComponents::maximumWeek()));
     const Decimal step = StepRange::parseStep(anyStepHandling, weekStepDescription, element()->attributeWithoutSynchronization(stepAttr));
     return StepRange(stepBase, RangeLimitations::Valid, minimum, maximum, step, weekStepDescription);
 }
 
-std::optional<DateComponents> WeekInputType::parseToDateComponents(const StringView& source) const
+std::optional<DateComponents> WeekInputType::parseToDateComponents(StringView source) const
 {
     return DateComponents::fromParsingWeek(source);
 }
@@ -79,6 +80,10 @@ std::optional<DateComponents> WeekInputType::setMillisecondToDateComponents(doub
 }
 
 void WeekInputType::handleDOMActivateEvent(Event&)
+{
+}
+
+void WeekInputType::showPicker()
 {
 }
 

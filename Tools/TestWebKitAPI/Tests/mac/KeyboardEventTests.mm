@@ -29,8 +29,10 @@
 
 #import "PlatformUtilities.h"
 #import "TestWKWebView.h"
+#import <WebKit/WKWebViewPrivate.h>
 #import <pal/spi/mac/NSMenuSPI.h>
 #import <wtf/RetainPtr.h>
+#import <wtf/RunLoop.h>
 
 @interface KeyboardTestMenu : NSMenu
 @end
@@ -57,7 +59,36 @@
 
 @end
 
+@interface NSViewWithKeyDownOverride : NSView
+
+@property (nonatomic) NSUInteger keyDownCount;
+
+@end
+
+@implementation NSViewWithKeyDownOverride
+
+- (void)keyDown:(NSEvent *)event
+{
+    _keyDownCount++;
+}
+
+@end
+
 namespace TestWebKitAPI {
+
+static void arrowKeyDownWithKeyRepeat(WKWebView *webView, unsigned keyRepeatCount)
+{
+    NSString *arrowString = [NSString stringWithFormat:@"%C", (unichar)NSDownArrowFunctionKey];
+    NSEvent *event = [NSEvent keyEventWithType:NSEventTypeKeyDown location:NSMakePoint(5, 5) modifierFlags:0 timestamp:[[NSDate date] timeIntervalSince1970] windowNumber:[[webView window] windowNumber] context:[NSGraphicsContext currentContext] characters:arrowString charactersIgnoringModifiers:arrowString isARepeat:NO keyCode:0x7D];
+
+    [webView keyDown:event];
+
+    for (unsigned i = 0; i < keyRepeatCount; i++) {
+        event = [NSEvent keyEventWithType:NSEventTypeKeyDown location:NSMakePoint(5, 5) modifierFlags:0 timestamp:[[NSDate date] timeIntervalSince1970] windowNumber:[[webView window] windowNumber] context:[NSGraphicsContext currentContext] characters:arrowString charactersIgnoringModifiers:arrowString isARepeat:YES keyCode:0x7D];
+
+        [webView keyDown:event];
+    }
+}
 
 TEST(KeyboardEventTests, FunctionKeyCommand)
 {
@@ -73,6 +104,43 @@ TEST(KeyboardEventTests, FunctionKeyCommand)
     [webView waitForNextPresentationUpdate];
 
     EXPECT_WK_STREQ("", [webView stringByEvaluatingJavaScript:@"document.body.textContent"]);
+}
+
+TEST(KeyboardEventTests, SmoothKeyboardScrolling)
+{
+    auto window = adoptNS([[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 400, 400) styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskFullSizeContentView) backing:NSBackingStoreBuffered defer:NO]);
+
+    auto view = adoptNS([[NSViewWithKeyDownOverride alloc] initWithFrame:NSMakeRect(0, 0, 400, 400)]);
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 400, 400)]);
+
+    [view addSubview:webView.get()];
+
+    [[window contentView] addSubview:view.get()];
+    [window makeKeyAndOrderFront:nil];
+    [window makeFirstResponder:webView.get()];
+
+    [webView synchronouslyLoadTestPageNamed:@"simple-tall"];
+    [webView waitForNextPresentationUpdate];
+
+    arrowKeyDownWithKeyRepeat(webView.get(), 3);
+
+    Util::runFor(Seconds(3));
+    EXPECT_EQ([view keyDownCount], 0UL);
+}
+
+TEST(KeyboardEventTests, TerminateWebContentProcessDuringKeyEventHandling)
+{
+    RetainPtr webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600)]);
+    [webView synchronouslyLoadHTMLString:@""];
+
+    RunLoop::main().dispatchAfter(5_ms, [&] {
+        [webView _killWebContentProcessAndResetState];
+    });
+    for (unsigned i = 0; i < 10; ++i) {
+        [webView typeCharacter:'a'];
+        Util::runFor(1_ms);
+    }
+    Util::runFor(25_ms);
 }
 
 } // namespace TestWebKitAPI

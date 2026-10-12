@@ -29,6 +29,8 @@
 #include "IsoPage.h"
 #include "IsoSharedConfig.h"
 
+#if !BUSE(LIBPAS)
+
 namespace bmalloc {
 
 class IsoHeapImplBase;
@@ -38,7 +40,7 @@ public:
     BEXPORT static IsoSharedPage* tryCreate();
 
     template<typename Config, typename Type>
-    void free(const LockHolder&, api::IsoHeap<Type>&, void*);
+    void free(const LockHolder&, api::IsoHeapBase<Type>&, void*);
     VariadicBumpAllocator startAllocating(const LockHolder&);
     void stopAllocating(const LockHolder&);
 
@@ -58,3 +60,4 @@ uint8_t* indexSlotFor(void* ptr)
 
 } // namespace bmalloc
 
+#endif

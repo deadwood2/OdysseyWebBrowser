@@ -31,7 +31,7 @@ import logging
 import unittest
 
 from webkitpy.common.system.filesystem_mock import MockFileSystem
-from webkitpy.common.system.executive_mock import MockExecutive2
+from webkitpy.common.system.executive_mock import MockProcess
 from webkitpy.common.system.systemhost_mock import MockSystemHost
 from webkitpy.port import Port
 from webkitpy.port.server_process_mock import MockServerProcess
@@ -44,7 +44,14 @@ _log = logging.getLogger(__name__)
 
 
 class XvfbDriverTest(unittest.TestCase):
-    def make_driver(self, worker_number=0, xorg_running=False, executive=None):
+    def assertRaisesRegex(self, *args, **kwargs):
+        try:
+            return super(XvfbDriverTest, self).assertRaisesRegex(*args, **kwargs)
+        except AttributeError:
+            # Python 2
+            return self.assertRaisesRegexp(*args, **kwargs)
+
+    def make_driver(self, worker_number=0, xorg_running=False, executive=None, print_screen_size_process=None):
         port = Port(MockSystemHost(log_executive=True, executive=executive), 'xvfbdrivertestport', options=MockOptions(configuration='Release'))
         port._config.build_directory = lambda configuration: "/mock-build"
         port._test_runner_process_constructor = MockServerProcess
@@ -57,6 +64,7 @@ class XvfbDriverTest(unittest.TestCase):
         driver._xvfb_pipe = lambda: (3, 4)
         driver._xvfb_read_display_id = lambda x: 1
         driver._xvfb_close_pipe = lambda p: None
+        driver._print_screen_size_process_for_testing = print_screen_size_process if print_screen_size_process else MockProcess(driver._xvfb_screen_size())
         driver._port_server_environment = port.setup_environ_for_server(port.driver_name())
         return driver
 
@@ -67,7 +75,7 @@ class XvfbDriverTest(unittest.TestCase):
         driver._xvfb_process = None
 
     def assertDriverStartSuccessful(self, driver, expected_logs, expected_display, pixel_tests=False):
-        with OutputCapture(level=logging.INFO) as captured:
+        with OutputCapture(level=logging.DEBUG) as captured:
             driver.start(pixel_tests, [])
         self.assertEqual(captured.root.log.getvalue(), expected_logs)
 
@@ -75,16 +83,35 @@ class XvfbDriverTest(unittest.TestCase):
         self.assertEqual(driver._server_process.env['DISPLAY'], expected_display)
         self.assertEqual(driver._server_process.env['GDK_BACKEND'], 'x11')
 
-    def test_start(self):
+    def test_xvfb_start_and_ready(self):
         driver = self.make_driver()
-        expected_logs = ("MOCK popen: ['Xvfb', '-displayfd', '4', '-screen', '0', '1024x768x24', '-nolisten', 'tcp'], env=%s\n" % driver._port_server_environment)
-        self.assertDriverStartSuccessful(driver, expected_logs=expected_logs, expected_display=":1")
+        expected_display = ':1'
+        expected_logs = ("MOCK popen: ['Xvfb', '-displayfd', '4', '-nolisten', 'tcp', '-ac', '-screen', '0', '1024x768x24'], env=%s\n" % driver._port_server_environment)
+        expected_logs += ('The Xvfb display server "%s" is ready and replying as expected.\n' % expected_display)
+        self.assertDriverStartSuccessful(driver, expected_logs=expected_logs, expected_display=expected_display)
         self.cleanup_driver(driver)
 
-    def test_start_arbitrary_worker_number(self):
+    def test_xvfb_start_arbitrary_worker_number(self):
         driver = self.make_driver(worker_number=17)
-        expected_logs = ("MOCK popen: ['Xvfb', '-displayfd', '4', '-screen', '0', '1024x768x24', '-nolisten', 'tcp'], env=%s\n" % driver._port_server_environment)
+        expected_display = ':1'
+        expected_logs = ("MOCK popen: ['Xvfb', '-displayfd', '4', '-nolisten', 'tcp', '-ac', '-screen', '0', '1024x768x24'], env=%s\n" % driver._port_server_environment)
+        expected_logs += ('The Xvfb display server "%s" is ready and replying as expected.\n' % expected_display)
         self.assertDriverStartSuccessful(driver, expected_logs=expected_logs, expected_display=":1", pixel_tests=True)
+        self.cleanup_driver(driver)
+
+    def test_xvfb_not_replying(self):
+        failing_print_screen_size_process = MockProcess(returncode=1)
+        driver = self.make_driver(print_screen_size_process=failing_print_screen_size_process)
+        with OutputCapture(level=logging.INFO) as captured:
+            self.assertRaisesRegex(RuntimeError, 'Unable to start Xvfb display server', driver.start, False, [])
+            captured_log = captured.root.log.getvalue()
+            for retry in [1, 2, 3, 5, 6, 8, 9]:
+                self.assertTrue('Failed to check that the Xvfb display server is replying, retrying check [ {} of 9 ].'.format(retry) in captured_log)
+            for retry in [4, 7]:
+                self.assertTrue('Failed to check that the Xvfb display server is replying. Trying to restart server and retrying check [ {} of 9 ].'.format(retry) in captured_log)
+            self.assertFalse('[ 10 of 9 ].' in captured_log)
+            self.assertTrue('Failed to start and check that the Xvfb replies after 9 retries.' in captured_log)
+            self.assertTrue('the print-screen-size tool returned non-zero status' in captured_log)
         self.cleanup_driver(driver)
 
     def test_stop(self):
@@ -94,6 +121,9 @@ class XvfbDriverTest(unittest.TestCase):
 
         class FakeXvfbProcess(object):
             pid = 1234
+
+            def poll(self):
+                return None
 
         driver._xvfb_process = FakeXvfbProcess()
 

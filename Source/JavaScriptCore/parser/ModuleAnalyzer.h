@@ -25,29 +25,38 @@
 
 #pragma once
 
+#include "ErrorType.h"
 #include "Nodes.h"
 
 namespace JSC {
 
 class JSModuleRecord;
 class SourceCode;
+class ScriptFetchParameters;
 
 class ModuleAnalyzer {
     WTF_MAKE_NONCOPYABLE(ModuleAnalyzer);
+    WTF_FORBID_HEAP_ALLOCATION;
 public:
-    ModuleAnalyzer(JSGlobalObject*, const Identifier& moduleKey, const SourceCode&, const VariableEnvironment& declaredVariables, const VariableEnvironment& lexicalVariables);
+    ModuleAnalyzer(JSGlobalObject*, const Identifier& moduleKey, const SourceCode&, const VariableEnvironment& declaredVariables, const VariableEnvironment& lexicalVariables, CodeFeatures);
 
-    JSModuleRecord* analyze(ModuleProgramNode&);
+    Expected<JSModuleRecord*, std::tuple<ErrorType, String>> analyze(ModuleProgramNode&);
 
     VM& vm() { return m_vm; }
 
-    JSModuleRecord* moduleRecord() { return m_moduleRecord.get(); }
+    JSModuleRecord* moduleRecord() { return m_moduleRecord; }
+
+    void appendRequestedModule(const Identifier&, RefPtr<ScriptFetchParameters>&&);
+
+    void fail(std::tuple<ErrorType, String>&& errorMessage) { m_errorMessage = errorMessage; }
 
 private:
     void exportVariable(ModuleProgramNode&, const RefPtr<UniquedStringImpl>&, const VariableEnvironmentEntry&);
 
     VM& m_vm;
-    Strong<JSModuleRecord> m_moduleRecord;
+    JSModuleRecord* m_moduleRecord;
+    IdentifierSet m_requestedModules;
+    std::tuple<ErrorType, String> m_errorMessage;
 };
 
 } // namespace JSC

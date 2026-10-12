@@ -26,9 +26,9 @@
 #include "config.h"
 #include "WebPasteboardProxy.h"
 
-#include "SharedMemory.h"
 #include "WebPasteboardProxyMessages.h"
 #include "WebProcessProxy.h"
+#include <WebCore/SharedMemory.h>
 #include <mutex>
 #include <wtf/CompletionHandler.h>
 #include <wtf/NeverDestroyed.h>
@@ -39,6 +39,10 @@
 #endif
 
 namespace WebKit {
+
+#if PLATFORM(COCOA)
+WebPasteboardProxy::PasteboardAccessInformation::~PasteboardAccessInformation() = default;
+#endif
 
 WebPasteboardProxy& WebPasteboardProxy::singleton()
 {
@@ -89,7 +93,6 @@ void WebPasteboardProxy::writeCustomData(IPC::Connection&, const Vector<WebCore:
 {
     completionHandler(0);
 }
-#endif
 
 void WebPasteboardProxy::allPasteboardItemInfo(IPC::Connection&, const String&, int64_t, std::optional<WebCore::PageIdentifier>, CompletionHandler<void(std::optional<Vector<WebCore::PasteboardItemInfo>>&&)>&& completionHandler)
 {
@@ -111,10 +114,11 @@ void WebPasteboardProxy::readURLFromPasteboard(IPC::Connection&, size_t, const S
     completionHandler({ }, { });
 }
 
-void WebPasteboardProxy::readBufferFromPasteboard(IPC::Connection&, size_t, const String&, const String&, std::optional<WebCore::PageIdentifier>, CompletionHandler<void(SharedMemory::IPCHandle&&)>&& completionHandler)
+void WebPasteboardProxy::readBufferFromPasteboard(IPC::Connection&, std::optional<size_t>, const String&, const String&, std::optional<WebCore::PageIdentifier>, CompletionHandler<void(RefPtr<WebCore::SharedBuffer>&&)>&& completionHandler)
 {
     completionHandler({ });
 }
+#endif
 
 #if !USE(LIBWPE)
 

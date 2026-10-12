@@ -27,6 +27,7 @@
 #include "StructureRareData.h"
 
 #include "AdaptiveInferredPropertyValueWatchpointBase.h"
+#include "CacheableIdentifierInlines.h"
 #include "CachedSpecialPropertyAdaptiveStructureWatchpoint.h"
 #include "JSImmutableButterfly.h"
 #include "JSObjectInlines.h"
@@ -36,10 +37,12 @@
 #include "StructureChain.h"
 #include "StructureInlines.h"
 #include "StructureRareDataInlines.h"
+#include <wtf/TZoneMalloc.h>
+#include <wtf/TZoneMallocInlines.h>
 
 namespace JSC {
 
-const ClassInfo StructureRareData::s_info = { "StructureRareData", nullptr, nullptr, nullptr, CREATE_METHOD_TABLE(StructureRareData) };
+const ClassInfo StructureRareData::s_info = { "StructureRareData"_s, nullptr, nullptr, nullptr, CREATE_METHOD_TABLE(StructureRareData) };
 
 Structure* StructureRareData::createStructure(VM& vm, JSGlobalObject* globalObject, JSValue prototype)
 {
@@ -48,7 +51,7 @@ Structure* StructureRareData::createStructure(VM& vm, JSGlobalObject* globalObje
 
 StructureRareData* StructureRareData::create(VM& vm, Structure* previous)
 {
-    StructureRareData* rareData = new (NotNull, allocateCell<StructureRareData>(vm.heap)) StructureRareData(vm, previous);
+    StructureRareData* rareData = new (NotNull, allocateCell<StructureRareData>(vm)) StructureRareData(vm, previous);
     rareData->finishCreation(vm);
     return rareData;
 }
@@ -60,11 +63,10 @@ void StructureRareData::destroy(JSCell* cell)
 
 StructureRareData::StructureRareData(VM& vm, Structure* previous)
     : JSCell(vm, vm.structureRareDataStructure.get())
+    , m_previous(previous, WriteBarrierEarlyInit)
     , m_maxOffset(invalidOffset)
     , m_transitionOffset(invalidOffset)
 {
-    if (previous)
-        m_previous.set(vm, this, previous);
 }
 
 template<typename Visitor>
@@ -79,7 +81,7 @@ void StructureRareData::visitChildrenImpl(JSCell* cell, Visitor& visitor)
         for (unsigned index = 0; index < numberOfCachedSpecialPropertyKeys; ++index)
             visitor.appendUnbarriered(thisObject->cachedSpecialProperty(static_cast<CachedSpecialPropertyKey>(index)));
     }
-    visitor.append(thisObject->m_cachedPropertyNameEnumerator);
+    visitor.appendUnbarriered(thisObject->cachedPropertyNameEnumerator());
     for (unsigned index = 0; index < numberOfCachedPropertyNames; ++index) {
         auto* cached = thisObject->m_cachedPropertyNames[index].unvalidatedGet();
         if (cached != cachedPropertyNamesSentinel())
@@ -92,6 +94,7 @@ DEFINE_VISIT_CHILDREN(StructureRareData);
 // ----------- Cached special properties helper watchpoint classes -----------
 
 class CachedSpecialPropertyAdaptiveInferredPropertyValueWatchpoint final : public AdaptiveInferredPropertyValueWatchpointBase {
+    WTF_MAKE_TZONE_ALLOCATED(CachedSpecialPropertyAdaptiveInferredPropertyValueWatchpoint);
 public:
     typedef AdaptiveInferredPropertyValueWatchpointBase Base;
     CachedSpecialPropertyAdaptiveInferredPropertyValueWatchpoint(const ObjectPropertyCondition&, StructureRareData*);
@@ -136,6 +139,9 @@ void StructureRareData::cacheSpecialPropertySlow(JSGlobalObject* globalObject, V
     case CachedSpecialPropertyKey::ToPrimitive:
         uid = vm.propertyNames->toPrimitiveSymbol.impl();
         break;
+    case CachedSpecialPropertyKey::ToJSON:
+        uid = vm.propertyNames->toJSON.impl();
+        break;
     }
 
     if (!ownStructure->propertyAccessesAreCacheable() || ownStructure->isProxy()) {
@@ -148,12 +154,12 @@ void StructureRareData::cacheSpecialPropertySlow(JSGlobalObject* globalObject, V
         // We don't handle the own property case of special properties (toString, valueOf, @@toPrimitive, @@toStringTag) because we would never know if a new
         // object transitioning to the same structure had the same value stored in that property.
         // Additionally, this is a super unlikely case anyway.
-        if (!slot.isCacheable() || slot.slotBase()->structure(vm) == ownStructure)
+        if (!slot.isCacheable() || slot.slotBase()->structure() == ownStructure)
             return;
 
         // This will not create a condition for the current structure but that is good because we know that property
         // is not on the ownStructure so we will transisition if one is added and this cache will no longer be used.
-        auto cacheStatus = prepareChainForCaching(globalObject, ownStructure, slot.slotBase());
+        auto cacheStatus = prepareChainForCaching(globalObject, ownStructure, uid, slot.slotBase());
         if (!cacheStatus) {
             giveUpOnSpecialPropertyCache(key);
             return;
@@ -166,7 +172,7 @@ void StructureRareData::cacheSpecialPropertySlow(JSGlobalObject* globalObject, V
             return;
         }
 
-        auto cacheStatus = prepareChainForCaching(globalObject, ownStructure, nullptr);
+        auto cacheStatus = prepareChainForCaching(globalObject, ownStructure, uid, nullptr);
         if (!cacheStatus) {
             giveUpOnSpecialPropertyCache(key);
             return;
@@ -184,15 +190,15 @@ void StructureRareData::cacheSpecialPropertySlow(JSGlobalObject* globalObject, V
     for (const ObjectPropertyCondition& condition : conditionSet) {
         if (condition.condition().kind() == PropertyCondition::Presence) {
             ASSERT(isValidOffset(condition.offset()));
-            condition.object()->structure(vm)->startWatchingPropertyForReplacements(vm, condition.offset());
-            equivCondition = condition.attemptToMakeEquivalenceWithoutBarrier(vm);
+            condition.object()->structure()->startWatchingPropertyForReplacements(vm, condition.offset());
+            equivCondition = condition.attemptToMakeEquivalenceWithoutBarrier();
 
             // The equivalence condition won't be watchable if we have already seen a replacement.
-            if (!equivCondition.isWatchable()) {
+            if (!equivCondition.isWatchable(PropertyCondition::MakeNoChanges)) {
                 giveUpOnSpecialPropertyCache(key);
                 return;
             }
-        } else if (!condition.isWatchable()) {
+        } else if (!condition.isWatchable(PropertyCondition::MakeNoChanges)) {
             giveUpOnSpecialPropertyCache(key);
             return;
         }
@@ -222,7 +228,7 @@ void StructureRareData::clearCachedSpecialProperty(CachedSpecialPropertyKey key)
         cache.m_value.clear();
 }
 
-void StructureRareData::finalizeUnconditionally(VM& vm)
+void StructureRareData::finalizeUnconditionally(VM& vm, CollectionScope)
 {
     if (m_specialPropertyCache) {
         auto clearCacheIfInvalidated = [&](CachedSpecialPropertyKey key) {
@@ -248,6 +254,8 @@ void StructureRareData::finalizeUnconditionally(VM& vm)
 
 // ------------- Methods for Object.prototype.toString() helper watchpoint classes --------------
 
+WTF_MAKE_TZONE_ALLOCATED_IMPL(CachedSpecialPropertyAdaptiveInferredPropertyValueWatchpoint);
+
 CachedSpecialPropertyAdaptiveInferredPropertyValueWatchpoint::CachedSpecialPropertyAdaptiveInferredPropertyValueWatchpoint(const ObjectPropertyCondition& key, StructureRareData* structureRareData)
     : Base(key)
     , m_structureRareData(structureRareData)
@@ -268,6 +276,8 @@ void CachedSpecialPropertyAdaptiveInferredPropertyValueWatchpoint::handleFire(VM
         key = CachedSpecialPropertyKey::ToString;
     else if (this->key().uid() == vm.propertyNames->valueOf.impl())
         key = CachedSpecialPropertyKey::ValueOf;
+    else if (this->key().uid() == vm.propertyNames->toJSON.impl())
+        key = CachedSpecialPropertyKey::ToJSON;
     else {
         ASSERT(this->key().uid() == vm.propertyNames->toPrimitiveSymbol.impl());
         key = CachedSpecialPropertyKey::ToPrimitive;

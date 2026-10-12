@@ -29,9 +29,9 @@
 #include "ChannelInterpretation.h"
 #include "EventTarget.h"
 #include "ExceptionOr.h"
+#include <variant>
 #include <wtf/Forward.h>
 #include <wtf/LoggerHelper.h>
-#include <wtf/Variant.h>
 
 #define DEBUG_AUDIONODE_REFERENCES 0
 
@@ -43,6 +43,8 @@ class AudioNodeOutput;
 class AudioParam;
 class BaseAudioContext;
 
+enum class NoiseInjectionPolicy : bool;
+
 // An AudioNode is the basic building block for handling audio within an AudioContext.
 // It may be an audio source, an intermediate processing module, or an audio destination.
 // Each AudioNode can have inputs and/or outputs. An AudioSourceNode has no inputs and a single output.
@@ -50,13 +52,13 @@ class BaseAudioContext;
 // Most processing nodes such as filters will have one input and one output, although multiple inputs and outputs are possible.
 
 class AudioNode
-    : public EventTargetWithInlineData
+    : public EventTarget
 #if !RELEASE_LOG_DISABLED
     , private LoggerHelper
 #endif
 {
     WTF_MAKE_NONCOPYABLE(AudioNode);
-    WTF_MAKE_ISO_ALLOCATED(AudioNode);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(AudioNode);
 public:
     enum NodeType {
         NodeTypeDestination,
@@ -92,8 +94,8 @@ public:
     NodeType nodeType() const { return m_nodeType; }
 
     // Can be called from main thread or context's audio thread.
-    virtual void ref();
-    virtual void deref();
+    virtual void ref() const;
+    virtual void deref() const;
     void incrementConnectionCount();
     void decrementConnectionCount();
 
@@ -195,13 +197,17 @@ public:
     bool isTailProcessing() const { return m_isTailProcessing; }
     void setIsTailProcessing(bool isTailProcessing) { m_isTailProcessing = isTailProcessing; }
 
+    NoiseInjectionPolicy noiseInjectionPolicy() const;
+    virtual float noiseInjectionMultiplier() const { return 0; }
+
 protected:
     // Inputs and outputs must be created before the AudioNode is initialized.
     void addInput();
     void addOutput(unsigned numberOfChannels);
 
     void markNodeForDeletionIfNecessary();
-    void derefWithLock();
+    void unmarkNodeForDeletionIfNecessary();
+    void derefWithLock() const;
 
     struct DefaultAudioNodeOptions {
         unsigned channelCount;
@@ -222,7 +228,7 @@ protected:
 #if !RELEASE_LOG_DISABLED
     const Logger& logger() const final { return m_logger.get(); }
     const void* logIdentifier() const final { return m_logIdentifier; }
-    const char* logClassName() const final { return "AudioNode"; }
+    ASCIILiteral logClassName() const final { return "AudioNode"_s; }
     WTFLogChannel& logChannel() const final;
 #endif
 
@@ -231,11 +237,11 @@ protected:
     virtual void updatePullStatus() { }
 
 private:
-    using WeakOrStrongContext = Variant<Ref<BaseAudioContext>, WeakPtr<BaseAudioContext>>;
+    using WeakOrStrongContext = std::variant<Ref<BaseAudioContext>, WeakPtr<BaseAudioContext, WeakPtrImplWithEventTargetData>>;
     static WeakOrStrongContext toWeakOrStrongContext(BaseAudioContext&, NodeType);
 
     // EventTarget
-    EventTargetInterface eventTargetInterface() const override;
+    enum EventTargetInterfaceType eventTargetInterface() const override;
     ScriptExecutionContext* scriptExecutionContext() const final;
 
     volatile bool m_isInitialized { false };
@@ -251,7 +257,7 @@ private:
 
     // Ref-counting
     // start out with normal refCount == 1 (like WTF::RefCounted class).
-    std::atomic<int> m_normalRefCount { 1 };
+    mutable std::atomic<int> m_normalRefCount { 1 };
     std::atomic<int> m_connectionRefCount { 0 };
     
     bool m_isMarkedForDeletion { false };
@@ -278,15 +284,16 @@ private:
 };
 
 template<typename T> struct AudioNodeConnectionRefDerefTraits {
-    static ALWAYS_INLINE void refIfNotNull(T* ptr)
+    static ALWAYS_INLINE T* refIfNotNull(T* ptr)
     {
-        if (LIKELY(ptr != nullptr))
+        if (LIKELY(ptr))
             ptr->incrementConnectionCount();
+        return ptr;
     }
 
     static ALWAYS_INLINE void derefIfNotNull(T* ptr)
     {
-        if (LIKELY(ptr != nullptr))
+        if (LIKELY(ptr))
             ptr->decrementConnectionCount();
     }
 };

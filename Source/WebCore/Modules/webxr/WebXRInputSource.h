@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2020 Igalia S.L. All rights reserved.
+ * Copyright (C) 2021 Apple, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -32,12 +33,16 @@
 #include "WebXRInputSpace.h"
 #include "XRHandedness.h"
 #include "XRTargetRayMode.h"
-#include <wtf/IsoMalloc.h>
 #include <wtf/Ref.h>
 #include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
+#include <wtf/TZoneMalloc.h>
 #include <wtf/Vector.h>
 #include <wtf/text/WTFString.h>
+
+#if ENABLE(WEBXR_HANDS)
+#include "WebXRHand.h"
+#endif
 
 namespace WebCore {
 
@@ -45,13 +50,14 @@ namespace WebCore {
 class Gamepad;
 #endif
 class XRInputSourceEvent;
+class WebXRHand;
 class WebXRInputSpace;
 
-class WebXRInputSource : public RefCounted<WebXRInputSource> {
-    WTF_MAKE_ISO_ALLOCATED(WebXRInputSource);
+class WebXRInputSource : public RefCounted<WebXRInputSource>, public CanMakeWeakPtr<WebXRInputSource> {
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(WebXRInputSource);
 public:
-    using InputSource = PlatformXR::Device::FrameData::InputSource;
-    using InputSourceButton = PlatformXR::Device::FrameData::InputSourceButton;
+    using InputSource = PlatformXR::FrameData::InputSource;
+    using InputSourceButton = PlatformXR::FrameData::InputSourceButton;
 
     static Ref<WebXRInputSource> create(Document&, WebXRSession&, double timestamp, const InputSource&);
     ~WebXRInputSource();
@@ -64,13 +70,17 @@ public:
     const Vector<String>& profiles() const { return m_source.profiles; };
     double connectTime() const { return m_connectTime; }
 #if ENABLE(GAMEPAD)
-    const Gamepad* gamepad() const { return m_gamepad.ptr(); }
+    Gamepad* gamepad() const { return m_gamepad.ptr(); }
+#endif
+
+#if ENABLE(WEBXR_HANDS)
+    WebXRHand* hand() const { return m_hand.get(); }
 #endif
 
     void update(double timestamp, const InputSource&);
     bool requiresInputSourceChange(const InputSource&);
     void disconnect();
-    
+
     void pollEvents(Vector<Ref<XRInputSourceEvent>>&);
 
     // For GC reachablitiy.
@@ -87,6 +97,10 @@ private:
     bool m_connected { true };
 #if ENABLE(GAMEPAD)
     Ref<Gamepad> m_gamepad;
+#endif
+
+#if ENABLE(WEBXR_HANDS)
+    RefPtr<WebXRHand> m_hand;
 #endif
 
     bool m_selectStarted { false };

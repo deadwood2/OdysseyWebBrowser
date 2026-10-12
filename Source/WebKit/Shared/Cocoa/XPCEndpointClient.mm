@@ -26,7 +26,10 @@
 #import "config.h"
 #import "XPCEndpointClient.h"
 
+#import "Logging.h"
 #import <wtf/cocoa/Entitlements.h>
+#import <wtf/spi/darwin/XPCSPI.h>
+#import <wtf/text/ASCIILiteral.h>
 
 namespace WebKit {
 
@@ -44,7 +47,7 @@ void XPCEndpointClient::setEndpoint(xpc_endpoint_t endpoint)
         xpc_connection_set_event_handler(m_connection.get(), ^(xpc_object_t message) {
             xpc_type_t type = xpc_get_type(message);
             if (type == XPC_TYPE_ERROR) {
-                if (message == XPC_ERROR_CONNECTION_INVALID || message == XPC_ERROR_TERMINATION_IMMINENT) {
+                if (message == XPC_ERROR_CONNECTION_INVALID || message == XPC_ERROR_TERMINATION_IMMINENT || XPC_ERROR_CONNECTION_INTERRUPTED) {
                     Locker locker { m_connectionLock };
                     m_connection = nullptr;
                 }
@@ -58,7 +61,7 @@ void XPCEndpointClient::setEndpoint(xpc_endpoint_t endpoint)
                 return;
 #if USE(APPLE_INTERNAL_SDK)
             auto pid = xpc_connection_get_pid(connection);
-            if (pid != getpid() && !WTF::hasEntitlement(connection, "com.apple.private.webkit.use-xpc-endpoint")) {
+            if (pid != getpid() && !WTF::hasEntitlement(connection, "com.apple.private.webkit.use-xpc-endpoint"_s)) {
                 WTFLogAlways("Audit token does not have required entitlement com.apple.private.webkit.use-xpc-endpoint");
                 return;
             }

@@ -25,15 +25,13 @@
 
 #import "config.h"
 
+#import "DeprecatedGlobalValues.h"
 #import "PlatformUtilities.h"
 #import "PlatformWebView.h"
 #import <WebKit/WKProcessPoolPrivate.h>
 #import <WebKit/WKWebViewPrivate.h>
 #import <WebKit/_WKProcessPoolConfiguration.h>
 #import <wtf/RetainPtr.h>
-
-static bool didFinishLoad { false };
-static bool didBecomeUnresponsive { false };
 
 @interface ResponsivenessTimerDelegate : NSObject <WKNavigationDelegate>
 @end
@@ -84,7 +82,7 @@ TEST(WebKit, ResponsivenessTimerShouldNotFireAfterTearDown)
     [webView1 _close];
 
     // We need to wait here because it takes 3 seconds for a process to be recognized as unresponsive.
-    Util::sleep(4);
+    Util::runFor(4_s);
 
     // We should not report the second page sharing the same process as unresponsive.
     EXPECT_FALSE(didBecomeUnresponsive);

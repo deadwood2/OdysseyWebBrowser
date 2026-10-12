@@ -28,6 +28,7 @@
 #include "Connection.h"
 #include "MessageReceiverMap.h"
 #include "MessageSender.h"
+#include "SandboxExtension.h"
 #include <WebCore/ProcessIdentifier.h>
 #include <WebCore/RuntimeApplicationChecks.h>
 #include <WebCore/UserActivity.h>
@@ -38,14 +39,20 @@
 
 #if PLATFORM(COCOA)
 #include <wtf/RetainPtr.h>
+#include <wtf/cocoa/RuntimeApplicationChecksCocoa.h>
 #endif
 
 OBJC_CLASS NSDictionary;
+
+namespace IPC {
+class SharedBufferReference;
+}
 
 namespace WebKit {
 
 class SandboxInitializationParameters;
 struct AuxiliaryProcessInitializationParameters;
+struct AuxiliaryProcessCreationParameters;
 
 class AuxiliaryProcess : public IPC::Connection::Client, public IPC::MessageSender {
     WTF_MAKE_NONCOPYABLE(AuxiliaryProcess);
@@ -54,7 +61,7 @@ public:
     void initialize(const AuxiliaryProcessInitializationParameters&);
 
     // disable and enable termination of the process. when disableTermination is called, the
-    // process won't terminate unless a corresponding disableTermination call is made.
+    // process won't terminate unless a corresponding enableTermination call is made.
     void disableTermination();
     void enableTermination();
 
@@ -64,14 +71,14 @@ public:
     void removeMessageReceiver(IPC::ReceiverName);
     void removeMessageReceiver(IPC::MessageReceiver&);
     
-    template <typename T>
-    void addMessageReceiver(IPC::ReceiverName messageReceiverName, ObjectIdentifier<T> destinationID, IPC::MessageReceiver& receiver)
+    template<typename RawValue>
+    void addMessageReceiver(IPC::ReceiverName messageReceiverName, const ObjectIdentifierGenericBase<RawValue>& destinationID, IPC::MessageReceiver& receiver)
     {
         addMessageReceiver(messageReceiverName, destinationID.toUInt64(), receiver);
     }
     
-    template <typename T>
-    void removeMessageReceiver(IPC::ReceiverName messageReceiverName, ObjectIdentifier<T> destinationID)
+    template<typename RawValue>
+    void removeMessageReceiver(IPC::ReceiverName messageReceiverName, const ObjectIdentifierGenericBase<RawValue>& destinationID)
     {
         removeMessageReceiver(messageReceiverName, destinationID.toUInt64());
     }
@@ -85,23 +92,30 @@ public:
     void setQOS(int latencyQOS, int throughputQOS);
 #endif
 
+    static void applySandboxProfileForDaemon(const String& profilePath, const String& userDirectorySuffix);
+
     IPC::Connection* parentProcessConnection() const { return m_connection.get(); }
+    RefPtr<IPC::Connection> protectedParentProcessConnection() const { return parentProcessConnection(); }
 
     IPC::MessageReceiverMap& messageReceiverMap() { return m_messageReceiverMap; }
 
-#if PLATFORM(MAC)
+#if PLATFORM(COCOA)
     static bool isSystemWebKit();
 #endif
     
 #if PLATFORM(COCOA)
-    bool parentProcessHasEntitlement(const char* entitlement);
+    bool parentProcessHasEntitlement(ASCIILiteral entitlement);
 #endif
+
+#if ENABLE(CFPREFS_DIRECT_MODE)
+    virtual void preferenceDidUpdate(const String& domain, const String& key, const std::optional<String>& encodedValue);
+    void preferencesDidUpdate(HashMap<String, std::optional<String>> domainlessPreferences, HashMap<std::pair<String, String>, std::optional<String>> preferences);
+#endif
+    static void setNotifyOptions();
 
 protected:
     explicit AuxiliaryProcess();
     virtual ~AuxiliaryProcess();
-
-    void setTerminationTimeout(Seconds seconds) { m_terminationTimeout = seconds; }
 
     virtual void initializeProcess(const AuxiliaryProcessInitializationParameters&);
     virtual void initializeProcessName(const AuxiliaryProcessInitializationParameters&);
@@ -132,9 +146,34 @@ protected:
     void didReceiveMemoryPressureEvent(bool isCritical);
 #endif
 
-    static std::optional<std::pair<IPC::Connection::Identifier, IPC::Attachment>> createIPCConnectionPair();
+#if ENABLE(CFPREFS_DIRECT_MODE)
+    static id decodePreferenceValue(const std::optional<String>& encodedValue);
+    static void setPreferenceValue(const String& domain, const String& key, id value);
+    virtual void handlePreferenceChange(const String& domain, const String& key, id value);
+    virtual void dispatchSimulatedNotificationsForPreferenceChange(const String& key) { }
+    virtual void accessibilitySettingsDidChange() { }
+#endif
+
+    void applyProcessCreationParameters(const AuxiliaryProcessCreationParameters&);
+
+#if PLATFORM(MAC)
+    static void openDirectoryCacheInvalidated(SandboxExtension::Handle&&);
+#endif
+
+    void populateMobileGestaltCache(std::optional<SandboxExtension::Handle>&& mobileGestaltExtensionHandle);
+
+#if HAVE(AUDIO_COMPONENT_SERVER_REGISTRATIONS)
+    void consumeAudioComponentRegistrations(const IPC::SharedBufferReference&);
+#endif
+
+    // IPC::Connection::Client.
+    void didClose(IPC::Connection&) override;
 
 private:
+#if ENABLE(CFPREFS_DIRECT_MODE)
+    void handleAXPreferenceChange(const String& domain, const String& key, id value);
+#endif
+
     virtual bool shouldOverrideQuarantine() { return true; }
 
     // IPC::MessageSender
@@ -142,47 +181,34 @@ private:
     uint64_t messageSenderDestinationID() const override;
 
     // IPC::Connection::Client.
-    void didReceiveInvalidMessage(IPC::Connection&, IPC::MessageName) final;
-    void didClose(IPC::Connection&) override;
+    void didReceiveInvalidMessage(IPC::Connection&, IPC::MessageName, int32_t indexOfObjectFailingDecoding) final;
 
     void shutDown();
-
-    void terminationTimerFired();
 
     void platformInitialize(const AuxiliaryProcessInitializationParameters&);
     void platformStopRunLoop();
 
-    // The timeout, in seconds, before this process will be terminated if termination
-    // has been enabled. If the timeout is 0 seconds, the process will be terminated immediately.
-    Seconds m_terminationTimeout;
-
-    // A termination counter; when the counter reaches zero, the process will be terminated
-    // after a given period of time.
+    // A termination counter; when the counter reaches zero, the process will be terminated.
     unsigned m_terminationCounter;
 
-    RunLoop::Timer<AuxiliaryProcess> m_terminationTimer;
+    bool m_isInShutDown { false };
 
     RefPtr<IPC::Connection> m_connection;
     IPC::MessageReceiverMap m_messageReceiverMap;
 
     UserActivity m_processSuppressionDisabled;
-
-#if PLATFORM(COCOA)
-    OSObjectPtr<xpc_object_t> m_priorityBoostMessage;
-#endif
 };
 
 struct AuxiliaryProcessInitializationParameters {
     String uiProcessName;
     String clientIdentifier;
     String clientBundleIdentifier;
-    uint32_t clientSDKVersion;
     std::optional<WebCore::ProcessIdentifier> processIdentifier;
     IPC::Connection::Identifier connectionIdentifier;
     HashMap<String, String> extraInitializationData;
     WebCore::AuxiliaryProcessType processType;
 #if PLATFORM(COCOA)
-    OSObjectPtr<xpc_object_t> priorityBoostMessage;
+    SDKAlignedBehaviors clientSDKAlignedBehaviors;
 #endif
 };
 

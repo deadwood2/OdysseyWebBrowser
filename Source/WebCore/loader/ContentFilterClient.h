@@ -28,20 +28,31 @@
 #if ENABLE(CONTENT_FILTERING)
 
 #include <wtf/Forward.h>
+#include <wtf/WeakPtr.h>
+
+namespace WebCore {
+class ContentFilterClient;
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebCore::ContentFilterClient> : std::true_type { };
+}
 
 namespace WebCore {
 
 class ContentFilterUnblockHandler;
 class ResourceError;
+class SharedBuffer;
 class SubstituteData;
 
-class ContentFilterClient {
+class ContentFilterClient : public CanMakeWeakPtr<ContentFilterClient> {
 public:
     virtual ~ContentFilterClient() = default;
     virtual void ref() const = 0;
     virtual void deref() const = 0;
 
-    virtual void dataReceivedThroughContentFilter(const uint8_t*, int) = 0;
+    virtual void dataReceivedThroughContentFilter(const SharedBuffer&, size_t) = 0;
     virtual ResourceError contentFilterDidBlock(ContentFilterUnblockHandler, String&& unblockRequestDeniedScript) = 0;
     virtual void cancelMainResourceLoadForContentFilter(const ResourceError&) = 0;
     virtual void handleProvisionalLoadFailureFromContentFilter(const URL& blockedPageURL, SubstituteData&) = 0;

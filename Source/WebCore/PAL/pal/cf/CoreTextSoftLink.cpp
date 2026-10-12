@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2021-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,6 +26,12 @@
 
 #include <pal/spi/cf/CoreTextSPI.h>
 #include <wtf/SoftLinking.h>
+
+SOFT_LINK_FRAMEWORK_FOR_SOURCE_WITH_EXPORT(PAL, CoreText, PAL_EXPORT)
+
+// FIXME: Move this to strong linking as soon as people have a chance to update to an SDK that includes it.
+SOFT_LINK_FUNCTION_MAY_FAIL_FOR_SOURCE(PAL, CoreText, CTFontCopyColorGlyphCoverage, CFBitVectorRef, (CTFontRef font), (font))
+SOFT_LINK_FUNCTION_MAY_FAIL_FOR_SOURCE_WITH_EXPORT(PAL, CoreText, CTFontManagerCreateMemorySafeFontDescriptorFromData, CTFontDescriptorRef, (CFDataRef data), (data), PAL_EXPORT)
 
 SOFT_LINK_PRIVATE_FRAMEWORK_FOR_SOURCE(PAL, OTSVG)
 

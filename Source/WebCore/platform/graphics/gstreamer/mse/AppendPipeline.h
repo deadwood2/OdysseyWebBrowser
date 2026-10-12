@@ -51,6 +51,7 @@ public:
 
     void pushNewBuffer(GRefPtr<GstBuffer>&&);
     void resetParserState();
+    void stopParser();
     SourceBufferPrivateGStreamer& sourceBufferPrivate() { return m_sourceBufferPrivate; }
     MediaPlayerPrivateGStreamerMSE* playerPrivate() { return m_playerPrivate; }
 
@@ -69,14 +70,16 @@ private:
         WTF_MAKE_FAST_ALLOCATED;
     public:
 
-        Track(const AtomString& trackId, StreamType streamType, const GRefPtr<GstCaps>& caps, const FloatSize& presentationSize)
+        Track(TrackID trackId, const AtomString& trackStringId, StreamType streamType, const GRefPtr<GstCaps>& caps, const FloatSize& presentationSize)
             : trackId(trackId)
+            , trackStringId(trackStringId)
             , streamType(streamType)
             , caps(caps)
             , presentationSize(presentationSize)
         { }
 
-        AtomString trackId;
+        TrackID trackId;
+        const AtomString trackStringId;
         StreamType streamType;
         GRefPtr<GstCaps> caps;
         FloatSize presentationSize;
@@ -96,7 +99,9 @@ private:
         struct PadProbeInformation appsinkPadEventProbeInformation;
 #endif
 
+        void emplaceOptionalParserForFormat(GstBin*, const GRefPtr<GstCaps>&);
         void initializeElements(AppendPipeline*, GstBin*);
+        bool isLinked() const { return gst_pad_is_linked(entryPad.get()); }
     };
 
     void handleErrorSyncMessage(GstMessage*);
@@ -116,17 +121,15 @@ private:
     void handleEndOfAppend();
     void didReceiveInitializationSegment();
 
-    GstBus* bus() { return m_bus.get(); }
     GstElement* pipeline() { return m_pipeline.get(); }
     GstElement* appsrc() { return m_appsrc.get(); }
 
     static AtomString generateTrackId(StreamType, int padIndex);
     enum class CreateTrackResult { TrackCreated, TrackIgnored, AppendParsingFailed };
     std::pair<CreateTrackResult, AppendPipeline::Track*> tryCreateTrackFromPad(GstPad* demuxerSrcPad, int padIndex);
-    AppendPipeline::Track* tryMatchPadToExistingTrack(GstPad* demuxerSrcPad);
-    void linkPadWithTrack(GstPad* demuxerSrcPad, Track&);
 
-    void resetPipeline();
+    bool recycleTrackForPad(GstPad*);
+    void linkPadWithTrack(GstPad* demuxerSrcPad, Track&);
 
     void consumeAppsinksAvailableSamples();
 
@@ -140,7 +143,7 @@ private:
 
     // Used only for asserting that there is only one streaming thread.
     // Only the pointers are compared.
-    WTF::Thread* m_streamingThread;
+    Thread* m_streamingThread;
 
     bool m_hasReceivedFirstInitializationSegment { false };
     // Used only for asserting EOS events are only caused by demuxing errors.
@@ -151,7 +154,6 @@ private:
 
     MediaTime m_initialDuration;
     GRefPtr<GstElement> m_pipeline;
-    GRefPtr<GstBus> m_bus;
     GRefPtr<GstElement> m_appsrc;
     // To simplify the code, mtypefind and m_demux can be a GstIdentity when not needed.
     GRefPtr<GstElement> m_typefind;

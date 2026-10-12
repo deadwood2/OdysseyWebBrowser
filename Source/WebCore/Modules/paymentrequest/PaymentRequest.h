@@ -35,8 +35,8 @@
 #include "PaymentMethodChangeEvent.h"
 #include "PaymentOptions.h"
 #include "PaymentResponse.h"
+#include <variant>
 #include <wtf/URL.h>
-#include <wtf/Variant.h>
 
 namespace WebCore {
 
@@ -52,15 +52,14 @@ struct PaymentDetailsUpdate;
 struct PaymentMethodData;
 template<typename IDLType> class DOMPromiseDeferred;
 
-class PaymentRequest final : public ActiveDOMObject, public EventTargetWithInlineData, public RefCounted<PaymentRequest> {
-    WTF_MAKE_ISO_ALLOCATED(PaymentRequest);
+class PaymentRequest final : public ActiveDOMObject, public EventTarget, public RefCounted<PaymentRequest> {
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(PaymentRequest);
 public:
     using AbortPromise = DOMPromiseDeferred<void>;
     using CanMakePaymentPromise = DOMPromiseDeferred<IDLBoolean>;
     using ShowPromise = DOMPromiseDeferred<IDLInterface<PaymentResponse>>;
 
     static ExceptionOr<Ref<PaymentRequest>> create(Document&, Vector<PaymentMethodData>&&, PaymentDetailsInit&&, PaymentOptions&&);
-    static bool enabledForContext(ScriptExecutionContext&);
     ~PaymentRequest();
 
     void show(Document&, RefPtr<DOMPromise>&& detailsPromise, ShowPromise&&);
@@ -96,14 +95,18 @@ public:
     void paymentMethodChanged(const String& methodName, PaymentMethodChangeEvent::MethodDetailsFunction&&);
     ExceptionOr<void> updateWith(UpdateReason, Ref<DOMPromise>&&);
     ExceptionOr<void> completeMerchantValidation(Event&, Ref<DOMPromise>&&);
+    void accept(const String& methodName, PaymentResponse::DetailsFunction&&);
     void accept(const String& methodName, PaymentResponse::DetailsFunction&&, Ref<PaymentAddress>&& shippingAddress, const String& payerName, const String& payerEmail, const String& payerPhone);
-    ExceptionOr<void> complete(std::optional<PaymentComplete>&&);
+    void reject(Exception&&);
+    ExceptionOr<void> complete(Document&, std::optional<PaymentComplete>&&, String&& serializedData);
     ExceptionOr<void> retry(PaymentValidationErrors&&);
     void cancel();
 
-    using MethodIdentifier = Variant<String, URL>;
-    using RefCounted<PaymentRequest>::ref;
-    using RefCounted<PaymentRequest>::deref;
+    using MethodIdentifier = std::variant<String, URL>;
+
+    // ActiveDOMObject.
+    void ref() const final { RefCounted::ref(); }
+    void deref() const final { RefCounted::deref(); }
 
 private:
     struct Method {
@@ -127,12 +130,11 @@ private:
     void closeActivePaymentHandler();
 
     // ActiveDOMObject
-    const char* activeDOMObjectName() const final { return "PaymentRequest"; }
     void stop() final;
     void suspend(ReasonForSuspension) final;
 
     // EventTarget
-    EventTargetInterface eventTargetInterface() const final { return PaymentRequestEventTargetInterfaceType; }
+    enum EventTargetInterfaceType eventTargetInterface() const final { return EventTargetInterfaceType::PaymentRequest; }
     ScriptExecutionContext* scriptExecutionContext() const final { return ActiveDOMObject::scriptExecutionContext(); }
     bool isPaymentRequest() const final { return true; }
     void refEventTarget() final { ref(); }

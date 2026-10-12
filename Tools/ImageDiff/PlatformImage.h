@@ -28,6 +28,8 @@
 
 #if defined(USE_CAIRO) && USE_CAIRO
 typedef struct _cairo_surface cairo_surface_t;
+#elif defined(USE_SKIA) && USE_SKIA
+#include <skia/core/SkImage.h>
 #else
 typedef struct CGImage *CGImageRef;
 #endif
@@ -37,12 +39,15 @@ namespace ImageDiff {
 class PlatformImage {
 public:
     static std::unique_ptr<PlatformImage> createFromStdin(size_t);
+    static std::unique_ptr<PlatformImage> createFromFile(const char* filePath);
     static std::unique_ptr<PlatformImage> createFromDiffData(void*, size_t width, size_t height);
 
 #if defined(USE_CAIRO) && USE_CAIRO
     PlatformImage(cairo_surface_t*);
+#elif defined(USE_SKIA) && USE_SKIA
+    explicit PlatformImage(sk_sp<SkImage>&&);
 #else
-    PlatformImage(CGImageRef);
+    PlatformImage(CGImageRef, double scaleFactor = 1);
 #endif
     ~PlatformImage();
 
@@ -50,18 +55,32 @@ public:
     size_t height() const;
     size_t rowBytes() const;
     bool hasAlpha() const;
+    double scaleFactor() const { return m_scaleFactor; }
+
     unsigned char* pixels() const;
     bool isCompatible(const PlatformImage&) const;
-    std::unique_ptr<PlatformImage> difference(const PlatformImage&, float& percentageDifference);
+
+    struct Difference {
+        float percentageDifference { 0 }; // Legacy different measure.
+
+        // WPT-style difference: https://web-platform-tests.org/writing-tests/reftests.html.
+        unsigned maxDifference { 0 };
+        size_t totalPixels { 0 };
+    };
+    std::unique_ptr<PlatformImage> difference(const PlatformImage&, bool exact, Difference&);
+
     void writeAsPNGToStdout();
 
 private:
 #if defined(USE_CAIRO) && USE_CAIRO
     cairo_surface_t* m_image;
+#elif defined(USE_SKIA) && USE_SKIA
+    sk_sp<SkImage> m_image;
 #else
     CGImageRef m_image;
     mutable void* m_buffer { nullptr };
 #endif
+    double m_scaleFactor { 1 }; // Essentially resolution, but not in DPI.
 };
 
 } // namespace ImageDiff

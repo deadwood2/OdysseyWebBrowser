@@ -58,9 +58,9 @@ Ref<MediaStreamPrivate> MediaStreamPrivate::create(Ref<const Logger>&& logger, R
     tracks.reserveInitialCapacity(2);
 
     if (audioSource)
-        tracks.uncheckedAppend(MediaStreamTrackPrivate::create(logger.copyRef(), audioSource.releaseNonNull()));
+        tracks.append(MediaStreamTrackPrivate::create(logger.copyRef(), audioSource.releaseNonNull()));
     if (videoSource)
-        tracks.uncheckedAppend(MediaStreamTrackPrivate::create(logger.copyRef(), videoSource.releaseNonNull()));
+        tracks.append(MediaStreamTrackPrivate::create(logger.copyRef(), videoSource.releaseNonNull()));
 
     return MediaStreamPrivate::create(WTFMove(logger), tracks);
 }
@@ -89,22 +89,22 @@ MediaStreamPrivate::~MediaStreamPrivate()
         track->removeObserver(*this);
 }
 
-void MediaStreamPrivate::addObserver(Observer& observer)
+void MediaStreamPrivate::addObserver(MediaStreamPrivateObserver& observer)
 {
     ASSERT(isMainThread());
     m_observers.add(observer);
 }
 
-void MediaStreamPrivate::removeObserver(Observer& observer)
+void MediaStreamPrivate::removeObserver(MediaStreamPrivateObserver& observer)
 {
     ASSERT(isMainThread());
     m_observers.remove(observer);
 }
 
-void MediaStreamPrivate::forEachObserver(const Function<void(Observer&)>& apply)
+void MediaStreamPrivate::forEachObserver(const Function<void(MediaStreamPrivateObserver&)>& apply)
 {
     ASSERT(isMainThread());
-    auto protectedThis = makeRef(*this);
+    Ref protectedThis { *this };
     m_observers.forEach(apply);
 }
 
@@ -116,13 +116,13 @@ MediaStreamTrackPrivateVector MediaStreamPrivate::tracks() const
 void MediaStreamPrivate::forEachTrack(const Function<void(const MediaStreamTrackPrivate&)>& callback) const
 {
     for (auto& track : m_trackSet.values())
-        callback(*track);
+        callback(track.get());
 }
 
 void MediaStreamPrivate::forEachTrack(const Function<void(MediaStreamTrackPrivate&)>& callback)
 {
     for (auto& track : m_trackSet.values())
-        callback(*track);
+        callback(track.get());
 }
 
 bool MediaStreamPrivate::computeActiveState()
@@ -208,7 +208,7 @@ bool MediaStreamPrivate::isProducingData() const
 bool MediaStreamPrivate::hasVideo() const
 {
     for (auto& track : m_trackSet.values()) {
-        if (track->type() == RealtimeMediaSource::Type::Video && track->isActive())
+        if (track->isVideo() && track->isActive())
             return true;
     }
     return false;
@@ -217,7 +217,7 @@ bool MediaStreamPrivate::hasVideo() const
 bool MediaStreamPrivate::hasAudio() const
 {
     for (auto& track : m_trackSet.values()) {
-        if (track->type() == RealtimeMediaSource::Type::Audio && track->isActive())
+        if (track->isAudio() && track->isActive())
             return true;
     }
     return false;
@@ -235,7 +235,6 @@ bool MediaStreamPrivate::muted() const
 FloatSize MediaStreamPrivate::intrinsicSize() const
 {
     FloatSize size;
-
     if (m_activeVideoTrack) {
         const RealtimeMediaSourceSettings& setting = m_activeVideoTrack->settings();
         size.setWidth(setting.width());
@@ -249,8 +248,8 @@ void MediaStreamPrivate::updateActiveVideoTrack()
 {
     m_activeVideoTrack = nullptr;
     for (auto& track : m_trackSet.values()) {
-        if (!track->ended() && track->type() == RealtimeMediaSource::Type::Video) {
-            m_activeVideoTrack = track.get();
+        if (!track->ended() && track->isVideo()) {
+            m_activeVideoTrack = track.ptr();
             break;
         }
     }
@@ -314,7 +313,7 @@ void MediaStreamPrivate::trackEnded(MediaStreamTrackPrivate& track)
 void MediaStreamPrivate::monitorOrientation(OrientationNotifier& notifier)
 {
     for (auto& track : m_trackSet.values()) {
-        if (track->source().isCaptureSource() && track->type() == RealtimeMediaSource::Type::Video)
+        if (track->isCaptureTrack() && track->deviceType() == CaptureDevice::DeviceType::Camera)
             track->source().monitorOrientation(notifier);
     }
 }

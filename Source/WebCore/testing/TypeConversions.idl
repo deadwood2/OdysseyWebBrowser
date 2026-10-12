@@ -25,7 +25,6 @@
 
 [
     LegacyNoInterfaceObject,
-    ImplementationLacksVTable,
     ExportMacro=WEBCORE_TESTSUPPORT_EXPORT,
 ] interface TypeConversions {
     attribute byte testByte;
@@ -88,14 +87,16 @@
 };
 
 [
-    JSGenerateToJSObject
+    JSGenerateToJSObject,
+    JSGenerateToNativeObject
 ] dictionary TypeConversionsOtherDictionary {
     long longValue = 0;
     DOMString stringValue = "";
 };
 
 [
-    JSGenerateToJSObject
+    JSGenerateToJSObject,
+    JSGenerateToNativeObject
 ] dictionary TypeConversionsDictionary {
     long longValue = 0;
     DOMString stringValue = "";

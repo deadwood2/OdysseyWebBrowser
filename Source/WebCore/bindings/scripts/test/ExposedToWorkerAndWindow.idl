@@ -24,14 +24,14 @@
  */
 
 [
-    JSGenerateToJSObject
+    JSGenerateToJSObject,
+    JSGenerateToNativeObject
 ] dictionary ExposedToWorkerAndWindowDict {
     TestObj obj;
 };
 
 [
-    Exposed=(Window,Worker),
-    ImplementationLacksVTable
+    Exposed=(Window,Worker)
 ] interface ExposedToWorkerAndWindow {
     constructor();
 

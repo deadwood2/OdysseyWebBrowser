@@ -29,7 +29,8 @@ namespace WebCore {
 class SVGPathElement;
 
 class SVGMPathElement final : public SVGElement, public SVGURIReference {
-    WTF_MAKE_ISO_ALLOCATED(SVGMPathElement);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(SVGMPathElement);
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(SVGMPathElement);
 public:
     static Ref<SVGMPathElement> create(const QualifiedName&, Document&);
 
@@ -43,9 +44,8 @@ private:
     SVGMPathElement(const QualifiedName&, Document&);
 
     using PropertyRegistry = SVGPropertyOwnerRegistry<SVGMPathElement, SVGElement, SVGURIReference>;
-    const SVGPropertyRegistry& propertyRegistry() const final { return m_propertyRegistry; }
 
-    void parseAttribute(const QualifiedName&, const AtomString&) final;
+    void attributeChanged(const QualifiedName&, const AtomString& oldValue, const AtomString& newValue, AttributeModificationReason) final;
     void svgAttributeChanged(const QualifiedName&) final;
 
     void buildPendingResource() final;
@@ -55,10 +55,6 @@ private:
 
     bool rendererIsNeeded(const RenderStyle&) final { return false; }
     void didFinishInsertingNode() final;
-
-    void notifyParentOfPathChange(ContainerNode*);
-
-    PropertyRegistry m_propertyRegistry { *this };
 };
 
 } // namespace WebCore

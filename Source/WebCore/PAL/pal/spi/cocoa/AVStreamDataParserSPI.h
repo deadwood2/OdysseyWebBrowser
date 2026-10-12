@@ -23,6 +23,8 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#pragma once
+
 #include <CoreMedia/CoreMedia.h>
 
 NS_ASSUME_NONNULL_BEGIN

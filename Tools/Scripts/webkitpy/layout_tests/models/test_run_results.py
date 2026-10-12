@@ -32,9 +32,7 @@ import logging
 import signal
 
 from webkitpy.common.iteration_compatibility import iteritems
-from webkitpy.layout_tests.models import test_expectations
-from webkitpy.layout_tests.models import test_failures
-
+from webkitpy.layout_tests.models import test_expectations, test_failures
 
 _log = logging.getLogger(__name__)
 
@@ -55,8 +53,10 @@ class TestRunResults(object):
         self.tests_by_timeline = {}
         self.results_by_name = {}  # Map of test name to the last result for the test.
         self.all_results = []  # All results from a run, including every iteration of every test.
+        self.expected_results_by_name = {}
         self.unexpected_results_by_name = {}
         self.failures_by_name = {}
+        self.repeated_results_by_name = {}  # Map of test name to a list of results, when a tests is run more than once (like when passing --repeat-each)
         self.total_failures = 0
         self.expected_skips = 0
         for expectation in test_expectations.TestExpectations.EXPECTATIONS.values():
@@ -69,6 +69,9 @@ class TestRunResults(object):
 
     def add(self, test_result, expected):
         self.tests_by_expectation[test_result.type].add(test_result.test_name)
+        if test_result.test_name not in self.repeated_results_by_name:
+            self.repeated_results_by_name[test_result.test_name] = set()
+        self.repeated_results_by_name[test_result.test_name].add(test_result.type)
         self.results_by_name[test_result.test_name] = self.results_by_name.get(test_result.test_name, test_result)
         if test_result.is_other_crash:
             return
@@ -79,6 +82,7 @@ class TestRunResults(object):
             self.total_failures += 1
             self.failures_by_name[test_result.test_name] = test_result.failures
         if expected:
+            self.expected_results_by_name[test_result.test_name] = test_result
             self.expected += 1
             if test_result.type == test_expectations.SKIP:
                 self.expected_skips += 1
@@ -99,7 +103,7 @@ class TestRunResults(object):
         if existing_result.type is new_result.type:
             return
 
-        self.tests_by_expectation[existing_result.type].remove(existing_result.test_name)
+        self.tests_by_expectation[existing_result.type].discard(existing_result.test_name)
         self.tests_by_expectation[new_result.type].add(new_result.test_name)
 
         had_failures = len(existing_result.failures) > 0
@@ -156,8 +160,10 @@ class TestRunResults(object):
         self.unexpected_timeouts += test_run_results.unexpected_timeouts
         self.tests_by_expectation = merge_dict_sets(self.tests_by_expectation, test_run_results.tests_by_expectation)
         self.tests_by_timeline = merge_dict_sets(self.tests_by_timeline, test_run_results.tests_by_timeline)
+        self.repeated_results_by_name = merge_dict_sets(self.repeated_results_by_name, test_run_results.repeated_results_by_name)
         self.results_by_name.update(test_run_results.results_by_name)
         self.all_results += test_run_results.all_results
+        self.expected_results_by_name.update(test_run_results.expected_results_by_name)
         self.unexpected_results_by_name.update(test_run_results.unexpected_results_by_name)
         self.failures_by_name.update(test_run_results.failures_by_name)
         self.total_failures += test_run_results.total_failures
@@ -205,7 +211,12 @@ def _interpret_test_failures(failures):
     if 'image_diff_percent' not in test_dict:
         for failure in failures:
             if isinstance(failure, test_failures.FailureImageHashMismatch) or isinstance(failure, test_failures.FailureReftestMismatch):
-                test_dict['image_diff_percent'] = failure.diff_percent
+                test_dict['image_diff_percent'] = failure.image_diff_result.diff_percent
+
+    if 'image_difference' not in test_dict:
+        for failure in failures:
+            if (isinstance(failure, test_failures.FailureImageHashMismatch) or isinstance(failure, test_failures.FailureReftestMismatch)) and failure.image_diff_result.fuzzy_data:
+                test_dict['image_difference'] = failure.image_diff_result.fuzzy_data
 
     return test_dict
 
@@ -225,6 +236,8 @@ def summarize_results(port_obj, expectations_by_type, initial_results, retry_res
     """
     results = {}
     results['version'] = 4
+
+    device_type_list = list(expectations_by_type.keys())
 
     tbe = initial_results.tests_by_expectation
     tbt = initial_results.tests_by_timeline
@@ -256,11 +269,13 @@ def summarize_results(port_obj, expectations_by_type, initial_results, retry_res
         expected = 'SKIP'
         expectations = list(expectations_by_type.values())[0]
         for element in expectations_by_type.values():
+            if element.model().has_modifier(test_name, test_expectations.SKIP):
+                continue
+
             test_expectation = element.filtered_expectations_for_test(test_name, pixel_tests_enabled, port_obj._options.world_leaks)
             expected = element.model().expectations_to_string(test_expectation)
-            if expected != 'SKIP':
-                expectations = element
-                continue
+            expectations = element
+            continue
 
         result_type = result.type
         actual = [keywords[result_type]]
@@ -296,28 +311,32 @@ def summarize_results(port_obj, expectations_by_type, initial_results, retry_res
                 num_missing += 1
                 test_dict['report'] = 'MISSING'
         elif test_name in initial_results.unexpected_results_by_name:
-            if retry_results and test_name not in retry_results.unexpected_results_by_name:
-                actual.extend(expectations.model().get_expectations_string(test_name).split(" "))
-                num_flaky += 1
-                test_dict['report'] = 'FLAKY'
-            elif retry_results:
+            if retry_results and test_name in retry_results.unexpected_results_by_name:
+                num_regressions += 1
+                test_dict['report'] = 'REGRESSION'
                 retry_result_type = retry_results.unexpected_results_by_name[test_name].type
                 if result_type != retry_result_type:
-                    if enabled_pixel_tests_in_retry and result_type == test_expectations.TEXT and (retry_result_type == test_expectations.IMAGE_PLUS_TEXT or retry_result_type == test_expectations.MISSING):
-                        if retry_result_type == test_expectations.MISSING:
-                            num_missing += 1
-                        num_regressions += 1
-                        test_dict['report'] = 'REGRESSION'
-                    else:
-                        num_flaky += 1
-                        test_dict['report'] = 'FLAKY'
                     actual.append(keywords[retry_result_type])
-                else:
-                    num_regressions += 1
-                    test_dict['report'] = 'REGRESSION'
+                    if enabled_pixel_tests_in_retry and result_type == test_expectations.TEXT and retry_result_type == test_expectations.MISSING:
+                        num_missing += 1
+            elif retry_results and test_name in retry_results.expected_results_by_name:
+                retry_result_name = keywords[retry_results.expected_results_by_name[test_name].type]
+                if retry_result_name not in actual:
+                    actual.append(retry_result_name)
+                num_flaky += 1
+                test_dict['report'] = 'FLAKY'
             else:
                 num_regressions += 1
                 test_dict['report'] = 'REGRESSION'
+
+        # If a test was run more than once on the initial_results (for example with --repeat-each),
+        # check for possible flakiness there and also account in "actual" for the extra results.
+        for repeated_result in initial_results.repeated_results_by_name[test_name]:
+            repeated_result_name = keywords[repeated_result]
+            if repeated_result_name not in actual:
+                actual.append(repeated_result_name)
+                if test_name in initial_results.unexpected_results_by_name:
+                    test_dict['report'] = 'FLAKY'
 
         test_dict['expected'] = expected
         test_dict['actual'] = " ".join(actual)
@@ -366,6 +385,19 @@ def summarize_results(port_obj, expectations_by_type, initial_results, retry_res
     results['pixel_tests_enabled'] = port_obj.get_option('pixel_tests')
     results['other_crashes'] = other_crashes_dict
     results['date'] = datetime.datetime.now().strftime("%I:%M%p on %B %d, %Y")
+    results['port_name'] = port_obj.name()
+    results['test_configuration'] = dict(port_obj.test_configuration().items())
+
+    # These use the first device type, because we've long ago merged the results for all
+    # the device types we ran.
+    results['baseline_search_path'] = [
+        port_obj.host.filesystem.relpath(p, port_obj.layout_tests_dir())
+        for p in port_obj.baseline_search_path(device_type=device_type_list[0])
+    ]
+    results['expectations_files'] = [
+        port_obj.host.filesystem.relpath(p, port_obj.layout_tests_dir())
+        for p in port_obj.expectations_files(device_type=device_type_list[0])
+    ]
 
     try:
         # We only use the svn revision for using trac links in the results.html file,
@@ -373,12 +405,12 @@ def summarize_results(port_obj, expectations_by_type, initial_results, retry_res
         # FIXME: Do we really need to populate this both here and in the json_results_generator?
         if port_obj.get_option("builder_name"):
             port_obj.host.initialize_scm()
-            results['revision'] = str(port_obj.commits_for_upload()[0].get('revision', port_obj.commits_for_upload()[0].get('id')))
+            results['revision'] = str(port_obj.commits_for_upload()[0].get('identifier', port_obj.commits_for_upload()[0].get('hash')))
     except Exception as e:
-        _log.warn("Failed to determine svn revision for checkout (cwd: %s, webkit_base: %s), leaving 'revision' key blank in full_results.json.\n%s" % (port_obj._filesystem.getcwd(), port_obj.path_from_webkit_base(), e))
+        _log.warn("Failed to determine git revision for checkout (cwd: %s, webkit_base: %s), leaving 'revision' key blank in full_results.json.\n%s" % (port_obj._filesystem.getcwd(), port_obj.path_from_webkit_base(), e))
         # Handle cases where we're running outside of version control.
         import traceback
-        _log.debug('Failed to learn head svn revision:')
+        _log.debug('Failed to learn head git revision:')
         _log.debug(traceback.format_exc())
         results['revision'] = ""
 

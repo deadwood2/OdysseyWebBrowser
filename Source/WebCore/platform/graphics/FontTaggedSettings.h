@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2011 Google Inc. All rights reserved.
- * Copyright (C) 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,6 +27,8 @@
 #pragma once
 
 #include <array>
+#include <wtf/ArgumentCoder.h>
+#include <wtf/HashCountedSet.h>
 #include <wtf/HashTraits.h>
 #include <wtf/Hasher.h>
 #include <wtf/Vector.h>
@@ -64,20 +66,18 @@ private:
 
 template <typename T>
 class FontTaggedSetting {
+private:
+    friend struct IPC::ArgumentCoder<FontTaggedSetting, void>;
 public:
     FontTaggedSetting() = delete;
     FontTaggedSetting(FontTag, T value);
 
-    bool operator==(const FontTaggedSetting<T>& other) const;
-    bool operator!=(const FontTaggedSetting<T>& other) const { return !(*this == other); }
+    friend bool operator==(const FontTaggedSetting&, const FontTaggedSetting&) = default;
     bool operator<(const FontTaggedSetting<T>& other) const;
 
     FontTag tag() const { return m_tag; }
     T value() const { return m_value; }
     bool enabled() const { return value(); }
-
-    template<class Encoder> void encode(Encoder&) const;
-    template<class Decoder> static std::optional<FontTaggedSetting<T>> decode(Decoder&);
 
 private:
     FontTag m_tag;
@@ -91,66 +91,6 @@ FontTaggedSetting<T>::FontTaggedSetting(FontTag tag, T value)
 {
 }
 
-template <typename T>
-bool FontTaggedSetting<T>::operator==(const FontTaggedSetting<T>& other) const
-{
-    return m_tag == other.m_tag && m_value == other.m_value;
-}
-
-template <typename T>
-bool FontTaggedSetting<T>::operator<(const FontTaggedSetting<T>& other) const
-{
-    return (m_tag < other.m_tag) || (m_tag == other.m_tag && m_value < other.m_value);
-}
-
-template <typename T>
-template <class Encoder>
-void FontTaggedSetting<T>::encode(Encoder& encoder) const
-{
-    encoder << static_cast<uint8_t>(m_tag[0]);
-    encoder << static_cast<uint8_t>(m_tag[1]);
-    encoder << static_cast<uint8_t>(m_tag[2]);
-    encoder << static_cast<uint8_t>(m_tag[3]);
-    encoder << m_value;
-}
-
-template <typename T>
-template <class Decoder>
-std::optional<FontTaggedSetting<T>> FontTaggedSetting<T>::decode(Decoder& decoder)
-{
-    std::optional<uint8_t> char0;
-    decoder >> char0;
-    if (!char0)
-        return std::nullopt;
-
-    std::optional<uint8_t> char1;
-    decoder >> char1;
-    if (!char1)
-        return std::nullopt;
-
-    std::optional<uint8_t> char2;
-    decoder >> char2;
-    if (!char2)
-        return std::nullopt;
-
-    std::optional<uint8_t> char3;
-    decoder >> char3;
-    if (!char3)
-        return std::nullopt;
-
-    std::optional<T> value;
-    decoder >> value;
-    if (!value)
-        return std::nullopt;
-
-    return FontTaggedSetting<T>({{
-        static_cast<char>(*char0),
-        static_cast<char>(*char1),
-        static_cast<char>(*char2),
-        static_cast<char>(*char3)
-    }}, *value);
-}
-
 template<typename T> void add(Hasher& hasher, const FontTaggedSetting<T>& setting)
 {
     add(hasher, setting.tag(), setting.value());
@@ -158,10 +98,13 @@ template<typename T> void add(Hasher& hasher, const FontTaggedSetting<T>& settin
 
 template <typename T>
 class FontTaggedSettings {
+private:
+    friend struct IPC::ArgumentCoder<FontTaggedSettings, void>;
 public:
+    using Setting = FontTaggedSetting<T>;
+
     void insert(FontTaggedSetting<T>&&);
-    bool operator==(const FontTaggedSettings<T>& other) const { return m_list == other.m_list; }
-    bool operator!=(const FontTaggedSettings<T>& other) const { return !(*this == other); }
+    friend bool operator==(const FontTaggedSettings&, const FontTaggedSettings&) = default;
 
     bool isEmpty() const { return !size(); }
     size_t size() const { return m_list.size(); }
@@ -173,9 +116,6 @@ public:
 
     unsigned hash() const;
 
-    template<class Encoder> void encode(Encoder&) const;
-    template<class Decoder> static std::optional<FontTaggedSettings<T>> decode(Decoder&);
-
 private:
     Vector<FontTaggedSetting<T>> m_list;
 };
@@ -184,41 +124,23 @@ template <typename T>
 void FontTaggedSettings<T>::insert(FontTaggedSetting<T>&& feature)
 {
     // This vector will almost always have 0 or 1 items in it. Don't bother with the overhead of a binary search or a hash set.
+    // We keep the vector sorted alphabetically and replace any pre-existing value for a given tag.
     size_t i;
     for (i = 0; i < m_list.size(); ++i) {
-        if (!(feature < m_list[i]))
-            break;
+        if (m_list[i].tag() < feature.tag())
+            continue;
+        if (m_list[i].tag() == feature.tag())
+            m_list.remove(i);
+        break;
     }
-    if (i < m_list.size() && feature.tag() == m_list[i].tag())
-        m_list.remove(i);
     m_list.insert(i, WTFMove(feature));
-}
-
-template <typename T>
-template <class Encoder>
-void FontTaggedSettings<T>::encode(Encoder& encoder) const
-{
-    encoder << m_list;
-}
-
-template <typename T>
-template <class Decoder>
-std::optional<FontTaggedSettings<T>> FontTaggedSettings<T>::decode(Decoder& decoder)
-{
-    std::optional<Vector<FontTaggedSetting<T>>> list;
-    decoder >> list;
-    if (!list)
-        return std::nullopt;
-
-    FontTaggedSettings result;
-    result.m_list = WTFMove(*list);
-    return result;
 }
 
 using FontFeature = FontTaggedSetting<int>;
 using FontFeatureSettings = FontTaggedSettings<int>;
 using FontVariationSettings = FontTaggedSettings<float>;
 
+TextStream& operator<<(TextStream&, const FontTaggedSettings<int>&);
 TextStream& operator<<(TextStream&, const FontTaggedSettings<float>&);
 
 }

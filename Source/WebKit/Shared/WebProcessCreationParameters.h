@@ -25,11 +25,14 @@
 
 #pragma once
 
+#include "APIData.h"
 #include "AccessibilityPreferences.h"
+#include "AuxiliaryProcessCreationParameters.h"
 #include "CacheModel.h"
 #include "SandboxExtension.h"
 #include "TextCheckerState.h"
 #include "UserData.h"
+
 #include "WebProcessDataStoreParameters.h"
 #include <WebCore/CrossOriginMode.h>
 #include <wtf/HashMap.h>
@@ -39,65 +42,46 @@
 #include <wtf/text/StringHash.h>
 #include <wtf/text/WTFString.h>
 
+#if PLATFORM(COCOA) || PLATFORM(GTK) || (PLATFORM(WPE) && ENABLE(WPE_PLATFORM))
+#include <WebCore/ScreenProperties.h>
+#endif
+
 #if PLATFORM(COCOA)
 #include <WebCore/PlatformScreen.h>
-#include <WebCore/ScreenProperties.h>
 #include <wtf/MachSendRight.h>
 #endif
 
 #if PLATFORM(IOS_FAMILY)
 #include <WebCore/RenderThemeIOS.h>
-#endif
-
-#if ENABLE(NETSCAPE_PLUGIN_API)
-#include <WebCore/PluginData.h>
+#include <pal/system/ios/UserInterfaceIdiom.h>
 #endif
 
 #if PLATFORM(GTK) || PLATFORM(WPE)
+#include "DMABufRendererBufferMode.h"
 #include <wtf/MemoryPressureHandler.h>
+#endif
+
+#if PLATFORM(GTK)
+#include "GtkSettingsState.h"
 #endif
 
 namespace API {
 class Data;
 }
 
-namespace IPC {
-class Decoder;
-class Encoder;
-}
-
 namespace WebKit {
 
 struct WebProcessCreationParameters {
-    WebProcessCreationParameters();
-    ~WebProcessCreationParameters();
-    WebProcessCreationParameters(WebProcessCreationParameters&&);
-    WebProcessCreationParameters& operator=(WebProcessCreationParameters&&);
-
-    void encode(IPC::Encoder&) const;
-    static WARN_UNUSED_RETURN bool decode(IPC::Decoder&, WebProcessCreationParameters&);
-
+    AuxiliaryProcessCreationParameters auxiliaryProcessParameters;
     String injectedBundlePath;
     SandboxExtension::Handle injectedBundlePathExtensionHandle;
     Vector<SandboxExtension::Handle> additionalSandboxExtensionHandles;
 
     UserData initializationUserData;
 
-#if PLATFORM(IOS_FAMILY)
-    SandboxExtension::Handle cookieStorageDirectoryExtensionHandle;
-    SandboxExtension::Handle containerCachesDirectoryExtensionHandle;
-    SandboxExtension::Handle containerTemporaryDirectoryExtensionHandle;
-#endif
 #if PLATFORM(COCOA) && ENABLE(REMOTE_INSPECTOR)
-    SandboxExtension::Handle enableRemoteWebInspectorExtensionHandle;
+    Vector<SandboxExtension::Handle> enableRemoteWebInspectorExtensionHandles;
 #endif
-#if ENABLE(MEDIA_STREAM)
-    SandboxExtension::Handle audioCaptureExtensionHandle;
-#endif
-
-    String wtfLoggingChannels;
-    String webCoreLoggingChannels;
-    String webKitLoggingChannels;
 
     Vector<String> urlSchemesRegisteredAsEmptyDocument;
     Vector<String> urlSchemesRegisteredAsSecure;
@@ -110,6 +94,10 @@ struct WebProcessCreationParameters {
     Vector<String> urlSchemesRegisteredAsAlwaysRevalidated;
     Vector<String> urlSchemesRegisteredAsCachePartitioned;
     Vector<String> urlSchemesRegisteredAsCanDisplayOnlyIfCanRequest;
+
+#if ENABLE(WK_WEB_EXTENSIONS)
+    Vector<String> urlSchemesRegisteredAsWebExtensions;
+#endif
 
     Vector<String> fontAllowList;
     Vector<String> overrideLanguages;
@@ -125,7 +113,7 @@ struct WebProcessCreationParameters {
     bool shouldAlwaysUseComplexTextCodePath { false };
     bool shouldEnableMemoryPressureReliefLogging { false };
     bool shouldSuppressMemoryPressureHandler { false };
-    bool shouldUseFontSmoothing { true };
+    bool disableFontSubpixelAntialiasingForTesting { false };
     bool fullKeyboardAccessEnabled { false };
 #if HAVE(MOUSE_DEVICE_OBSERVATION)
     bool hasMouseDevice { false };
@@ -144,21 +132,18 @@ struct WebProcessCreationParameters {
     bool hasRichContentServices { false };
 #endif
 
-    Seconds terminationTimeout;
-
     TextCheckerState textCheckerState;
 
 #if PLATFORM(COCOA)
     String uiProcessBundleIdentifier;
     int latencyQOS { 0 };
     int throughputQOS { 0 };
+    String presentingApplicationBundleIdentifier;
 #endif
 
     ProcessID presentingApplicationPID { 0 };
 
 #if PLATFORM(COCOA)
-    WTF::MachSendRight acceleratedCompositingPort;
-
     String uiProcessBundleResourcePath;
     SandboxExtension::Handle uiProcessBundleResourcePathExtensionHandle;
 
@@ -173,10 +158,6 @@ struct WebProcessCreationParameters {
     HashMap<String, bool> notificationPermissions;
 #endif
 
-#if ENABLE(NETSCAPE_PLUGIN_API)
-    HashMap<String, HashMap<String, HashMap<String, WebCore::PluginLoadClientPolicy>>> pluginLoadClientPolicies;
-#endif
-
 #if PLATFORM(COCOA)
     RetainPtr<CFDataRef> networkATSContext;
 #endif
@@ -187,10 +168,13 @@ struct WebProcessCreationParameters {
 
 #if PLATFORM(COCOA)
     Vector<String> mediaMIMETypes;
+#endif
+
+#if PLATFORM(COCOA) || PLATFORM(GTK) || (PLATFORM(WPE) && ENABLE(WPE_PLATFORM))
     WebCore::ScreenProperties screenProperties;
 #endif
 
-#if ENABLE(RESOURCE_LOAD_STATISTICS) && !RELEASE_LOG_DISABLED
+#if !RELEASE_LOG_DISABLED
     bool shouldLogUserInteraction { false };
 #endif
 
@@ -200,27 +184,33 @@ struct WebProcessCreationParameters {
 
 #if USE(WPE_RENDERER)
     bool isServiceWorkerProcess { false };
-    IPC::Attachment hostClientFileDescriptor;
+    UnixFileDescriptor hostClientFileDescriptor;
     CString implementationLibraryName;
 #endif
 
     std::optional<WebProcessDataStoreParameters> websiteDataStoreParameters;
     
-#if PLATFORM(IOS)
+#if PLATFORM(IOS) || PLATFORM(VISION)
     Vector<SandboxExtension::Handle> compilerServiceExtensionHandles;
 #endif
 
-    std::optional<SandboxExtension::Handle> containerManagerExtensionHandle;
     std::optional<SandboxExtension::Handle> mobileGestaltExtensionHandle;
     std::optional<SandboxExtension::Handle> launchServicesExtensionHandle;
 #if HAVE(VIDEO_RESTRICTED_DECODING)
-    Vector<SandboxExtension::Handle> videoDecoderExtensionHandles;
+#if PLATFORM(MAC)
+    SandboxExtension::Handle trustdExtensionHandle;
+#endif
+    bool enableDecodingHEIC { false };
+    bool enableDecodingAVIF { false };
 #endif
 
-    Vector<SandboxExtension::Handle> diagnosticsExtensionHandles;
 #if PLATFORM(IOS_FAMILY)
-    Vector<SandboxExtension::Handle> dynamicMachExtensionHandles;
     Vector<SandboxExtension::Handle> dynamicIOKitExtensionHandles;
+#endif
+
+#if PLATFORM(VISION)
+    // FIXME: Remove when GPU Process is fully enabled.
+    Vector<SandboxExtension::Handle> metalCacheDirectoryExtensionHandles;
 #endif
 
 #if PLATFORM(COCOA)
@@ -229,7 +219,7 @@ struct WebProcessCreationParameters {
 #endif
 
 #if PLATFORM(IOS_FAMILY)
-    bool currentUserInterfaceIdiomIsPhoneOrWatch { false };
+    PAL::UserInterfaceIdiom currentUserInterfaceIdiom { PAL::UserInterfaceIdiom::Default };
     bool supportsPictureInPicture { false };
     WebCore::RenderThemeIOS::CSSValueToSystemColorMap cssValueToSystemColorMap;
     WebCore::Color focusRingColor;
@@ -237,14 +227,17 @@ struct WebProcessCreationParameters {
     String contentSizeCategory;
 #endif
 
-#if PLATFORM(COCOA)
-#if ENABLE(CFPREFS_DIRECT_MODE)
-    std::optional<Vector<SandboxExtension::Handle>> preferencesExtensionHandles;
+#if USE(GBM)
+    String renderDeviceFile;
 #endif
+
+#if PLATFORM(GTK) || PLATFORM(WPE)
+    OptionSet<DMABufRendererBufferMode> dmaBufRendererBufferMode;
 #endif
 
 #if PLATFORM(GTK)
     bool useSystemAppearanceForScrollbars { false };
+    GtkSettingsState gtkSettings;
 #endif
 
 #if HAVE(CATALYST_USER_INTERFACE_IDIOM_AND_SCALE_FACTOR)
@@ -253,18 +246,38 @@ struct WebProcessCreationParameters {
 
 #if HAVE(IOSURFACE)
     WebCore::IntSize maximumIOSurfaceSize;
+    size_t bytesPerRowIOSurfaceAlignment;
 #endif
     
     AccessibilityPreferences accessibilityPreferences;
+#if PLATFORM(IOS_FAMILY)
+    bool applicationAccessibilityEnabled { false };
+#endif
 
 #if PLATFORM(GTK) || PLATFORM(WPE)
     std::optional<MemoryPressureHandler::Configuration> memoryPressureHandlerConfiguration;
+    bool disableFontHintingForTesting { false };
 #endif
 
 #if USE(GLIB)
     String applicationID;
     String applicationName;
+#if ENABLE(REMOTE_INSPECTOR)
+    CString inspectorServerAddress;
 #endif
+#endif
+
+#if USE(ATSPI)
+    String accessibilityBusAddress;
+#endif
+
+    String timeZoneOverride;
+
+    HashMap<WebCore::RegistrableDomain, String> storageAccessUserAgentStringQuirksData;
+    HashSet<WebCore::RegistrableDomain> storageAccessPromptQuirksDomains;
+
+    Seconds memoryFootprintPollIntervalForTesting;
+    Vector<size_t> memoryFootprintNotificationThresholds;
 };
 
 } // namespace WebKit

@@ -29,6 +29,8 @@
 #if USE(PASSKIT) && ENABLE(APPLE_PAY)
 
 #import "WKPaymentAuthorizationDelegate.h"
+#import <wtf/CompletionHandler.h>
+
 #import <pal/cocoa/PassKitSoftLink.h>
 
 @interface WKPaymentAuthorizationViewControllerDelegate : WKPaymentAuthorizationDelegate <PKPaymentAuthorizationViewControllerDelegate, PKPaymentAuthorizationViewControllerPrivateDelegate>
@@ -152,6 +154,14 @@ void PaymentAuthorizationViewController::present(UIViewController *presentingVie
     [presentingViewController presentViewController:m_viewController.get() animated:YES completion:nullptr];
     completionHandler(true);
 }
+
+#if ENABLE(APPLE_PAY_REMOTE_UI_USES_SCENE)
+void PaymentAuthorizationViewController::presentInScene(const String&, const String&, CompletionHandler<void(bool)>&& completionHandler)
+{
+    ASSERT_NOT_REACHED();
+    completionHandler(false);
+}
+#endif
 
 #endif
 

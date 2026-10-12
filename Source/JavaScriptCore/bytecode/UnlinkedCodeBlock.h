@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2021 Apple Inc. All Rights Reserved.
+ * Copyright (C) 2012-2024 Apple Inc. All Rights Reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,10 +25,13 @@
 
 #pragma once
 
+#include "ArithProfile.h"
+#include "ArrayProfile.h"
 #include "BytecodeConventions.h"
 #include "CodeType.h"
 #include "DFGExitProfile.h"
-#include "ExpressionRangeInfo.h"
+#include "ExecutionCounter.h"
+#include "ExpressionInfo.h"
 #include "HandlerInfo.h"
 #include "Identifier.h"
 #include "InstructionStream.h"
@@ -38,6 +41,7 @@
 #include "RegExp.h"
 #include "UnlinkedFunctionExecutable.h"
 #include "UnlinkedMetadataTable.h"
+#include "ValueProfile.h"
 #include "VirtualRegister.h"
 #include <algorithm>
 #include <wtf/BitVector.h>
@@ -62,17 +66,17 @@ class UnlinkedCodeBlock;
 class UnlinkedCodeBlockGenerator;
 class UnlinkedFunctionCodeBlock;
 class UnlinkedFunctionExecutable;
+class BaselineJITCode;
 struct ExecutableInfo;
 enum class LinkTimeConstant : int32_t;
 
 template<typename CodeBlockType>
 class CachedCodeBlock;
 
-typedef unsigned UnlinkedValueProfile;
-typedef unsigned UnlinkedArrayProfile;
 typedef unsigned UnlinkedArrayAllocationProfile;
 typedef unsigned UnlinkedObjectAllocationProfile;
-typedef unsigned UnlinkedLLIntCallLinkInfo;
+
+DECLARE_ALLOCATOR_WITH_HEAP_IDENTIFIER(UnlinkedCodeBlock_RareData);
 
 struct UnlinkedStringJumpTable {
     struct OffsetLocation {
@@ -138,9 +142,9 @@ public:
 
     enum { CallFunction, ApplyFunction };
 
+    void initializeLoopHintExecutionCounter();
+
     bool isConstructor() const { return m_isConstructor; }
-    bool usesCallEval() const { return m_usesCallEval; }
-    void setUsesCallEval() { m_usesCallEval = true; }
     SourceParseMode parseMode() const { return m_parseMode; }
     bool isArrowFunction() const { return isArrowFunctionParseMode(parseMode()); }
     DerivedContextType derivedContextType() const { return static_cast<DerivedContextType>(m_derivedContextType); }
@@ -150,9 +154,9 @@ public:
     bool hasTailCalls() const { return m_hasTailCalls; }
     void setHasTailCalls() { m_hasTailCalls = true; }
     bool allowDirectEvalCache() const { return !(m_features & NoEvalCacheFeature); }
+    bool usesImportMeta() const { return m_features & ImportMetaFeature; }
 
-    bool hasExpressionInfo() { return m_expressionInfo.size(); }
-    const FixedVector<ExpressionRangeInfo>& expressionInfo() { return m_expressionInfo; }
+    bool hasExpressionInfo() { return !m_expressionInfo->isEmpty(); }
 
     bool hasCheckpoints() const { return m_hasCheckpoints; }
     void setHasCheckpoints() { m_hasCheckpoints = true; }
@@ -175,6 +179,7 @@ public:
 
     const FixedVector<WriteBarrier<Unknown>>& constantRegisters() { return m_constantRegisters; }
     const WriteBarrier<Unknown>& constantRegister(VirtualRegister reg) const { return m_constantRegisters[reg.toConstantIndex()]; }
+    WriteBarrier<Unknown>& constantRegister(VirtualRegister reg) { return m_constantRegisters[reg.toConstantIndex()]; }
     ALWAYS_INLINE JSValue getConstant(VirtualRegister reg) const { return m_constantRegisters[reg.toConstantIndex()].get(); }
     const FixedVector<SourceCodeRepresentation>& constantsSourceCodeRepresentation() { return m_constantsSourceCodeRepresentation; }
 
@@ -206,7 +211,16 @@ public:
     SuperBinding superBinding() const { return static_cast<SuperBinding>(m_superBinding); }
     JSParserScriptMode scriptMode() const { return static_cast<JSParserScriptMode>(m_scriptMode); }
 
-    const InstructionStream& instructions() const;
+    const JSInstructionStream& instructions() const;
+    const JSInstruction* instructionAt(BytecodeIndex index) const { return instructions().at(index).ptr(); }
+    unsigned bytecodeOffset(const JSInstruction* instruction)
+    {
+        const auto* instructionsBegin = instructions().at(0).ptr();
+        const auto* instructionsEnd = reinterpret_cast<const JSInstruction*>(reinterpret_cast<uintptr_t>(instructionsBegin) + instructions().size());
+        RELEASE_ASSERT(instruction >= instructionsBegin && instruction < instructionsEnd);
+        return instruction - instructionsBegin;
+    }
+    unsigned instructionsSize() const { return instructions().size(); }
 
     unsigned numCalleeLocals() const { return m_numCalleeLocals; }
     unsigned numVars() const { return m_numVars; }
@@ -235,17 +249,15 @@ public:
 
     bool hasRareData() const { return m_rareData.get(); }
 
-    int lineNumberForBytecodeIndex(BytecodeIndex);
-
-    void expressionRangeForBytecodeIndex(BytecodeIndex, int& divot,
-        int& startOffset, int& endOffset, unsigned& line, unsigned& column) const;
+    ExpressionInfo::Entry expressionInfoForBytecodeIndex(BytecodeIndex);
+    LineColumn lineColumnForBytecodeIndex(BytecodeIndex);
 
     bool typeProfilerExpressionInfoForBytecodeOffset(unsigned bytecodeOffset, unsigned& startDivot, unsigned& endDivot);
 
-    void recordParse(CodeFeatures features, LexicalScopeFeatures lexicalScopeFeatures, bool hasCapturedVariables, unsigned lineCount, unsigned endColumn)
+    void recordParse(CodeFeatures features, LexicallyScopedFeatures lexicallyScopedFeatures, bool hasCapturedVariables, unsigned lineCount, unsigned endColumn)
     {
         m_features = features;
-        m_lexicalScopeFeatures = lexicalScopeFeatures;
+        m_lexicallyScopedFeatures = lexicallyScopedFeatures;
         m_hasCapturedVariables = hasCapturedVariables;
         m_lineCount = lineCount;
         // For the UnlinkedCodeBlock, startColumn is always 0.
@@ -258,13 +270,13 @@ public:
     void setSourceMappingURLDirective(const String& sourceMappingURL) { m_sourceMappingURLDirective = sourceMappingURL.impl(); }
 
     CodeFeatures codeFeatures() const { return m_features; }
-    LexicalScopeFeatures lexicalScopeFeatures() const { return static_cast<LexicalScopeFeatures>(m_lexicalScopeFeatures); }
+    LexicallyScopedFeatures lexicallyScopedFeatures() const { return m_lexicallyScopedFeatures; }
     bool hasCapturedVariables() const { return m_hasCapturedVariables; }
     unsigned lineCount() const { return m_lineCount; }
     ALWAYS_INLINE unsigned startColumn() const { return 0; }
     unsigned endColumn() const { return m_endColumn; }
 
-    const FixedVector<InstructionStream::Offset>& opProfileControlFlowBytecodeOffsets() const
+    const FixedVector<JSInstructionStream::Offset>& opProfileControlFlowBytecodeOffsets() const
     {
         ASSERT(m_rareData);
         return m_rareData->m_opProfileControlFlowBytecodeOffsets;
@@ -274,15 +286,15 @@ public:
         return m_rareData && !m_rareData->m_opProfileControlFlowBytecodeOffsets.isEmpty();
     }
 
-    void dumpExpressionRangeInfo(); // For debugging purpose only.
+    void dumpExpressionInfo(); // For debugging purpose only.
 
     bool wasCompiledWithDebuggingOpcodes() const { return m_codeGenerationMode.contains(CodeGenerationMode::Debugger); }
     bool wasCompiledWithTypeProfilerOpcodes() const { return m_codeGenerationMode.contains(CodeGenerationMode::TypeProfiler); }
     bool wasCompiledWithControlFlowProfilerOpcodes() const { return m_codeGenerationMode.contains(CodeGenerationMode::ControlFlowProfiler); }
     OptionSet<CodeGenerationMode> codeGenerationMode() const { return m_codeGenerationMode; }
 
-    TriState didOptimize() const { return static_cast<TriState>(m_didOptimize); }
-    void setDidOptimize(TriState didOptimize) { m_didOptimize = static_cast<unsigned>(didOptimize); }
+    TriState didOptimize() const { return m_metadata->didOptimize(); }
+    void setDidOptimize(TriState didOptimize) { m_metadata->setDidOptimize(didOptimize); }
 
     static constexpr unsigned maxAge = 7;
 
@@ -331,9 +343,25 @@ public:
 
     size_t metadataSizeInBytes()
     {
-        return m_metadata->sizeInBytes();
+        return m_metadata->sizeInBytesForGC();
     }
 
+    bool loopHintsAreEligibleForFuzzingEarlyReturn()
+    {
+        // Some builtins are required to always complete the loops they run.
+        return !isBuiltinFunction();
+    }
+    void allocateSharedProfiles(unsigned numBinaryArithProfiles, unsigned numUnaryArithProfiles);
+    UnlinkedValueProfile& unlinkedValueProfile(unsigned index) { return m_valueProfiles[index]; }
+    UnlinkedArrayProfile& unlinkedArrayProfile(unsigned index) { return m_arrayProfiles[index]; }
+    unsigned numberOfValueProfiles() const { return m_valueProfiles.size(); }
+    unsigned numberOfArrayProfiles() const { return m_arrayProfiles.size(); }
+
+#if ASSERT_ENABLED
+    bool hasIdentifier(UniquedStringImpl*);
+#endif
+
+    int32_t thresholdForJIT(int32_t threshold);
 
 protected:
     UnlinkedCodeBlock(VM&, Structure*, CodeType, const ExecutableInfo&, OptionSet<CodeGenerationMode>);
@@ -343,10 +371,7 @@ protected:
 
     ~UnlinkedCodeBlock();
 
-    void finishCreation(VM& vm)
-    {
-        Base::finishCreation(vm);
-    }
+    DECLARE_DEFAULT_FINISH_CREATION;
 
 private:
     friend class BytecodeRewriter;
@@ -363,15 +388,12 @@ private:
             m_rareData = makeUnique<RareData>();
     }
 
-    void getLineAndColumn(const ExpressionRangeInfo&, unsigned& line, unsigned& column) const;
     BytecodeLivenessAnalysis& livenessAnalysisSlow(CodeBlock*);
-
 
     VirtualRegister m_thisRegister;
     VirtualRegister m_scopeRegister;
 
     unsigned m_numVars : 31;
-    unsigned m_usesCallEval : 1;
     unsigned m_numCalleeLocals : 31;
     unsigned m_isConstructor : 1;
     unsigned m_numParameters : 31;
@@ -387,13 +409,15 @@ private:
     unsigned m_derivedContextType : 2;
     unsigned m_evalContextType : 2;
     unsigned m_codeType : 2;
-    unsigned m_didOptimize : 2;
     unsigned m_age : 3;
     static_assert(((1U << 3) - 1) >= maxAge);
     bool m_hasCheckpoints : 1;
-    unsigned m_lexicalScopeFeatures : 4;
+    LexicallyScopedFeatures m_lexicallyScopedFeatures : bitWidthOfLexicallyScopedFeatures { 0 };
 public:
     ConcurrentJSLock m_lock;
+#if ENABLE(JIT)
+    RefPtr<BaselineJITCode> m_unlinkedBaselineCode;
+#endif
 private:
     CodeFeatures m_features { 0 };
     SourceParseMode m_parseMode;
@@ -405,11 +429,10 @@ private:
     PackedRefPtr<StringImpl> m_sourceURLDirective;
     PackedRefPtr<StringImpl> m_sourceMappingURLDirective;
 
-    FixedVector<InstructionStream::Offset> m_jumpTargets;
+    FixedVector<JSInstructionStream::Offset> m_jumpTargets;
     Ref<UnlinkedMetadataTable> m_metadata;
-    std::unique_ptr<InstructionStream> m_instructions;
+    std::unique_ptr<JSInstructionStream> m_instructions;
     std::unique_ptr<BytecodeLivenessAnalysis> m_liveness;
-
 
 #if ENABLE(DFG_JIT)
     DFG::ExitProfile m_exitProfile;
@@ -425,7 +448,7 @@ private:
 
 public:
     struct RareData {
-        WTF_MAKE_STRUCT_FAST_ALLOCATED;
+        WTF_MAKE_STRUCT_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(UnlinkedCodeBlock_RareData);
 
         size_t sizeInBytes(const AbstractLocker&) const;
 
@@ -435,14 +458,12 @@ public:
         FixedVector<UnlinkedSimpleJumpTable> m_unlinkedSwitchJumpTables;
         FixedVector<UnlinkedStringJumpTable> m_unlinkedStringSwitchJumpTables;
 
-        FixedVector<ExpressionRangeInfo::FatPosition> m_expressionInfoFatPositions;
-
         struct TypeProfilerExpressionRange {
             unsigned m_startDivot;
             unsigned m_endDivot;
         };
         HashMap<unsigned, TypeProfilerExpressionRange> m_typeProfilerInfoMap;
-        FixedVector<InstructionStream::Offset> m_opProfileControlFlowBytecodeOffsets;
+        FixedVector<JSInstructionStream::Offset> m_opProfileControlFlowBytecodeOffsets;
         FixedVector<BitVector> m_bitVectors;
         FixedVector<IdentifierSet> m_constantIdentifierSets;
 
@@ -450,18 +471,38 @@ public:
         unsigned m_privateBrandRequirement : 1;
     };
 
-    int outOfLineJumpOffset(InstructionStream::Offset);
-    int outOfLineJumpOffset(const InstructionStream::Ref& instruction)
+    int outOfLineJumpOffset(JSInstructionStream::Offset);
+    int outOfLineJumpOffset(const JSInstructionStream::Ref& instruction)
     {
         return outOfLineJumpOffset(instruction.offset());
     }
+    int outOfLineJumpOffset(const JSInstruction* pc)
+    {
+        unsigned bytecodeOffset = this->bytecodeOffset(pc);
+        return outOfLineJumpOffset(bytecodeOffset);
+    }
+
+    BinaryArithProfile& binaryArithProfile(unsigned i) { return m_binaryArithProfiles[i]; }
+    UnaryArithProfile& unaryArithProfile(unsigned i) { return m_unaryArithProfiles[i]; }
+
+    BaselineExecutionCounter& llintExecuteCounter() { return m_llintExecuteCounter; }
 
 private:
-    using OutOfLineJumpTargets = HashMap<InstructionStream::Offset, int>;
+    using OutOfLineJumpTargets = HashMap<JSInstructionStream::Offset, int>;
 
     OutOfLineJumpTargets m_outOfLineJumpTargets;
     std::unique_ptr<RareData> m_rareData;
-    FixedVector<ExpressionRangeInfo> m_expressionInfo;
+    MallocPtr<ExpressionInfo> m_expressionInfo;
+    BaselineExecutionCounter m_llintExecuteCounter;
+    FixedVector<UnlinkedValueProfile> m_valueProfiles;
+    FixedVector<UnlinkedArrayProfile> m_arrayProfiles;
+    FixedVector<BinaryArithProfile> m_binaryArithProfiles;
+    FixedVector<UnaryArithProfile> m_unaryArithProfiles;
+
+#if ASSERT_ENABLED
+    Lock m_cachedIdentifierUidsLock;
+    HashSet<UniquedStringImpl*> m_cachedIdentifierUids;
+#endif
 
 protected:
     DECLARE_VISIT_CHILDREN;

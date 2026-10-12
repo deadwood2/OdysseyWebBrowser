@@ -162,7 +162,8 @@ class TextureGL : public TextureImpl
                                            gl::MemoryObject *memoryObject,
                                            GLuint64 offset,
                                            GLbitfield createFlags,
-                                           GLbitfield usageFlags) override;
+                                           GLbitfield usageFlags,
+                                           const void *imageCreateInfoPNext) override;
 
     angle::Result setImageExternal(const gl::Context *context,
                                    const gl::ImageIndex &index,
@@ -177,6 +178,18 @@ class TextureGL : public TextureImpl
                                    const egl::Stream::GLTextureDescription &desc) override;
 
     angle::Result generateMipmap(const gl::Context *context) override;
+
+    angle::Result clearImage(const gl::Context *context,
+                             GLint level,
+                             GLenum format,
+                             GLenum type,
+                             const uint8_t *data) override;
+    angle::Result clearSubImage(const gl::Context *context,
+                                GLint level,
+                                const gl::Box &area,
+                                GLenum format,
+                                GLenum type,
+                                const uint8_t *data) override;
 
     angle::Result bindTexImage(const gl::Context *context, egl::Surface *surface) override;
     angle::Result releaseTexImage(const gl::Context *context) override;
@@ -200,7 +213,10 @@ class TextureGL : public TextureImpl
     angle::Result setMaxLevel(const gl::Context *context, GLuint maxLevel);
 
     angle::Result initializeContents(const gl::Context *context,
+                                     GLenum binding,
                                      const gl::ImageIndex &imageIndex) override;
+
+    GLint getRequiredExternalTextureImageUnits(const gl::Context *context) override;
 
     angle::Result setMinFilter(const gl::Context *context, GLenum filter);
     angle::Result setMagFilter(const gl::Context *context, GLenum filter);
@@ -213,6 +229,8 @@ class TextureGL : public TextureImpl
     bool hasEmulatedAlphaChannel(const gl::ImageIndex &index) const;
 
   private:
+    angle::Result recreateTexture(const gl::Context *context);
+
     angle::Result setImageHelper(const gl::Context *context,
                                  gl::TextureTarget target,
                                  size_t level,
@@ -237,6 +255,7 @@ class TextureGL : public TextureImpl
                                                 GLenum type,
                                                 const gl::PixelUnpackState &unpack,
                                                 const gl::Buffer *unpackBuffer,
+                                                size_t maxBytesUploadedPerChunk,
                                                 const uint8_t *pixels);
 
     angle::Result setSubImagePaddingWorkaround(const gl::Context *context,
@@ -253,7 +272,7 @@ class TextureGL : public TextureImpl
                                           const FunctionsGL *functions,
                                           GLenum name,
                                           GLenum value,
-                                          GLenum *outValue);
+                                          GLenum *currentlyAppliedValue);
 
     void setLevelInfo(const gl::Context *context,
                       gl::TextureTarget target,
@@ -271,10 +290,16 @@ class TextureGL : public TextureImpl
     std::vector<LevelInfoGL> mLevelInfo;
     gl::Texture::DirtyBits mLocalDirtyBits;
 
+    // All dirty bits ever sychronized by this texture OR'd together. Used to know what state needs
+    // to be resynced if the texture is ever recreated without needing extension checks or state
+    // comparisons.
+    gl::Texture::DirtyBits mAllModifiedDirtyBits;
+
     gl::SwizzleState mAppliedSwizzle;
     gl::SamplerState mAppliedSampler;
     GLuint mAppliedBaseLevel;
     GLuint mAppliedMaxLevel;
+    GLenum mAppliedDepthStencilTextureMode;
 
     GLuint mTextureID;
 };

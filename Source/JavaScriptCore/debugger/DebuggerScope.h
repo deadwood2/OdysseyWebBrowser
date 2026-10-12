@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008-2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2008-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -39,7 +39,7 @@ public:
     static constexpr unsigned StructureFlags = Base::StructureFlags | OverridesGetOwnPropertySlot | OverridesGetOwnPropertyNames | OverridesPut;
 
     template<typename CellType, SubspaceAccess mode>
-    static IsoSubspace* subspaceFor(VM& vm)
+    static GCClient::IsoSubspace* subspaceFor(VM& vm)
     {
         return vm.debuggerScopeSpace<mode>();
     }
@@ -70,8 +70,7 @@ public:
         iterator& operator++() { m_node = m_node->next(); return *this; }
         // postfix ++ intentionally omitted
 
-        bool operator==(const iterator& other) const { return m_node == other.m_node; }
-        bool operator!=(const iterator& other) const { return m_node != other.m_node; }
+        friend bool operator==(const iterator&, const iterator&) = default;
 
     private:
         DebuggerScope* m_node;
@@ -99,7 +98,7 @@ public:
 
 private:
     DebuggerScope(VM&, Structure*, JSScope*);
-    void finishCreation(VM&);
+    DECLARE_DEFAULT_FINISH_CREATION;
 
     JSScope* jsScope() const { return m_scope.get(); }
 

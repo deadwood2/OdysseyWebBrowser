@@ -12,10 +12,13 @@ PACKAGES+=(
     libgnutls28-dev
     libharfbuzz-dev
     libicu-dev
-    libwpebackend-fdo-1.0-dev
-    libwpewebkit-1.0-dev
+    $(aptIfExists libopenxr-dev)
     libxml2-dev
     pkg-config
+    qtbase5-dev
+    qtbase5-private-dev
+    qtdeclarative5-dev
+    unifdef
     wayland-protocols
     zlib1g-dev
 
@@ -32,8 +35,14 @@ PACKAGES+=(
     libtheora-dev
     libvorbis-dev
     libvpx-dev
+    libxcb-glx0-dev
     libxcb-xkb-dev
     libxkbcommon-dev
     libxrandr-dev
     luajit
+
+    # These are dependencies necessary for building Cog.
+    libportal-dev
+    libportal-gtk4-dev
+    libxcb-cursor-dev
 )

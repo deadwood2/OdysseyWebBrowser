@@ -33,6 +33,7 @@
 #import <pal/spi/cocoa/AVKitSPI.h>
 #endif
 #import <WebCore/AlternativeTextClient.h>
+#import <WebCore/Page.h>
 #import <WebCore/WebCoreKeyboardUIMode.h>
 #import <wtf/HashMap.h>
 #import <wtf/Lock.h>
@@ -47,7 +48,6 @@
 namespace WebCore {
 class AlternativeTextUIController;
 class HistoryItem;
-class Page;
 class RunLoopObserver;
 class TextIndicatorWindow;
 class ValidationBubble;
@@ -96,8 +96,8 @@ class WebMediaPlaybackTargetPicker;
 extern BOOL applicationIsTerminating;
 extern int pluginDatabaseClientCount;
 
-class LayerFlushController;
 class WebViewGroup;
+class WebViewRenderingUpdateScheduler;
 
 #if ENABLE(SERVICE_CONTROLS)
 class WebSelectionServiceController;
@@ -106,43 +106,6 @@ class WebSelectionServiceController;
 #if HAVE(TOUCH_BAR)
 @class WebTextTouchBarItemController;
 #endif
-
-class WebViewLayerFlushScheduler {
-public:
-    WebViewLayerFlushScheduler(LayerFlushController*);
-    ~WebViewLayerFlushScheduler();
-
-    void schedule();
-    void invalidate();
-
-private:
-    void layerFlushCallback();
-    
-    LayerFlushController* m_flushController;
-    std::unique_ptr<WebCore::RunLoopObserver> m_runLoopObserver;
-    bool m_insideCallback { false };
-    bool m_rescheduledInsideCallback { false };
-};
-
-class LayerFlushController : public RefCounted<LayerFlushController> {
-public:
-    static Ref<LayerFlushController> create(WebView* webView)
-    {
-        return adoptRef(*new LayerFlushController(webView));
-    }
-    
-    // FIXME: Rename to use 'updateRendering' terminology.
-    bool flushLayers();
-    
-    void scheduleLayerFlush();
-    void invalidate();
-    
-private:
-    LayerFlushController(WebView*);
-    
-    WebView* m_webView;
-    WebViewLayerFlushScheduler m_layerFlushScheduler;
-};
 
 @interface WebWindowVisibilityObserver : NSObject {
     WebView *_view;
@@ -156,7 +119,7 @@ private:
 // FIXME: This should be renamed to WebViewData.
 @interface WebViewPrivate : NSObject {
 @public
-    WebCore::Page* page;
+    RefPtr<WebCore::Page> page;
     RefPtr<WebViewGroup> group;
 
     id UIDelegate;
@@ -294,7 +257,7 @@ private:
 #endif
 
 #if !PLATFORM(IOS_FAMILY)
-    // WebKit has both a global plug-in database and a separate, per WebView plug-in database. Dashboard uses the per WebView database.
+    // WebKit has both a global plug-in database and a separate, per WebView plug-in database.
     RetainPtr<WebPluginDatabase> pluginDatabase;
 #endif
     
@@ -309,7 +272,7 @@ private:
     // so that the NSView drawing is visually synchronized with CALayer updates.
     BOOL needsOneShotDrawingSynchronization;
     BOOL postsAcceleratedCompositingNotifications;
-    RefPtr<LayerFlushController> layerFlushController;
+    std::unique_ptr<WebViewRenderingUpdateScheduler> renderingUpdateScheduler;
 
 #if !PLATFORM(IOS_FAMILY)
     NSPasteboard *insertionPasteboard;

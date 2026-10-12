@@ -7,32 +7,30 @@
 
   <metamodule id="webkitgtk-testing-dependencies">
     <dependencies>
+      <dep package="adwaita-icon-theme"/>
+      <dep package="atk"/>
       <dep package="avif"/>
       <dep package="cairo"/>
-      <dep package="fonts"/>
       <dep package="dicts"/>
       <dep package="fontconfig"/>
       <dep package="freetype6"/>
-      <dep package="harfbuzz"/>
-      <dep package="libxml2"/>
       <dep package="gdk-pixbuf"/>
-      <dep package="gtk+"/>
       <dep package="glib"/>
       <dep package="glib-networking"/>
-      <dep package="adwaita-icon-theme"/>
+      <dep package="gtk+"/>
+      <dep package="harfbuzz"/>
       <dep package="icu"/>
-      <dep package="libsoup"/>
-      <dep package="atk"/>
-      <dep package="webkit-gstreamer-testing-dependencies"/>
-      <dep package="pango"/>
-      <dep package="llvm"/>
-      <dep package="shared-mime-info"/>
-      <dep package="libsecret"/>
-      <dep package="libgpg-error"/>
       <dep package="libgcrypt"/>
+      <dep package="libgpg-error"/>
+      <dep package="libjxl"/>
+      <dep package="libsecret"/>
+      <dep package="libxml2"/>
+      <dep package="llvm"/>
       <dep package="manette"/>
-      <dep package="openjpeg"/>
-      <dep package="wpebackend-fdo"/>
+      <dep package="pango"/>
+      <dep package="shared-mime-info"/>
+      <dep package="webkit-gstreamer-testing-dependencies"/>
+      <dep package="libsoup"/>
       <if condition-set="linux">
           <dep package="xdg-dbus-proxy"/>
           <dep package="xserver"/>
@@ -51,7 +49,7 @@
   <repository type="git" name="github.com"
       href="https://github.com"/>
   <repository type="tarball" name="github-tarball"
-      href="https://github.com/"/>
+      href="https://github.com"/>
   <repository type="tarball" name="sourceware.org-mirror"
       href="http://mirrors.kernel.org/sources.redhat.com/"/>
   <repository type="tarball" name="ftp.gnome.org"
@@ -70,8 +68,8 @@
       href="http://xmlsoft.org"/>
   <repository type="tarball" name="savannah.gnu.org"
       href="http://download.savannah.gnu.org/releases/"/>
-  <repository type="git" name="freedesktop-git"
-      href="http://anongit.freedesktop.org/git"/>
+  <repository type="git" name="git.freedesktop.org"
+      href="https://gitlab.freedesktop.org"/>
  <repository type="tarball" name="dri.freedesktop.org"
       href="https://dri.freedesktop.org"/>
   <repository type="tarball" name="mesa.freedesktop.org"
@@ -84,8 +82,6 @@
       href="http://webkitgtk.org/jhbuild_mirror/"/>
   <repository type="tarball" name="gnupg.org"
       href="https://www.gnupg.org/ftp/gcrypt/"/>
-  <repository type="tarball" name="wpewebkit"
-      href="https://wpewebkit.org/releases/"/>
   <repository type="tarball" name="downloads.videolan.org"
       href="https://downloads.videolan.org"/>
 
@@ -110,20 +106,12 @@
     </branch>
   </autotools>
 
-  <!-- FIXME: Pixman 0.32.6 ARM iwMMXt fast path isn't buildable with GCC 4.9 and
-              ARM traditional instruction set. It causes a build failure on Raspbian.
-              This workaround can be removed once we raise the minimum GCC version
-              for WebKitGTK above 4.9 -->
-  <autotools id="pixman" autogen-sh="configure"
-             autogenargs="--enable-gtk=no --disable-arm-iwmmxt">
-    <branch module="releases/pixman-0.34.0.tar.gz" version="0.34.0"
+  <autotools id="pixman"
+             autogen-sh="configure"
+             autogenargs="--enable-gtk=no">
+    <branch module="releases/pixman-${version}.tar.gz" version="0.40.0"
             repo="cairographics.org"
-	    hash="sha1:a1b1683c1a55acce9d928fea1ab6ceb79142ddc7"/>
-  </autotools>
-
-  <autotools id="fonts" supports-non-srcdir-builds="no"
-             skip-autogen="true">
-    <branch repo="github.com" module="WebKitGTK/webkitgtk-test-fonts.git" checkoutdir="webkitgtk-test-fonts" tag="0.0.8"/>
+            hash="sha256:6d200dec3740d9ec4ec8d1180e25779c00bc749f94278c8b9021f5534db223fc"/>
   </autotools>
 
   <meson id="dav1d">
@@ -228,10 +216,12 @@
   </autotools>
 
   <meson id="glib"
-         mesonargs="-Dlibmount=false -Dselinux=false">
-    <branch module="/pub/GNOME/sources/glib/2.58/glib-${version}.tar.xz" version="2.58.1"
-            repo="ftp.gnome.org"
-            hash="sha256:97d6a9d926b6aa3dfaadad3077cfb43eec74432ab455dff14250c769d526d7d6">
+         mesonargs="-Dlibmount=disabled -Dselinux=disabled">
+    <pkg-config>glib-2.0.pc</pkg-config>
+    <branch module="/sources/glib/2.72/glib-${version}.tar.xz"
+            version="2.72.4"
+            repo="download.gnome.org"
+            hash="sha256:8848aba518ba2f4217d144307a1d6cb9afcc92b54e5c13ac1f8c4d4608e96f0e">
     </branch>
   </meson>
 
@@ -239,9 +229,9 @@
     <dependencies>
       <dep package="glib"/>
     </dependencies>
-    <branch module="/pub/GNOME/sources/glib-networking/2.58/glib-networking-${version}.tar.xz" version="2.58.0"
-            repo="ftp.gnome.org"
-            hash="sha256:bdfa0255e031b8ee003cc283002536b77ee76450105f1dc6ab066b9bf4330068"/>
+    <branch module="/sources/glib-networking/2.70/glib-networking-${version}.tar.xz" version="2.70.0"
+            repo="download.gnome.org"
+            hash="sha256:66b408e7afa86c582fe38963db56133869ab4b57d34e48ec56aba621940d6f35"/>
   </meson>
 
   <autotools id="libpsl"
@@ -255,17 +245,17 @@
             hash="sha256:f8fd0aeb66252dfcc638f14d9be1e2362fdaf2ca86bde0444ff4d5cc961b560f"/>
   </autotools>
 
-  <meson id="libsoup" mesonargs="-Dintrospection=disabled -Dgssapi=disabled -Dvapi=disabled">
-    <if condition-set="macos">
-      <mesonargs value="-Dtls_check=false"/>
-    </if>
+  <meson id="libsoup" mesonargs="-Dgssapi=disabled -Dvapi=disabled -Dntlm=disabled -Dsysprof=disabled -Dautobahn=disabled -Dpkcs11_tests=disabled">
+    <pkg-config>libsoup-3.0.pc</pkg-config>
     <dependencies>
+      <dep package="glib"/>
       <dep package="glib-networking"/>
       <dep package="libpsl"/>
     </dependencies>
-    <branch module="/sources/libsoup/2.71/libsoup-${version}.tar.xz" version="2.71.0"
+    <branch module="/sources/libsoup/3.0/libsoup-${version}.tar.xz"
+            version="3.0.7"
             repo="download.gnome.org"
-            hash="sha256:88e24fad72d16e1cb692c8782688dbee4bf44151efb0d9ed25b14f3849d9896e">
+            hash="sha256:ebdf90cf3599c11acbb6818a9d9e3fc9d2c68e56eb829b93962972683e1bf7c8">
     </branch>
   </meson>
 
@@ -295,27 +285,28 @@
   </autotools>
 
   <meson id="atk" mesonargs="-Dintrospection=false">
-    <branch module="pub/GNOME/sources/atk/2.33/atk-2.33.3.tar.xz" version="2.33.3"
-            repo="ftp.gnome.org"
-            hash="sha256:532d1081e87b9f0a8d71733101e791818442fa1896531621d1aecc189e1a4ffe"/>
+      <branch module="/sources/atk/2.38/atk-${version}.tar.xz" version="2.38.0"
+            repo="download.gnome.org"
+            hash="sha256:ac4de2a4ef4bd5665052952fe169657e65e895c5057dffb3c2a810f6191a0c36"/>
+    <dependencies>
+      <dep package="glib"/>
+    </dependencies>
   </meson>
 
-  <meson id="at-spi2-core" mesonargs="-Dintrospection=no">
-    <branch module="pub/GNOME/sources/at-spi2-core/2.33/at-spi2-core-2.33.2.tar.xz" version="2.33.2"
-            repo="ftp.gnome.org"
-            hash="sha256:0e3f44707cccf9ec9098f84abdf91ea654c919eac3c688400f8d261383cc2abe">
+  <meson id="at-spi2-core" mesonargs="-Dintrospection=no -Dx11=no">
+    <branch module="/sources/at-spi2-core/2.44/at-spi2-core-${version}.tar.xz" version="2.44.1"
+            repo="download.gnome.org"
+            hash="sha256:4beb23270ba6cf7caf20b597354d75194d89afb69d2efcf15f4271688ba6f746">
     </branch>
     <dependencies>
       <dep package="glib"/>
     </dependencies>
   </meson>
 
-  <meson id="at-spi2-atk">
-    <branch module="pub/GNOME/sources/at-spi2-atk/2.33/at-spi2-atk-2.33.2.tar.xz" version="2.33.2"
-            repo="ftp.gnome.org"
-            hash="sha256:64d4351b245d717ec6f4f81fd40fe67481ff8e62d3893d465f01e71d9a3db3d3">
-      <patch file="at-spi2-atk-tests-Replace-common-variable-with-usual-external.patch" strip="1"/>
-      <patch file="at-spi2-atk-tests-fix-child_pid-reference.patch" strip="1"/>
+  <meson id="at-spi2-atk" mesonargs="">
+      <branch module="/sources/at-spi2-atk/2.38/at-spi2-atk-${version}.tar.xz" version="2.38.0"
+            repo="download.gnome.org"
+            hash="sha256:cfa008a5af822b36ae6287f18182c40c91dd699c55faa38605881ed175ca464f">
     </branch>
     <dependencies>
       <dep package="glib"/>
@@ -347,23 +338,23 @@
     </branch>
   </autotools>
 
-  <autotools id="wayland"
-             autogen-sh="configure"
-             autogenargs="--disable-documentation">
+  <meson id="wayland" mesonargs="-Ddocumentation=false -Ddtd_validation=false -Dtests=false">
     <pkg-config>wayland-server.pc</pkg-config>
-    <branch module="releases/wayland-${version}.tar.xz"
-            version="1.16.0"
-            repo="wayland.freedesktop.org"
-            hash="sha256:4e72c2b56109ccfb6610d776e465f4ca0af2280c9c2f7d5cc23f0ed2548752f5"/>
-  </autotools>
+    <branch module="wayland/wayland"
+            version="1.20.0"
+            tag="1.20.0"
+            checkoutdir="wayland"
+            repo="git.freedesktop.org" />
+  </meson>
 
-  <autotools id="wayland-protocols"
-             autogen-sh="configure">
-    <branch module="releases/wayland-protocols-${version}.tar.xz"
-            version="1.16"
-	    repo="wayland.freedesktop.org"
-	    hash="sha256:6b1485951fdcd36a960c870c46f28b03a3e5121fb46246916333ed07f78c98c5"/>
-  </autotools>
+  <meson id="wayland-protocols">
+   <pkg-config>wayland-protocols.pc</pkg-config>
+   <branch module="wayland/wayland-protocols"
+           version="1.24"
+           tag="1.24"
+           checkoutdir="wayland-protocols"
+           repo="git.freedesktop.org" />
+  </meson>
 
   <autotools id="weston"
              autogen-sh="configure"
@@ -383,12 +374,15 @@
             hash="sha256:cde1d55e8dd70c3cbb3d1ec72f60e60000041579caa1d6a262bd9c35e93723a5"/>
   </autotools>
 
-  <autotools id="libdrm" autogen-sh="configure">
+  <!-- libdrm required for function 'drmGetFormatName' (defined since 'libdrm-2.4.113') -->
+  <meson id="libdrm" mesonargs="-Dtegra=enabled -Dcairo-tests=disabled -Dman-pages=disabled -Dvalgrind=disabled -Dudev=false -Dtests=false">
     <pkg-config>libdrm.pc</pkg-config>
-    <branch module="/libdrm/libdrm-${version}.tar.bz2" version="2.4.100"
-            repo="dri.freedesktop.org"
-            hash="sha256:c77cc828186c9ceec3e56ae202b43ee99eb932b4a87255038a80e8a1060d0a5d"/>
-  </autotools>
+    <branch module="mesa/drm.git"
+            version="2.4.113"
+            tag="libdrm-2.4.113"
+            checkoutdir="libdrm-2.4.113"
+            repo="git.freedesktop.org" />
+  </meson>
 
   <autotools id="mesa"
              autogen-sh="configure"
@@ -483,31 +477,6 @@
     </dependencies>
   </meson>
 
-  <cmake id="openjpeg">
-    <branch repo="github-tarball"
-            module="uclouvain/openjpeg/archive/v${version}.tar.gz"
-            checkoutdir="openjpeg-${version}"
-            version="2.3.0"
-            hash="sha256:3dc787c1bb6023ba846c2a0d9b1f6e179f1cd255172bde9eb75b01f1e6c7d71a"/>
-  </cmake>
-
-  <cmake id="libwpe">
-    <branch module="libwpe-1.8.0.tar.xz" version="1.8.0"
-            repo="wpewebkit"
-            hash="sha256:a6f00a7d091cbd4db57fe7ee3b4c12c6350921d654ed79812800a26c888481d2"/>
-  </cmake>
-
-  <cmake id="wpebackend-fdo">
-    <dependencies>
-      <dep package="libwpe"/>
-      <dep package="glib"/>
-      <dep package="mesa"/>
-    </dependencies>
-    <branch module="wpebackend-fdo-1.8.0.tar.xz" version="1.8.0"
-            repo="wpewebkit"
-            hash="sha256:9652a99c75fe1c6eab0585b6395f4e104b2427e4d1f42969f1f77df29920d253">
-    <patch file="wpebackend-fdo-cmake-buildfix-3.10.patch" strip="1"/>
-    </branch>
   </cmake>
 
   <!-- Dependencies listed below this point are not thought to affect test results, and are only
@@ -560,10 +529,13 @@
 
   <distutils id="meson" python3="1">
     <branch repo="github-tarball"
-            version="0.50.1"
+            version="1.3.0"
             module="mesonbuild/meson/releases/download/${version}/meson-${version}.tar.gz"
             checkoutdir="meson-${version}"
-            hash="sha256:f68f56d60c80a77df8fc08fa1016bc5831605d4717b622c96212573271e14ecc"/>
+            hash="sha256:4ba253ef60e454e23234696119cbafa082a0aead0bd3bbf6991295054795f5dc"/>
+    <dependencies>
+      <dep package="ninja"/>
+    </dependencies>
   </distutils>
 
   <autotools id="xdg-dbus-proxy" autogen-sh="configure">
@@ -576,5 +548,34 @@
       <dep package="glib"/>
     </dependencies>
   </autotools>
+
+  <!-- libjxl required for JPEGXL support -->
+  <cmake id="libjxl"
+         cmakeargs="-DBUILD_TESTING=OFF
+                    -DPROVISION_DEPENDENCIES=ON
+                    -DJPEGXL_ENABLE_FUZZERS=OFF
+                    -DJPEGXL_ENABLE_DEVTOOLS=OFF
+                    -DJPEGXL_ENABLE_TOOLS=OFF
+                    -DJPEGXL_ENABLE_MANPAGES=OFF
+                    -DJPEGXL_ENABLE_BENCHMARK=OFF
+                    -DJPEGXL_ENABLE_EXAMPLES=OFF
+                    -DJPEGXL_ENABLE_JNI=OFF
+                    -DJPEGXL_ENABLE_VIEWERS=OFF
+                    -DJPEGXL_ENABLE_TCMALLOC=OFF
+                    -DJPEGXL_ENABLE_PLUGINS=OFF
+                    -DJPEGXL_ENABLE_COVERAGE=OFF
+                    -DJPEGXL_ENABLE_TRANSCODE_JPEG=OFF
+                    -DJPEGXL_ENABLE_SJPEG=OFF
+                    -DJPEGXL_STATIC=OFF
+                    -DJPEGXL_WARNINGS_AS_ERRORS=OFF
+                    -DJPEGXL_ENABLE_SKCMS=ON">
+    <branch module="libjxl/libjxl.git"
+            version="0.8.2"
+            tag="v0.8.2"
+            checkoutdir="libjxl-0.8.2"
+            repo="github.com">
+      <patch file="libjxl-add-cmake-flag-provision-dependencies.patch" strip="1"/>
+    </branch>
+  </cmake>
 
 </moduleset>

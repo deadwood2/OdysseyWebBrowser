@@ -25,21 +25,17 @@
 
 #import "config.h"
 
-#import "CocoaColor.h"
 #import "TestCocoa.h"
 #import "TestWKWebView.h"
 #import <WebKit/WKPreferencesPrivate.h>
 #import <WebKit/WKWebViewPrivate.h>
 #import <WebKit/_WKApplicationManifest.h>
-#import <WebKit/_WKInternalDebugFeature.h>
+#import <WebKit/_WKFeature.h>
 #import <wtf/RetainPtr.h>
 
 #define EXPECT_NSSTRING_EQ(expected, actual) \
     EXPECT_TRUE([actual isKindOfClass:[NSString class]]); \
     EXPECT_WK_STREQ(expected, (NSString *)actual);
-
-constexpr CGFloat redColorComponents[4] = { 1, 0, 0, 1 };
-constexpr CGFloat blueColorComponents[4] = { 0, 0, 1, 1 };
 
 TEST(WKWebViewThemeColor, MetaElementValidNameAndColor)
 {

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,20 +27,45 @@
 #import "WKWebViewPrivateForTesting.h"
 
 #import "AudioSessionRoutingArbitratorProxy.h"
+#import "GPUProcessProxy.h"
 #import "MediaSessionCoordinatorProxyPrivate.h"
+#import "NetworkProcessProxy.h"
 #import "PlaybackSessionManagerProxy.h"
+#import "PrintInfo.h"
+#import "RemoteLayerTreeDrawingAreaProxy.h"
+#import "RemoteScrollingCoordinatorProxy.h"
 #import "UserMediaProcessManager.h"
 #import "ViewGestureController.h"
-#import "WKWebViewIOS.h"
+#import "ViewSnapshotStore.h"
+#import "WKContentViewInteraction.h"
+#import "WKPreferencesInternal.h"
 #import "WebPageProxy.h"
+#import "WebPageProxyTesting.h"
 #import "WebProcessPool.h"
 #import "WebProcessProxy.h"
 #import "WebViewImpl.h"
+#import "WebsiteDataStore.h"
 #import "_WKFrameHandleInternal.h"
 #import "_WKInspectorInternal.h"
+#import <WebCore/NowPlayingInfo.h>
 #import <WebCore/RuntimeApplicationChecks.h>
+#import <WebCore/ScrollingNodeID.h>
 #import <WebCore/ValidationBubble.h>
 #import <wtf/RetainPtr.h>
+#import <wtf/TZoneMallocInlines.h>
+#import <wtf/text/MakeString.h>
+
+#if PLATFORM(MAC)
+#import "WKWebViewMac.h"
+#endif
+
+#if PLATFORM(MAC) || PLATFORM(MACCATALYST)
+#import "WindowServerConnection.h"
+#endif
+
+#if PLATFORM(IOS_FAMILY)
+#import "WKWebViewIOS.h"
+#endif
 
 #if ENABLE(MEDIA_SESSION_COORDINATOR)
 @interface WKMediaSessionCoordinatorHelper : NSObject <_WKMediaSessionCoordinatorDelegate>
@@ -55,14 +80,91 @@
 
 @implementation WKWebView (WKTesting)
 
-- (void)_addEventAttributionWithSourceID:(uint8_t)sourceID destinationURL:(NSURL *)destination sourceDescription:(NSString *)sourceDescription purchaser:(NSString *)purchaser reportEndpoint:(NSURL *)reportEndpoint optionalNonce:(NSString *)nonce
+- (NSString *)_caLayerTreeAsText
+{
+    TextStream ts(TextStream::LineMode::MultipleLine);
+
+    {
+        TextStream::GroupScope scope(ts);
+        ts << "CALayer tree root ";
+#if PLATFORM(IOS_FAMILY)
+        dumpCALayer(ts, [_contentView layer], true);
+#else
+        dumpCALayer(ts, self.layer, true);
+#endif
+    }
+
+    return ts.release();
+}
+
+static void dumpCALayer(TextStream& ts, CALayer *layer, bool traverse)
+{
+    auto rectToString = [] (auto rect) {
+        return makeString("[x: "_s, rect.origin.x, " y: "_s, rect.origin.x, " width: "_s, rect.size.width, " height: "_s, rect.size.height, ']');
+    };
+
+    auto pointToString = [] (auto point) {
+        return makeString("[x: "_s, point.x, " y: "_s, point.x, ']');
+    };
+
+#if ENABLE(INTERACTION_REGIONS_IN_EVENT_REGION)
+    NSNumber *interactionRegionLayerType = [layer valueForKey:@"WKInteractionRegionType"];
+    if (interactionRegionLayerType) {
+        traverse = false;
+
+        ts.dumpProperty("type", interactionRegionLayerType);
+
+        if (layer.mask) {
+            TextStream::GroupScope scope(ts);
+            ts << "mask";
+            ts.dumpProperty("frame", rectToString(layer.mask.frame));
+        }
+    }
+#endif
+
+    ts.dumpProperty("layer bounds", rectToString(layer.bounds));
+
+    if (layer.position.x || layer.position.y)
+        ts.dumpProperty("layer position", pointToString(layer.position));
+
+    if (layer.zPosition)
+        ts.dumpProperty("layer zPosition", makeString(layer.zPosition));
+
+    if (layer.anchorPoint.x != 0.5 || layer.anchorPoint.y != 0.5)
+        ts.dumpProperty("layer anchorPoint", pointToString(layer.anchorPoint));
+
+    if (layer.anchorPointZ)
+        ts.dumpProperty("layer anchorPointZ", makeString(layer.anchorPointZ));
+
+    if (layer.opacity != 1.0)
+        ts.dumpProperty("layer opacity", makeString(layer.opacity));
+
+    if (layer.cornerRadius != 0.0)
+        ts.dumpProperty("layer cornerRadius", makeString(layer.cornerRadius));
+
+    constexpr CACornerMask allCorners = kCALayerMinXMinYCorner | kCALayerMaxXMinYCorner | kCALayerMinXMaxYCorner | kCALayerMaxXMaxYCorner;
+    if (layer.maskedCorners != allCorners)
+        ts.dumpProperty("layer masked corners", makeString(layer.maskedCorners));
+    
+    if (traverse && layer.sublayers.count > 0) {
+        TextStream::GroupScope scope(ts);
+        ts << "sublayers";
+        for (CALayer *sublayer in layer.sublayers) {
+            TextStream::GroupScope scope(ts);
+            dumpCALayer(ts, sublayer, true);
+        }
+    }
+}
+
+- (void)_addEventAttributionWithSourceID:(uint8_t)sourceID destinationURL:(NSURL *)destination sourceDescription:(NSString *)sourceDescription purchaser:(NSString *)purchaser reportEndpoint:(NSURL *)reportEndpoint optionalNonce:(NSString *)nonce applicationBundleID:(NSString *)bundleID ephemeral:(BOOL)ephemeral
 {
     WebCore::PrivateClickMeasurement measurement(
         WebCore::PrivateClickMeasurement::SourceID(sourceID),
-        WebCore::PrivateClickMeasurement::SourceSite(reportEndpoint),
-        WebCore::PrivateClickMeasurement::AttributionDestinationSite(destination),
-        sourceDescription,
-        purchaser
+        WebCore::PCM::SourceSite(reportEndpoint),
+        WebCore::PCM::AttributionDestinationSite(destination),
+        bundleID,
+        WallTime::now(),
+        ephemeral ? WebCore::PCM::AttributionEphemeral::Yes : WebCore::PCM::AttributionEphemeral::No
     );
     if (nonce)
         measurement.setEphemeralSourceNonce({ nonce });
@@ -86,6 +188,15 @@
     [_contentView setContinuousSpellCheckingEnabled:enabled];
 #else
     _impl->setContinuousSpellCheckingEnabled(enabled);
+#endif
+}
+
+- (void)_setGrammarCheckingEnabledForTesting:(BOOL)enabled
+{
+#if PLATFORM(IOS_FAMILY)
+    [_contentView setGrammarCheckingEnabled:enabled];
+#else
+    _impl->setGrammarCheckingEnabled(enabled);
 #endif
 }
 
@@ -115,9 +226,32 @@
         return;
     }
 
-    _page->requestActiveNowPlayingSessionInfo([handler = makeBlockPtr(callback)] (bool active, bool registeredAsNowPlayingApplication, String title, double duration, double elapsedTime, uint64_t uniqueIdentifier) {
-        handler(active, registeredAsNowPlayingApplication, title, duration, elapsedTime, uniqueIdentifier);
+    _page->requestActiveNowPlayingSessionInfo([handler = makeBlockPtr(callback)] (bool registeredAsNowPlayingApplication, WebCore::NowPlayingInfo&& nowPlayingInfo) {
+        handler(nowPlayingInfo.allowsNowPlayingControlsVisibility, registeredAsNowPlayingApplication, nowPlayingInfo.metadata.title, nowPlayingInfo.duration, nowPlayingInfo.currentTime, nowPlayingInfo.uniqueIdentifier.toUInt64());
     });
+}
+
+- (void)_setNowPlayingMetadataObserver:(void(^)(_WKNowPlayingMetadata *))observer
+{
+    RefPtr page = _page;
+    if (!page)
+        return;
+
+    if (!observer) {
+        page->setNowPlayingMetadataObserverForTesting(nullptr);
+        return;
+    }
+
+    auto nowPlayingMetadataObserver = makeUnique<WebCore::NowPlayingMetadataObserver>([observer = makeBlockPtr(observer)](auto& metadata) {
+        RetainPtr nowPlayingMetadata = adoptNS([[_WKNowPlayingMetadata alloc] init]);
+        [nowPlayingMetadata setTitle:metadata.title];
+        [nowPlayingMetadata setArtist:metadata.artist];
+        [nowPlayingMetadata setAlbum:metadata.album];
+        [nowPlayingMetadata setSourceApplicationIdentifier:metadata.sourceApplicationIdentifier];
+        observer(nowPlayingMetadata.get());
+    });
+
+    page->setNowPlayingMetadataObserverForTesting(WTFMove(nowPlayingMetadataObserver));
 }
 
 - (BOOL)_scrollingUpdatesDisabledForTesting
@@ -126,25 +260,37 @@
     return NO;
 }
 
+- (NSString *)_scrollingTreeAsText
+{
+    WebKit::RemoteScrollingCoordinatorProxy* coordinator = _page->scrollingCoordinatorProxy();
+    if (!coordinator)
+        return @"";
+
+    return coordinator->scrollingTreeAsText();
+}
+
+- (pid_t)_networkProcessIdentifier
+{
+    auto* networkProcess = _page->websiteDataStore().networkProcessIfExists();
+    RELEASE_ASSERT(networkProcess);
+    return networkProcess->processID();
+}
+
 - (void)_setScrollingUpdatesDisabledForTesting:(BOOL)disabled
 {
+}
+
+- (unsigned long)_countOfUpdatesWithLayerChanges
+{
+    if (auto* drawingAreaProxy = dynamicDowncast<WebKit::RemoteLayerTreeDrawingAreaProxy>(_page->drawingArea()))
+        return drawingAreaProxy->countOfTransactionsWithNonEmptyLayerChanges();
+
+    return 0;
 }
 
 - (void)_doAfterNextPresentationUpdateWithoutWaitingForAnimatedResizeForTesting:(void (^)(void))updateBlock
 {
     [self _internalDoAfterNextPresentationUpdate:updateBlock withoutWaitingForPainting:NO withoutWaitingForAnimatedResize:YES];
-}
-
-- (void)_doAfterNextVisibleContentRectUpdate:(void (^)(void))updateBlock
-{
-#if PLATFORM(IOS_FAMILY)
-    _visibleContentRectUpdateCallbacks.append(makeBlockPtr(updateBlock));
-    [self _scheduleVisibleContentRectUpdate];
-#else
-    RunLoop::main().dispatch([updateBlock = makeBlockPtr(updateBlock)] {
-        updateBlock();
-    });
-#endif
 }
 
 - (void)_disableBackForwardSnapshotVolatilityForTesting
@@ -187,7 +333,8 @@
 
 - (void)_setDefersLoadingForTesting:(BOOL)defersLoading
 {
-    _page->setDefersLoadingForTesting(defersLoading);
+    if (auto* pageForTesting = _page->pageForTesting())
+        pageForTesting->setDefersLoading(defersLoading);
 }
 
 - (void)_setShareSheetCompletesImmediatelyWithResolutionForTesting:(BOOL)resolved
@@ -201,7 +348,7 @@
         completionHandler();
         return;
     }
-    _page->process().sendPrepareToSuspend(WebKit::IsSuspensionImminent::No, [completionHandler = makeBlockPtr(completionHandler)] {
+    _page->legacyMainFrameProcess().sendPrepareToSuspend(WebKit::IsSuspensionImminent::No, 0.0, [completionHandler = makeBlockPtr(completionHandler)] {
         completionHandler();
     });
 }
@@ -209,45 +356,63 @@
 - (void)_processWillSuspendImminentlyForTesting
 {
     if (_page)
-        _page->process().sendPrepareToSuspend(WebKit::IsSuspensionImminent::Yes, [] { });
+        _page->legacyMainFrameProcess().sendPrepareToSuspend(WebKit::IsSuspensionImminent::Yes, 0.0, [] { });
 }
 
 - (void)_processDidResumeForTesting
 {
     if (_page)
-        _page->process().sendProcessDidResume();
+        _page->legacyMainFrameProcess().sendProcessDidResume(WebKit::AuxiliaryProcessProxy::ResumeReason::ForegroundActivity);
 }
 
-- (void)_setAssertionTypeForTesting:(int)value
+- (void)_setThrottleStateForTesting:(int)value
 {
     if (!_page)
         return;
 
-    _page->process().setAssertionTypeForTesting(static_cast<WebKit::ProcessAssertionType>(value));
+    _page->legacyMainFrameProcess().setThrottleStateForTesting(static_cast<WebKit::ProcessThrottleState>(value));
 }
 
 - (BOOL)_hasServiceWorkerBackgroundActivityForTesting
 {
-#if ENABLE(SERVICE_WORKER)
-    return _page ? _page->process().processPool().hasServiceWorkerBackgroundActivityForTesting() : false;
-#else
-    return false;
-#endif
+    return _page ? _page->configuration().processPool().hasServiceWorkerBackgroundActivityForTesting() : false;
 }
 
 - (BOOL)_hasServiceWorkerForegroundActivityForTesting
 {
-#if ENABLE(SERVICE_WORKER)
-    return _page ? _page->process().processPool().hasServiceWorkerForegroundActivityForTesting() : false;
-#else
-    return false;
-#endif
+    return _page ? _page->configuration().processPool().hasServiceWorkerForegroundActivityForTesting() : false;
 }
 
 - (void)_denyNextUserMediaRequest
 {
 #if ENABLE(MEDIA_STREAM)
     WebKit::UserMediaProcessManager::singleton().denyNextUserMediaRequest();
+#endif
+}
+
+- (void)_setIndexOfGetDisplayMediaDeviceSelectedForTesting:(NSNumber *)nsIndex
+{
+#if ENABLE(MEDIA_STREAM)
+    if (!_page)
+        return;
+
+    std::optional<unsigned> index;
+    if (nsIndex)
+        index = nsIndex.unsignedIntValue;
+
+    if (auto* pageForTesting = _page->pageForTesting())
+        pageForTesting->setIndexOfGetDisplayMediaDeviceSelectedForTesting(index);
+#endif
+}
+
+- (void)_setSystemCanPromptForGetDisplayMediaForTesting:(BOOL)canPrompt
+{
+#if ENABLE(MEDIA_STREAM)
+    if (!_page)
+        return;
+
+    if (auto* pageForTesting = _page->pageForTesting())
+        pageForTesting->setSystemCanPromptForGetDisplayMediaForTesting(!!canPrompt);
 #endif
 }
 
@@ -289,13 +454,20 @@
 
 - (BOOL)_hasSleepDisabler
 {
-    return _page && _page->process().hasSleepDisabler();
+    return _page && _page->hasSleepDisabler();
+}
+
+- (NSString*)_scrollbarStateForScrollingNodeID:(uint64_t)scrollingNodeID processID:(uint64_t)processID isVertical:(bool)isVertical
+{
+    if (_page)
+        return _page->scrollbarStateForScrollingNodeID(WebCore::ScrollingNodeID(LegacyNullableObjectIdentifier<WebCore::ScrollingNodeIDType>(scrollingNodeID), LegacyNullableObjectIdentifier<WebCore::ProcessIdentifierType>(processID)), isVertical);
+    return @"";
 }
 
 - (WKWebViewAudioRoutingArbitrationStatus)_audioRoutingArbitrationStatus
 {
 #if ENABLE(ROUTING_ARBITRATION)
-    switch (_page->process().audioSessionRoutingArbitrator().arbitrationStatus()) {
+    switch (_page->legacyMainFrameProcess().audioSessionRoutingArbitrator().arbitrationStatus()) {
     case WebKit::AudioSessionRoutingArbitratorProxy::ArbitrationStatus::None: return WKWebViewAudioRoutingArbitrationStatusNone;
     case WebKit::AudioSessionRoutingArbitratorProxy::ArbitrationStatus::Pending: return WKWebViewAudioRoutingArbitrationStatusPending;
     case WebKit::AudioSessionRoutingArbitratorProxy::ArbitrationStatus::Active: return WKWebViewAudioRoutingArbitrationStatusActive;
@@ -309,7 +481,7 @@
 - (double)_audioRoutingArbitrationUpdateTime
 {
 #if ENABLE(ROUTING_ARBITRATION)
-    return _page->process().audioSessionRoutingArbitrator().arbitrationUpdateTime().secondsSinceEpoch().seconds();
+    return _page->legacyMainFrameProcess().audioSessionRoutingArbitrator().arbitrationUpdateTime().secondsSinceEpoch().seconds();
 #else
     return 0;
 #endif
@@ -327,37 +499,74 @@
 
 - (void)_setPrivateClickMeasurementOverrideTimerForTesting:(BOOL)overrideTimer completionHandler:(void(^)(void))completionHandler
 {
-    _page->setPrivateClickMeasurementOverrideTimerForTesting(overrideTimer, [completionHandler = makeBlockPtr(completionHandler)] {
+    auto* pageForTesting = _page->pageForTesting();
+    if (!pageForTesting)
+        return completionHandler();
+
+    pageForTesting->setPrivateClickMeasurementOverrideTimer(overrideTimer, [completionHandler = makeBlockPtr(completionHandler)] {
         completionHandler();
     });
 }
 
 - (void)_setPrivateClickMeasurementAttributionReportURLsForTesting:(NSURL *)sourceURL destinationURL:(NSURL *)destinationURL completionHandler:(void(^)(void))completionHandler
 {
-    _page->setPrivateClickMeasurementAttributionReportURLsForTesting(sourceURL, destinationURL, [completionHandler = makeBlockPtr(completionHandler)] {
+    auto* pageForTesting = _page->pageForTesting();
+    if (!pageForTesting)
+        return completionHandler();
+
+    pageForTesting->setPrivateClickMeasurementAttributionReportURLs(sourceURL, destinationURL, [completionHandler = makeBlockPtr(completionHandler)] {
         completionHandler();
     });
 }
 
 - (void)_setPrivateClickMeasurementAttributionTokenPublicKeyURLForTesting:(NSURL *)url completionHandler:(void(^)(void))completionHandler
 {
-    _page->setPrivateClickMeasurementTokenPublicKeyURLForTesting(url, [completionHandler = makeBlockPtr(completionHandler)] {
+    auto* pageForTesting = _page->pageForTesting();
+    if (!pageForTesting)
+        return completionHandler();
+
+    pageForTesting->setPrivateClickMeasurementTokenPublicKeyURL(url, [completionHandler = makeBlockPtr(completionHandler)] {
         completionHandler();
     });
 }
 
 - (void)_setPrivateClickMeasurementAttributionTokenSignatureURLForTesting:(NSURL *)url completionHandler:(void(^)(void))completionHandler
 {
-    _page->setPrivateClickMeasurementTokenSignatureURLForTesting(url, [completionHandler = makeBlockPtr(completionHandler)] {
+    auto* pageForTesting = _page->pageForTesting();
+    if (!pageForTesting)
+        return completionHandler();
+
+    pageForTesting->setPrivateClickMeasurementTokenSignatureURL(url, [completionHandler = makeBlockPtr(completionHandler)] {
+        completionHandler();
+    });
+}
+
+- (void)_setPrivateClickMeasurementAppBundleIDForTesting:(NSString *)appBundleID completionHandler:(void(^)(void))completionHandler
+{
+    auto* pageForTesting = _page->pageForTesting();
+    if (!pageForTesting)
+        return completionHandler();
+
+    pageForTesting->setPrivateClickMeasurementAppBundleID(appBundleID, [completionHandler = makeBlockPtr(completionHandler)] {
         completionHandler();
     });
 }
 
 - (void)_dumpPrivateClickMeasurement:(void(^)(NSString *))completionHandler
 {
-    _page->dumpPrivateClickMeasurement([completionHandler = makeBlockPtr(completionHandler)](const String& privateClickMeasurement) {
+    auto* pageForTesting = _page->pageForTesting();
+    if (!pageForTesting)
+        return completionHandler({ });
+
+    pageForTesting->dumpPrivateClickMeasurement([completionHandler = makeBlockPtr(completionHandler)](const String& privateClickMeasurement) {
         completionHandler(privateClickMeasurement);
     });
+}
+
+- (BOOL)_shouldBypassGeolocationPromptForTesting
+{
+    // For subclasses to override.
+    return NO;
 }
 
 - (void)_didShowContextMenu
@@ -368,6 +577,14 @@
 - (void)_didDismissContextMenu
 {
     // For subclasses to override.
+}
+
+- (void)_resetInteraction
+{
+#if PLATFORM(IOS_FAMILY)
+    [_contentView cleanUpInteraction];
+    [_contentView setUpInteraction];
+#endif
 }
 
 - (void)_didPresentContactPicker
@@ -408,13 +625,59 @@
     });
 }
 
+- (void)_isLayerTreeFrozenForTesting:(void (^)(BOOL frozen))completionHandler
+{
+    auto* pageForTesting = _page->pageForTesting();
+    if (!pageForTesting)
+        return completionHandler(false);
+
+    pageForTesting->isLayerTreeFrozen([completionHandler = makeBlockPtr(completionHandler)](bool isFrozen) {
+        completionHandler(isFrozen);
+    });
+}
+
+- (void)_computePagesForPrinting:(_WKFrameHandle *)handle completionHandler:(void(^)(void))completionHandler
+{
+    WebKit::PrintInfo printInfo;
+    _page->computePagesForPrinting(handle->_frameHandle->frameID(), printInfo, [completionHandler = makeBlockPtr(completionHandler)] (const Vector<WebCore::IntRect>&, double, const WebCore::FloatBoxExtent&) {
+        completionHandler();
+    });
+}
+
+- (void)_gpuToWebProcessConnectionCountForTesting:(void(^)(NSUInteger))completionHandler
+{
+    RefPtr gpuProcess = _page->configuration().processPool().gpuProcess();
+    if (!gpuProcess) {
+        completionHandler(0);
+        return;
+    }
+
+    gpuProcess->webProcessConnectionCountForTesting([completionHandler = makeBlockPtr(completionHandler)](uint64_t count) {
+        completionHandler(count);
+    });
+}
+
+- (void)_setConnectedToHardwareConsoleForTesting:(BOOL)connected
+{
+#if PLATFORM(MAC) || PLATFORM(MACCATALYST)
+    WebKit::WindowServerConnection::singleton().hardwareConsoleStateChanged(connected ? WebKit::WindowServerConnection::HardwareConsoleState::Connected : WebKit::WindowServerConnection::HardwareConsoleState::Disconnected);
+#endif
+}
+
+- (void)_setSystemPreviewCompletionHandlerForLoadTesting:(void(^)(bool))completionHandler
+{
+#if USE(SYSTEM_PREVIEW)
+    _page->setSystemPreviewCompletionHandlerForLoadTesting(makeBlockPtr(completionHandler));
+#endif
+}
+
 - (void)_createMediaSessionCoordinatorForTesting:(id <_WKMediaSessionCoordinator>)privateCoordinator completionHandler:(void(^)(BOOL))completionHandler
 {
 #if ENABLE(MEDIA_SESSION_COORDINATOR)
     class WKMediaSessionCoordinatorForTesting
         : public WebKit::MediaSessionCoordinatorProxyPrivate
         , public WebCore::MediaSessionCoordinatorClient {
-        WTF_MAKE_FAST_ALLOCATED;
+        WTF_MAKE_TZONE_ALLOCATED_INLINE(WKMediaSessionCoordinatorForTesting);
     public:
 
         static Ref<WKMediaSessionCoordinatorForTesting> create(id <_WKMediaSessionCoordinator> privateCoordinator)
@@ -423,16 +686,16 @@
         }
 
         using WebCore::MediaSessionCoordinatorClient::weakPtrFactory;
-        using WeakValueType = WebCore::MediaSessionCoordinatorClient::WeakValueType;
+        using WebCore::MediaSessionCoordinatorClient::WeakValueType;
+        using WebCore::MediaSessionCoordinatorClient::WeakPtrImplType;
 
     private:
         explicit WKMediaSessionCoordinatorForTesting(id <_WKMediaSessionCoordinator> clientCoordinator)
             : WebKit::MediaSessionCoordinatorProxyPrivate()
             , m_clientCoordinator(clientCoordinator)
         {
-            auto* delegateHelper = [[WKMediaSessionCoordinatorHelper alloc] initWithCoordinator:this];
-            [m_clientCoordinator setDelegate:delegateHelper];
-            m_coordinatorDelegate = adoptNS(delegateHelper);
+            m_coordinatorDelegate = adoptNS([[WKMediaSessionCoordinatorHelper alloc] initWithCoordinator:this]);
+            [m_clientCoordinator setDelegate:m_coordinatorDelegate.get()];
         }
 
         void seekSessionToTime(double time, CompletionHandler<void(bool)>&& callback) final
@@ -476,7 +739,7 @@
         std::optional<WebCore::ExceptionData> result(bool success) const
         {
             if (!success)
-                return { WebCore::ExceptionData { WebCore::InvalidStateError, String() } };
+                return { WebCore::ExceptionData { WebCore::ExceptionCode::InvalidStateError, String() } };
 
             return { };
         }
@@ -488,9 +751,9 @@
 
         void join(WebKit::MediaSessionCommandCompletionHandler&& callback) final
         {
-            [m_clientCoordinator joinWithCompletion:makeBlockPtr([weakThis = makeWeakPtr(this), callback = WTFMove(callback)] (BOOL success) mutable {
+            [m_clientCoordinator joinWithCompletion:makeBlockPtr([weakThis = WeakPtr { *this }, callback = WTFMove(callback)] (BOOL success) mutable {
                 if (!weakThis) {
-                    callback(WebCore::ExceptionData { WebCore::InvalidStateError, String() });
+                    callback(WebCore::ExceptionData { WebCore::ExceptionCode::InvalidStateError, String() });
                     return;
                 }
 
@@ -505,9 +768,9 @@
 
         void seekTo(double time, WebKit::MediaSessionCommandCompletionHandler&& callback) final
         {
-            [m_clientCoordinator seekTo:time withCompletion:makeBlockPtr([weakThis = makeWeakPtr(this), callback = WTFMove(callback)] (BOOL success) mutable {
+            [m_clientCoordinator seekTo:time withCompletion:makeBlockPtr([weakThis = WeakPtr { *this }, callback = WTFMove(callback)] (BOOL success) mutable {
                 if (!weakThis) {
-                    callback(WebCore::ExceptionData { WebCore::InvalidStateError, String() });
+                    callback(WebCore::ExceptionData { WebCore::ExceptionCode::InvalidStateError, String() });
                     return;
                 }
 
@@ -517,9 +780,9 @@
 
         void play(WebKit::MediaSessionCommandCompletionHandler&& callback) final
         {
-            [m_clientCoordinator playWithCompletion:makeBlockPtr([weakThis = makeWeakPtr(this), callback = WTFMove(callback)] (BOOL success) mutable {
+            [m_clientCoordinator playWithCompletion:makeBlockPtr([weakThis = WeakPtr { *this }, callback = WTFMove(callback)] (BOOL success) mutable {
                 if (!weakThis) {
-                    callback(WebCore::ExceptionData { WebCore::InvalidStateError, String() });
+                    callback(WebCore::ExceptionData { WebCore::ExceptionCode::InvalidStateError, String() });
                     return;
                 }
 
@@ -529,9 +792,9 @@
 
         void pause(WebKit::MediaSessionCommandCompletionHandler&& callback) final
         {
-            [m_clientCoordinator pauseWithCompletion:makeBlockPtr([weakThis = makeWeakPtr(this), callback = WTFMove(callback)] (BOOL success) mutable {
+            [m_clientCoordinator pauseWithCompletion:makeBlockPtr([weakThis = WeakPtr { *this }, callback = WTFMove(callback)] (BOOL success) mutable {
                 if (!weakThis) {
-                    callback(WebCore::ExceptionData { WebCore::InvalidStateError, String() });
+                    callback(WebCore::ExceptionData { WebCore::ExceptionCode::InvalidStateError, String() });
                     return;
                 }
 
@@ -541,9 +804,9 @@
 
         void setTrack(const String& track, WebKit::MediaSessionCommandCompletionHandler&& callback) final
         {
-            [m_clientCoordinator setTrack:track withCompletion:makeBlockPtr([weakThis = makeWeakPtr(this), callback = WTFMove(callback)] (BOOL success) mutable {
+            [m_clientCoordinator setTrack:track withCompletion:makeBlockPtr([weakThis = WeakPtr { *this }, callback = WTFMove(callback)] (BOOL success) mutable {
                 if (!weakThis) {
-                    callback(WebCore::ExceptionData { WebCore::InvalidStateError, String() });
+                    callback(WebCore::ExceptionData { WebCore::ExceptionCode::InvalidStateError, String() });
                     return;
                 }
 
@@ -621,7 +884,7 @@
     self = [super init];
     if (!self)
         return nil;
-    m_coordinatorClient = makeWeakPtr(coordinator);
+    m_coordinatorClient = coordinator;
     return self;
 }
 
@@ -656,3 +919,6 @@
 
 @end
 #endif
+
+@implementation _WKNowPlayingMetadata : NSObject
+@end

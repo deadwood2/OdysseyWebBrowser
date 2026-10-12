@@ -29,8 +29,12 @@
 
 #import <wtf/CompletionHandler.h>
 #import <wtf/MainThread.h>
+#import <wtf/TZoneMallocInlines.h>
 #import <wtf/URL.h>
 
+WTF_MAKE_TZONE_ALLOCATED_IMPL(WebPaymentCoordinatorClient);
+
+// FIXME: Why is this distinct from EmptyPaymentCoordinatorClient?
 WebPaymentCoordinatorClient::WebPaymentCoordinatorClient()
 {
 }
@@ -39,7 +43,7 @@ WebPaymentCoordinatorClient::~WebPaymentCoordinatorClient()
 {
 }
 
-std::optional<String> WebPaymentCoordinatorClient::validatedPaymentNetwork(const String&)
+std::optional<String> WebPaymentCoordinatorClient::validatedPaymentNetwork(const String&) const
 {
     return std::nullopt;
 }
@@ -92,7 +96,7 @@ void WebPaymentCoordinatorClient::completeCouponCodeChange(std::optional<WebCore
 
 #endif // ENABLE(APPLE_PAY_COUPON_CODE)
 
-void WebPaymentCoordinatorClient::completePaymentSession(std::optional<WebCore::PaymentAuthorizationResult>&&)
+void WebPaymentCoordinatorClient::completePaymentSession(WebCore::ApplePayPaymentAuthorizationResult&&)
 {
 }
 
@@ -102,16 +106,6 @@ void WebPaymentCoordinatorClient::abortPaymentSession()
 
 void WebPaymentCoordinatorClient::cancelPaymentSession()
 {
-}
-
-void WebPaymentCoordinatorClient::paymentCoordinatorDestroyed()
-{
-    delete this;
-}
-
-bool WebPaymentCoordinatorClient::supportsUnrestrictedApplePay() const
-{
-    return false;
 }
 
 #endif

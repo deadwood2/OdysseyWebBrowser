@@ -125,7 +125,7 @@ void WebDatabaseManager::dispatchDidModifyDatabase(const SecurityOriginData& ori
 
 static WTF::String databasesDirectory()
 {
-	return "PROGDIR:Cache/Databases/";
+	return "PROGDIR:Cache/Databases/"_s;
 }
 
 void WebKitInitializeWebDatabasesIfNecessary()

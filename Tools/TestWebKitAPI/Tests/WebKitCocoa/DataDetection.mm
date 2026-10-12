@@ -78,7 +78,8 @@ static bool ranScript;
         return nil;
 
     return @{
-        @"ReferenceDate": _referenceDate
+        @"ReferenceDate": _referenceDate,
+        @"unused": [NSUUID UUID]
     };
 }
 
@@ -126,7 +127,7 @@ TEST(WebKit, DISABLED_DataDetectionReferenceDate)
     expectLinkCount(webView.get(), @"yesterday at 6PM", 1);
 }
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS) || PLATFORM(VISION)
 
 TEST(WebKit, AddAndRemoveDataDetectors)
 {
@@ -142,7 +143,7 @@ TEST(WebKit, AddAndRemoveDataDetectors)
         EXPECT_TRUE([results[0].value containsString:@"2 Apple Park Way, Cupertino 95014"]);
         EXPECT_WK_STREQ("SignatureBlock", results[0].type);
         EXPECT_WK_STREQ("Date", results[1].type);
-        EXPECT_WK_STREQ("December 21, 2021", results[1].value);
+        EXPECT_WK_STREQ("December 21, 2099", results[1].value);
         EXPECT_WK_STREQ("FlightInformation", results[2].type);
         EXPECT_WK_STREQ("AC780", results[2].value);
 
@@ -173,6 +174,6 @@ TEST(WebKit, DoNotCrashWhenDetectingDataAfterWebProcessTerminates)
     [webView synchronouslyRemoveDataDetectedLinks];
 }
 
-#endif // PLATFORM(IOS)
+#endif // PLATFORM(IOS) || PLATFORM(VISION)
 
 #endif

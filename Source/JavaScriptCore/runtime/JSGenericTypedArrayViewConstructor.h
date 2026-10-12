@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -36,6 +36,7 @@ JS_EXPORT_PRIVATE JSC_DECLARE_HOST_FUNCTION(callUint8Array);
 JS_EXPORT_PRIVATE JSC_DECLARE_HOST_FUNCTION(callUint8ClampedArray);
 JS_EXPORT_PRIVATE JSC_DECLARE_HOST_FUNCTION(callUint16Array);
 JS_EXPORT_PRIVATE JSC_DECLARE_HOST_FUNCTION(callUint32Array);
+JS_EXPORT_PRIVATE JSC_DECLARE_HOST_FUNCTION(callFloat16Array);
 JS_EXPORT_PRIVATE JSC_DECLARE_HOST_FUNCTION(callFloat32Array);
 JS_EXPORT_PRIVATE JSC_DECLARE_HOST_FUNCTION(callFloat64Array);
 JS_EXPORT_PRIVATE JSC_DECLARE_HOST_FUNCTION(callBigInt64Array);
@@ -49,6 +50,7 @@ JS_EXPORT_PRIVATE JSC_DECLARE_HOST_FUNCTION(constructUint8Array);
 JS_EXPORT_PRIVATE JSC_DECLARE_HOST_FUNCTION(constructUint8ClampedArray);
 JS_EXPORT_PRIVATE JSC_DECLARE_HOST_FUNCTION(constructUint16Array);
 JS_EXPORT_PRIVATE JSC_DECLARE_HOST_FUNCTION(constructUint32Array);
+JS_EXPORT_PRIVATE JSC_DECLARE_HOST_FUNCTION(constructFloat16Array);
 JS_EXPORT_PRIVATE JSC_DECLARE_HOST_FUNCTION(constructFloat32Array);
 JS_EXPORT_PRIVATE JSC_DECLARE_HOST_FUNCTION(constructFloat64Array);
 JS_EXPORT_PRIVATE JSC_DECLARE_HOST_FUNCTION(constructBigInt64Array);
@@ -70,7 +72,7 @@ public:
 
     static Structure* createStructure(VM&, JSGlobalObject*, JSValue prototype);
 
-    static constexpr RawNativeFunction callConstructor()
+    static constexpr NativeFunction::Ptr callConstructor()
     {
         switch (ViewClass::TypedArrayStorageType) {
         case TypeInt8:
@@ -87,6 +89,8 @@ public:
             return callUint16Array;
         case TypeUint32:
             return callUint32Array;
+        case TypeFloat16:
+            return callFloat16Array;
         case TypeFloat32:
             return callFloat32Array;
         case TypeFloat64:
@@ -103,7 +107,7 @@ public:
         }
     }
 
-    static constexpr RawNativeFunction constructConstructor()
+    static constexpr NativeFunction::Ptr constructConstructor()
     {
         switch (ViewClass::TypedArrayStorageType) {
         case TypeInt8:
@@ -120,6 +124,8 @@ public:
             return constructUint16Array;
         case TypeUint32:
             return constructUint32Array;
+        case TypeFloat16:
+            return constructFloat16Array;
         case TypeFloat32:
             return constructFloat32Array;
         case TypeFloat64:
@@ -140,5 +146,11 @@ private:
     JSGenericTypedArrayViewConstructor(VM&, Structure*);
     void finishCreation(VM&, JSGlobalObject*, JSObject* prototype, const String& name);
 };
+
+JSC_DECLARE_HOST_FUNCTION(uint8ArrayConstructorFromBase64);
+JSC_DECLARE_HOST_FUNCTION(uint8ArrayConstructorFromHex);
+
+WARN_UNUSED_RETURN size_t decodeHex(std::span<const LChar>, std::span<uint8_t> result);
+WARN_UNUSED_RETURN size_t decodeHex(std::span<const UChar>, std::span<uint8_t> result);
 
 } // namespace JSC

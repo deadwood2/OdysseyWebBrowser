@@ -36,6 +36,8 @@
 #include <windowsx.h>
 #include <wtf/ASCIICType.h>
 #include <wtf/HexNumber.h>
+#include <wtf/NeverDestroyed.h>
+#include <wtf/text/MakeString.h>
 
 namespace WebKit {
 
@@ -71,18 +73,18 @@ static int verticalScrollLines()
     return scrollLines;
 }
 
-static inline int clickCount(WebEvent::Type type, WebMouseEvent::Button button, const POINT& position, double timeStampSeconds)
+static inline int clickCount(WebEventType type, WebMouseEventButton button, const POINT& position, double timeStampSeconds)
 {
     static int gLastClickCount;
     static double gLastClickTime;
     static POINT lastClickPosition;
-    static WebMouseEvent::Button lastClickButton = WebMouseEvent::LeftButton;
+    static WebMouseEventButton lastClickButton = WebMouseEventButton::Left;
 
     bool cancelPreviousClick = (std::abs(lastClickPosition.x - position.x) > (::GetSystemMetrics(SM_CXDOUBLECLK) / 2))
         || (std::abs(lastClickPosition.y - position.y) > (::GetSystemMetrics(SM_CYDOUBLECLK) / 2))
         || ((timeStampSeconds - gLastClickTime) * 1000.0 > getDoubleClickTime());
 
-    if (type == WebEvent::MouseDown) {
+    if (type == WebEventType::MouseDown) {
         if (!cancelPreviousClick && (button == lastClickButton))
             ++gLastClickCount;
         else {
@@ -91,7 +93,7 @@ static inline int clickCount(WebEvent::Type type, WebMouseEvent::Button button, 
         }
         gLastClickTime = timeStampSeconds;
         lastClickButton = button;
-    } else if (type == WebEvent::MouseMove) {
+    } else if (type == WebEventType::MouseMove) {
         if (cancelPreviousClick) {
             gLastClickCount = 0;
             lastClickPosition.x = 0;
@@ -108,49 +110,49 @@ static inline bool IsKeyInDownState(int vk)
     return ::GetKeyState(vk) & 0x8000;
 }
 
-static inline OptionSet<WebEvent::Modifier> modifiersForEvent(WPARAM wparam)
+static inline OptionSet<WebEventModifier> modifiersForEvent(WPARAM wparam)
 {
-    OptionSet<WebEvent::Modifier> modifiers;
+    OptionSet<WebEventModifier> modifiers;
     if (wparam & MK_CONTROL)
-        modifiers.add(WebEvent::Modifier::ControlKey);
+        modifiers.add(WebEventModifier::ControlKey);
     if (wparam & MK_SHIFT)
-        modifiers.add(WebEvent::Modifier::ShiftKey);
+        modifiers.add(WebEventModifier::ShiftKey);
     if (IsKeyInDownState(VK_MENU))
-        modifiers.add(WebEvent::Modifier::AltKey);
+        modifiers.add(WebEventModifier::AltKey);
     return modifiers;
 }
 
-static inline OptionSet<WebEvent::Modifier> modifiersForCurrentKeyState()
+static inline OptionSet<WebEventModifier> modifiersForCurrentKeyState()
 {
-    OptionSet<WebEvent::Modifier> modifiers;
+    OptionSet<WebEventModifier> modifiers;
     if (IsKeyInDownState(VK_CONTROL))
-        modifiers.add(WebEvent::Modifier::ControlKey);
+        modifiers.add(WebEventModifier::ControlKey);
     if (IsKeyInDownState(VK_SHIFT))
-        modifiers.add(WebEvent::Modifier::ShiftKey);
+        modifiers.add(WebEventModifier::ShiftKey);
     if (IsKeyInDownState(VK_MENU))
-        modifiers.add(WebEvent::Modifier::AltKey);
+        modifiers.add(WebEventModifier::AltKey);
     return modifiers;
 }
 
-static inline WebEvent::Type keyboardEventTypeForEvent(UINT message)
+static inline WebEventType keyboardEventTypeForEvent(UINT message)
 {
     switch (message) {
     case WM_SYSKEYDOWN:
     case WM_KEYDOWN:
-        return WebEvent::RawKeyDown;
+        return WebEventType::RawKeyDown;
         break;
     case WM_SYSKEYUP:
     case WM_KEYUP:
-        return WebEvent::KeyUp;
+        return WebEventType::KeyUp;
         break;
     case WM_IME_CHAR:
     case WM_SYSCHAR:
     case WM_CHAR:
-        return WebEvent::Char;
+        return WebEventType::Char;
         break;
     default:
         ASSERT_NOT_REACHED();
-        return WebEvent::Char;
+        return WebEventType::Char;
     }
 }
 
@@ -166,9 +168,9 @@ static inline bool isSystemKeyEvent(UINT message)
     }
 }
 
-static bool isKeypadEvent(WPARAM wParam, LPARAM lParam, WebEvent::Type type)
+static bool isKeypadEvent(WPARAM wParam, LPARAM lParam, WebEventType type)
 {
-    if (type != WebEvent::RawKeyDown && type != WebEvent::KeyUp)
+    if (type != WebEventType::RawKeyDown && type != WebEventType::KeyUp)
         return false;
 
     switch (wParam) {
@@ -208,151 +210,151 @@ static bool isKeypadEvent(WPARAM wParam, LPARAM lParam, WebEvent::Type type)
     }
 }
 
-static String textFromEvent(WPARAM wparam, WebEvent::Type type)
+static String textFromEvent(WPARAM wparam, WebEventType type)
 {
-    if (type != WebEvent::Char)
+    if (type != WebEventType::Char)
         return String();
 
     UChar c = static_cast<UChar>(wparam);
-    return String(&c, 1);
+    return span(c);
 }
 
-static String unmodifiedTextFromEvent(WPARAM wparam, WebEvent::Type type)
+static String unmodifiedTextFromEvent(WPARAM wparam, WebEventType type)
 {
-    if (type != WebEvent::Char)
+    if (type != WebEventType::Char)
         return String();
 
     UChar c = static_cast<UChar>(wparam);
-    return String(&c, 1);
+    return span(c);
 }
 
-static String keyIdentifierFromEvent(WPARAM wparam, WebEvent::Type type)
+static String keyIdentifierFromEvent(WPARAM wparam, WebEventType type)
 {
-    if (type == WebEvent::Char)
+    if (type == WebEventType::Char)
         return String();
 
     unsigned short keyCode = static_cast<unsigned short>(wparam);
     switch (keyCode) {
     case VK_MENU:
-        return String("Alt");
+        return "Alt"_s;
     case VK_CONTROL:
-        return String("Control");
+        return "Control"_s;
     case VK_SHIFT:
-        return String("Shift");
+        return "Shift"_s;
     case VK_CAPITAL:
-        return String("CapsLock");
+        return "CapsLock"_s;
     case VK_LWIN:
     case VK_RWIN:
-        return String("Win");
+        return "Win"_s;
     case VK_CLEAR:
-        return String("Clear");
+        return "Clear"_s;
     case VK_DOWN:
-        return String("Down");
+        return "Down"_s;
     case VK_END:
-        return String("End");
+        return "End"_s;
     case VK_RETURN:
-        return String("Enter");
+        return "Enter"_s;
     case VK_EXECUTE:
-        return String("Execute");
+        return "Execute"_s;
     case VK_F1:
-        return String("F1");
+        return "F1"_s;
     case VK_F2:
-        return String("F2");
+        return "F2"_s;
     case VK_F3:
-        return String("F3");
+        return "F3"_s;
     case VK_F4:
-        return String("F4");
+        return "F4"_s;
     case VK_F5:
-        return String("F5");
+        return "F5"_s;
     case VK_F6:
-        return String("F6");
+        return "F6"_s;
     case VK_F7:
-        return String("F7");
+        return "F7"_s;
     case VK_F8:
-        return String("F8");
+        return "F8"_s;
     case VK_F9:
-        return String("F9");
+        return "F9"_s;
     case VK_F10:
-        return String("F11");
+        return "F11"_s;
     case VK_F12:
-        return String("F12");
+        return "F12"_s;
     case VK_F13:
-        return String("F13");
+        return "F13"_s;
     case VK_F14:
-        return String("F14");
+        return "F14"_s;
     case VK_F15:
-        return String("F15");
+        return "F15"_s;
     case VK_F16:
-        return String("F16");
+        return "F16"_s;
     case VK_F17:
-        return String("F17");
+        return "F17"_s;
     case VK_F18:
-        return String("F18");
+        return "F18"_s;
     case VK_F19:
-        return String("F19");
+        return "F19"_s;
     case VK_F20:
-        return String("F20");
+        return "F20"_s;
     case VK_F21:
-        return String("F21");
+        return "F21"_s;
     case VK_F22:
-        return String("F22");
+        return "F22"_s;
     case VK_F23:
-        return String("F23");
+        return "F23"_s;
     case VK_F24:
-        return String("F24");
+        return "F24"_s;
     case VK_HELP:
-        return String("Help");
+        return "Help"_s;
     case VK_HOME:
-        return String("Home");
+        return "Home"_s;
     case VK_INSERT:
-        return String("Insert");
+        return "Insert"_s;
     case VK_LEFT:
-        return String("Left");
+        return "Left"_s;
     case VK_NEXT:
-        return String("PageDown");
+        return "PageDown"_s;
     case VK_PRIOR:
-        return String("PageUp");
+        return "PageUp"_s;
     case VK_PAUSE:
-        return String("Pause");
+        return "Pause"_s;
     case VK_SNAPSHOT:
-        return String("PrintScreen");
+        return "PrintScreen"_s;
     case VK_RIGHT:
-        return String("Right");
+        return "Right"_s;
     case VK_SCROLL:
-        return String("Scroll");
+        return "Scroll"_s;
     case VK_SELECT:
-        return String("Select");
+        return "Select"_s;
     case VK_UP:
-        return String("Up");
+        return "Up"_s;
     case VK_DELETE:
-        return String("U+007F"); // Standard says that DEL becomes U+007F.
+        return "U+007F"_s; // Standard says that DEL becomes U+007F.
     default:
-        return makeString("U+", hex(toASCIIUpper(keyCode), 4));
+        return makeString("U+"_s, hex(toASCIIUpper(keyCode), 4));
     }
 }
 
-WebMouseEvent WebEventFactory::createWebMouseEvent(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam, bool didActivateWebView)
+WebMouseEvent WebEventFactory::createWebMouseEvent(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam, bool didActivateWebView, float deviceScaleFactor)
 {
-    WebEvent::Type type;
-    WebMouseEvent::Button button = WebMouseEvent::NoButton;
+    WebEventType type;
+    WebMouseEventButton button = WebMouseEventButton::None;
     switch (message) {
     case WM_MOUSEMOVE:
-        type = WebEvent::MouseMove;
+        type = WebEventType::MouseMove;
         if (wParam & MK_LBUTTON)
-            button = WebMouseEvent::LeftButton;
+            button = WebMouseEventButton::Left;
         else if (wParam & MK_MBUTTON)
-            button = WebMouseEvent::MiddleButton;
+            button = WebMouseEventButton::Middle;
         else if (wParam & MK_RBUTTON)
-            button = WebMouseEvent::RightButton;
+            button = WebMouseEventButton::Right;
         break;
     case WM_MOUSELEAVE:
-        type = WebEvent::MouseMove;
+        type = WebEventType::MouseMove;
         if (wParam & MK_LBUTTON)
-            button = WebMouseEvent::LeftButton;
+            button = WebMouseEventButton::Left;
         else if (wParam & MK_MBUTTON)
-            button = WebMouseEvent::MiddleButton;
+            button = WebMouseEventButton::Middle;
         else if (wParam & MK_RBUTTON)
-            button = WebMouseEvent::RightButton;
+            button = WebMouseEventButton::Right;
 
         // Set the current mouse position (relative to the client area of the
         // current window) since none is specified for this event.
@@ -360,63 +362,70 @@ WebMouseEvent WebEventFactory::createWebMouseEvent(HWND hWnd, UINT message, WPAR
         break;
     case WM_LBUTTONDOWN:
     case WM_LBUTTONDBLCLK:
-        type = WebEvent::MouseDown;
-        button = WebMouseEvent::LeftButton;
+        type = WebEventType::MouseDown;
+        button = WebMouseEventButton::Left;
         break;
     case WM_MBUTTONDOWN:
     case WM_MBUTTONDBLCLK:
-        type = WebEvent::MouseDown;
-        button = WebMouseEvent::MiddleButton;
+        type = WebEventType::MouseDown;
+        button = WebMouseEventButton::Middle;
         break;
     case WM_RBUTTONDOWN:
     case WM_RBUTTONDBLCLK:
-        type = WebEvent::MouseDown;
-        button = WebMouseEvent::RightButton;
+        type = WebEventType::MouseDown;
+        button = WebMouseEventButton::Right;
         break;
     case WM_LBUTTONUP:
-        type = WebEvent::MouseUp;
-        button = WebMouseEvent::LeftButton;
+        type = WebEventType::MouseUp;
+        button = WebMouseEventButton::Left;
         break;
     case WM_MBUTTONUP:
-        type = WebEvent::MouseUp;
-        button = WebMouseEvent::MiddleButton;
+        type = WebEventType::MouseUp;
+        button = WebMouseEventButton::Middle;
         break;
     case WM_RBUTTONUP:
-        type = WebEvent::MouseUp;
-        button = WebMouseEvent::RightButton;
+        type = WebEventType::MouseUp;
+        button = WebMouseEventButton::Right;
         break;
     default:
         ASSERT_NOT_REACHED();
-        type = WebEvent::KeyDown;
+        type = WebEventType::KeyDown;
     }
 
-    POINT position = point(lParam);
-    POINT globalPosition = position;
-    ::ClientToScreen(hWnd, &globalPosition);
+    POINT positionPoint = point(lParam);
+    POINT globalPositionPoint = positionPoint;
+    ::ClientToScreen(hWnd, &globalPositionPoint);
+    IntPoint globalPosition(globalPositionPoint);
+    globalPosition.scale(1 / deviceScaleFactor);
+    IntPoint position = positionPoint;
+    position.scale(1 / deviceScaleFactor);
 
     double timestamp = ::GetTickCount() * 0.001; // ::GetTickCount returns milliseconds (Chrome uses GetMessageTime() / 1000.0)
 
-    int clickCount = WebKit::clickCount(type, button, position, timestamp);
+    int clickCount = WebKit::clickCount(type, button, positionPoint, timestamp);
     auto modifiers = modifiersForEvent(wParam);
     auto buttons = buttonsForEvent(wParam);
 
-    return WebMouseEvent(type, button, buttons, position, globalPosition, 0, 0, 0, clickCount, modifiers, WallTime::now(), didActivateWebView);
+    return WebMouseEvent( { type, modifiers, WallTime::now() }, button, buttons, position, globalPosition, 0, 0, 0, clickCount, didActivateWebView);
 }
 
-WebWheelEvent WebEventFactory::createWebWheelEvent(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+WebWheelEvent WebEventFactory::createWebWheelEvent(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam, float deviceScaleFactor)
 {
-    POINT globalPosition = point(lParam);
-    POINT position = globalPosition;
-    ::ScreenToClient(hWnd, &position);
+    POINT positionPoint = point(lParam);
+    IntPoint globalPosition = positionPoint;
+    ::ScreenToClient(hWnd, &positionPoint);
+    globalPosition.scale(1 / deviceScaleFactor);
+    IntPoint position = positionPoint;
+    position.scale(1 / deviceScaleFactor);
 
     WebWheelEvent::Granularity granularity = WebWheelEvent::ScrollByPixelWheelEvent;
 
     auto modifiers = modifiersForEvent(wParam);
 
-    int deltaX = 0;
-    int deltaY = 0;
-    int wheelTicksX = 0;
-    int wheelTicksY = 0;
+    float deltaX = 0;
+    float deltaY = 0;
+    float wheelTicksX = 0;
+    float wheelTicksY = 0;
 
     float delta = GET_WHEEL_DELTA_WPARAM(wParam) / static_cast<float>(WHEEL_DELTA);
     bool isMouseHWheel = (message == WM_MOUSEHWHEEL);
@@ -428,7 +437,7 @@ WebWheelEvent WebEventFactory::createWebWheelEvent(HWND hWnd, UINT message, WPAR
         wheelTicksX = 0;
         wheelTicksY = delta;
     }
-    if (isMouseHWheel || (modifiers & WebEvent::Modifier::ShiftKey)) {
+    if (isMouseHWheel || (modifiers & WebEventModifier::ShiftKey)) {
         deltaX = delta * static_cast<float>(horizontalScrollChars()) * WebCore::cScrollbarPixelsPerLine;
         deltaY = 0;
         granularity = WebWheelEvent::ScrollByPixelWheelEvent;
@@ -444,7 +453,7 @@ WebWheelEvent WebEventFactory::createWebWheelEvent(HWND hWnd, UINT message, WPAR
         }
     }
 
-    return WebWheelEvent(WebEvent::Wheel, position, globalPosition, FloatSize(deltaX, deltaY), FloatSize(wheelTicksX, wheelTicksY), granularity, modifiers, WallTime::now());
+    return WebWheelEvent( { WebEventType::Wheel, modifiers, WallTime::now() }, position, globalPosition, FloatSize(deltaX, deltaY), FloatSize(wheelTicksX, wheelTicksY), granularity);
 }
 
 static WindowsKeyNames& windowsKeyNames()
@@ -455,7 +464,7 @@ static WindowsKeyNames& windowsKeyNames()
 
 WebKeyboardEvent WebEventFactory::createWebKeyboardEvent(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
 {
-    WebEvent::Type type = keyboardEventTypeForEvent(message);
+    auto type = keyboardEventTypeForEvent(message);
     String text = textFromEvent(wparam, type);
     String unmodifiedText = unmodifiedTextFromEvent(wparam, type);
     String key = message == WM_CHAR ? windowsKeyNames().domKeyFromChar(wparam) : windowsKeyNames().domKeyFromParams(wparam, lparam);
@@ -469,11 +478,11 @@ WebKeyboardEvent WebEventFactory::createWebKeyboardEvent(HWND hwnd, UINT message
     bool isSystemKey = isSystemKeyEvent(message);
     auto modifiers = modifiersForCurrentKeyState();
 
-    return WebKeyboardEvent(type, text, unmodifiedText, key, code, keyIdentifier, windowsVirtualKeyCode, nativeVirtualKeyCode, macCharCode, autoRepeat, isKeypad, isSystemKey, modifiers, WallTime::now());
+    return WebKeyboardEvent( { type, modifiers, WallTime::now() }, text, unmodifiedText, key, code, keyIdentifier, windowsVirtualKeyCode, nativeVirtualKeyCode, macCharCode, autoRepeat, isKeypad, isSystemKey);
 }
 
 #if ENABLE(TOUCH_EVENTS)
-WebTouchEvent WebEventFactory::createWebTouchEvent(const GdkEvent* event, Vector<WebPlatformTouchPoint>&& touchPoints)
+WebTouchEvent WebEventFactory::createWebTouchEvent()
 {
     return WebTouchEvent();
 }

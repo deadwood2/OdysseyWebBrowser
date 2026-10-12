@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2017-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,17 +30,18 @@
 
 #include "CCallHelpers.h"
 #include "MacroAssemblerPrinter.h"
+#include <wtf/TZoneMallocInlines.h>
 
 namespace JSC { namespace B3 { namespace Air {
+
+WTF_MAKE_TZONE_ALLOCATED_IMPL(PrintSpecial);
 
 PrintSpecial::PrintSpecial(Printer::PrintRecordList* list)
     : m_printRecordList(list)
 {
 }
 
-PrintSpecial::~PrintSpecial()
-{
-}
+PrintSpecial::~PrintSpecial() = default;
 
 void PrintSpecial::forEachArg(Inst&, const ScopedLambda<Inst::EachArgCallback>&)
 {
@@ -61,7 +62,7 @@ bool PrintSpecial::admitsExtendedOffsetAddr(Inst&, unsigned)
     return false;
 }
 
-void PrintSpecial::reportUsedRegisters(Inst&, const RegisterSet&)
+void PrintSpecial::reportUsedRegisters(Inst&, const RegisterSetBuilder&)
 {
 }
 
@@ -89,12 +90,12 @@ MacroAssembler::Jump PrintSpecial::generate(Inst& inst, CCallHelpers& jit, Gener
     return CCallHelpers::Jump();
 }
 
-RegisterSet PrintSpecial::extraEarlyClobberedRegs(Inst&)
+RegisterSetBuilder PrintSpecial::extraEarlyClobberedRegs(Inst&)
 {
     return { };
 }
 
-RegisterSet PrintSpecial::extraClobberedRegs(Inst&)
+RegisterSetBuilder PrintSpecial::extraClobberedRegs(Inst&)
 {
     return { };
 }

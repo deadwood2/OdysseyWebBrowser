@@ -93,6 +93,10 @@ void printInternal(PrintStream& out, LocationKind kind)
     case StackPayloadLoc:
         out.print("StackPayloadLoc");
         return;
+
+    case GlobalProxyTargetLoc:
+        out.print("GlobalProxyTargetLoc");
+        return;
         
     case ArrayLengthLoc:
         out.print("ArrayLengthLoc");
@@ -129,9 +133,13 @@ void printInternal(PrintStream& out, LocationKind kind)
     case GlobalVariableLoc:
         out.print("GlobalVariableLoc");
         return;
-        
+
     case HasIndexedPropertyLoc:
         out.print("HasIndexedPorpertyLoc");
+        return;
+
+    case EnumeratorNextUpdateIndexAndModeLoc:
+        out.print("EnumeratorNextUpdateIndexAndModeLoc");
         return;
 
     case IndexedPropertyDoubleLoc:
@@ -182,6 +190,14 @@ void printInternal(PrintStream& out, LocationKind kind)
         out.print("TypedArrayByteOffsetLoc");
         return;
 
+    case TypedArrayByteOffsetInt52Loc:
+        out.print("TypedArrayByteOffsetInt52Loc");
+        return;
+
+    case TypedArrayLengthInt52Loc:
+        out.print("TypedArrayLengthInt52Loc");
+        return;
+
     case PrototypeLoc:
         out.print("PrototypeLoc");
         return;
@@ -216,6 +232,50 @@ void printInternal(PrintStream& out, LocationKind kind)
 
     case MapBucketNextLoc:
         out.print("MapBucketNextLoc");
+        return;
+
+    case MapIteratorNextLoc:
+        out.print("MapIteratorNextLoc");
+        return;
+
+    case MapIteratorKeyLoc:
+        out.print("MapIteratorKeyLoc");
+        return;
+
+    case MapIteratorValueLoc:
+        out.print("MapIteratorValueLoc");
+        return;
+
+    case MapStorageLoc:
+        out.print("MapStorageLoc");
+        return;
+
+    case MapIterationNextLoc:
+        out.print("MapIterationNextLoc");
+        return;
+
+    case MapIterationEntryLoc:
+        out.print("MapIterationEntryLoc");
+        return;
+
+    case MapIterationEntryKeyLoc:
+        out.print("MapIterationEntryKeyLoc");
+        return;
+
+    case MapIterationEntryValueLoc:
+        out.print("MapIterationEntryValueLoc");
+        return;
+
+    case MapEntryKeyLoc:
+        out.print("MapEntryKeyLoc");
+        return;
+
+    case MapEntryValueLoc:
+        out.print("MapEntryValueLoc");
+        return;
+
+    case LoadMapValueLoc:
+        out.print("LoadMapValueLoc");
         return;
 
     case WeakMapGetLoc:

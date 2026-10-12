@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2004, 2006, 2007, 2008 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -40,8 +40,6 @@
 #import "WKViewPrivate.h"
 #import "WebCoreFrameView.h"
 #import <wtf/BlockObjCExceptions.h>
-
-using namespace std;
 
 namespace WebCore {
 
@@ -89,17 +87,17 @@ void ScrollView::platformScrollbarModes(ScrollbarMode& horizontal, ScrollbarMode
 void ScrollView::platformSetCanBlitOnScroll(bool canBlitOnScroll)
 {
     BEGIN_BLOCK_OBJC_EXCEPTIONS
-    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     [[scrollView() contentView] setCopiesOnScroll:canBlitOnScroll];
-    ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_END
     END_BLOCK_OBJC_EXCEPTIONS
 }
 
 bool ScrollView::platformCanBlitOnScroll() const
 {
-    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     return [[scrollView() contentView] copiesOnScroll];
-    ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_END
 }
 
 IntRect ScrollView::platformUnobscuredContentRect(VisibleContentRectIncludesScrollbars) const
@@ -206,7 +204,7 @@ void ScrollView::platformSetContentsSize()
 #else
     LOG(Frames, "%p %@ at w %d h %d\n", documentView(), NSStringFromClass([documentView() class]), w, h);
 #endif
-    NSSize tempSize = { static_cast<CGFloat>(max(0, w)), static_cast<CGFloat>(max(0, h)) }; // workaround for 4213314
+    NSSize tempSize = { static_cast<CGFloat>(std::max(0, w)), static_cast<CGFloat>(std::max(0, h)) }; // workaround for 4213314
     [documentView() setBoundsSize:tempSize];
     END_BLOCK_OBJC_EXCEPTIONS
 }
@@ -223,7 +221,7 @@ void ScrollView::platformSetScrollPosition(const IntPoint& scrollPoint)
 {
     BEGIN_BLOCK_OBJC_EXCEPTIONS
     NSPoint floatPoint = scrollPoint;
-    NSPoint tempPoint = { max(-[scrollView() scrollOrigin].x, floatPoint.x), max(-[scrollView() scrollOrigin].y, floatPoint.y) };  // Don't use NSMakePoint to work around 4213314.
+    NSPoint tempPoint = { std::max(-[scrollView() scrollOrigin].x, floatPoint.x), std::max(-[scrollView() scrollOrigin].y, floatPoint.y) }; // Don't use NSMakePoint to work around 4213314.
     [documentView() scrollPoint:tempPoint];
     END_BLOCK_OBJC_EXCEPTIONS
 }

@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 # Copyright (C) 2013 Adobe Systems Incorporated. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -44,16 +42,13 @@ else:
 _log = logging.getLogger(__name__)
 
 
-def convert_for_webkit(new_path, filename, reference_support_info, host=Host(), convert_test_harness_links=True, webkit_test_runner_options=''):
+def convert_for_webkit(new_path, filename, reference_support_info, reference_file_renames, host=Host(), webkit_test_runner_options=''):
     """ Converts a file's |contents| so it will function correctly in its |new_path| in Webkit.
 
     Returns the list of modified properties and the modified text if the file was modifed, None otherwise."""
     contents = host.filesystem.read_text_file(filename)
 
-    # WebKit does not have a www test domain.
-    contents = contents.replace('{{domains[www]}}', '{{hosts[alt][]}}')
-
-    converter = _W3CTestConverter(new_path, filename, reference_support_info, host, convert_test_harness_links, webkit_test_runner_options)
+    converter = _W3CTestConverter(new_path, filename, reference_support_info, reference_file_renames, host, webkit_test_runner_options)
     if filename.endswith('.css'):
         return converter.add_webkit_prefix_to_unprefixed_properties_and_values(contents)
     elif filename.endswith('.js'):
@@ -65,7 +60,7 @@ def convert_for_webkit(new_path, filename, reference_support_info, host=Host(), 
 
 
 class _W3CTestConverter(HTMLParser):
-    def __init__(self, new_path, filename, reference_support_info, host=Host(), convert_test_harness_links=True, webkit_test_runner_options=''):
+    def __init__(self, new_path, filename, reference_support_info, reference_file_renames=[], host=Host(), webkit_test_runner_options=''):
         if sys.version_info > (3, 0):
             HTMLParser.__init__(self, convert_charrefs=False)
         else:
@@ -82,19 +77,13 @@ class _W3CTestConverter(HTMLParser):
         self.style_data = []
         self.filename = filename
         self.reference_support_info = reference_support_info
+        self.reference_file_renames = reference_file_renames
         self.webkit_test_runner_options = webkit_test_runner_options
         self.has_started = False
-
-        resources_path = self.path_from_webkit_root('LayoutTests', 'resources')
-        resources_relpath = self._filesystem.relpath(resources_path, new_path)
-        self.new_test_harness_path = resources_relpath.replace(os.sep, '/')
-        self.convert_test_harness_links = convert_test_harness_links
 
         # These settings might vary between WebKit and Blink
         css_property_file = self.path_from_webkit_root('Source', 'WebCore', 'css', 'CSSProperties.json')
         css_property_value_file = self.path_from_webkit_root('Source', 'WebCore', 'css', 'CSSValueKeywords.in')
-
-        self.test_harness_re = re.compile('/resources/testharness')
 
         self.prefixed_properties = self.read_webkit_prefixed_css_property_list(css_property_file)
         prop_regex = r'([\s{]|^)(' + "|".join(prop.replace('-webkit-', '') for prop in self.prefixed_properties) + r')(\s+:|:)'
@@ -209,19 +198,14 @@ class _W3CTestConverter(HTMLParser):
 
     def convert_attributes_if_needed(self, tag, attrs):
         converted = self.get_starttag_text()
-        if self.convert_test_harness_links and tag in ('script', 'link'):
-            attr_name = 'src'
-            if tag != 'script':
-                attr_name = 'href'
-            for attr in attrs:
-                if attr[0] == attr_name:
-                    new_path = re.sub(self.test_harness_re, self.new_test_harness_path + '/testharness', attr[1])
-                    converted = re.sub(re.escape(attr[1]), new_path, converted)
 
         for attr in attrs:
             if attr[0] == 'style':
                 new_style = self.convert_style_data(attr[1])
                 converted = re.sub(re.escape(attr[1]), new_style, converted)
+            if attr[0] == 'name' and attr[1] == 'fuzzy' and tag == 'meta':
+                for rename in self.reference_file_renames:
+                    converted = re.sub(rename['src'], rename['dest'], converted)
 
         # Convert relative paths
         src_tags = ('script', 'style', 'img', 'frame', 'iframe', 'input', 'layer', 'textarea', 'video', 'audio')

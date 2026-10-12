@@ -24,7 +24,7 @@
 
 #pragma once
 
-#if ENABLE(MEDIA_STREAM) && USE(AVFOUNDATION)
+#if ENABLE(MEDIA_RECORDER) && USE(AVFOUNDATION)
 
 #import <CoreMedia/CoreMedia.h>
 #import <wtf/WorkQueue.h>
@@ -41,7 +41,8 @@ public:
     ~AudioSampleBufferCompressor();
 
     void setBitsPerSecond(unsigned);
-    void finish();
+    void finish() { flushInternal(true); }
+    void flush() { flushInternal(false); }
     void addSampleBuffer(CMSampleBufferRef);
     CMSampleBufferRef getOutputSampleBuffer();
     RetainPtr<CMSampleBufferRef> takeOutputSampleBuffer();
@@ -63,9 +64,10 @@ private:
     RetainPtr<CMSampleBufferRef> sampleBufferWithNumPackets(UInt32 numPackets, AudioBufferList);
     void processSampleBuffersUntilLowWaterTime(CMTime);
     OSStatus provideSourceDataNumOutputPackets(UInt32*, AudioBufferList*, AudioStreamPacketDescription**);
+    void flushInternal(bool isFinished);
 
     Ref<WorkQueue> m_serialDispatchQueue;
-    CMTime m_lowWaterTime { kCMTimeInvalid };
+    CMTime m_lowWaterTime;
 
     RetainPtr<CMBufferQueueRef> m_outputBufferQueue;
     RetainPtr<CMBufferQueueRef> m_inputBufferQueue;
@@ -79,13 +81,14 @@ private:
     UInt32 m_maxOutputPacketSize { 0 };
     Vector<AudioStreamPacketDescription> m_destinationPacketDescriptions;
 
-    CMTime m_currentNativePresentationTimeStamp { kCMTimeInvalid };
-    CMTime m_currentOutputPresentationTimeStamp { kCMTimeInvalid };
-    CMTime m_remainingPrimeDuration { kCMTimeInvalid };
+    CMTime m_currentNativePresentationTimeStamp;
+    CMTime m_currentOutputPresentationTimeStamp;
+    CMTime m_remainingPrimeDuration;
 
     Vector<uint8_t> m_sourceBuffer;
     Vector<uint8_t> m_destinationBuffer;
 
+    CMBufferQueueTriggerToken m_triggerToken;
     RetainPtr<CMBlockBufferRef> m_sampleBlockBuffer;
     size_t m_sampleBlockBufferSize { 0 };
     size_t m_currentOffsetInSampleBlockBuffer { 0 };
@@ -95,4 +98,4 @@ private:
 
 }
 
-#endif // ENABLE(MEDIA_STREAM) && USE(AVFOUNDATION)
+#endif // ENABLE(MEDIA_RECORDER) && USE(AVFOUNDATION)

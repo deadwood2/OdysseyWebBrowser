@@ -37,9 +37,9 @@
 #import <JavaScriptCore/JSGlobalObject.h>
 #import <JavaScriptCore/SourceProvider.h>
 #import <JavaScriptCore/StrongInlines.h>
-#import <WebCore/DOMWindow.h>
-#import <WebCore/Frame.h>
 #import <WebCore/JSDOMWindow.h>
+#import <WebCore/LocalDOMWindow.h>
+#import <WebCore/LocalFrame.h>
 #import <WebCore/ScriptController.h>
 #import <wtf/URL.h>
 
@@ -57,8 +57,8 @@ static NSString *toNSString(JSC::SourceProvider* sourceProvider)
 
 static WebFrame *toWebFrame(JSC::JSGlobalObject* globalObject)
 {
-    WebCore::JSDOMWindow* window = static_cast<WebCore::JSDOMWindow*>(globalObject);
-    return kit(window->wrapped().frame());
+    auto* window = static_cast<WebCore::JSDOMWindow*>(globalObject);
+    return kit(dynamicDowncast<WebCore::LocalFrame>(window->wrapped().frame()));
 }
 
 WebScriptDebugger::WebScriptDebugger(JSC::JSGlobalObject* globalObject)
@@ -126,11 +126,12 @@ void WebScriptDebugger::handlePause(JSC::JSGlobalObject* globalObject, Debugger:
 
     m_callingDelegate = true;
 
+    JSC::VM& vm = globalObject->vm();
     WebFrame *webFrame = toWebFrame(globalObject);
     WebView *webView = [webFrame webView];
     JSC::DebuggerCallFrame& debuggerCallFrame = currentDebuggerCallFrame();
     JSC::JSValue exceptionValue = currentException();
-    String functionName = debuggerCallFrame.functionName();
+    String functionName = debuggerCallFrame.functionName(vm);
     RetainPtr<WebScriptCallFrame> webCallFrame = adoptNS([[WebScriptCallFrame alloc] _initWithGlobalObject:core(webFrame)->script().windowScriptObject() functionName:functionName exceptionValue:exceptionValue]);
 
     WebScriptDebugDelegateImplementationCache* cache = WebViewGetScriptDebugDelegateImplementations(webView);

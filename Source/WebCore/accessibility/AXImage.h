@@ -35,17 +35,14 @@ namespace WebCore {
 
 class AXImage : public AccessibilityRenderObject {
 public:
-    static Ref<AXImage> create(RenderImage*);
+    static Ref<AXImage> create(RenderImage&);
     virtual ~AXImage() = default;
 
 private:
-    explicit AXImage(RenderImage*);
-    bool isAXImageInstance() const override { return true; }
+    explicit AXImage(RenderImage&);
 
-    AccessibilityRole roleValue() const override;
+    AccessibilityRole determineAccessibilityRole() final;
     std::optional<AccessibilityChildrenVector> imageOverlayElements() override;
 };
 
 } // namespace WebCore 
-
-SPECIALIZE_TYPE_TRAITS_ACCESSIBILITY(AXImage, isAXImageInstance())

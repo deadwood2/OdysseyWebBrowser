@@ -50,20 +50,23 @@ class PbufferSurfaceEAGL : public SurfaceGL
     EGLint isPostSubBufferSupported() const override;
     EGLint getSwapBehavior() const override;
 
-    FramebufferImpl *createDefaultFramebuffer(const gl::Context *context,
-                                              const gl::FramebufferState &state) override;
+    egl::Error attachToFramebuffer(const gl::Context *context,
+                                   gl::Framebuffer *framebuffer) override;
+    egl::Error detachFromFramebuffer(const gl::Context *context,
+                                     gl::Framebuffer *framebuffer) override;
 
   private:
     unsigned mWidth;
     unsigned mHeight;
 
     // TODO(geofflang): Don't store these, they are potentially specific to a single GL context.
-    // http://anglebug.com/2464
+    // http://anglebug.com/40096492
     const FunctionsGL *mFunctions;
     StateManagerGL *mStateManager;
 
     GLuint mColorRenderbuffer;
     GLuint mDSRenderbuffer;
+    GLuint mFramebufferID;
 };
 
 }  // namespace rx

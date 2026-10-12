@@ -1,4 +1,4 @@
-# Copyright (C) 2020 Apple Inc. All rights reserved.
+# Copyright (C) 2024 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -27,12 +27,14 @@ import socket
 
 from email.mime.text import MIMEText
 
-is_test_mode_enabled = os.getenv('BUILDBOT_PRODUCTION') is None
+from .utils import load_password, get_custom_suffix
+
+custom_suffix = get_custom_suffix()
 
 CURRENT_HOSTNAME = socket.gethostname().strip()
-EWS_BUILD_HOSTNAME = 'ews-build.webkit.org'
-FROM_EMAIL = 'ews@webkit.org'
-IGALIA_JSC_QUEUES_PATTERNS = ['armv7', 'mips', 'i386']
+EWS_BUILD_HOSTNAMES = ['ews-build.webkit.org', 'ews-build']
+FROM_EMAIL = f'ews@webkit{custom_suffix}.org'
+IGALIA_JSC_QUEUES_PATTERNS = ['armv7', 'i386']
 IGALIA_GTK_WPE_QUEUES_PATTERNS = ['gtk', 'wpe']
 SERVER = 'localhost'
 
@@ -48,9 +50,7 @@ def get_email_ids(category):
 
 
 def send_email(to_emails, subject, text, reference=''):
-    if is_test_mode_enabled:
-        return
-    if CURRENT_HOSTNAME != EWS_BUILD_HOSTNAME:
+    if CURRENT_HOSTNAME not in EWS_BUILD_HOSTNAMES:
         # Only allow EWS production instance to send emails.
         return
     if not to_emails:
@@ -78,7 +78,6 @@ def send_email(to_emails, subject, text, reference=''):
 def send_email_to_patch_author(author_email, subject, text, reference=''):
     if not author_email:
         return
-    send_email(['aakash_jain@apple.com'], subject, text, reference)
     if author_email in get_email_ids('EMAIL_IDS_TO_UNSUBSCRIBE'):
         print('email {} is in unsubscribe list, skipping email'.format(author_email))
         return

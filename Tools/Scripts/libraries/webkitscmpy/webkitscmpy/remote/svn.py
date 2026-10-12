@@ -1,4 +1,4 @@
-# Copyright (C) 2020 Apple Inc. All rights reserved.
+# Copyright (C) 2020-2023 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -22,19 +22,19 @@
 
 import bisect
 import calendar
-import fasteners
 import json
 import os
 import re
-import requests
 import tempfile
-import xmltodict
 
 from datetime import datetime
 
-from webkitcorepy import decorators, string_utils
+from webkitcorepy import decorators, string_utils, CallByNeed
 from webkitscmpy.remote.scm import Scm
 from webkitscmpy import Commit, Version
+
+requests = CallByNeed(lambda: __import__('requests'))
+xmltodict = CallByNeed(lambda: __import__('xmltodict'))
 
 
 class Svn(Scm):
@@ -46,7 +46,7 @@ class Svn(Scm):
     def is_webserver(cls, url):
         return True if cls.URL_RE.match(url) else False
 
-    def __init__(self, url, dev_branches=None, prod_branches=None, contributors=None, id=None, cache_path=None):
+    def __init__(self, url, dev_branches=None, prod_branches=None, contributors=None, id=None, cache_path=None, classifier=None):
         if url[-1] != '/':
             url += '/'
         if not self.is_webserver(url):
@@ -57,6 +57,7 @@ class Svn(Scm):
             dev_branches=dev_branches, prod_branches=prod_branches,
             contributors=contributors,
             id=id or url.split('/')[-2].lower(),
+            classifier=classifier,
         )
 
         if not cache_path:
@@ -79,6 +80,11 @@ class Svn(Scm):
     @property
     def is_svn(self):
         return True
+
+    def checkout_url(self, ssh=False, http=False):
+        if ssh:
+            raise ValueError('Subversion does not support an ssh checkout')
+        return '{}{}'.format(self.url, self.default_branch)
 
     @decorators.Memoize(timeout=60)
     def _latest(self):
@@ -198,11 +204,11 @@ class Svn(Scm):
     def branches(self):
         return [self.default_branch] + self.list('branches')
 
-    @property
     def tags(self):
         return self.list('tags')
 
     def _cache_lock(self):
+        import fasteners
         return fasteners.InterProcessLock(os.path.join(os.path.dirname(self._cache_path), 'cache.lock'))
 
     def _cache_revisions(self, branch=None):

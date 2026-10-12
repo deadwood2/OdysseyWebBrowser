@@ -25,6 +25,8 @@
 
 #pragma once
 
+#if ENABLE(IPC_TESTING_API) || !LOG_DISABLED
+
 #include "MessageNames.h"
 #include <wtf/Vector.h>
 
@@ -39,13 +41,19 @@ namespace IPC {
 
 class Decoder;
 
+#if ENABLE(IPC_TESTING_API)
+
 std::optional<JSC::JSValue> jsValueForArguments(JSC::JSGlobalObject*, MessageName, Decoder&);
 std::optional<JSC::JSValue> jsValueForReplyArguments(JSC::JSGlobalObject*, MessageName, Decoder&);
 
+Vector<ASCIILiteral> serializedIdentifiers();
+
+#endif // ENABLE(IPC_TESTING_API)
+
 struct ArgumentDescription {
-    const char* name;
-    const char* type;
-    const char* enumName;
+    ASCIILiteral name;
+    ASCIILiteral type;
+    ASCIILiteral enumName;
     bool isOptional;
 };
 
@@ -53,3 +61,5 @@ std::optional<Vector<ArgumentDescription>> messageArgumentDescriptions(MessageNa
 std::optional<Vector<ArgumentDescription>> messageReplyArgumentDescriptions(MessageName);
 
 }
+
+#endif // ENABLE(IPC_TESTING_API) || !LOG_DISABLED

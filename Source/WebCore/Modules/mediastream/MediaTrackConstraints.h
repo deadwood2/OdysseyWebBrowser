@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,7 +28,7 @@
 
 #include "DoubleRange.h"
 #include "LongRange.h"
-#include <wtf/Variant.h>
+#include <variant>
 #include <wtf/Vector.h>
 #include <wtf/text/WTFString.h>
 
@@ -42,8 +42,8 @@ struct ConstrainBooleanParameters {
 };
 
 struct ConstrainDOMStringParameters {
-    std::optional<Variant<String, Vector<String>>> exact;
-    std::optional<Variant<String, Vector<String>>> ideal;
+    std::optional<std::variant<String, Vector<String>>> exact;
+    std::optional<std::variant<String, Vector<String>>> ideal;
 };
 
 struct ConstrainDoubleRange : DoubleRange {
@@ -56,10 +56,10 @@ struct ConstrainLongRange : LongRange {
     std::optional<int> ideal;
 };
 
-using ConstrainBoolean = Variant<bool, ConstrainBooleanParameters>;
-using ConstrainDOMString = Variant<String, Vector<String>, ConstrainDOMStringParameters>;
-using ConstrainDouble = Variant<double, ConstrainDoubleRange>;
-using ConstrainLong = Variant<int, ConstrainLongRange>;
+using ConstrainBoolean = std::variant<bool, ConstrainBooleanParameters>;
+using ConstrainDOMString = std::variant<String, Vector<String>, ConstrainDOMStringParameters>;
+using ConstrainDouble = std::variant<double, ConstrainDoubleRange>;
+using ConstrainLong = std::variant<int, ConstrainLongRange>;
 
 struct MediaTrackConstraintSet {
     std::optional<ConstrainLong> width;
@@ -75,6 +75,13 @@ struct MediaTrackConstraintSet {
     std::optional<ConstrainDOMString> groupId;
     std::optional<ConstrainDOMString> displaySurface;
     std::optional<ConstrainBoolean> logicalSurface;
+
+    std::optional<ConstrainDOMString> whiteBalanceMode;
+    std::optional<ConstrainDouble> zoom;
+    std::optional<ConstrainBoolean> torch;
+
+    std::optional<ConstrainBoolean> backgroundBlur;
+    std::optional<ConstrainBoolean> powerEfficient;
 };
 
 struct MediaTrackConstraints : MediaTrackConstraintSet {

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2004, 2008, 2009 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2023 Apple Inc. All rights reserved.
  * Copyright (C) 2008 Collabora Ltd.
  * Copyright (C) 2011 Peter Varga (pvarga@webkit.org), University of Szeged
  *
@@ -29,61 +29,54 @@
 #include "RegularExpression.h"
 
 #include "Yarr.h"
-#include "YarrFlags.h"
 #include "YarrInterpreter.h"
 #include <wtf/Assertions.h>
 #include <wtf/BumpPointerAllocator.h>
+#include <wtf/TZoneMallocInlines.h>
 
 namespace JSC { namespace Yarr {
 
+WTF_MAKE_TZONE_ALLOCATED_IMPL(RegularExpression);
+
 class RegularExpression::Private : public RefCounted<RegularExpression::Private> {
 public:
-    static Ref<Private> create(const String& pattern, TextCaseSensitivity caseSensitivity, MultilineMode multilineMode, UnicodeMode unicodeMode)
+    static Ref<Private> create(StringView pattern, OptionSet<Flags> flags)
     {
-        return adoptRef(*new Private(pattern, caseSensitivity, multilineMode, unicodeMode));
+        return adoptRef(*new Private(pattern, flags));
     }
 
 private:
-    Private(const String& pattern, TextCaseSensitivity caseSensitivity, MultilineMode multilineMode, UnicodeMode unicodeMode)
-        : m_regExpByteCode(compile(pattern, caseSensitivity, multilineMode, unicodeMode))
+    Private(StringView pattern, OptionSet<Flags> flags)
+        : m_regExpByteCode(compile(pattern, flags))
     {
     }
 
-    std::unique_ptr<JSC::Yarr::BytecodePattern> compile(const String& patternString, TextCaseSensitivity caseSensitivity, MultilineMode multilineMode, UnicodeMode unicodeMode)
+    std::unique_ptr<BytecodePattern> compile(StringView patternString, OptionSet<Flags> flags)
     {
-        OptionSet<JSC::Yarr::Flags> flags;
+        ASSERT(!(flags - OptionSet<Flags> { Flags::IgnoreCase, Flags::Multiline, Flags::UnicodeSets }));
 
-        if (caseSensitivity == TextCaseInsensitive)
-            flags.add(Flags::IgnoreCase);
-
-        if (multilineMode == MultilineEnabled)
-            flags.add(Flags::Multiline);
-
-        if (unicodeMode == UnicodeAwareMode)
-            flags.add(Flags::Unicode);
-
-        JSC::Yarr::YarrPattern pattern(patternString, flags, m_constructionErrorCode);
-        if (JSC::Yarr::hasError(m_constructionErrorCode)) {
-            LOG_ERROR("RegularExpression: YARR compile failed with '%s'", JSC::Yarr::errorMessage(m_constructionErrorCode));
+        YarrPattern pattern(patternString, flags, m_constructionErrorCode);
+        if (hasError(m_constructionErrorCode)) {
+            LOG_ERROR("RegularExpression: YARR compile failed with '%s'", errorMessage(m_constructionErrorCode).characters());
             return nullptr;
         }
 
         m_numSubpatterns = pattern.m_numSubpatterns;
 
-        return JSC::Yarr::byteCompile(pattern, &m_regexAllocator, m_constructionErrorCode);
+        return byteCompile(pattern, &m_regexAllocator, m_constructionErrorCode);
     }
 
-    JSC::Yarr::ErrorCode m_constructionErrorCode { Yarr::ErrorCode::NoError };
+    ErrorCode m_constructionErrorCode { Yarr::ErrorCode::NoError };
     BumpPointerAllocator m_regexAllocator;
 
 public:
     int lastMatchLength { -1 };
     unsigned m_numSubpatterns;
-    std::unique_ptr<JSC::Yarr::BytecodePattern> m_regExpByteCode;
+    std::unique_ptr<BytecodePattern> m_regExpByteCode;
 };
 
-RegularExpression::RegularExpression(const String& pattern, TextCaseSensitivity caseSensitivity, MultilineMode multilineMode, UnicodeMode unicodeMode)
-    : d(Private::create(pattern, caseSensitivity, multilineMode, unicodeMode))
+RegularExpression::RegularExpression(StringView pattern, OptionSet<Flags> flags)
+    : d(Private::create(pattern, flags))
 {
 }
 
@@ -92,9 +85,7 @@ RegularExpression::RegularExpression(const RegularExpression& re)
 {
 }
 
-RegularExpression::~RegularExpression()
-{
-}
+RegularExpression::~RegularExpression() = default;
 
 RegularExpression& RegularExpression::operator=(const RegularExpression& re)
 {
@@ -102,7 +93,7 @@ RegularExpression& RegularExpression::operator=(const RegularExpression& re)
     return *this;
 }
 
-int RegularExpression::match(const String& str, int startFrom, int* matchLength) const
+int RegularExpression::match(StringView str, unsigned startFrom, int* matchLength) const
 {
     if (!d->m_regExpByteCode)
         return -1;
@@ -119,18 +110,18 @@ int RegularExpression::match(const String& str, int startFrom, int* matchLength)
 
     ASSERT(offsetVector);
     for (unsigned j = 0, i = 0; i < d->m_numSubpatterns + 1; j += 2, i++)
-        offsetVector[j] = JSC::Yarr::offsetNoMatch;
+        offsetVector[j] = offsetNoMatch;
 
     unsigned result;
     if (str.length() <= INT_MAX)
-        result = JSC::Yarr::interpret(d->m_regExpByteCode.get(), str, startFrom, offsetVector);
+        result = interpret(d->m_regExpByteCode.get(), str, startFrom, offsetVector);
     else {
         // This code can't handle unsigned offsets. Limit our processing to strings with offsets that
         // can be represented as ints.
-        result = JSC::Yarr::offsetNoMatch;
+        result = offsetNoMatch;
     }
 
-    if (result == JSC::Yarr::offsetNoMatch) {
+    if (result == offsetNoMatch) {
         d->lastMatchLength = -1;
         return -1;
     }
@@ -142,7 +133,7 @@ int RegularExpression::match(const String& str, int startFrom, int* matchLength)
     return offsetVector[0];
 }
 
-int RegularExpression::searchRev(const String& str) const
+int RegularExpression::searchRev(StringView str) const
 {
     // FIXME: This could be faster if it actually searched backwards.
     // Instead, it just searches forwards, multiple times until it finds the last match.
@@ -172,7 +163,7 @@ int RegularExpression::matchedLength() const
     return d->lastMatchLength;
 }
 
-void replace(String& string, const RegularExpression& target, const String& replacement)
+void replace(String& string, const RegularExpression& target, StringView replacement)
 {
     int index = 0;
     while (index < static_cast<int>(string.length())) {
@@ -180,10 +171,10 @@ void replace(String& string, const RegularExpression& target, const String& repl
         index = target.match(string, index, &matchLength);
         if (index < 0)
             break;
-        string.replace(index, matchLength, replacement);
-        index += replacement.length();
+        string = makeStringByReplacing(string, index, matchLength, replacement);
         if (!matchLength)
             break; // Avoid infinite loop on 0-length matches, e.g. [a-z]*
+        index += replacement.length();
     }
 }
 

@@ -26,6 +26,8 @@
 #import "config.h"
 #import "PlatformCALayerRemoteModelHosting.h"
 
+#if ENABLE(MODEL_ELEMENT)
+
 #import "RemoteLayerTreeContext.h"
 #import "WebProcess.h"
 #import <WebCore/GraphicsLayerCA.h>
@@ -42,7 +44,7 @@ Ref<PlatformCALayerRemote> PlatformCALayerRemoteModelHosting::create(Ref<WebCore
 }
 
 PlatformCALayerRemoteModelHosting::PlatformCALayerRemoteModelHosting(Ref<WebCore::Model> model, WebCore::PlatformCALayerClient* owner, RemoteLayerTreeContext& context)
-    : PlatformCALayerRemote(WebCore::PlatformCALayer::LayerTypeModelLayer, owner, context)
+    : PlatformCALayerRemote(WebCore::PlatformCALayer::LayerType::LayerTypeModelLayer, owner, context)
     , m_model(model)
 {
 }
@@ -63,13 +65,16 @@ Ref<WebCore::PlatformCALayer> PlatformCALayerRemoteModelHosting::clone(WebCore::
 void PlatformCALayerRemoteModelHosting::populateCreationProperties(RemoteLayerTreeTransaction::LayerCreationProperties& properties, const RemoteLayerTreeContext& context, PlatformCALayer::LayerType type)
 {
     PlatformCALayerRemote::populateCreationProperties(properties, context, type);
-    properties.model = m_model.ptr();
+    ASSERT(std::holds_alternative<RemoteLayerTreeTransaction::LayerCreationProperties::NoAdditionalData>(properties.additionalData));
+    properties.additionalData = m_model;
 }
 
-void PlatformCALayerRemoteModelHosting::dumpAdditionalProperties(TextStream& ts, OptionSet<PlatformLayerTreeAsTextFlags> flags)
+void PlatformCALayerRemoteModelHosting::dumpAdditionalProperties(TextStream& ts, OptionSet<WebCore::PlatformLayerTreeAsTextFlags> flags)
 {
-    if (flags.contains(PlatformLayerTreeAsTextFlags::IncludeModels))
+    if (flags.contains(WebCore::PlatformLayerTreeAsTextFlags::IncludeModels))
         ts << indent << "(model data size " << m_model->data()->size() << ")\n";
 }
 
 } // namespace WebKit
+
+#endif // ENABLE(MODEL_ELEMENT)

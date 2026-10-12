@@ -54,7 +54,7 @@ bool AccessibilityTableHeaderContainer::computeAccessibilityIsIgnored() const
     if (!m_parent)
         return true;
     
-#if PLATFORM(IOS_FAMILY) || USE(ATK)
+#if PLATFORM(IOS_FAMILY) || USE(ATSPI)
     return true;
 #endif
 
@@ -63,17 +63,15 @@ bool AccessibilityTableHeaderContainer::computeAccessibilityIsIgnored() const
 
 void AccessibilityTableHeaderContainer::addChildren()
 {
-    ASSERT(!m_haveChildren); 
+    ASSERT(!m_childrenInitialized); 
     
-    m_haveChildren = true;
-    if (!is<AccessibilityTable>(m_parent))
+    m_childrenInitialized = true;
+    RefPtr parentTable = dynamicDowncast<AccessibilityTable>(m_parent.get());
+    if (!parentTable || !parentTable->isExposable())
         return;
 
-    auto& parentTable = downcast<AccessibilityTable>(*m_parent);
-    if (!parentTable.isExposable())
-        return;
-
-    m_children = parentTable.columnHeaders();
+    for (auto& columnHeader : parentTable->columnHeaders())
+        addChild(columnHeader.get());
 
     for (const auto& child : m_children)
         m_headerRect.unite(child->elementRect());

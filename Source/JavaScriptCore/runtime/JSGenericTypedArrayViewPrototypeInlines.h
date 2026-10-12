@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,6 +27,8 @@
 
 #include "JSGenericTypedArrayViewPrototype.h"
 
+#include "JSTypedArrays.h"
+
 namespace JSC {
     
 template<typename ViewClass>
@@ -37,14 +39,24 @@ JSGenericTypedArrayViewPrototype<ViewClass>::JSGenericTypedArrayViewPrototype(VM
 
 template<typename ViewClass>
 void JSGenericTypedArrayViewPrototype<ViewClass>::finishCreation(
-    VM& vm, JSGlobalObject*)
+    VM& vm, JSGlobalObject* globalObject)
 {
     Base::finishCreation(vm);
     
-    ASSERT(inherits(vm, info()));
+    ASSERT(inherits(info()));
 
-    putDirect(vm, vm.propertyNames->BYTES_PER_ELEMENT, jsNumber(ViewClass::elementSize), PropertyAttribute::DontEnum | PropertyAttribute::ReadOnly | PropertyAttribute::DontDelete);
+    putDirectWithoutTransition(vm, vm.propertyNames->BYTES_PER_ELEMENT, jsNumber(ViewClass::elementSize), PropertyAttribute::DontEnum | PropertyAttribute::ReadOnly | PropertyAttribute::DontDelete);
 
+    if constexpr (std::is_same_v<ViewClass, JSUint8Array>) {
+        if (Options::useUint8ArrayBase64Methods()) {
+            JSC_NATIVE_FUNCTION_WITHOUT_TRANSITION("setFromBase64"_s, uint8ArrayPrototypeSetFromBase64, static_cast<unsigned>(PropertyAttribute::DontEnum), 1, ImplementationVisibility::Public);
+            JSC_NATIVE_FUNCTION_WITHOUT_TRANSITION("setFromHex"_s, uint8ArrayPrototypeSetFromHex, static_cast<unsigned>(PropertyAttribute::DontEnum), 1, ImplementationVisibility::Public);
+            JSC_NATIVE_FUNCTION_WITHOUT_TRANSITION("toBase64"_s, uint8ArrayPrototypeToBase64, static_cast<unsigned>(PropertyAttribute::DontEnum), 0, ImplementationVisibility::Public);
+            JSC_NATIVE_FUNCTION_WITHOUT_TRANSITION("toHex"_s, uint8ArrayPrototypeToHex, static_cast<unsigned>(PropertyAttribute::DontEnum), 0, ImplementationVisibility::Public);
+        }
+    }
+
+    globalObject->installTypedArrayIteratorProtocolWatchpoint(this, ViewClass::TypedArrayStorageType);
 }
 
 template<typename ViewClass>
@@ -53,7 +65,7 @@ JSGenericTypedArrayViewPrototype<ViewClass>::create(
     VM& vm, JSGlobalObject* globalObject, Structure* structure)
 {
     JSGenericTypedArrayViewPrototype* prototype =
-        new (NotNull, allocateCell<JSGenericTypedArrayViewPrototype>(vm.heap))
+        new (NotNull, allocateCell<JSGenericTypedArrayViewPrototype>(vm))
         JSGenericTypedArrayViewPrototype(vm, structure);
     prototype->finishCreation(vm, globalObject);
     return prototype;

@@ -39,8 +39,9 @@ template<typename, typename> struct ArgumentCoder;
 //
 class StreamConnectionEncoder final {
 public:
-    // Stream message needs to be at least size of StreamSetDestinationID message.
-    static constexpr size_t minimumMessageSize = sizeof(MessageName) + sizeof(uint64_t);
+    // Stream allocation needs to be at least size of StreamSetDestinationID message at any offset % messageAlignment.
+    // StreamSetDestinationID has MessageName+uint64_t, where uint64_t is expected to to be aligned at 8.
+    static constexpr size_t minimumMessageSize = 16;
     static constexpr size_t messageAlignment = alignof(MessageName);
     static constexpr bool isIPCEncoder = true;
 
@@ -53,25 +54,34 @@ public:
 
     ~StreamConnectionEncoder() = default;
 
-    bool encodeFixedLengthData(const uint8_t* data, size_t size, size_t alignment)
+    template<typename T, size_t Extent>
+    bool encodeSpan(std::span<T, Extent> span)
     {
+        auto bytes = asBytes(span);
         size_t bufferPointer = static_cast<size_t>(reinterpret_cast<intptr_t>(m_buffer + m_encodedSize));
-        size_t newBufferPointer = roundUpToMultipleOf(alignment, bufferPointer);
+        size_t newBufferPointer = roundUpToMultipleOf<alignof(T)>(bufferPointer);
         if (newBufferPointer < bufferPointer)
             return false;
         intptr_t alignedSize = m_encodedSize + (newBufferPointer - bufferPointer);
-        if (!reserve(alignedSize, size))
+        if (!reserve(alignedSize, bytes.size()))
             return false;
         uint8_t* buffer = m_buffer + alignedSize;
-        memcpy(buffer, data, size);
-        m_encodedSize = alignedSize + size;
+        memcpy(buffer, bytes.data(), bytes.size());
+        m_encodedSize = alignedSize + bytes.size();
         return true;
+    }
+
+    template<typename T>
+    bool encodeObject(const T& object)
+    {
+        static_assert(std::is_trivially_copyable_v<T>);
+        return encodeSpan(std::span(std::addressof(object), 1));
     }
 
     template<typename T>
     StreamConnectionEncoder& operator<<(T&& t)
     {
-        ArgumentCoder<std::remove_const_t<std::remove_reference_t<T>>, void>::encode(*this, std::forward<T>(t));
+        ArgumentCoder<std::remove_cvref_t<T>, void>::encode(*this, std::forward<T>(t));
         return *this;
     }
 

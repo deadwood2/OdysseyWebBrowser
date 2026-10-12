@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2019-2024 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,9 +26,35 @@
 #import "config.h"
 #import "WKMain.h"
 
+#import "PCMDaemonEntryPoint.h"
+#import "WebPushDaemonMain.h"
+#import "WebPushToolMain.h"
 #import "XPCServiceEntryPoint.h"
 
 int WKXPCServiceMain(int argc, const char** argv)
 {
     return WebKit::XPCServiceMain(argc, argv);
+}
+
+int WKAdAttributionDaemonMain(int argc, const char** argv)
+{
+    return WebKit::PCMDaemonMain(argc, argv);
+}
+
+int WKWebPushDaemonMain(int argc, char** argv)
+{
+#if ENABLE(WEB_PUSH_NOTIFICATIONS)
+    return WebKit::WebPushDaemonMain(argc, argv);
+#else
+    return -1;
+#endif
+}
+
+int WKWebPushToolMain(int argc, char** argv)
+{
+#if ENABLE(WEB_PUSH_NOTIFICATIONS)
+    return WebKit::WebPushToolMain(argc, argv);
+#else
+    return -1;
+#endif
 }

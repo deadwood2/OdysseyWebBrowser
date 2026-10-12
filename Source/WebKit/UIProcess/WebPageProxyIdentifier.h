@@ -29,7 +29,7 @@
 
 namespace WebKit {
 
-enum WebPageProxyIdentifierType { };
-using WebPageProxyIdentifier = ObjectIdentifier<WebPageProxyIdentifierType>;
+struct WebPageProxyIdentifierType;
+using WebPageProxyIdentifier = LegacyNullableObjectIdentifier<WebPageProxyIdentifierType>;
 
 }

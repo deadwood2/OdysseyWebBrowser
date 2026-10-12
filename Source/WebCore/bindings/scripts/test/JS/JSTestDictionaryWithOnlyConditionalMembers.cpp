@@ -33,15 +33,15 @@
 namespace WebCore {
 using namespace JSC;
 
-template<> TestDictionaryWithOnlyConditionalMembers convertDictionary<TestDictionaryWithOnlyConditionalMembers>(JSGlobalObject& lexicalGlobalObject, JSValue value)
+template<> ConversionResult<IDLDictionary<TestDictionaryWithOnlyConditionalMembers>> convertDictionary<TestDictionaryWithOnlyConditionalMembers>(JSGlobalObject& lexicalGlobalObject, JSValue value)
 {
-    VM& vm = JSC::getVM(&lexicalGlobalObject);
+    auto& vm = JSC::getVM(&lexicalGlobalObject);
     auto throwScope = DECLARE_THROW_SCOPE(vm);
     bool isNullOrUndefined = value.isUndefinedOrNull();
     auto* object = isNullOrUndefined ? nullptr : value.getObject();
     if (UNLIKELY(!isNullOrUndefined && !object)) {
         throwTypeError(&lexicalGlobalObject, throwScope);
-        return { };
+        return ConversionResultException { };
     }
     TestDictionaryWithOnlyConditionalMembers result;
 #if ENABLE(TEST_CONDITIONAL)
@@ -49,12 +49,14 @@ template<> TestDictionaryWithOnlyConditionalMembers convertDictionary<TestDictio
     if (isNullOrUndefined)
         conditionalMemberValue = jsUndefined();
     else {
-        conditionalMemberValue = object->get(&lexicalGlobalObject, Identifier::fromString(vm, "conditionalMember"));
-        RETURN_IF_EXCEPTION(throwScope, { });
+        conditionalMemberValue = object->get(&lexicalGlobalObject, Identifier::fromString(vm, "conditionalMember"_s));
+        RETURN_IF_EXCEPTION(throwScope, ConversionResultException { });
     }
     if (!conditionalMemberValue.isUndefined()) {
-        result.conditionalMember = convert<IDLDictionary<TestDictionary>>(lexicalGlobalObject, conditionalMemberValue);
-        RETURN_IF_EXCEPTION(throwScope, { });
+        auto conditionalMemberConversionResult = convert<IDLDictionary<TestDictionary>>(lexicalGlobalObject, conditionalMemberValue);
+        if (UNLIKELY(conditionalMemberConversionResult.hasException(throwScope)))
+            return ConversionResultException { };
+        result.conditionalMember = conditionalMemberConversionResult.releaseReturnValue();
     }
 #endif
     return result;
@@ -71,7 +73,7 @@ JSC::JSObject* convertDictionaryToJS(JSC::JSGlobalObject& lexicalGlobalObject, J
     if (!IDLDictionary<TestDictionary>::isNullValue(dictionary.conditionalMember)) {
         auto conditionalMemberValue = toJS<IDLDictionary<TestDictionary>>(lexicalGlobalObject, globalObject, throwScope, IDLDictionary<TestDictionary>::extractValueFromNullable(dictionary.conditionalMember));
         RETURN_IF_EXCEPTION(throwScope, { });
-        result->putDirect(vm, JSC::Identifier::fromString(vm, "conditionalMember"), conditionalMemberValue);
+        result->putDirect(vm, JSC::Identifier::fromString(vm, "conditionalMember"_s), conditionalMemberValue);
     }
 #endif
     UNUSED_PARAM(dictionary);

@@ -46,13 +46,13 @@ public:
     };
 
     explicit WebSocketDeflater(int windowBits, ContextTakeOverMode = TakeOverContext);
-    ~WebSocketDeflater();
+    WEBCORE_EXPORT ~WebSocketDeflater();
 
     bool initialize();
-    bool addBytes(const uint8_t*, size_t);
+    bool addBytes(std::span<const uint8_t>);
     bool finish();
-    const uint8_t* data() { return m_buffer.data(); }
     size_t size() const { return m_buffer.size(); }
+    std::span<const uint8_t> span() const { return m_buffer.span(); }
     void reset();
 
 private:
@@ -66,13 +66,13 @@ class WebSocketInflater {
     WTF_MAKE_FAST_ALLOCATED;
 public:
     explicit WebSocketInflater(int windowBits = 15);
-    ~WebSocketInflater();
+    WEBCORE_EXPORT ~WebSocketInflater();
 
     bool initialize();
-    bool addBytes(const uint8_t*, size_t);
+    bool addBytes(std::span<const uint8_t>);
     bool finish();
-    const uint8_t* data() { return m_buffer.data(); }
     size_t size() const { return m_buffer.size(); }
+    std::span<const uint8_t> span() const { return m_buffer.span(); }
     void reset();
 
 private:

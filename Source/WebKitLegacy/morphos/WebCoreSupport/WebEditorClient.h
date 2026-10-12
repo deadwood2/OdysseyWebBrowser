@@ -112,14 +112,14 @@ private:
     void didEndEditing() final;
     void willWriteSelectionToPasteboard(const std::optional<WebCore::SimpleRange>&) final;
     void didWriteSelectionToPasteboard() final;
-    void getClientPasteboardData(const std::optional<WebCore::SimpleRange>&, Vector<String>& pasteboardTypes, Vector<RefPtr<WebCore::SharedBuffer>>& pasteboardData) final;
+    void getClientPasteboardData(const std::optional<WebCore::SimpleRange>&, Vector<std::pair<String, RefPtr<WebCore::SharedBuffer>>>& pasteboardTypesAndData) final;
 
     void didEndUserTriggeredSelectionChanges() final { }
     void respondToChangedContents() final;
-    void respondToChangedSelection(WebCore::Frame*) final;
+    void respondToChangedSelection(WebCore::LocalFrame*) final;
     void updateEditorStateAfterLayoutIfEditabilityChanged() final { } 
     void canceledComposition() final;
-    void discardedComposition(WebCore::Frame*) final;
+    void discardedComposition(const WebCore::Document&) final { }
     void didUpdateComposition() final { }
 
     bool shouldDeleteRange(const std::optional<WebCore::SimpleRange>&) final;
@@ -135,8 +135,8 @@ private:
     void registerRedoStep(WebCore::UndoStep&) final;
     void clearUndoRedoOperations();
 
-    bool canCopyCut(WebCore::Frame*, bool defaultValue) const final;
-    bool canPaste(WebCore::Frame*, bool defaultValue) const final;
+    bool canCopyCut(WebCore::LocalFrame*, bool defaultValue) const final;
+    bool canPaste(WebCore::LocalFrame*, bool defaultValue) const final;
     bool canUndo() const final;
     bool canRedo() const final;
     
@@ -145,12 +145,12 @@ private:
 
 	bool supportsGlobalSelection() final { return true; }
 
-    void textFieldDidBeginEditing(WebCore::Element*) final;
-    void textFieldDidEndEditing(WebCore::Element*) final;
-    void textDidChangeInTextField(WebCore::Element*) final;
-    bool doTextFieldCommandFromEvent(WebCore::Element*, WebCore::KeyboardEvent*) final;
-    void textWillBeDeletedInTextField(WebCore::Element* input) final;
-    void textDidChangeInTextArea(WebCore::Element*) final;
+    void textFieldDidBeginEditing(WebCore::Element&) final;
+    void textFieldDidEndEditing(WebCore::Element&) final;
+    void textDidChangeInTextField(WebCore::Element&) final;
+    bool doTextFieldCommandFromEvent(WebCore::Element&, WebCore::KeyboardEvent*) final;
+    void textWillBeDeletedInTextField(WebCore::Element& input) final;
+    void textDidChangeInTextArea(WebCore::Element&) final;
     void overflowScrollPositionChanged() final { }
     void subFrameScrollPositionChanged() final { }
 
@@ -159,7 +159,6 @@ private:
 
     bool shouldEraseMarkersAfterChangeSelection(WebCore::TextCheckingType) const final;
     void checkSpellingOfString(StringView, int* misspellingLocation, int* misspellingLength) final;
-    WTF::String getAutoCorrectSuggestionForMisspelledWord(const WTF::String&) final;
     void checkGrammarOfString(StringView, Vector<WebCore::GrammarDetail>&, int* badGrammarLocation, int* badGrammarLength) final;
     void updateSpellingUIWithGrammarString(const WTF::String&, const WebCore::GrammarDetail&) final;
     void updateSpellingUIWithMisspelledWord(const WTF::String&) final;
@@ -172,11 +171,11 @@ private:
     void requestCheckingOfString(WebCore::TextCheckingRequest&, const WebCore::VisibleSelection&) final { }
     bool performTwoStepDrop(WebCore::DocumentFragment&, const WebCore::SimpleRange& , bool ) final { return false; }
 
-    WebCore::DOMPasteAccessResponse requestDOMPasteAccess(const String&) final { return WebCore::DOMPasteAccessResponse::DeniedForGesture; }
+    WebCore::DOMPasteAccessResponse requestDOMPasteAccess(WebCore::DOMPasteAccessCategory, WebCore::FrameIdentifier, const String&) final { return WebCore::DOMPasteAccessResponse::DeniedForGesture; }
 
     WebCore::TextCheckerClient* textChecker() final { return this; }
 
-    bool canShowFontPanel() const final { return false; }
+//    bool canShowFontPanel() const final { return false; }
 
 protected:
     WebPage* m_webPage;

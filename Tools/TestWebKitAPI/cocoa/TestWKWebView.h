@@ -26,15 +26,21 @@
 #import <WebKit/WebKit.h>
 #import <wtf/RetainPtr.h>
 
+@class _WKFrameTreeNode;
 @class _WKProcessPoolConfiguration;
 
 #if PLATFORM(IOS_FAMILY)
+#import "WKBrowserEngineDefinitions.h"
 @class _WKActivatedElementInfo;
 @class _WKTextInputContext;
+@class UITextSuggestion;
 @protocol UITextInputInternal;
 @protocol UITextInputMultiDocument;
 @protocol UITextInputPrivate;
-@protocol UIWKInteractionViewProtocol;
+@protocol UITextInputTraits_Private;
+@protocol UIWKInteractionViewProtocol_Staging_95652872;
+@protocol BETextInput;
+@protocol BEExtendedTextInputTraits;
 #endif
 
 @interface WKWebView (AdditionalDeclarations)
@@ -48,13 +54,53 @@
 #endif
 @end
 
+namespace TestWebKitAPI {
+
+struct AutocorrectionContext {
+    String contextBeforeSelection;
+    String selectedText;
+    String contextAfterSelection;
+    String markedText;
+    NSRange selectedRangeInMarkedText;
+};
+
+} // namespace TestWebKitAPI
+
 @interface WKWebView (TestWebKitAPI)
 #if PLATFORM(IOS_FAMILY)
-@property (nonatomic, readonly) UIView <UITextInputPrivate, UITextInputInternal, UITextInputMultiDocument, UIWKInteractionViewProtocol, UITextInputTokenizer> *textInputContentView;
-- (NSArray<_WKTextInputContext *> *)synchronouslyRequestTextInputContextsInRect:(CGRect)rect;
+@property (nonatomic, readonly) CGRect selectionClipRect;
+@property (nonatomic, readonly) BOOL hasAsyncTextInput;
+#if USE(BROWSERENGINEKIT)
+@property (nonatomic, readonly) id<BETextInput> asyncTextInput;
+@property (nonatomic, readonly) id<BEExtendedTextInputTraits> extendedTextInputTraits;
 #endif
+#if HAVE(UI_WK_DOCUMENT_CONTEXT)
+- (void)synchronouslyAdjustSelectionWithDelta:(NSRange)range;
+#endif
+@property (nonatomic, readonly) UIView <UITextInputPrivate, UITextInputInternal, UITextInputMultiDocument, UIWKInteractionViewProtocol_Staging_95652872, UITextInputTokenizer> *textInputContentView;
+@property (nonatomic, readonly) TestWebKitAPI::AutocorrectionContext autocorrectionContext;
+@property (nonatomic, readonly) id<UITextInputTraits_Private> effectiveTextInputTraits;
+- (std::pair<CGRect, CGRect>)autocorrectionRectsForString:(NSString *)string;
+- (NSArray<_WKTextInputContext *> *)synchronouslyRequestTextInputContextsInRect:(CGRect)rect;
+- (void)replaceText:(NSString *)input withText:(NSString *)correction shouldUnderline:(BOOL)shouldUnderline completion:(void(^)())completion;
+- (void)insertText:(NSString *)primaryString alternatives:(NSArray<NSString *> *)alternatives;
+- (void)handleKeyEvent:(WebEvent *)event completion:(void (^)(WebEvent *theEvent, BOOL handled))completion;
+- (void)selectTextForContextMenuWithLocationInView:(CGPoint)locationInView completion:(void(^)(BOOL shouldPresent))completion;
+- (void)defineSelection;
+- (void)shareSelection;
+- (void)moveSelectionToStartOfParagraph;
+- (void)extendSelectionToStartOfParagraph;
+- (void)moveSelectionToEndOfParagraph;
+- (void)extendSelectionToEndOfParagraph;
+- (void)insertTextSuggestion:(UITextSuggestion *)textSuggestion;
+#endif // PLATFORM(IOS_FAMILY)
+
+@property (nonatomic, readonly) CGImageRef snapshotAfterScreenUpdates;
+@property (nonatomic, readonly) NSUInteger gpuToWebProcessConnectionCount;
 @property (nonatomic, readonly) NSString *contentsAsString;
+@property (nonatomic, readonly) NSData *contentsAsWebArchive;
 @property (nonatomic, readonly) NSArray<NSString *> *tagsInBody;
+@property (nonatomic, readonly) NSString *selectedText;
 - (void)loadTestPageNamed:(NSString *)pageName;
 - (void)synchronouslyGoBack;
 - (void)synchronouslyGoForward;
@@ -62,21 +108,29 @@
 - (void)synchronouslyLoadHTMLString:(NSString *)html baseURL:(NSURL *)url;
 - (void)synchronouslyLoadHTMLString:(NSString *)html preferences:(WKWebpagePreferences *)preferences;
 - (void)synchronouslyLoadRequest:(NSURLRequest *)request;
+- (void)synchronouslyLoadRequest:(NSURLRequest *)request preferences:(WKWebpagePreferences *)preferences;
+- (void)synchronouslyLoadRequestIgnoringSSLErrors:(NSURLRequest *)request;
 - (void)synchronouslyLoadTestPageNamed:(NSString *)pageName;
+- (void)synchronouslyLoadTestPageNamed:(NSString *)pageName preferences:(WKWebpagePreferences *)preferences;
 - (BOOL)_synchronouslyExecuteEditCommand:(NSString *)command argument:(NSString *)argument;
 - (void)expectElementTagsInOrder:(NSArray<NSString *> *)tagNames;
 - (void)expectElementCount:(NSInteger)count querySelector:(NSString *)querySelector;
 - (void)expectElementTag:(NSString *)tagName toComeBefore:(NSString *)otherTagName;
 - (BOOL)evaluateMediaQuery:(NSString *)query;
 - (NSString *)stringByEvaluatingJavaScript:(NSString *)script;
+- (NSString *)stringByEvaluatingJavaScript:(NSString *)script inFrame:(WKFrameInfo *)frame;
 - (id)objectByEvaluatingJavaScriptWithUserGesture:(NSString *)script;
 - (id)objectByEvaluatingJavaScript:(NSString *)script;
+- (id)objectByEvaluatingJavaScript:(NSString *)script inFrame:(WKFrameInfo *)frame;
 - (id)objectByCallingAsyncFunction:(NSString *)script withArguments:(NSDictionary *)arguments error:(NSError **)errorOut;
 - (unsigned)waitUntilClientWidthIs:(unsigned)expectedClientWidth;
+- (CGRect)elementRectFromSelector:(NSString *)selector;
+- (CGPoint)elementMidpointFromSelector:(NSString *)selector;
 @end
 
 @interface TestMessageHandler : NSObject <WKScriptMessageHandler>
 - (void)addMessage:(NSString *)message withHandler:(dispatch_block_t)handler;
+- (void)setWildcardMessageHandler:(void (^)(NSString *))handler;
 @end
 
 @interface TestWKWebView : WKWebView
@@ -93,6 +147,7 @@
 - (void)performAfterLoading:(dispatch_block_t)actions;
 
 - (void)waitForNextPresentationUpdate;
+- (void)waitForNextVisibleContentRectUpdate;
 - (void)waitUntilActivityStateUpdateDone;
 - (void)forceDarkMode;
 - (NSString *)stylePropertyAtSelectionStart:(NSString *)propertyName;
@@ -101,9 +156,11 @@
 - (void)collapseToEnd;
 - (void)addToTestWindow;
 - (BOOL)selectionRangeHasStartOffset:(int)start endOffset:(int)end;
+- (BOOL)selectionRangeHasStartOffset:(int)start endOffset:(int)end inFrame:(WKFrameInfo *)frameInfo;
 - (void)clickOnElementID:(NSString *)elementID;
 - (void)waitForPendingMouseEvents;
 - (void)focus;
+- (std::optional<CGPoint>)getElementMidpoint:(NSString *)selector;
 @end
 
 #if PLATFORM(IOS_FAMILY)
@@ -118,7 +175,7 @@
 @end
 
 @interface TestWKWebView (IOSOnly)
-@property (nonatomic, readonly) RetainPtr<NSArray> selectionRectsAfterPresentationUpdate;
+@property (nonatomic) UIEdgeInsets overrideSafeAreaInset;
 @property (nonatomic, readonly) CGRect caretViewRectInContentCoordinates;
 @property (nonatomic, readonly) NSArray<NSValue *> *selectionViewRectsInContentCoordinates;
 - (_WKActivatedElementInfo *)activatedElementAtPosition:(CGPoint)position;
@@ -139,11 +196,24 @@
 - (void)mouseMoveToPoint:(NSPoint)pointInWindow withFlags:(NSEventModifierFlags)flags;
 - (void)sendClicksAtPoint:(NSPoint)pointInWindow numberOfClicks:(NSUInteger)numberOfClicks;
 - (void)sendClickAtPoint:(NSPoint)pointInWindow;
+- (void)rightClickAtPoint:(NSPoint)pointInWindow;
+- (void)wheelEventAtPoint:(CGPoint)pointInWindow wheelDelta:(CGSize)delta;
+- (BOOL)acceptsFirstMouseAtPoint:(NSPoint)pointInWindow;
 - (NSWindow *)hostWindow;
 - (void)typeCharacter:(char)character modifiers:(NSEventModifierFlags)modifiers;
 - (void)typeCharacter:(char)character;
+- (void)sendKey:(NSString *)characters code:(unsigned short)keyCode isDown:(BOOL)isDown modifiers:(NSEventModifierFlags)modifiers;
 - (void)setEventTimestampOffset:(NSTimeInterval)offset;
+@property (nonatomic, readonly) NSArray<NSString *> *collectLogsForNewConnections;
 @property (nonatomic, readonly) NSTimeInterval eventTimestamp;
+@property (nonatomic) BOOL forceWindowToBecomeKey;
 @end
 #endif
+
+@interface TestWKWebView (SiteIsolation)
+- (_WKFrameTreeNode *)mainFrame;
+- (_WKFrameTreeNode *)firstChildFrame;
+- (void)evaluateJavaScript:(NSString *)string inFrame:(WKFrameInfo *)frame completionHandler:(void(^)(id, NSError *))completionHandler;
+- (WKFindResult *)findStringAndWait:(NSString *)string withConfiguration:(WKFindConfiguration *)configuration;
+@end
 

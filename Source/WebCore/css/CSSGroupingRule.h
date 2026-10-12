@@ -44,13 +44,25 @@ public:
 protected:
     CSSGroupingRule(StyleRuleGroup&, CSSStyleSheet* parent);
     const StyleRuleGroup& groupRule() const { return m_groupRule; }
+    StyleRuleGroup& groupRule() { return m_groupRule; }
     void reattach(StyleRuleBase&) override;
     void appendCSSTextForItems(StringBuilder&) const;
+    void appendCSSTextWithReplacementURLsForItems(StringBuilder&, const HashMap<String, String>&, const HashMap<RefPtr<CSSStyleSheet>, String>&) const;
+    RefPtr<StyleRuleWithNesting> prepareChildStyleRuleForNesting(StyleRule&) override;
 
 private:
+    bool isGroupingRule() const final { return true; }
+    void appendCSSTextForItemsInternal(StringBuilder&, StringBuilder&) const;
+    void cssTextForRules(StringBuilder&) const;
+    void cssTextForRulesWithReplacementURLs(StringBuilder&, const HashMap<String, String>&, const HashMap<RefPtr<CSSStyleSheet>, String>&) const;
+
     Ref<StyleRuleGroup> m_groupRule;
     mutable Vector<RefPtr<CSSRule>> m_childRuleCSSOMWrappers;
     mutable std::unique_ptr<CSSRuleList> m_ruleListCSSOMWrapper;
 };
 
 } // namespace WebCore
+
+SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::CSSGroupingRule)
+    static bool isType(const WebCore::CSSRule& rule) { return rule.isGroupingRule(); }
+SPECIALIZE_TYPE_TRAITS_END()

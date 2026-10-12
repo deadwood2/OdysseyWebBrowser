@@ -31,6 +31,7 @@
 #include "MessageReceiver.h"
 #include <wtf/Forward.h>
 #include <wtf/Noncopyable.h>
+#include <wtf/TZoneMalloc.h>
 
 namespace WebCore {
 struct ExceptionData;
@@ -39,15 +40,18 @@ struct ExceptionData;
 namespace WebKit {
 
 class WebPageProxy;
+struct SharedPreferencesForWebProcess;
 
 class RemoteMediaSessionCoordinatorProxy
     : private IPC::MessageReceiver
     , public RefCounted<RemoteMediaSessionCoordinatorProxy>
     , public WebCore::MediaSessionCoordinatorClient {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED(RemoteMediaSessionCoordinatorProxy);
 public:
     static Ref<RemoteMediaSessionCoordinatorProxy> create(WebPageProxy&, Ref<MediaSessionCoordinatorProxyPrivate>&&);
     ~RemoteMediaSessionCoordinatorProxy();
+
+    const SharedPreferencesForWebProcess& sharedPreferencesForWebProcess() const;
 
     void seekTo(double, CompletionHandler<void(bool)>&&);
     void play(CompletionHandler<void(bool)>&&);
@@ -55,7 +59,8 @@ public:
     void setTrack(const String&, CompletionHandler<void(bool)>&&);
 
     using MediaSessionCoordinatorClient::weakPtrFactory;
-    using WeakValueType = MediaSessionCoordinatorClient::WeakValueType;
+    using MediaSessionCoordinatorClient::WeakValueType;
+    using MediaSessionCoordinatorClient::WeakPtrImplType;
 
 private:
     explicit RemoteMediaSessionCoordinatorProxy(WebPageProxy&, Ref<MediaSessionCoordinatorProxyPrivate>&&);
@@ -85,7 +90,7 @@ private:
 #if !RELEASE_LOG_DISABLED
     const WTF::Logger& logger() const { return m_logger; }
     const void* logIdentifier() const { return m_logIdentifier; }
-    const char* logClassName() const { return "RemoteMediaSessionCoordinatorProxy"; }
+    ASCIILiteral logClassName() const { return "RemoteMediaSessionCoordinatorProxy"_s; }
     WTFLogChannel& logChannel() const;
 #endif
 

@@ -25,7 +25,7 @@
 
 #pragma once
 
-#include <wtf/Variant.h>
+#include <variant>
 
 typedef struct AudioStreamBasicDescription AudioStreamBasicDescription;
 
@@ -36,8 +36,8 @@ struct PlatformDescription {
         None,
         CAAudioStreamBasicType,
         GStreamerAudioStreamDescription,
-    } type;
-    Variant<std::nullptr_t, const AudioStreamBasicDescription*> description;
+    } type { None };
+    std::variant<std::nullptr_t, const AudioStreamBasicDescription*> description;
 };
 
 class AudioStreamDescription {

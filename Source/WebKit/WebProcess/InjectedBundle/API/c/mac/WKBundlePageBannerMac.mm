@@ -32,6 +32,7 @@
 #import "PageBanner.h"
 #import "WKAPICast.h"
 #import "WKBundleAPICast.h"
+#include <wtf/TZoneMallocInlines.h>
 
 namespace API {
 template<> struct ClientTraits<WKBundlePageBannerClientBase> {
@@ -43,7 +44,7 @@ namespace WebKit {
 using namespace WebCore;
 
 class PageBannerClientImpl : API::Client<WKBundlePageBannerClientBase>, public PageBanner::Client {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED_INLINE(PageBannerClientImpl);
 public:
     explicit PageBannerClientImpl(WKBundlePageBannerClientBase* client)
     {
@@ -56,28 +57,23 @@ public:
 
 private:
     // PageBanner::Client.
-    void pageBannerDestroyed(PageBanner*) override
-    {
-        delete this;
-    }
-    
-    bool mouseEvent(PageBanner* pageBanner, WebEvent::Type type, WebMouseEvent::Button button, const IntPoint& position) override
+    bool mouseEvent(PageBanner* pageBanner, WebEventType type, WebMouseEventButton button, const IntPoint& position) override
     {
         switch (type) {
-        case WebEvent::MouseDown: {
+        case WebEventType::MouseDown: {
             if (!m_client.mouseDown)
                 return false;
 
             return m_client.mouseDown(toAPI(pageBanner), toAPI(position), toAPI(button), m_client.base.clientInfo);
         }
-        case WebEvent::MouseUp: {
+        case WebEventType::MouseUp: {
             if (!m_client.mouseUp)
                 return false;
 
             return m_client.mouseUp(toAPI(pageBanner), toAPI(position), toAPI(button), m_client.base.clientInfo);
         }
-        case WebEvent::MouseMove: {
-            if (button == WebMouseEvent::NoButton) {
+        case WebEventType::MouseMove: {
+            if (button == WebMouseEventButton::None) {
                 if (!m_client.mouseMoved)
                     return false;
 
@@ -105,7 +101,7 @@ WKBundlePageBannerRef WKBundlePageBannerCreateBannerWithCALayer(CALayer *layer, 
         return 0;
 
     auto clientImpl = makeUnique<WebKit::PageBannerClientImpl>(wkClient);
-    return toAPI(&WebKit::PageBanner::create(layer, height, clientImpl.release()).leakRef());
+    return toAPI(&WebKit::PageBanner::create(layer, height, WTFMove(clientImpl)).leakRef());
 }
 
 CALayer *WKBundlePageBannerGetLayer(WKBundlePageBannerRef pageBanner)

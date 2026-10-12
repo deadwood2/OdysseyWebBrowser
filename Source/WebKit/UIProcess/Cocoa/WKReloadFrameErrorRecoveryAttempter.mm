@@ -63,11 +63,11 @@
     if (!webView)
         return NO;
 
-    WebKit::WebFrameProxy* webFrameProxy = webView->_page->process().webFrame(_frameHandle->_frameHandle->frameID());
+    RefPtr webFrameProxy = WebKit::WebFrameProxy::webFrame(_frameHandle->_frameHandle->frameID());
     if (!webFrameProxy)
         return NO;
 
-    webFrameProxy->loadURL(URL(URL(), _urlString));
+    webFrameProxy->loadURL(URL { _urlString });
     return YES;
 }
 
@@ -77,7 +77,8 @@
 
 - (instancetype)initWithCoder:(NSCoder *)coder
 {
-    return [super init];
+    self = [super init];
+    return self;
 }
 
 + (BOOL)supportsSecureCoding

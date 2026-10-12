@@ -29,19 +29,19 @@
 
 #include "CommonVM.h"
 #include "Document.h"
-#include "Frame.h"
-#include "FrameView.h"
 #include "InspectorController.h"
 #include "InspectorFrontendClient.h"
 #include "JSDOMExceptionHandling.h"
 #include "JSDOMWindowCustom.h"
+#include "LocalFrame.h"
+#include "LocalFrameView.h"
 #include "Page.h"
 #include "PageGroup.h"
-#include "PluginViewBase.h"
 #include "ScriptController.h"
 #include "Timer.h"
 #include <JavaScriptCore/JSLock.h>
 #include <wtf/MainThread.h>
+#include <wtf/RunLoop.h>
 #include <wtf/StdLibExtras.h>
 
 #if PLATFORM(IOS_FAMILY)
@@ -123,14 +123,13 @@ void PageDebugger::runEventLoopWhilePausedInternal()
 {
     TimerBase::fireTimersInNestedEventLoop();
 
-    m_page.incrementNestedRunLoopCount();
+    // Protect the page during the execution of the nested run loop.
+    Ref protectedPage = m_page;
 
-    while (!doneProcessingDebuggerEvents()) {
+    while (!m_doneProcessingDebuggerEvents) {
         if (!platformShouldContinueRunningEventLoopWhilePaused())
             break;
     }
-
-    m_page.decrementNestedRunLoopCount();
 }
 
 bool PageDebugger::isContentScript(JSGlobalObject* state) const
@@ -148,8 +147,12 @@ void PageDebugger::reportException(JSGlobalObject* state, JSC::Exception* except
 void PageDebugger::setJavaScriptPaused(const PageGroup& pageGroup, bool paused)
 {
     for (auto& page : pageGroup.pages()) {
-        for (auto* frame = &page.mainFrame(); frame; frame = frame->tree().traverseNext())
-            setJavaScriptPaused(*frame, paused);
+        for (Frame* frame = &page.mainFrame(); frame; frame = frame->tree().traverseNext()) {
+            auto* localFrame = dynamicDowncast<LocalFrame>(frame);
+            if (!localFrame)
+                continue;
+            setJavaScriptPaused(*localFrame, paused);
+        }
 
         if (auto* frontendClient = page.inspectorController().inspectorFrontendClient()) {
             if (paused)
@@ -160,9 +163,9 @@ void PageDebugger::setJavaScriptPaused(const PageGroup& pageGroup, bool paused)
     }
 }
 
-void PageDebugger::setJavaScriptPaused(Frame& frame, bool paused)
+void PageDebugger::setJavaScriptPaused(LocalFrame& frame, bool paused)
 {
-    if (!frame.script().canExecuteScripts(NotAboutToExecuteScript))
+    if (!frame.script().canExecuteScripts(ReasonForCallingCanExecuteScripts::NotAboutToExecuteScript))
         return;
 
     frame.script().setPaused(paused);
@@ -176,17 +179,9 @@ void PageDebugger::setJavaScriptPaused(Frame& frame, bool paused)
         document.resumeActiveDOMObjects(ReasonForSuspension::JavaScriptDebuggerPaused);
         document.resumeScriptedAnimationControllerCallbacks();
     }
-
-    if (auto* view = frame.view()) {
-        for (auto& child : view->children()) {
-            if (!is<PluginViewBase>(child))
-                continue;
-            downcast<PluginViewBase>(child.get()).setJavaScriptPaused(paused);
-        }
-    }
 }
 
-#if !PLATFORM(MAC)
+#if !PLATFORM(MAC) && !OS(MORPHOS)
 bool PageDebugger::platformShouldContinueRunningEventLoopWhilePaused()
 {
     return RunLoop::cycle() != RunLoop::CycleResult::Stop;

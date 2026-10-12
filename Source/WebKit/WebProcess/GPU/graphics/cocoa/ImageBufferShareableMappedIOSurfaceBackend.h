@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Apple Inc.  All rights reserved.
+ * Copyright (C) 2020-2022 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,28 +27,32 @@
 
 #if ENABLE(GPU_PROCESS) && HAVE(IOSURFACE)
 
-#include "ImageBufferBackendHandle.h"
+#include "ImageBufferBackendHandleSharing.h"
 #include <WebCore/ImageBufferIOSurfaceBackend.h>
-#include <wtf/IsoMalloc.h>
+#include <wtf/TZoneMalloc.h>
+
+namespace WebCore {
+class ProcessIdentity;
+}
 
 namespace WebKit {
 
-class ShareableBitmap;
-
-class ImageBufferShareableMappedIOSurfaceBackend final : public WebCore::ImageBufferIOSurfaceBackend {
-    WTF_MAKE_ISO_ALLOCATED(ImageBufferShareableMappedIOSurfaceBackend);
+class ImageBufferShareableMappedIOSurfaceBackend final : public WebCore::ImageBufferIOSurfaceBackend, public ImageBufferBackendHandleSharing {
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(ImageBufferShareableMappedIOSurfaceBackend);
     WTF_MAKE_NONCOPYABLE(ImageBufferShareableMappedIOSurfaceBackend);
 public:
-    static std::unique_ptr<ImageBufferShareableMappedIOSurfaceBackend> create(const Parameters&, const WebCore::HostWindow*);
+    static std::unique_ptr<ImageBufferShareableMappedIOSurfaceBackend> create(const Parameters&, const WebCore::ImageBufferCreationContext&);
     static std::unique_ptr<ImageBufferShareableMappedIOSurfaceBackend> create(const Parameters&, ImageBufferBackendHandle);
 
     using WebCore::ImageBufferIOSurfaceBackend::ImageBufferIOSurfaceBackend;
 
-    ImageBufferBackendHandle createImageBufferBackendHandle() const;
+    std::optional<ImageBufferBackendHandle> createBackendHandle(WebCore::SharedMemory::Protection = WebCore::SharedMemory::Protection::ReadWrite) const final;
 
-#if HAVE(IOSURFACE_SET_OWNERSHIP_IDENTITY)
-    void setProcessOwnership(task_id_token_t);
-#endif
+private:
+    // ImageBufferBackendSharing
+    ImageBufferBackendSharing* toBackendSharing() final { return this; }
+
+    String debugDescription() const final;
 };
 
 } // namespace WebKit

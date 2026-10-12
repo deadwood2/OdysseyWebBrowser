@@ -25,8 +25,6 @@
 
 #pragma once
 
-#if ENABLE(LAYOUT_FORMATTING_CONTEXT)
-
 #include "FormattingContext.h"
 
 namespace WebCore {
@@ -37,10 +35,9 @@ public:
     FormattingQuirks(const FormattingContext&);
     virtual ~FormattingQuirks() = default;
 
-    virtual LayoutUnit heightValueOfNearestContainingBlockWithFixedHeight(const Box&) const;
+    virtual LayoutUnit heightValueOfNearestContainingBlockWithFixedHeight(const Box&) const { return { }; }
 
     bool isBlockFormattingQuirks() const { return formattingContext().isBlockFormattingContext(); }
-    bool isInlineFormattingQuirks() const { return formattingContext().isInlineFormattingContext(); }
     bool isTableFormattingQuirks() const { return formattingContext().isTableFormattingContext(); }
 
 protected:
@@ -58,4 +55,3 @@ SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::Layout::ToValueTypeName) \
     static bool isType(const WebCore::Layout::FormattingQuirks& formattingQuirks) { return formattingQuirks.predicate; } \
 SPECIALIZE_TYPE_TRAITS_END()
 
-#endif

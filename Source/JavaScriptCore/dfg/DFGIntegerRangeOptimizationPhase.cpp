@@ -249,11 +249,6 @@ public:
             && m_offset == other.m_offset;
     }
     
-    bool operator!=(const Relationship& other) const
-    {
-        return !(*this == other);
-    }
-    
     bool operator<(const Relationship& other) const
     {
         if (m_left != other.m_left)
@@ -568,6 +563,9 @@ public:
 
         switch (other.m_kind) {
         case Equal:
+            if (differenceOverflows<int>(otherEffectiveRight, thisRight))
+                return *this;
+
             // Return a version of *this that is Equal to other's constant.
             return Relationship(m_left, m_right, Equal, otherEffectiveRight - thisRight);
 
@@ -746,6 +744,9 @@ private:
             //
             //     @a < @b + max(C, D + 1)
             
+            if (sumOverflows<int32_t>(other.m_offset, 1))
+                return Relationship();
+
             int bestOffset = std::max(m_offset, other.m_offset + 1);
             
             // We have something like @a < @b + 2. We can't do it.
@@ -1010,7 +1011,7 @@ typedef HashMap<NodeFlowProjection, Vector<Relationship>> RelationshipMap;
 class IntegerRangeOptimizationPhase : public Phase {
 public:
     IntegerRangeOptimizationPhase(Graph& graph)
-        : Phase(graph, "integer range optimization")
+        : Phase(graph, "integer range optimization"_s)
         , m_zero(nullptr)
         , m_relationshipsAtHead(graph)
         , m_insertionSet(graph)
@@ -1344,7 +1345,7 @@ public:
                     
                     if (nonNegative && lessThanLength) {
                         executeNode(block->at(nodeIndex));
-                        if (UNLIKELY(Options::validateBoundsCheckElimination()))
+                        if (UNLIKELY(Options::validateBoundsCheckElimination()) && node->op() == CheckInBounds)
                             m_insertionSet.insertNode(nodeIndex, SpecNone, AssertInBounds, node->origin, node->child1(), node->child2());
                         // We just need to make sure we are a value-producing node.
                         node->convertToIdentityOn(node->child1().node());
@@ -1526,7 +1527,8 @@ private:
         }
             
         case GetArrayLength:
-        case GetVectorLength: {
+        case GetVectorLength:
+        case GetUndetachedTypeArrayLength: {
             setRelationship(Relationship(node, m_zero, Relationship::GreaterThan, -1));
             break;
         }

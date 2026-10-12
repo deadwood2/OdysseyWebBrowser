@@ -29,19 +29,20 @@
 #include "config.h"
 #include "SpatialNavigation.h"
 
-#include "Frame.h"
 #include "FrameTree.h"
-#include "FrameView.h"
 #include "HTMLAreaElement.h"
 #include "HTMLImageElement.h"
 #include "HTMLMapElement.h"
 #include "HTMLSelectElement.h"
 #include "IntRect.h"
+#include "LocalFrame.h"
+#include "LocalFrameView.h"
 #include "Node.h"
 #include "Page.h"
 #include "RenderInline.h"
 #include "RenderLayer.h"
 #include "RenderLayerScrollableArea.h"
+#include "RenderStyleInlines.h"
 #include "Settings.h"
 
 namespace WebCore {
@@ -51,16 +52,13 @@ static bool areRectsPartiallyAligned(FocusDirection, const LayoutRect&, const La
 static bool areRectsMoreThanFullScreenApart(FocusDirection, const LayoutRect& curRect, const LayoutRect& targetRect, const LayoutSize& viewSize);
 static bool isRectInDirection(FocusDirection, const LayoutRect&, const LayoutRect&);
 static void deflateIfOverlapped(LayoutRect&, LayoutRect&);
-static LayoutRect rectToAbsoluteCoordinates(Frame* initialFrame, const LayoutRect&);
+static LayoutRect rectToAbsoluteCoordinates(LocalFrame* initialFrame, const LayoutRect&);
 static void entryAndExitPointsForDirection(FocusDirection, const LayoutRect& startingRect, const LayoutRect& potentialRect, LayoutPoint& exitPoint, LayoutPoint& entryPoint);
 static bool isScrollableNode(const Node*);
 
 FocusCandidate::FocusCandidate(Node* node, FocusDirection direction)
-    : visibleNode(nullptr)
-    , focusableNode(nullptr)
-    , enclosingScrollableBox(nullptr)
-    , distance(maxDistance())
-    , alignment(None)
+    : distance(maxDistance())
+    , alignment(RectsAlignment::None)
     , isOffscreen(true)
     , isOffscreenAfterScrolling(true)
 {
@@ -68,11 +66,11 @@ FocusCandidate::FocusCandidate(Node* node, FocusDirection direction)
 
     if (is<HTMLAreaElement>(*node)) {
         HTMLAreaElement& area = downcast<HTMLAreaElement>(*node);
-        HTMLImageElement* image = area.imageElement();
+        RefPtr image = area.imageElement();
         if (!image || !image->renderer())
             return;
 
-        visibleNode = image;
+        visibleNode = image.get();
         rect = virtualRectForAreaElementAndDirection(&area, direction);
     } else {
         if (!node->renderer())
@@ -83,11 +81,12 @@ FocusCandidate::FocusCandidate(Node* node, FocusDirection direction)
     }
 
     focusableNode = node;
-    isOffscreen = hasOffscreenRect(visibleNode);
-    isOffscreenAfterScrolling = hasOffscreenRect(visibleNode, direction);
+    RefPtr protectedVisibleNode { visibleNode.get() };
+    isOffscreen = hasOffscreenRect(protectedVisibleNode.get());
+    isOffscreenAfterScrolling = hasOffscreenRect(protectedVisibleNode.get(), direction);
 }
 
-bool isSpatialNavigationEnabled(const Frame* frame)
+bool isSpatialNavigationEnabled(const LocalFrame* frame)
 {
     return (frame && frame->settings().spatialNavigationEnabled());
 }
@@ -96,15 +95,15 @@ static RectsAlignment alignmentForRects(FocusDirection direction, const LayoutRe
 {
     // If we found a node in full alignment, but it is too far away, ignore it.
     if (areRectsMoreThanFullScreenApart(direction, curRect, targetRect, viewSize))
-        return None;
+        return RectsAlignment::None;
 
     if (areRectsFullyAligned(direction, curRect, targetRect))
-        return Full;
+        return RectsAlignment::Full;
 
     if (areRectsPartiallyAligned(direction, curRect, targetRect))
-        return Partial;
+        return RectsAlignment::Partial;
 
-    return None;
+    return RectsAlignment::None;
 }
 
 static inline bool isHorizontalMove(FocusDirection direction)
@@ -291,7 +290,7 @@ bool hasOffscreenRect(Node* node, FocusDirection direction)
     // Get the FrameView in which |node| is (which means the current viewport if |node|
     // is not in an inner document), so we can check if its content rect is visible
     // before we actually move the focus to it.
-    FrameView* frameView = node->document().view();
+    auto* frameView = node->document().view();
     if (!frameView)
         return true;
 
@@ -332,11 +331,11 @@ bool hasOffscreenRect(Node* node, FocusDirection direction)
     return !containerViewportRect.intersects(rect);
 }
 
-bool scrollInDirection(Frame* frame, FocusDirection direction)
+bool scrollInDirection(LocalFrame* frame, FocusDirection direction)
 {
     ASSERT(frame);
 
-    if (frame && canScrollInDirection(frame->document(), direction)) {
+    if (frame && canScrollInDirection(frame->protectedDocument().get(), direction)) {
         LayoutUnit dx;
         LayoutUnit dy;
         switch (direction) {
@@ -367,7 +366,7 @@ bool scrollInDirection(Node* container, FocusDirection direction)
 {
     ASSERT(container);
     if (is<Document>(*container))
-        return scrollInDirection(downcast<Document>(*container).frame(), direction);
+        return scrollInDirection(downcast<Document>(*container).protectedFrame().get(), direction);
 
     if (!container->renderBox())
         return false;
@@ -449,7 +448,7 @@ bool canScrollInDirection(const Node* container, FocusDirection direction)
         return false;
 
     if (is<Document>(*container))
-        return canScrollInDirection(downcast<Document>(*container).frame(), direction);
+        return canScrollInDirection(downcast<Document>(*container).protectedFrame().get(), direction);
 
     if (!isScrollableNode(container))
         return false;
@@ -469,16 +468,16 @@ bool canScrollInDirection(const Node* container, FocusDirection direction)
     }
 }
 
-bool canScrollInDirection(const Frame* frame, FocusDirection direction)
+bool canScrollInDirection(const LocalFrame* frame, FocusDirection direction)
 {
     if (!frame->view())
         return false;
     ScrollbarMode verticalMode;
     ScrollbarMode horizontalMode;
     frame->view()->calculateScrollbarModesForLayout(horizontalMode, verticalMode);
-    if ((direction == FocusDirection::Left || direction == FocusDirection::Right) && ScrollbarAlwaysOff == horizontalMode)
+    if ((direction == FocusDirection::Left || direction == FocusDirection::Right) && ScrollbarMode::AlwaysOff == horizontalMode)
         return false;
-    if ((direction == FocusDirection::Up || direction == FocusDirection::Down) &&  ScrollbarAlwaysOff == verticalMode)
+    if ((direction == FocusDirection::Up || direction == FocusDirection::Down) &&  ScrollbarMode::AlwaysOff == verticalMode)
         return false;
     LayoutSize size = frame->view()->totalContentsSize();
     LayoutPoint scrollPosition = frame->view()->scrollPosition();
@@ -501,7 +500,7 @@ bool canScrollInDirection(const Frame* frame, FocusDirection direction)
 }
 
 // FIXME: This is completely broken. This should be deleted and callers should be calling ScrollView::contentsToWindow() instead.
-static LayoutRect rectToAbsoluteCoordinates(Frame* initialFrame, const LayoutRect& initialRect)
+static LayoutRect rectToAbsoluteCoordinates(LocalFrame* initialFrame, const LayoutRect& initialRect)
 {
     LayoutRect rect = initialRect;
     for (Frame* frame = initialFrame; frame; frame = frame->tree().parent()) {
@@ -509,7 +508,7 @@ static LayoutRect rectToAbsoluteCoordinates(Frame* initialFrame, const LayoutRec
             do {
                 rect.move(LayoutUnit(element->offsetLeft()), LayoutUnit(element->offsetTop()));
             } while ((element = element->offsetParent()));
-            rect.moveBy((-frame->view()->scrollPosition()));
+            rect.moveBy((-frame->virtualView()->scrollPosition()));
         }
     }
     return rect;
@@ -520,11 +519,11 @@ LayoutRect nodeRectInAbsoluteCoordinates(Node* node, bool ignoreBorder)
     ASSERT(node && node->renderer() && !node->document().view()->needsLayout());
 
     if (is<Document>(*node))
-        return frameRectInAbsoluteCoordinates(downcast<Document>(*node).frame());
+        return frameRectInAbsoluteCoordinates(downcast<Document>(*node).protectedFrame().get());
 
     LayoutRect rect;
-    if (RenderObject* renderer = node->renderer())
-        rect = rectToAbsoluteCoordinates(node->document().frame(), renderer->absoluteBoundingBoxRect());
+    if (CheckedPtr renderer = node->renderer())
+        rect = rectToAbsoluteCoordinates(node->document().protectedFrame().get(), renderer->absoluteBoundingBoxRect());
 
     // For authors that use border instead of outline in their CSS, we compensate by ignoring the border when calculating
     // the rect of the focused element.
@@ -536,7 +535,7 @@ LayoutRect nodeRectInAbsoluteCoordinates(Node* node, bool ignoreBorder)
     return rect;
 }
 
-LayoutRect frameRectInAbsoluteCoordinates(Frame* frame)
+LayoutRect frameRectInAbsoluteCoordinates(LocalFrame* frame)
 {
     return rectToAbsoluteCoordinates(frame, frame->view()->visibleContentRect());
 }
@@ -648,7 +647,7 @@ void distanceDataForNode(FocusDirection direction, const FocusCandidate& current
     if (areElementsOnSameLine(current, candidate)) {
         if ((direction == FocusDirection::Up && current.rect.y() > candidate.rect.y()) || (direction == FocusDirection::Down && candidate.rect.y() > current.rect.y())) {
             candidate.distance = 0;
-            candidate.alignment = Full;
+            candidate.alignment = RectsAlignment::Full;
             return;
         }
     }
@@ -698,7 +697,10 @@ void distanceDataForNode(FocusDirection direction, const FocusCandidate& current
 
     float distance = euclidianDistance + sameAxisDistance + 2 * otherAxisDistance;
     candidate.distance = roundf(distance);
-    LayoutSize viewSize = candidate.visibleNode->document().page()->mainFrame().view()->visibleContentRect().size();
+    auto* localMainFrame = dynamicDowncast<LocalFrame>(candidate.visibleNode->document().page()->mainFrame());
+    if (!localMainFrame)
+        return;
+    LayoutSize viewSize = localMainFrame->view()->visibleContentRect().size();
     candidate.alignment = alignmentForRects(direction, currentRect, nodeRect, viewSize);
 }
 
@@ -756,13 +758,13 @@ LayoutRect virtualRectForAreaElementAndDirection(HTMLAreaElement* area, FocusDir
     ASSERT(area->imageElement());
     // Area elements tend to overlap more than other focusable elements. We flatten the rect of the area elements
     // to minimize the effect of overlapping areas.
-    LayoutRect rect = virtualRectForDirection(direction, rectToAbsoluteCoordinates(area->document().frame(), area->computeRect(area->imageElement()->renderer())), 1);
+    LayoutRect rect = virtualRectForDirection(direction, rectToAbsoluteCoordinates(area->document().protectedFrame().get(), area->computeRect(area->imageElement()->checkedRenderer().get())), 1);
     return rect;
 }
 
 HTMLFrameOwnerElement* frameOwnerElement(FocusCandidate& candidate)
 {
-    return candidate.isFrameOwnerElement() ? downcast<HTMLFrameOwnerElement>(candidate.visibleNode) : nullptr;
+    return dynamicDowncast<HTMLFrameOwnerElement>(candidate.visibleNode.get());
 }
 
 } // namespace WebCore

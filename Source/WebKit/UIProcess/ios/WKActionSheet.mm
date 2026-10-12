@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,6 +29,7 @@
 #if PLATFORM(IOS_FAMILY)
 
 #import "UIKitSPI.h"
+#import "UIKitUtilities.h"
 #import <wtf/RetainPtr.h>
 
 @implementation WKActionSheet {
@@ -51,14 +52,14 @@
 
     _arrowDirections = UIPopoverArrowDirectionAny;
 
-    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     if (UI_USER_INTERFACE_IDIOM() != UIUserInterfaceIdiomPhone) {
         // Only iPads support popovers that rotate. UIActionSheets actually block rotation on iPhone/iPod Touch
         NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
         [center addObserver:self selector:@selector(willRotate) name:UIWindowWillRotateNotification object:nil];
         [center addObserver:self selector:@selector(didRotate) name:UIWindowDidRotateNotification object:nil];
     }
-    ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_END
 
     return self;
 }
@@ -81,13 +82,13 @@
 {
     // Calculate the presentation rect just before showing.
     CGRect presentationRect = CGRectZero;
-    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     if (UI_USER_INTERFACE_IDIOM() != UIUserInterfaceIdiomPhone) {
         presentationRect = [self _presentationRectForStyle:style];
         if (CGRectIsEmpty(presentationRect))
             return NO;
     }
-    ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_END
 
     _currentPresentationStyle = style;
     return [self presentSheetFromRect:presentationRect];
@@ -121,7 +122,7 @@
     if (_popoverPresentationControllerDelegateWhileRotating)
         presentationController.delegate = _popoverPresentationControllerDelegateWhileRotating.get();
 
-    _currentPresentingViewController = [UIViewController _viewControllerForFullScreenPresentationFromView:view];
+    _currentPresentingViewController = view._wk_viewControllerForFullScreenPresentation;
     [_currentPresentingViewController presentViewController:presentedViewController animated:YES completion:nil];
 
     return YES;
@@ -163,7 +164,7 @@
     if (!view)
         return;
 
-    UIViewController *presentingViewController = [UIViewController _viewControllerForFullScreenPresentationFromView:view];
+    auto presentingViewController = view._wk_viewControllerForFullScreenPresentation;
 
     // topPresentedViewController is either self (cases (a) and (b) above) or an action's view controller
     // (case (c) above).
@@ -216,15 +217,11 @@
     // - The completion of the view controller dismissal in willRotate.
     // (We cannot present something again until the dismissal is done)
 
-    BOOL isBeingPresented = [presentedViewController presentingViewController] || [self presentingViewController];
-
-    if (_isRotating || !_readyToPresentAfterRotation || isBeingPresented)
+    if (_isRotating || !_readyToPresentAfterRotation || [presentedViewController presentingViewController] || [self presentingViewController])
         return;
 
     CGRect presentationRect = [self _presentationRectForStyle:_currentPresentationStyle];
-    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-    BOOL wasPresentedViewControllerModal = [_presentedViewControllerWhileRotating isModalInPopover];
-    ALLOW_DEPRECATED_DECLARATIONS_END
+    BOOL wasPresentedViewControllerModal = [_presentedViewControllerWhileRotating isModalInPresentation];
 
     if (!CGRectIsEmpty(presentationRect) || wasPresentedViewControllerModal) {
         // Re-present the popover only if we are still pointing to content onscreen, or if we can't dismiss it without losing information.

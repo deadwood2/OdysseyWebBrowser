@@ -23,19 +23,23 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+import {stat} from "fs";
 import path from "path";
 import util from "util";
+import which from "which";
 import {execFile, spawn} from "child_process";
+import { HttpsProxyAgent } from 'https-proxy-agent';
+import LogLevel from "@slack/rtm-api";
 import SlackRTMAPI from "@slack/rtm-api";
 import AsyncTaskQueue from "./AsyncTaskQueue.mjs";
 import {dataLogLn, escapeForSlackText, isASCII, rootDirectoryOfWebKit} from "./Utility.mjs";
 
-const webkitPatchPath = path.resolve(rootDirectoryOfWebKit(), "Tools", "Scripts", "webkit-patch");
 const defaultTaskLimit = 10;
 const defaultPullPeriod = 60 * 1000 * 60;
 const defaultTimeoutForRevert = 60 * 1000 * 10;
 
 const execFileAsync = util.promisify(execFile);
+const statAsync = util.promisify(stat);
 
 function parseBugId(string)
 {
@@ -61,7 +65,7 @@ function extractRevision(text)
         if (!candidate)
             continue;
 
-        let match = candidate.match(/^r?(\d+):?$/);
+        let match = candidate.match(/^r?(\d{5,6}|\d+\@[^:\s]+|[0-9a-f]{6,40}):?$/);
         if (!match)
             return null;
 
@@ -173,8 +177,19 @@ e.g. \`dry-revert 260220 Ensure it is working after refactoring\`
             usage: "`status`",
             operation: this.statusCommand.bind(this),
         });
+        this._commands.set("hi", {
+            description: "Responds with hi.",
+            usage: "`hi`",
+            operation: this.hiCommand.bind(this),
+        });
+        this._commands.set("yt?", {
+            description: "Responds with yes.",
+            usage: "`yt?`",
+            operation: this.youThereCommand.bind(this),
+        });
 
-        this._rtm = new SlackRTMAPI.RTMClient(process.env.SLACK_TOKEN);
+        const proxy = new HttpsProxyAgent(process.env.http_proxy);
+        this._rtm = new SlackRTMAPI.RTMClient(process.env.SLACK_TOKEN, { agent: proxy, logLevel: LogLevel.DEBUG });
         this._rtm.on("message", async (event) => {
             if (event.type !== "message")
                 return;
@@ -217,7 +232,12 @@ e.g. \`dry-revert 260220 Ensure it is working after refactoring\`
             try {
                 await this._web.chat.postMessage({
                     channel: event.channel,
-                    text: `<@${event.user}> Preparing revert for ${revisions.map((revision) => `<${escapeForSlackText(`https://trac.webkit.org/r${revision}|r${revision}`)}>`).join(" ")} ...`,
+                    text: `<@${event.user}> Preparing revert for ${revisions.map((revision) => {
+                        let revRepr = revision;
+                        if (revRepr.match(/^\d+$/))
+                            revRepr = `r${revRepr}`;
+                        return `<${escapeForSlackText(`https://commits.webkit.org/${revRepr}|${revRepr}`)}>`;
+                    }).join(" ")} ...`,
                 });
                 let bugId = await this._taskQueue.postOrFailWhenExceedingLimit({
                     command: "revert",
@@ -230,9 +250,54 @@ e.g. \`dry-revert 260220 Ensure it is working after refactoring\`
                 });
             } catch (error) {
                 console.error(error);
+                let stderr = error.stderr;
+                console.error("STDERR ", stderr);
+                if (typeof stderr === "string") {
+                    {
+                        let index = stderr.indexOf("Failed to apply reverse diff for revision");
+                        if (index !== -1) {
+                            let lines = stderr.slice(index).split("\n");
+                            lines.shift();
+                            let files = [];
+                            for (let line of lines) {
+                                try {
+                                    await statAsync(path.join(process.env.webkitWorkingDirectory, line));
+                                    files.push(line);
+                                } catch {
+                                    // THis is not a file.
+                                    break;
+                                }
+                            }
+                            if (files.length !== 0) {
+                                await this._web.chat.postMessage({
+                                    channel: event.channel,
+                                    text: `<@${event.user}> Failed to create revert patch because of the following conflicts:
+\`\`\`
+${escapeForSlackText(files.join("\n"))}\`\`\``,
+                                });
+                                return;
+                            }
+                        }
+                    }
+                    {
+                        let index = stderr.indexOf("You are not authorized to access bug");
+                        if (index !== -1) {
+                            let line = stderr.slice(index).split("\n")[0].trim();
+                            let matched = /#(\d+)/.match(line);
+                            await this._web.chat.postMessage({
+                                channel: event.channel,
+                                text: `<@${event.user}> Failed to create revert patch. Please ensure commit-queue@webkit.org is authorized to access ${matched ? ("bug " + escapeForSlackText(matched[1])) : "the bug"}.`
+                            });
+                            return;
+                        }
+
+                    }
+                }
                 await this._web.chat.postMessage({
                     channel: event.channel,
-                    text: `<@${event.user}> Failed to create revert patch.`,
+                    text: `<@${event.user}> Failed to create revert patch.` + (stderr ? `
+\`\`\`
+${escapeForSlackText(stderr)}\`\`\`` : ""),
                 });
             }
             return;
@@ -326,7 +391,23 @@ Type \`help COMMAND\` for help on my individual commands.`,
     {
         await this._web.chat.postMessage({
             channel: event.channel,
-            text: `<@${event.user}> ${escapeForSlackText(this._taskQueue.length)} requests in queue.`,
+            text: `<@${event.user}> ${escapeForSlackText(String(this._taskQueue.length))} requests in queue.`,
+        });
+    }
+
+    async hiCommand(event, command, args)
+    {
+        await this._web.chat.postMessage({
+            channel: event.channel,
+            text: `Hi <@${event.user}>!`,
+        });
+    }
+
+    async youThereCommand(event, command, args)
+    {
+        await this._web.chat.postMessage({
+            channel: event.channel,
+            text: `<@${event.user}> yes`,
         });
     }
 
@@ -364,32 +445,36 @@ Type \`help COMMAND\` for help on my individual commands.`,
         dataLogLn("2. Cleaning");
         await this.execInWebKitDirectorySimple("git", ["clean", "-df"]);
 
-        dataLogLn("3. Pulling");
-        await this.execInWebKitDirectorySimple("git", ["pull", "origin", "master"]);
+        dataLogLn("3. Fetching");
+        await this.execInWebKitDirectorySimple("git", ["fetch", "origin"]);
 
-        dataLogLn("4. Fetching");
-        await this.execInWebKitDirectorySimple("git", ["svn", "fetch"]);
+        dataLogLn("4. Checkout out origin/main");
+        await this.execInWebKitDirectorySimple("git", ["checkout", "origin/main", "-f"]);
+
+        dataLogLn("5. Deleting local 'main' ref");
+        await this.execInWebKitDirectorySimple("git", ["branch", "-D", "main"]);
+
+        dataLogLn("6. Creating local 'main' ref");
+        await this.execInWebKitDirectorySimple("git", ["checkout", "origin/main", "-b", "main"]);
     }
 
     async generateRevertingPatch(revisions, reason)
     {
         dataLogLn("Reverting ", revisions, reason);
-        let revisionsArgument = revisions.map((revision) => {
-            let number = Number.parseInt(revision, 10);
-            if (!Number.isFinite(number))
-                throw new Error(`Invalid svn revision number "${String(revision)}"`);
-            return number;
-        }).join(" ");
+        let revisionsArgument = revisions.join(" ");
 
         if (reason.startsWith("-"))
             throw new Error(`The revert reason may not begin with - ("${reason}")`);
 
         await this.cleanUpWorkingCopy();
 
-        dataLogLn("5. Creating revert patch ", revisions, reason);
+        dataLogLn("7. Creating revert patch ", revisions, reason);
         let results;
         try {
-            results = await execFileAsync(webkitPatchPath, [
+            const webkitPatchPath = path.resolve("BotWebKit", "Tools", "Scripts", "webkit-patch");
+            var pythonPath = which.sync('python3')
+            results = await execFileAsync(pythonPath, [
+                webkitPatchPath,
                 "create-revert",
                 "--force-clean",
                 // In principle, we should pass --non-interactive here, but it
@@ -404,15 +489,19 @@ Type \`help COMMAND\` for help on my individual commands.`,
                 env: {
                     CHANGE_LOG_NAME: "Commit Queue",
                     CHANGE_LOG_EMAIL_ADDRESS: "commit-queue@webkit.org",
-                    webkit_bugzilla_username: process.env.webkitBugzillaUsername,
-                    webkit_bugzilla_password: process.env.webkitBugzillaPassword,
+                    WEBKIT_BUGZILLA_USERNAME: process.env.webkitBugzillaUsername,
+                    WEBKIT_BUGZILLA_PASSWORD: process.env.webkitBugzillaPassword,
+                    http_proxy: process.env.http_proxy,
+                    https_proxy: process.env.http_proxy,
                 },
                 timeout: defaultTimeoutForRevert,
                 maxBuffer: 1024 * 1024 * 50,
             });
         } catch (error) {
             dataLogLn(error);
-            throw new Error("Revert command failed");
+            let newError = new Error("Revert command failed");
+            newError.stderr = error.stderr;
+            throw newError;
         }
         let {stdout, stderr} = results;
         dataLogLn(stdout);

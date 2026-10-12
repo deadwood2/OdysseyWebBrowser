@@ -1,7 +1,5 @@
 #pragma once
 
-#include "config.h"
-
 #if ENABLE(VIDEO)
 
 #include "acinerella.h"
@@ -11,6 +9,7 @@
 #include <wtf/Threading.h>
 #include <wtf/text/WTFString.h>
 #include <wtf/ThreadSafeRefCounted.h>
+#include <wtf/Deque.h>
 #include <memory>
 #include "AcinerellaBuffer.h"
 #include "AcinerellaMuxer.h"
@@ -28,6 +27,25 @@ struct MediaPlayerMorphOSStreamSettings;
 namespace Acinerella {
 
 class Acinerella;
+
+template<typename T> class AcinerellaThreadsafeNumber
+{
+public:
+    AcinerellaThreadsafeNumber() : _store(0) { };
+    AcinerellaThreadsafeNumber(const T value) : _store(value) { };
+    ~AcinerellaThreadsafeNumber() = default;
+    AcinerellaThreadsafeNumber(const AcinerellaThreadsafeNumber&) = delete;
+    AcinerellaThreadsafeNumber(AcinerellaThreadsafeNumber&&) = delete;
+
+    operator T() const { auto lock = Locker(const_cast<Lock&>(_lock)); return _store; }
+    T& operator=(const T& other) { auto lock = Locker(_lock); _store = other; return _store; }
+    T& operator += (const T& value) { auto lock = Locker(_lock); _store += value; return _store; }
+    T& operator -= (const T& value) { auto lock = Locker(_lock); _store -= value; return _store; }
+    
+private:
+    Lock _lock;
+    T _store;
+};
 
 class AcinerellaDecodedFrame
 {
@@ -106,6 +124,10 @@ public:
 	virtual bool isVideo() const = 0;
 	virtual bool isText() const = 0;
 
+    // not used by decoder directly
+    bool isEnabled() const { return m_enabled; }
+    void setEnabled(bool enabled) { m_enabled = enabled; }
+
 	void setVolume(float volume);
 
 	double duration() const { return m_duration; }
@@ -136,7 +158,7 @@ protected:
 	void onDurationChanged();
 	void onReadyToPlay();
 	void onEnded();
-	virtual void flush();
+	virtual void flush(bool willSeek);
 	virtual void onGetReadyToPlay() { };
 	virtual void onCoolDown() { };
 
@@ -150,6 +172,7 @@ protected:
 	// call from: Own thread, under m_lock!
 	virtual void onDecoderChanged(RefPtr<AcinerellaPointer>) { }
 	virtual void onFrameDecoded(const AcinerellaDecodedFrame &) { }
+    virtual bool acceptPackage(RefPtr<AcinerellaPackage>&, double) { return true; }
 
 	// call from: Own thread
 	virtual void startPlaying() = 0;
@@ -172,8 +195,9 @@ protected:
 	int                                m_index;
 	bool                               m_isLive = false;
 	bool                               m_isHLS = false;
+    bool                               m_enabled = false;
 	
-	std::queue<AcinerellaDecodedFrame> m_decodedFrames;
+	Deque<AcinerellaDecodedFrame>      m_decodedFrames;
 	Lock                               m_lock;
 
 	ac_decoder                        *m_lastDecoder = nullptr;

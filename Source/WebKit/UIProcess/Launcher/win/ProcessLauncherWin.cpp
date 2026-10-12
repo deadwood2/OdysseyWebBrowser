@@ -28,8 +28,9 @@
 #include "ProcessLauncher.h"
 
 #include "Connection.h"
-#include <WTF/RunLoop.h>
+#include "IPCUtilities.h"
 #include <shlwapi.h>
+#include <wtf/RunLoop.h>
 #include <wtf/text/StringBuilder.h>
 
 namespace WebKit {
@@ -53,7 +54,7 @@ void ProcessLauncher::launchProcess()
 {
     // First, create the server and client identifiers.
     HANDLE serverIdentifier, clientIdentifier;
-    if (!IPC::Connection::createServerAndClientIdentifiers(serverIdentifier, clientIdentifier)) {
+    if (!IPC::createServerAndClientIdentifiers(serverIdentifier, clientIdentifier)) {
         // FIXME: What should we do here?
         ASSERT_NOT_REACHED();
     }
@@ -69,7 +70,7 @@ void ProcessLauncher::launchProcess()
         return;
 
     WCHAR pathStr[MAX_PATH];
-    if (!::GetModuleFileName(webKitModule, pathStr, WTF_ARRAY_LENGTH(pathStr)))
+    if (!::GetModuleFileName(webKitModule, pathStr, std::size(pathStr)))
         return;
 
     ::PathRemoveFileSpec(pathStr);
@@ -77,19 +78,19 @@ void ProcessLauncher::launchProcess()
         return;
 
     StringBuilder commandLineBuilder;
-    commandLineBuilder.append("\"");
+    commandLineBuilder.append("\""_s);
     commandLineBuilder.append(String(pathStr));
-    commandLineBuilder.append("\"");
-    commandLineBuilder.append(" -type ");
+    commandLineBuilder.append("\""_s);
+    commandLineBuilder.append(" -type "_s);
     commandLineBuilder.append(String::number(static_cast<int>(m_launchOptions.processType)));
-    commandLineBuilder.append(" -processIdentifier ");
+    commandLineBuilder.append(" -processIdentifier "_s);
     commandLineBuilder.append(String::number(m_launchOptions.processIdentifier.toUInt64()));
-    commandLineBuilder.append(" -clientIdentifier ");
+    commandLineBuilder.append(" -clientIdentifier "_s);
     commandLineBuilder.append(String::number(reinterpret_cast<uintptr_t>(clientIdentifier)));
     if (m_client->shouldConfigureJSCForTesting())
-        commandLineBuilder.append(" -configure-jsc-for-testing");
+        commandLineBuilder.append(" -configure-jsc-for-testing"_s);
     if (!m_client->isJITEnabled())
-        commandLineBuilder.append(" -disable-jit");
+        commandLineBuilder.append(" -disable-jit"_s);
     commandLineBuilder.append('\0');
 
     auto commandLine = commandLineBuilder.toString().wideCharacters();
@@ -114,17 +115,17 @@ void ProcessLauncher::launchProcess()
 
     // We've finished launching the process, message back to the run loop.
     RefPtr<ProcessLauncher> protectedThis(this);
-    m_hProcess = processInformation.hProcess;
+    m_hProcess = Win32Handle::adopt(processInformation.hProcess);
     WTF::ProcessID pid = processInformation.dwProcessId;
 
     RunLoop::main().dispatch([protectedThis, pid, serverIdentifier] {
-        protectedThis->didFinishLaunchingProcess(pid, serverIdentifier);
+        protectedThis->didFinishLaunchingProcess(pid, IPC::Connection::Identifier { serverIdentifier });
     });
 }
 
 void ProcessLauncher::terminateProcess()
 {
-    if (!m_hProcess.isValid())
+    if (!m_hProcess)
         return;
 
     ::TerminateProcess(m_hProcess.get(), 0);
@@ -132,7 +133,7 @@ void ProcessLauncher::terminateProcess()
 
 void ProcessLauncher::platformInvalidate()
 {
-    m_hProcess.clear();
+    m_hProcess = { };
 }
 
 } // namespace WebKit

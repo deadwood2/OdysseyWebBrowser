@@ -16,33 +16,38 @@
 namespace gl
 {
 ANGLE_INLINE bool ValidateDrawArrays(const Context *context,
+                                     angle::EntryPoint entryPoint,
                                      PrimitiveMode mode,
                                      GLint first,
                                      GLsizei count)
 {
-    return ValidateDrawArraysCommon(context, mode, first, count, 1);
+    return ValidateDrawArraysCommon(context, entryPoint, mode, first, count, 1);
 }
 
 ANGLE_INLINE bool ValidateUniform2f(const Context *context,
+                                    angle::EntryPoint entryPoint,
                                     UniformLocation location,
                                     GLfloat x,
                                     GLfloat y)
 {
-    return ValidateUniform(context, GL_FLOAT_VEC2, location, 1);
+    return ValidateUniform(context, entryPoint, GL_FLOAT_VEC2, location, 1);
 }
 
-ANGLE_INLINE bool ValidateBindBuffer(const Context *context, BufferBinding target, BufferID buffer)
+ANGLE_INLINE bool ValidateBindBuffer(const Context *context,
+                                     angle::EntryPoint entryPoint,
+                                     BufferBinding target,
+                                     BufferID buffer)
 {
     if (!context->isValidBufferBinding(target))
     {
-        context->validationError(GL_INVALID_ENUM, err::kInvalidBufferTypes);
+        ANGLE_VALIDATION_ERROR(GL_INVALID_ENUM, err::kInvalidBufferTypes);
         return false;
     }
 
     if (!context->getState().isBindGeneratesResourceEnabled() &&
         !context->isBufferGenerated(buffer))
     {
-        context->validationError(GL_INVALID_OPERATION, err::kObjectNotGenerated);
+        ANGLE_VALIDATION_ERROR(GL_INVALID_OPERATION, err::kObjectNotGenerated);
         return false;
     }
 
@@ -50,15 +55,17 @@ ANGLE_INLINE bool ValidateBindBuffer(const Context *context, BufferBinding targe
 }
 
 ANGLE_INLINE bool ValidateDrawElements(const Context *context,
+                                       angle::EntryPoint entryPoint,
                                        PrimitiveMode mode,
                                        GLsizei count,
                                        DrawElementsType type,
                                        const void *indices)
 {
-    return ValidateDrawElementsCommon(context, mode, count, type, indices, 1);
+    return ValidateDrawElementsCommon(context, entryPoint, mode, count, type, indices, 1);
 }
 
 ANGLE_INLINE bool ValidateVertexAttribPointer(const Context *context,
+                                              angle::EntryPoint entryPoint,
                                               GLuint index,
                                               GLint size,
                                               VertexAttribType type,
@@ -66,14 +73,14 @@ ANGLE_INLINE bool ValidateVertexAttribPointer(const Context *context,
                                               GLsizei stride,
                                               const void *ptr)
 {
-    if (!ValidateFloatVertexFormat(context, index, size, type))
+    if (!ValidateFloatVertexFormat(context, entryPoint, index, size, type))
     {
         return false;
     }
 
     if (stride < 0)
     {
-        context->validationError(GL_INVALID_VALUE, err::kNegativeStride);
+        ANGLE_VALIDATION_ERROR(GL_INVALID_VALUE, err::kNegativeStride);
         return false;
     }
 
@@ -82,13 +89,13 @@ ANGLE_INLINE bool ValidateVertexAttribPointer(const Context *context,
         const Caps &caps = context->getCaps();
         if (stride > caps.maxVertexAttribStride)
         {
-            context->validationError(GL_INVALID_VALUE, err::kExceedsMaxVertexAttribStride);
+            ANGLE_VALIDATION_ERROR(GL_INVALID_VALUE, err::kExceedsMaxVertexAttribStride);
             return false;
         }
 
         if (index >= static_cast<GLuint>(caps.maxVertexAttribBindings))
         {
-            context->validationError(GL_INVALID_VALUE, err::kExceedsMaxVertexAttribBindings);
+            ANGLE_VALIDATION_ERROR(GL_INVALID_VALUE, err::kExceedsMaxVertexAttribBindings);
             return false;
         }
     }
@@ -102,21 +109,22 @@ ANGLE_INLINE bool ValidateVertexAttribPointer(const Context *context,
     if (!nullBufferAllowed && context->getState().getTargetBuffer(BufferBinding::Array) == 0 &&
         ptr != nullptr)
     {
-        context->validationError(GL_INVALID_OPERATION, err::kClientDataInVertexArray);
+        ANGLE_VALIDATION_ERROR(GL_INVALID_OPERATION, err::kClientDataInVertexArray);
         return false;
     }
 
-    if (context->getExtensions().webglCompatibility)
+    if (context->isWebGL())
     {
         // WebGL 1.0 [Section 6.14] Fixed point support
         // The WebGL API does not support the GL_FIXED data type.
         if (type == VertexAttribType::Fixed)
         {
-            context->validationError(GL_INVALID_ENUM, err::kFixedNotInWebGL);
+            ANGLE_VALIDATION_ERROR(GL_INVALID_ENUM, err::kFixedNotInWebGL);
             return false;
         }
 
-        if (!ValidateWebGLVertexAttribPointer(context, type, normalized, stride, ptr, false))
+        if (!ValidateWebGLVertexAttribPointer(context, entryPoint, type, normalized, stride, ptr,
+                                              false))
         {
             return false;
         }
@@ -125,13 +133,18 @@ ANGLE_INLINE bool ValidateVertexAttribPointer(const Context *context,
     return true;
 }
 
-void RecordBindTextureTypeError(const Context *context, TextureType target);
+void RecordBindTextureTypeError(const Context *context,
+                                angle::EntryPoint entryPoint,
+                                TextureType target);
 
-ANGLE_INLINE bool ValidateBindTexture(const Context *context, TextureType target, TextureID texture)
+ANGLE_INLINE bool ValidateBindTexture(const Context *context,
+                                      angle::EntryPoint entryPoint,
+                                      TextureType target,
+                                      TextureID texture)
 {
     if (!context->getStateCache().isValidBindTextureType(target))
     {
-        RecordBindTextureTypeError(context, target);
+        RecordBindTextureTypeError(context, entryPoint, target);
         return false;
     }
 
@@ -143,14 +156,17 @@ ANGLE_INLINE bool ValidateBindTexture(const Context *context, TextureType target
     Texture *textureObject = context->getTexture(texture);
     if (textureObject && textureObject->getType() != target)
     {
-        context->validationError(GL_INVALID_OPERATION, err::kTextureTargetMismatch);
+        ANGLE_VALIDATION_ERRORF(GL_INVALID_OPERATION, err::kTextureTargetMismatchWithLabel,
+                                static_cast<uint8_t>(target),
+                                static_cast<uint8_t>(textureObject->getType()),
+                                textureObject->getLabel().c_str());
         return false;
     }
 
     if (!context->getState().isBindGeneratesResourceEnabled() &&
         !context->isTextureGenerated(texture))
     {
-        context->validationError(GL_INVALID_OPERATION, err::kObjectNotGenerated);
+        ANGLE_VALIDATION_ERROR(GL_INVALID_OPERATION, err::kObjectNotGenerated);
         return false;
     }
 
@@ -159,6 +175,7 @@ ANGLE_INLINE bool ValidateBindTexture(const Context *context, TextureType target
 
 // Validation of all Tex[Sub]Image2D parameters except TextureTarget.
 bool ValidateES2TexImageParametersBase(const Context *context,
+                                       angle::EntryPoint entryPoint,
                                        TextureTarget target,
                                        GLint level,
                                        GLenum internalformat,
@@ -176,11 +193,21 @@ bool ValidateES2TexImageParametersBase(const Context *context,
 
 // Validation of TexStorage*2DEXT
 bool ValidateES2TexStorageParametersBase(const Context *context,
+                                         angle::EntryPoint entryPoint,
                                          TextureType target,
                                          GLsizei levels,
                                          GLenum internalformat,
                                          GLsizei width,
                                          GLsizei height);
+
+// Validation of [Push,Pop]DebugGroup
+bool ValidatePushDebugGroupBase(const Context *context,
+                                angle::EntryPoint entryPoint,
+                                GLenum source,
+                                GLuint id,
+                                GLsizei length,
+                                const GLchar *message);
+bool ValidatePopDebugGroupBase(const Context *context, angle::EntryPoint entryPoint);
 
 }  // namespace gl
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2024 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -36,33 +36,14 @@
 #import <pal/spi/cocoa/WebFilterEvaluatorSPI.h>
 #import <wtf/SoftLinking.h>
 
-SOFT_LINK_PRIVATE_FRAMEWORK(WebContentAnalysis);
-SOFT_LINK_CLASS(WebContentAnalysis, WebFilterEvaluator);
+SOFT_LINK_PRIVATE_FRAMEWORK_OPTIONAL(WebContentAnalysis);
+SOFT_LINK_CLASS_OPTIONAL(WebContentAnalysis, WebFilterEvaluator);
 
 namespace WebCore {
 
-#if PLATFORM(IOS)
-ParentalControlsContentFilter::SandboxExtensionState ParentalControlsContentFilter::m_sandboxExtensionState = SandboxExtensionState::NotSet;
-#endif
-
 bool ParentalControlsContentFilter::enabled()
 {
-#if PLATFORM(IOS)
-    bool enabled = false;
-    switch (m_sandboxExtensionState) {
-    case SandboxExtensionState::Consumed:
-        enabled = true;
-        break;
-    case SandboxExtensionState::NotConsumed:
-        enabled = false;
-        break;
-    case SandboxExtensionState::NotSet:
-        enabled = [getWebFilterEvaluatorClass() isManagedSession];
-        break;
-    }
-#else
     bool enabled = [getWebFilterEvaluatorClass() isManagedSession];
-#endif
     LOG(ContentFiltering, "ParentalControlsContentFilter is %s.\n", enabled ? "enabled" : "not enabled");
     return enabled;
 }
@@ -74,8 +55,8 @@ UniqueRef<ParentalControlsContentFilter> ParentalControlsContentFilter::create()
 
 static inline bool canHandleResponse(const ResourceResponse& response)
 {
-#if PLATFORM(MAC) || PLATFORM(MACCATALYST)
-    return response.url().protocolIs("https");
+#if HAVE(SYSTEM_HTTP_CONTENT_FILTERING)
+    return response.url().protocolIs("https"_s);
 #else
     return response.url().protocolIsInHTTPFamily();
 #endif
@@ -91,25 +72,29 @@ void ParentalControlsContentFilter::responseReceived(const ResourceResponse& res
     }
 
     m_webFilterEvaluator = adoptNS([allocWebFilterEvaluatorInstance() initWithResponse:response.nsURLResponse()]);
+#if HAVE(WEBFILTEREVALUATOR_AUDIT_TOKEN)
+    if (m_hostProcessAuditToken)
+        m_webFilterEvaluator.get().browserAuditToken = *m_hostProcessAuditToken;
+#endif
     updateFilterState();
 }
 
-void ParentalControlsContentFilter::addData(const uint8_t* data, int length)
+void ParentalControlsContentFilter::addData(const SharedBuffer& data)
 {
-    ASSERT(![m_replacementData.get() length]);
-    m_replacementData = [m_webFilterEvaluator addData:[NSData dataWithBytesNoCopy:(void*)data length:length freeWhenDone:NO]];
+    ASSERT(![m_replacementData length]);
+    m_replacementData = [m_webFilterEvaluator addData:data.createNSData().get()];
     updateFilterState();
-    ASSERT(needsMoreData() || [m_replacementData.get() length]);
+    ASSERT(needsMoreData() || [m_replacementData length]);
 }
 
 void ParentalControlsContentFilter::finishedAddingData()
 {
-    ASSERT(![m_replacementData.get() length]);
+    ASSERT(![m_replacementData length]);
     m_replacementData = [m_webFilterEvaluator dataComplete];
     updateFilterState();
 }
 
-Ref<SharedBuffer> ParentalControlsContentFilter::replacementData() const
+Ref<FragmentedSharedBuffer> ParentalControlsContentFilter::replacementData() const
 {
     ASSERT(didBlockData());
     return SharedBuffer::create(m_replacementData.get());
@@ -146,16 +131,6 @@ void ParentalControlsContentFilter::updateFilterState()
         LOG(ContentFiltering, "ParentalControlsContentFilter stopped buffering with state %d and replacement data length %zu.\n", m_state, [m_replacementData length]);
 #endif
 }
-
-#if PLATFORM(IOS)
-void ParentalControlsContentFilter::setHasConsumedSandboxExtension(bool hasConsumedSandboxExtension)
-{
-    if (m_sandboxExtensionState == SandboxExtensionState::Consumed)
-        return;
-
-    m_sandboxExtensionState = (hasConsumedSandboxExtension ? SandboxExtensionState::Consumed : SandboxExtensionState::NotConsumed);
-}
-#endif
 
 } // namespace WebCore
 

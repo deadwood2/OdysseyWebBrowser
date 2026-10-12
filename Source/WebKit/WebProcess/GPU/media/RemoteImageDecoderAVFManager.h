@@ -30,12 +30,12 @@
 #include "Connection.h"
 #include "GPUProcessConnection.h"
 #include "MessageReceiver.h"
-#include "WebProcessSupplement.h"
 #include <WebCore/ImageDecoderIdentifier.h>
 #include <WebCore/ImageTypes.h>
 #include <WebCore/IntSize.h>
 #include <WebCore/SharedBuffer.h>
 #include <wtf/HashMap.h>
+#include <wtf/TZoneMalloc.h>
 
 namespace WebKit {
 
@@ -43,23 +43,26 @@ class RemoteImageDecoderAVF;
 class WebProcess;
 
 class RemoteImageDecoderAVFManager final
-    : public WebProcessSupplement
-    , private GPUProcessConnection::Client
-    , private IPC::MessageReceiver {
-    WTF_MAKE_FAST_ALLOCATED;
+    : private GPUProcessConnection::Client
+    , private IPC::MessageReceiver
+    , public ThreadSafeRefCountedAndCanMakeThreadSafeWeakPtr<RemoteImageDecoderAVFManager> {
+    WTF_MAKE_TZONE_ALLOCATED(RemoteImageDecoderAVFManager);
 public:
-    explicit RemoteImageDecoderAVFManager(WebProcess&);
+    static Ref<RemoteImageDecoderAVFManager> create();
     virtual ~RemoteImageDecoderAVFManager();
 
     void deleteRemoteImageDecoder(const WebCore::ImageDecoderIdentifier&);
 
-    static const char* supplementName();
-
     void setUseGPUProcess(bool);
     GPUProcessConnection& ensureGPUProcessConnection();
 
+    void ref() const final { return ThreadSafeRefCountedAndCanMakeThreadSafeWeakPtr<RemoteImageDecoderAVFManager>::ref(); }
+    void deref() const final { return ThreadSafeRefCountedAndCanMakeThreadSafeWeakPtr<RemoteImageDecoderAVFManager>::deref(); }
+    ThreadSafeWeakPtrControlBlock& controlBlock() const final { return ThreadSafeRefCountedAndCanMakeThreadSafeWeakPtr<RemoteImageDecoderAVFManager>::controlBlock(); }
+
 private:
-    RefPtr<RemoteImageDecoderAVF> createImageDecoder(WebCore::SharedBuffer& data, const String& mimeType, WebCore::AlphaOption, WebCore::GammaAndColorProfileOption);
+    RemoteImageDecoderAVFManager();
+    RefPtr<RemoteImageDecoderAVF> createImageDecoder(WebCore::FragmentedSharedBuffer& data, const String& mimeType, WebCore::AlphaOption, WebCore::GammaAndColorProfileOption);
 
     // GPUProcessConnection::Client.
     void gpuProcessConnectionDidClose(GPUProcessConnection&) final;
@@ -69,8 +72,7 @@ private:
 
     HashMap<WebCore::ImageDecoderIdentifier, WeakPtr<RemoteImageDecoderAVF>> m_remoteImageDecoders;
 
-    WebProcess& m_process;
-    WeakPtr<GPUProcessConnection> m_gpuProcessConnection;
+    ThreadSafeWeakPtr<GPUProcessConnection> m_gpuProcessConnection;
 };
 
 }

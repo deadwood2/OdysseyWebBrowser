@@ -4,9 +4,6 @@
 
 #include <wtf/Function.h>
 
-#define EP_PROFILING 0
-#include <libeventprofiler.h>
-
 namespace WebCore {
 
 class NetworkingContext;

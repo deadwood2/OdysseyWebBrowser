@@ -1,15 +1,14 @@
 #pragma once
 
-#include "config.h"
-
 #if ENABLE(VIDEO) && ENABLE(MEDIA_SOURCE)
 
-#include "SourceBufferPrivate.h"
 #include "AcinerellaPointer.h"
 #include "AcinerellaBuffer.h"
 #include "AcinerellaMuxer.h"
 #include "AcinerellaDecoder.h"
 #include "MediaPlayerMorphOS.h"
+
+#include "SourceBufferPrivate.h"
 #include "SourceBufferPrivateClient.h"
 #include "MediaSample.h"
 
@@ -106,6 +105,8 @@ public:
     static Ref<MediaSourceBufferPrivateMorphOS> create(MediaSourcePrivateMorphOS*);
     virtual ~MediaSourceBufferPrivateMorphOS();
 
+    constexpr MediaPlatformType platformType() const { return MediaPlatformType::MorphOS; }
+
 	void play();
 	void prePlay();
 	void pause();
@@ -118,6 +119,7 @@ public:
 	void willSeek(double seekTo);
 	void seekToTime(const MediaTime&) override;
 	void signalEOF();
+    bool isEnded() const { return m_ended; }
 
     void setVolume(double vol);
 
@@ -142,30 +144,30 @@ public:
 private:
 	explicit MediaSourceBufferPrivateMorphOS(MediaSourcePrivateMorphOS*);
 
-    void append(Vector<unsigned char>&&) override;
+    Ref<MediaPromise> appendInternal(Ref<SharedBuffer>&&) override;
     void abort() override;
-    void resetParserState() override;
+    void resetParserStateInternal() override;
     void removedFromMediaSource() override;
 
-    void flush(const AtomString&) override;
-    void enqueueSample(Ref<MediaSample>&&, const AtomString&)  override;
-    void allSamplesInTrackEnqueued(const AtomString&)  override;
-    bool isReadyForMoreSamples(const AtomString&)  override;
+    void flush(TrackID) override;
+    void enqueueSample(Ref<MediaSample>&&, TrackID)  override;
+    void allSamplesInTrackEnqueued(TrackID)  override;
+    bool isReadyForMoreSamples(TrackID)  override;
     void setActive(bool) override;
-    void notifyClientWhenReadyForMoreSamples(const AtomString&)  override;
-    bool canSetMinimumUpcomingPresentationTime(const AtomString&) const override;
+    void notifyClientWhenReadyForMoreSamples(TrackID)  override;
+    bool canSetMinimumUpcomingPresentationTime(TrackID) const override;
 
 //	bool isActive() const override { return m_isActive; }
 	bool isSeeking() const override;
 	bool isSeekingInternal() const { return m_seeking; }
-	MediaTime currentMediaTime() const override;
-	MediaTime duration() const override;
+//	MediaTime currentMediaTime() const override;
+//	MediaTime duration() const override;
 
 	void flush();
 	void becomeReadyForMoreSamples(int decoderIndex);
 
-    MediaPlayer::ReadyState readyState() const override;
-    void setReadyState(MediaPlayer::ReadyState) override;
+//    MediaPlayer::ReadyState readyState() const override;
+//    void setReadyState(MediaPlayer::ReadyState) override;
 
 	void initialize(bool success, WebCore::SourceBufferPrivateClient::InitializationSegment& segment, MediaPlayerMorphOSInfo& info);
 	void reinitialize(bool success, WebCore::SourceBufferPrivateClient::InitializationSegment& segment, MediaPlayerMorphOSInfo& info);
@@ -199,21 +201,25 @@ private:
 	bool                                          m_decodersStarved[Acinerella::AcinerellaMuxedBuffer::maxDecoders];
 	uint32_t                                      m_maxBuffer[Acinerella::AcinerellaMuxedBuffer::maxDecoders];
 	int                                           m_numDecoders = 0;
+    std::optional<MediaPromise::Producer>         m_appendPromise;
 
     RefPtr<Thread>                                m_thread;
     MessageQueue<Function<void ()>>               m_queue;
 	BinarySemaphore                               m_event;
 	Lock                                          m_lock;
 
-	Vector<unsigned char>                         m_initializationBuffer;
+    Vector<unsigned char>                         m_initializationBuffer;
 
 	uint32_t                                      m_audioDecoderMask = 0;
 	bool                                          m_enableVideo = false;
 	bool                                          m_enableAudio = true;
 	bool                                          m_terminating = false;
 	bool                                          m_eos = false;
+    bool                                          m_isLive = false;
+    bool                                          m_ended = false;
 	std::atomic<bool>                             m_appendCompletePending = false;
 	bool                                          m_appendCompleteDelayed = false;
+    MediaTime                                     m_durationAtAppend = MediaTime::invalidTime();
 
 	MediaPlayerMorphOSInfo                        m_info;
     WebCore::SourceBufferPrivateClient::InitializationSegment m_segment;
@@ -237,5 +243,9 @@ private:
 };
 
 }
+
+SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::MediaSourceBufferPrivateMorphOS)
+static bool isType(const WebCore::SourceBufferPrivate& sourceBuffer) { return sourceBuffer.platformType() == WebCore::MediaPlatformType::MorphOS; }
+SPECIALIZE_TYPE_TRAITS_END()
 
 #endif

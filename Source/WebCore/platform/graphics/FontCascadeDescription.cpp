@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2007 Nicholas Shanks <contact@nickshanks.com>
- * Copyright (C) 2008, 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2008-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,31 +30,41 @@
 #include "config.h"
 #include "FontCascadeDescription.h"
 
+#include "Font.h"
 #include <wtf/text/StringHash.h>
+
+#if USE(CORE_TEXT)
+#include "FontCascade.h"
+#endif
 
 namespace WebCore {
 
 struct SameSizeAsFontCascadeDescription {
     Vector<void*> vector;
     Vector<void*> vector2;
+    FontPalette palette;
+    FontSizeAdjust sizeAdjust;
+    FontVariantAlternates alternates;
     AtomString string;
     AtomString string2;
     int16_t fontSelectionRequest[3];
     float size;
+    TextSpacingTrim textSpacingTrim;
+    TextAutospace textAutospace;
     unsigned bitfields1;
     unsigned bitfields2 : 22;
     void* array;
     float size2;
     unsigned bitfields3 : 10;
 };
-
-COMPILE_ASSERT(sizeof(FontCascadeDescription) == sizeof(SameSizeAsFontCascadeDescription), FontCascadeDescription_should_stay_small);
+static_assert(sizeof(FontCascadeDescription) == sizeof(SameSizeAsFontCascadeDescription), "FontCascadeDescription should stay small");
 
 FontCascadeDescription::FontCascadeDescription()
-    : m_isAbsoluteSize(false)
-    , m_kerning(static_cast<unsigned>(Kerning::Auto))
+    : m_families(RefCountedFixedVector<AtomString>::create(1))
+    , m_isAbsoluteSize(false)
+    , m_kerning(enumToUnderlyingType(Kerning::Auto))
     , m_keywordSize(0)
-    , m_fontSmoothing(static_cast<unsigned>(FontSmoothingMode::AutoSmoothing))
+    , m_fontSmoothing(enumToUnderlyingType(FontSmoothingMode::AutoSmoothing))
     , m_isSpecifiedFont(false)
 {
 }
@@ -126,6 +136,26 @@ String FontCascadeDescription::foldedFamilyName(const String& family)
         return family;
 #endif
     return family.convertToASCIILowercase();
+}
+
+FontSmoothingMode FontCascadeDescription::usedFontSmoothing() const
+{
+    auto fontSmoothingMode = fontSmoothing();
+#if USE(CORE_TEXT)
+    if (FontCascade::shouldDisableFontSubpixelAntialiasingForTesting() && (fontSmoothingMode == FontSmoothingMode::AutoSmoothing || fontSmoothingMode == FontSmoothingMode::SubpixelAntialiased))
+        return FontSmoothingMode::Antialiased;
+#endif
+    return fontSmoothingMode;
+}
+
+void FontCascadeDescription::resolveFontSizeAdjustFromFontIfNeeded(const Font& font)
+{
+    const auto& fontSizeAdjust = this->fontSizeAdjust();
+    if (!fontSizeAdjust.shouldResolveFromFont())
+        return;
+
+    auto aspectValue = fontSizeAdjust.resolve(computedSize(), font.fontMetrics());
+    setFontSizeAdjust({ fontSizeAdjust.metric, FontSizeAdjust::ValueType::FromFont, aspectValue });
 }
 
 } // namespace WebCore

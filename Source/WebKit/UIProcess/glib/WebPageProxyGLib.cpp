@@ -27,7 +27,12 @@
 #include "config.h"
 #include "WebPageProxy.h"
 
+#include "PageClient.h"
+#include "WebKitWebResourceLoadManager.h"
+#include "WebPageProxyInternals.h"
+#include "WebPreferences.h"
 #include <WebCore/NotImplemented.h>
+#include <WebCore/SearchPopupMenu.h>
 #include <WebCore/UserAgent.h>
 
 namespace WebKit {
@@ -46,15 +51,47 @@ String WebPageProxy::standardUserAgent(const String& applicationNameForUserAgent
     return WebCore::standardUserAgent(applicationNameForUserAgent);
 }
 
-void WebPageProxy::saveRecentSearches(const String&, const Vector<WebCore::RecentSearch>&)
+void WebPageProxy::saveRecentSearches(IPC::Connection&, const String&, const Vector<WebCore::RecentSearch>&)
 {
     notImplemented();
 }
 
-void WebPageProxy::loadRecentSearches(const String&, CompletionHandler<void(Vector<WebCore::RecentSearch>&&)>&& completionHandler)
+void WebPageProxy::loadRecentSearches(IPC::Connection&, const String&, CompletionHandler<void(Vector<WebCore::RecentSearch>&&)>&& completionHandler)
 {
     notImplemented();
     completionHandler({ });
 }
 
+void WebPageProxy::didInitiateLoadForResource(WebCore::ResourceLoaderIdentifier resourceID, WebCore::FrameIdentifier frameID, WebCore::ResourceRequest&& request)
+{
+    if (auto* manager = pageClient().webResourceLoadManager())
+        manager->didInitiateLoad(resourceID, frameID, WTFMove(request));
 }
+
+void WebPageProxy::didSendRequestForResource(WebCore::ResourceLoaderIdentifier resourceID, WebCore::FrameIdentifier frameID, WebCore::ResourceRequest&& request, WebCore::ResourceResponse&& redirectResponse)
+{
+    if (auto* manager = pageClient().webResourceLoadManager())
+        manager->didSendRequest(resourceID, frameID, WTFMove(request), WTFMove(redirectResponse));
+}
+
+void WebPageProxy::didReceiveResponseForResource(WebCore::ResourceLoaderIdentifier resourceID, WebCore::FrameIdentifier frameID, WebCore::ResourceResponse&& response)
+{
+    if (auto* manager = pageClient().webResourceLoadManager())
+        manager->didReceiveResponse(resourceID, frameID, WTFMove(response));
+}
+
+void WebPageProxy::didFinishLoadForResource(WebCore::ResourceLoaderIdentifier resourceID, WebCore::FrameIdentifier frameID, WebCore::ResourceError&& error)
+{
+    if (auto* manager = pageClient().webResourceLoadManager())
+        manager->didFinishLoad(resourceID, frameID, WTFMove(error));
+}
+
+void WebPageProxy::scheduleActivityStateUpdate()
+{
+    if (internals().activityStateChangeTimer.isActive())
+        return;
+
+    internals().activityStateChangeTimer.startOneShot(0_s);
+}
+
+} // namespace WebKit

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008-2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2008-2023 Apple Inc. All rights reserved.
  * Copyright (C) 2014 Adobe Systems Incorporated. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,6 +30,7 @@
 #include "config.h"
 #include "ImageData.h"
 
+#include <JavaScriptCore/GenericTypedArrayViewInlines.h>
 #include <JavaScriptCore/JSCInlines.h>
 #include <wtf/text/TextStream.h>
 
@@ -37,10 +38,7 @@ namespace WebCore {
 
 static CheckedUint32 computeDataSize(const IntSize& size)
 {
-    CheckedUint32 checkedDataSize = 4;
-    checkedDataSize *= static_cast<unsigned>(size.width());
-    checkedDataSize *= static_cast<unsigned>(size.height());
-    return checkedDataSize;
+    return PixelBuffer::computeBufferSize(PixelFormat::RGBA8, size);
 }
 
 PredefinedColorSpace ImageData::computeColorSpace(std::optional<ImageDataSettings> settings, PredefinedColorSpace defaultColorSpace)
@@ -50,20 +48,20 @@ PredefinedColorSpace ImageData::computeColorSpace(std::optional<ImageDataSetting
     return defaultColorSpace;
 }
 
-Ref<ImageData> ImageData::create(PixelBuffer&& pixelBuffer)
+Ref<ImageData> ImageData::create(Ref<ByteArrayPixelBuffer>&& pixelBuffer)
 {
-    auto colorSpace = toPredefinedColorSpace(pixelBuffer.format().colorSpace);
-    return adoptRef(*new ImageData(pixelBuffer.size(), pixelBuffer.takeData(), *colorSpace));
+    auto colorSpace = toPredefinedColorSpace(pixelBuffer->format().colorSpace);
+    return adoptRef(*new ImageData(pixelBuffer->size(), pixelBuffer->takeData(), *colorSpace));
 }
 
-RefPtr<ImageData> ImageData::create(std::optional<PixelBuffer>&& pixelBuffer)
+RefPtr<ImageData> ImageData::create(RefPtr<ByteArrayPixelBuffer>&& pixelBuffer)
 {
     if (!pixelBuffer)
         return nullptr;
-    return create(WTFMove(*pixelBuffer));
+    return create(pixelBuffer.releaseNonNull());
 }
 
-RefPtr<ImageData> ImageData::create(const IntSize& size)
+RefPtr<ImageData> ImageData::create(const IntSize& size, PredefinedColorSpace colorSpace)
 {
     auto dataSize = computeDataSize(size);
     if (dataSize.hasOverflowed())
@@ -71,7 +69,7 @@ RefPtr<ImageData> ImageData::create(const IntSize& size)
     auto byteArray = Uint8ClampedArray::tryCreateUninitialized(dataSize);
     if (!byteArray)
         return nullptr;
-    return adoptRef(*new ImageData(size, byteArray.releaseNonNull(), PredefinedColorSpace::SRGB));
+    return adoptRef(*new ImageData(size, byteArray.releaseNonNull(), colorSpace));
 }
 
 RefPtr<ImageData> ImageData::create(const IntSize& size, Ref<Uint8ClampedArray>&& byteArray, PredefinedColorSpace colorSpace)
@@ -88,12 +86,12 @@ ExceptionOr<Ref<ImageData>> ImageData::createUninitialized(unsigned rows, unsign
     IntSize size(rows, pixelsPerRow);
     auto dataSize = computeDataSize(size);
     if (dataSize.hasOverflowed())
-        return Exception { RangeError, "Cannot allocate a buffer of this size"_s };
+        return Exception { ExceptionCode::RangeError, "Cannot allocate a buffer of this size"_s };
 
     auto byteArray = Uint8ClampedArray::tryCreateUninitialized(dataSize);
     if (!byteArray) {
         // FIXME: Does this need to be a "real" out of memory error with setOutOfMemoryError called on it?
-        return Exception { RangeError, "Out of memory"_s };
+        return Exception { ExceptionCode::RangeError, "Out of memory"_s };
     }
 
     auto colorSpace = computeColorSpace(settings, defaultColorSpace);
@@ -103,17 +101,17 @@ ExceptionOr<Ref<ImageData>> ImageData::createUninitialized(unsigned rows, unsign
 ExceptionOr<Ref<ImageData>> ImageData::create(unsigned sw, unsigned sh, std::optional<ImageDataSettings> settings)
 {
     if (!sw || !sh)
-        return Exception { IndexSizeError };
+        return Exception { ExceptionCode::IndexSizeError };
 
     IntSize size(sw, sh);
     auto dataSize = computeDataSize(size);
     if (dataSize.hasOverflowed())
-        return Exception { RangeError, "Cannot allocate a buffer of this size"_s };
+        return Exception { ExceptionCode::RangeError, "Cannot allocate a buffer of this size"_s };
 
     auto byteArray = Uint8ClampedArray::tryCreateUninitialized(dataSize);
     if (!byteArray) {
         // FIXME: Does this need to be a "real" out of memory error with setOutOfMemoryError called on it?
-        return Exception { RangeError, "Out of memory"_s };
+        return Exception { ExceptionCode::RangeError, "Out of memory"_s };
     }
     byteArray->zeroFill();
 
@@ -125,20 +123,20 @@ ExceptionOr<Ref<ImageData>> ImageData::create(Ref<Uint8ClampedArray>&& byteArray
 {
     unsigned length = byteArray->length();
     if (!length || length % 4)
-        return Exception { InvalidStateError, "Length is not a non-zero multiple of 4"_s };
+        return Exception { ExceptionCode::InvalidStateError, "Length is not a non-zero multiple of 4"_s };
 
     length /= 4;
     if (!sw || length % sw)
-        return Exception { IndexSizeError, "Length is not a multiple of sw"_s };
+        return Exception { ExceptionCode::IndexSizeError, "Length is not a multiple of sw"_s };
 
     unsigned height = length / sw;
     if (sh && sh.value() != height)
-        return Exception { IndexSizeError, "sh value is not equal to height"_s };
+        return Exception { ExceptionCode::IndexSizeError, "sh value is not equal to height"_s };
 
     IntSize size(sw, height);
     auto dataSize = computeDataSize(size);
     if (dataSize.hasOverflowed() || dataSize != byteArray->length())
-        return Exception { RangeError };
+        return Exception { ExceptionCode::RangeError };
 
     auto colorSpace = computeColorSpace(settings);
     return adoptRef(*new ImageData(size, WTFMove(byteArray), colorSpace));
@@ -153,10 +151,15 @@ ImageData::ImageData(const IntSize& size, Ref<JSC::Uint8ClampedArray>&& data, Pr
 
 ImageData::~ImageData() = default;
 
-PixelBuffer ImageData::pixelBuffer() const
+Ref<ByteArrayPixelBuffer> ImageData::pixelBuffer() const
 {
     PixelBufferFormat format { AlphaPremultiplication::Unpremultiplied, PixelFormat::RGBA8, toDestinationColorSpace(m_colorSpace) };
-    return { format, m_size, m_data.get() };
+    return ByteArrayPixelBuffer::create(format, m_size, m_data.get());
+}
+
+RefPtr<ImageData> ImageData::clone() const
+{
+    return ImageData::create(m_size, Uint8ClampedArray::create(m_data->data(), m_data->length()), m_colorSpace);
 }
 
 TextStream& operator<<(TextStream& ts, const ImageData& imageData)

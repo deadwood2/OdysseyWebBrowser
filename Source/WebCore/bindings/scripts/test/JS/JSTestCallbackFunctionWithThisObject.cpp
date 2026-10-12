@@ -21,6 +21,7 @@
 #include "config.h"
 #include "JSTestCallbackFunctionWithThisObject.h"
 
+#include "ContextDestructionObserverInlines.h"
 #include "JSDOMConvertBase.h"
 #include "JSDOMConvertInterface.h"
 #include "JSDOMConvertSequences.h"
@@ -36,7 +37,7 @@ using namespace JSC;
 
 JSTestCallbackFunctionWithThisObject::JSTestCallbackFunctionWithThisObject(JSObject* callback, JSDOMGlobalObject* globalObject)
     : TestCallbackFunctionWithThisObject(globalObject->scriptExecutionContext())
-    , m_data(new JSCallbackDataStrong(callback, globalObject, this))
+    , m_data(new JSCallbackData(callback, globalObject, this))
 {
 }
 
@@ -54,7 +55,7 @@ JSTestCallbackFunctionWithThisObject::~JSTestCallbackFunctionWithThisObject()
 #endif
 }
 
-CallbackResult<typename IDLUndefined::ImplementationType> JSTestCallbackFunctionWithThisObject::handleEvent(typename IDLInterface<TestNode>::ParameterType thisObject, typename IDLSequence<IDLInterface<TestNode>>::ParameterType parameter)
+CallbackResult<typename IDLUndefined::CallbackReturnType> JSTestCallbackFunctionWithThisObject::handleEvent(typename IDLInterface<TestNode>::ParameterType thisObject, typename IDLSequence<IDLInterface<TestNode>>::ParameterType parameter)
 {
     if (!canInvokeCallback())
         return CallbackResultType::UnableToExecute;
@@ -74,11 +75,22 @@ CallbackResult<typename IDLUndefined::ImplementationType> JSTestCallbackFunction
     NakedPtr<JSC::Exception> returnedException;
     m_data->invokeCallback(thisValue, args, JSCallbackData::CallbackType::Function, Identifier(), returnedException);
     if (returnedException) {
-        reportException(&lexicalGlobalObject, returnedException);
+        UNUSED_PARAM(lexicalGlobalObject);
+        reportException(m_data->callback()->globalObject(), returnedException);
         return CallbackResultType::ExceptionThrown;
      }
 
     return { };
+}
+
+void JSTestCallbackFunctionWithThisObject::visitJSFunction(JSC::AbstractSlotVisitor& visitor)
+{
+    m_data->visitJSFunction(visitor);
+}
+
+void JSTestCallbackFunctionWithThisObject::visitJSFunction(JSC::SlotVisitor& visitor)
+{
+    m_data->visitJSFunction(visitor);
 }
 
 JSC::JSValue toJS(TestCallbackFunctionWithThisObject& impl)

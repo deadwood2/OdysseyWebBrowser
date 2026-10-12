@@ -26,14 +26,12 @@
 #include "config.h"
 #include "AccessibilityObjectWrapperWin.h"
 
-#if ENABLE(ACCESSIBILITY)
-
 #include "AXObjectCache.h"
 #include "AccessibilityObject.h"
 #include "BString.h"
 #include "HTMLNames.h"
 #include "QualifiedName.h"
-#include <wtf/text/StringConcatenateNumbers.h>
+#include <wtf/text/MakeString.h>
 
 namespace WebCore {
 
@@ -44,7 +42,7 @@ void AccessibilityObjectWrapper::accessibilityAttributeValue(const AtomString& a
     m_object->updateBackingStore();
 
     // Not a real concept on Windows, but used heavily in WebKit accessibility testing.
-    if (attributeName == "AXTitleUIElementAttribute") {
+    if (attributeName == "AXTitleUIElementAttribute"_s) {
         if (auto* object = m_object->titleUIElement()) {
             ASSERT(V_VT(result) == VT_EMPTY);
             V_VT(result) = VT_UNKNOWN;
@@ -56,8 +54,8 @@ void AccessibilityObjectWrapper::accessibilityAttributeValue(const AtomString& a
         return;
     }
 
-    // Used by DRT to find an accessible node by its element id.
-    if (attributeName == "AXDRTElementIdAttribute") {
+    // Used to find an accessible node by its element id.
+    if (attributeName == "AXDOMIdentifier"_s) {
         ASSERT(V_VT(result) == VT_EMPTY);
 
         V_VT(result) = VT_BSTR;
@@ -65,11 +63,11 @@ void AccessibilityObjectWrapper::accessibilityAttributeValue(const AtomString& a
         return;
     }
 
-    if (attributeName == "AXSelectedTextRangeAttribute") {
+    if (attributeName == "AXSelectedTextRangeAttribute"_s) {
         ASSERT(V_VT(result) == VT_EMPTY);
         V_VT(result) = VT_BSTR;
-        PlainTextRange textRange = m_object->selectedTextRange();
-        String range = makeString('{', textRange.start, ", ", textRange.length, '}');
+        CharacterRange textRange = m_object->selectedTextRange();
+        String range = makeString('{', textRange.location, ", "_s, textRange.length, '}');
         V_BSTR(result) = WebCore::BString(range).release();
         return;
     }
@@ -77,5 +75,3 @@ void AccessibilityObjectWrapper::accessibilityAttributeValue(const AtomString& a
 
 
 } // namespace WebCore
-
-#endif // ENABLE(ACCESSIBILITY)

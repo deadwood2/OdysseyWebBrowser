@@ -28,46 +28,87 @@
 
 #include "NetworkConnectionToWebProcessMessages.h"
 #include "NetworkProcessConnection.h"
+#include "WebCookieJar.h"
 #include "WebProcess.h"
+#include <wtf/text/StringBuilder.h>
 
 namespace WebKit {
 
 using namespace WebCore;
 
+WebCookieCache::~WebCookieCache() = default;
+
 bool WebCookieCache::isSupported()
 {
 #if HAVE(COOKIE_CHANGE_LISTENER_API)
-    // FIXME: This can eventually be removed, this is merely to ensure a smooth transition to the new API.
-    return inMemoryStorageSession().supportsCookieChangeListenerAPI();
+    return true;
 #else
     return false;
 #endif
 }
 
+static String cookiesToString(const Vector<WebCore::Cookie>& cookies)
+{
+    StringBuilder cookiesBuilder;
+    for (auto& cookie : cookies) {
+        if (cookie.name.isEmpty())
+            continue;
+        ASSERT(!cookie.httpOnly);
+        if (cookie.httpOnly)
+            continue;
+        if (!cookiesBuilder.isEmpty())
+            cookiesBuilder.append("; "_s);
+        cookiesBuilder.append(cookie.name);
+        cookiesBuilder.append('=');
+        cookiesBuilder.append(cookie.value);
+    }
+    return cookiesBuilder.toString();
+}
+
 String WebCookieCache::cookiesForDOM(const URL& firstParty, const SameSiteInfo& sameSiteInfo, const URL& url, FrameIdentifier frameID, PageIdentifier pageID, IncludeSecureCookies includeSecureCookies)
 {
-    String host = url.host().toString();
-    if (!m_hostsWithInMemoryStorage.contains(host)) {
-        Vector<Cookie> cookies;
-        bool subscribeToCookieChangeNotifications = true;
-        if (!WebProcess::singleton().ensureNetworkProcessConnection().connection().sendSync(Messages::NetworkConnectionToWebProcess::DomCookiesForHost(url.host().toString(), subscribeToCookieChangeNotifications), Messages::NetworkConnectionToWebProcess::DomCookiesForHost::Reply(cookies), 0))
+    bool hasCacheForHost = m_hostsWithInMemoryStorage.contains<StringViewHashTranslator>(url.host());
+    if (!hasCacheForHost || cacheMayBeOutOfSync()) {
+        auto host = url.host().toString();
+#if HAVE(COOKIE_CHANGE_LISTENER_API)
+        if (!hasCacheForHost)
+            WebProcess::singleton().cookieJar().addChangeListener(host, *this);
+#endif
+        auto sendResult = WebProcess::singleton().ensureNetworkProcessConnection().connection().sendSync(Messages::NetworkConnectionToWebProcess::DomCookiesForHost(url), 0);
+        if (!sendResult.succeeded())
             return { };
+
+        auto& [cookies] = sendResult.reply();
+
+        if (hasCacheForHost)
+            return cookiesToString(cookies);
+
         pruneCacheIfNecessary();
-        m_hostsWithInMemoryStorage.add(host);
+        m_hostsWithInMemoryStorage.add(WTFMove(host));
         for (auto& cookie : cookies)
             inMemoryStorageSession().setCookie(cookie);
     }
-    return inMemoryStorageSession().cookiesForDOM(firstParty, sameSiteInfo, url, frameID, pageID, includeSecureCookies, ShouldAskITP::No, ShouldRelaxThirdPartyCookieBlocking::No).first;
+    return inMemoryStorageSession().cookiesForDOM(firstParty, sameSiteInfo, url, frameID, pageID, includeSecureCookies, ApplyTrackingPrevention::No, ShouldRelaxThirdPartyCookieBlocking::No).first;
 }
 
 void WebCookieCache::setCookiesFromDOM(const URL& firstParty, const SameSiteInfo& sameSiteInfo, const URL& url, FrameIdentifier frameID, PageIdentifier pageID, const String& cookieString, ShouldRelaxThirdPartyCookieBlocking shouldRelaxThirdPartyCookieBlocking)
 {
-    String host = url.host().toString();
-    if (m_hostsWithInMemoryStorage.contains(host))
-        inMemoryStorageSession().setCookiesFromDOM(firstParty, sameSiteInfo, url, frameID, pageID, ShouldAskITP::No, cookieString, shouldRelaxThirdPartyCookieBlocking);
+    if (m_hostsWithInMemoryStorage.contains<StringViewHashTranslator>(url.host()))
+        inMemoryStorageSession().setCookiesFromDOM(firstParty, sameSiteInfo, url, frameID, pageID, ApplyTrackingPrevention::No, cookieString, shouldRelaxThirdPartyCookieBlocking);
 }
 
-void WebCookieCache::cookiesAdded(const String& host, const Vector<Cookie>& cookies)
+PendingCookieUpdateCounter::Token WebCookieCache::willSetCookieFromDOM()
+{
+    return m_pendingCookieUpdateCounter.count();
+}
+
+void WebCookieCache::didSetCookieFromDOM(PendingCookieUpdateCounter::Token, const URL& firstParty, const SameSiteInfo& sameSiteInfo, const URL& url, FrameIdentifier frameID, PageIdentifier pageID, const WebCore::Cookie& cookie, ShouldRelaxThirdPartyCookieBlocking shouldRelaxThirdPartyCookieBlocking)
+{
+    if (m_hostsWithInMemoryStorage.contains<StringViewHashTranslator>(url.host()))
+        inMemoryStorageSession().setCookieFromDOM(firstParty, sameSiteInfo, url, frameID, pageID, ApplyTrackingPrevention::No, cookie, shouldRelaxThirdPartyCookieBlocking);
+}
+
+void WebCookieCache::cookiesAdded(const String& host, const Vector<WebCore::Cookie>& cookies)
 {
     if (!m_hostsWithInMemoryStorage.contains(host))
         return;
@@ -82,7 +123,7 @@ void WebCookieCache::cookiesDeleted(const String& host, const Vector<WebCore::Co
         return;
 
     for (auto& cookie : cookies)
-        inMemoryStorageSession().deleteCookie(cookie);
+        inMemoryStorageSession().deleteCookie(cookie, [] { });
 }
 
 void WebCookieCache::allCookiesDeleted()
@@ -93,8 +134,8 @@ void WebCookieCache::allCookiesDeleted()
 void WebCookieCache::clear()
 {
 #if HAVE(COOKIE_CHANGE_LISTENER_API)
-    if (!m_hostsWithInMemoryStorage.isEmpty())
-        WebProcess::singleton().ensureNetworkProcessConnection().connection().send(Messages::NetworkConnectionToWebProcess::UnsubscribeFromCookieChangeNotifications(m_hostsWithInMemoryStorage), 0);
+    for (auto& host : m_hostsWithInMemoryStorage)
+        WebProcess::singleton().cookieJar().removeChangeListener(host, *this);
 #endif
     m_hostsWithInMemoryStorage.clear();
     m_inMemoryStorageSession = nullptr;
@@ -106,9 +147,9 @@ void WebCookieCache::clearForHost(const String& host)
     if (removedHost.isNull())
         return;
 
-    inMemoryStorageSession().deleteCookiesForHostnames(Vector<String> { removedHost });
+    inMemoryStorageSession().deleteCookiesForHostnames(Vector<String> { removedHost }, [] { });
 #if HAVE(COOKIE_CHANGE_LISTENER_API)
-    WebProcess::singleton().ensureNetworkProcessConnection().connection().send(Messages::NetworkConnectionToWebProcess::UnsubscribeFromCookieChangeNotifications(HashSet<String> { removedHost }), 0);
+    WebProcess::singleton().cookieJar().removeChangeListener(removedHost, *this);
 #endif
 }
 
@@ -128,5 +169,10 @@ NetworkStorageSession& WebCookieCache::inMemoryStorageSession()
     return *m_inMemoryStorageSession;
 }
 #endif
+
+bool WebCookieCache::cacheMayBeOutOfSync() const
+{
+    return m_pendingCookieUpdateCounter.value() > 0;
+}
 
 } // namespace WebKit

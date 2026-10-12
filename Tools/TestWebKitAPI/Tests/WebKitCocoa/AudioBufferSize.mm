@@ -49,7 +49,7 @@ double waitForBufferSizeChange(WKWebView* webView, double oldSize)
         if (size != oldSize)
             return size;
 
-        TestWebKitAPI::Util::sleep(0.1);
+        TestWebKitAPI::Util::runFor(0.1_s);
     } while (++tries <= 100);
 
     ASSERT_NOT_REACHED();
@@ -61,7 +61,7 @@ TEST(WebKit, AudioBufferSize)
     auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
     auto context = adoptWK(TestWebKitAPI::Util::createContextForInjectedBundleTest("InternalsInjectedBundleTest"));
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS) || PLATFORM(VISION)
     configuration.get().allowsInlineMediaPlayback = YES;
     configuration.get()._inlineMediaPlaybackRequiresPlaysInlineAttribute = NO;
 #endif
@@ -72,6 +72,7 @@ TEST(WebKit, AudioBufferSize)
     auto preferences = [configuration preferences];
     preferences._mediaCaptureRequiresSecureConnection = NO;
     preferences._mockCaptureDevicesEnabled = YES;
+    preferences._getUserMediaRequiresFocus = NO;
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 300, 300) configuration:configuration.get() addToWindow:YES]);
     auto delegate = adoptNS([[UserMediaCaptureUIDelegate alloc] init]);

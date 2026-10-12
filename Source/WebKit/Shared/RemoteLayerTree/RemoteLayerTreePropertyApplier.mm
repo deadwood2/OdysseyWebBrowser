@@ -26,13 +26,18 @@
 #import "config.h"
 #import "RemoteLayerTreePropertyApplier.h"
 
+#import "Logging.h"
 #import "PlatformCAAnimationRemote.h"
 #import "PlatformCALayerRemote.h"
 #import "RemoteLayerTreeHost.h"
-#import "RemoteLayerTreeViews.h"
+#import "RemoteLayerTreeInteractionRegionLayers.h"
+#import "WKVideoView.h"
 #import <QuartzCore/QuartzCore.h>
+#import <WebCore/MediaPlayerEnumsCocoa.h>
 #import <WebCore/PlatformCAFilters.h>
 #import <WebCore/ScrollbarThemeMac.h>
+#import <WebCore/WebAVPlayerLayer.h>
+#import <WebCore/WebCoreCALayerExtras.h>
 #import <pal/spi/cocoa/QuartzCoreSPI.h>
 #import <wtf/BlockObjCExceptions.h>
 #import <wtf/cocoa/VectorCocoa.h>
@@ -46,6 +51,7 @@ static void configureSeparatedLayer(CALayer *) { }
 #endif
 
 #if PLATFORM(IOS_FAMILY)
+#import "RemoteLayerTreeViews.h"
 #import <UIKit/UIView.h>
 #import <UIKitSPI.h>
 #endif
@@ -61,6 +67,10 @@ static void configureSeparatedLayer(CALayer *) { }
 {
     NSUInteger numOldSubviews = self.subviews.count;
     NSUInteger numNewSubviews = newSubviews.count;
+
+    // This method does not handle interleaved UIView and CALayer children of
+    // a UIView, so we must not have any non-UIView-backed CALayer children.
+    ASSERT(numOldSubviews == self.layer.sublayers.count);
 
     NSUInteger currIndex = 0;
     for (currIndex = 0; currIndex < numNewSubviews; ++currIndex) {
@@ -102,7 +112,7 @@ static void configureSeparatedLayer(CALayer *) { }
 namespace WebKit {
 using namespace WebCore;
 
-static CGColorRef cgColorFromColor(const Color& color)
+static RetainPtr<CGColorRef> cgColorFromColor(const Color& color)
 {
     if (!color.isValid())
         return nil;
@@ -113,30 +123,24 @@ static CGColorRef cgColorFromColor(const Color& color)
 static NSString *toCAFilterType(PlatformCALayer::FilterType type)
 {
     switch (type) {
-    case PlatformCALayer::Linear:
+    case PlatformCALayer::FilterType::Linear:
         return kCAFilterLinear;
-    case PlatformCALayer::Nearest:
+    case PlatformCALayer::FilterType::Nearest:
         return kCAFilterNearest;
-    case PlatformCALayer::Trilinear:
+    case PlatformCALayer::FilterType::Trilinear:
         return kCAFilterTrilinear;
     };
-    
+
     ASSERT_NOT_REACHED();
     return 0;
 }
 
 static void updateCustomAppearance(CALayer *layer, GraphicsLayer::CustomAppearance customAppearance)
 {
-#if ENABLE(RUBBER_BANDING)
+#if HAVE(RUBBER_BANDING)
     switch (customAppearance) {
     case GraphicsLayer::CustomAppearance::None:
-    case GraphicsLayer::CustomAppearance::DarkBackdrop:
-    case GraphicsLayer::CustomAppearance::LightBackdrop:
-        ScrollbarThemeMac::removeOverhangAreaBackground(layer);
         ScrollbarThemeMac::removeOverhangAreaShadow(layer);
-        break;
-    case GraphicsLayer::CustomAppearance::ScrollingOverhang:
-        ScrollbarThemeMac::setUpOverhangAreaBackground(layer);
         break;
     case GraphicsLayer::CustomAppearance::ScrollingShadow:
         ScrollbarThemeMac::setUpOverhangAreaShadow(layer);
@@ -147,161 +151,202 @@ static void updateCustomAppearance(CALayer *layer, GraphicsLayer::CustomAppearan
 #endif
 }
 
-void RemoteLayerTreePropertyApplier::applyPropertiesToLayer(CALayer *layer, RemoteLayerTreeHost* layerTreeHost, const RemoteLayerTreeTransaction::LayerProperties& properties, RemoteLayerBackingStore::LayerContentsType layerContentsType)
+void RemoteLayerTreePropertyApplier::applyPropertiesToLayer(CALayer *layer, RemoteLayerTreeNode* layerTreeNode, RemoteLayerTreeHost* layerTreeHost, const LayerProperties& properties, LayerContentsType layerContentsType)
 {
-    if (properties.changedProperties & RemoteLayerTreeTransaction::NameChanged)
-        layer.name = properties.name;
-
-    if (properties.changedProperties & RemoteLayerTreeTransaction::PositionChanged) {
+    if (properties.changedProperties & LayerChange::PositionChanged) {
         layer.position = CGPointMake(properties.position.x(), properties.position.y());
         layer.zPosition = properties.position.z();
     }
 
-    if (properties.changedProperties & RemoteLayerTreeTransaction::AnchorPointChanged) {
+    if (properties.changedProperties & LayerChange::AnchorPointChanged) {
         layer.anchorPoint = CGPointMake(properties.anchorPoint.x(), properties.anchorPoint.y());
         layer.anchorPointZ = properties.anchorPoint.z();
     }
 
-    if (properties.changedProperties & RemoteLayerTreeTransaction::BoundsChanged)
+    if (properties.changedProperties & LayerChange::BoundsChanged)
         layer.bounds = properties.bounds;
-    
-    if (properties.changedProperties & RemoteLayerTreeTransaction::BackgroundColorChanged)
-        layer.backgroundColor = cgColorFromColor(properties.backgroundColor);
 
-    if (properties.changedProperties & RemoteLayerTreeTransaction::BorderColorChanged)
-        layer.borderColor = cgColorFromColor(properties.borderColor);
-
-    if (properties.changedProperties & RemoteLayerTreeTransaction::BorderWidthChanged)
-        layer.borderWidth = properties.borderWidth;
-
-    if (properties.changedProperties & RemoteLayerTreeTransaction::OpacityChanged)
-        layer.opacity = properties.opacity;
-
-    if (properties.changedProperties & RemoteLayerTreeTransaction::TransformChanged)
+    if (properties.changedProperties & LayerChange::TransformChanged)
         layer.transform = properties.transform ? (CATransform3D)*properties.transform.get() : CATransform3DIdentity;
 
-    if (properties.changedProperties & RemoteLayerTreeTransaction::SublayerTransformChanged)
+    if (properties.changedProperties & LayerChange::SublayerTransformChanged)
         layer.sublayerTransform = properties.sublayerTransform ? (CATransform3D)*properties.sublayerTransform.get() : CATransform3DIdentity;
 
-    if (properties.changedProperties & RemoteLayerTreeTransaction::HiddenChanged)
+    if (properties.changedProperties & LayerChange::HiddenChanged)
         layer.hidden = properties.hidden;
 
-    if (properties.changedProperties & RemoteLayerTreeTransaction::GeometryFlippedChanged)
+    if (properties.changedProperties & LayerChange::GeometryFlippedChanged)
         layer.geometryFlipped = properties.geometryFlipped;
 
-    if (properties.changedProperties & RemoteLayerTreeTransaction::DoubleSidedChanged)
-        layer.doubleSided = properties.doubleSided;
-
-    if (properties.changedProperties & RemoteLayerTreeTransaction::MasksToBoundsChanged)
-        layer.masksToBounds = properties.masksToBounds;
-
-    if (properties.changedProperties & RemoteLayerTreeTransaction::OpaqueChanged)
-        layer.opaque = properties.opaque;
-
-    if (properties.changedProperties & RemoteLayerTreeTransaction::ContentsRectChanged)
-        layer.contentsRect = properties.contentsRect;
-
-    if (properties.changedProperties & RemoteLayerTreeTransaction::ContentsScaleChanged) {
+    if (properties.changedProperties & LayerChange::ContentsScaleChanged) {
         layer.contentsScale = properties.contentsScale;
         layer.rasterizationScale = properties.contentsScale;
     }
 
-    if (properties.changedProperties & RemoteLayerTreeTransaction::CornerRadiusChanged)
-        layer.cornerRadius = properties.cornerRadius;
+    if (properties.changedProperties & LayerChange::OpacityChanged)
+        layer.opacity = properties.opacity;
 
-    if (properties.changedProperties & RemoteLayerTreeTransaction::ShapeRoundedRectChanged) {
+    if (properties.changedProperties & LayerChange::MasksToBoundsChanged)
+        layer.masksToBounds = properties.masksToBounds;
+
+    if (properties.changedProperties & LayerChange::NameChanged)
+        layer.name = properties.name;
+
+    if (properties.changedProperties & LayerChange::BackgroundColorChanged)
+        layer.backgroundColor = cgColorFromColor(properties.backgroundColor).get();
+
+    if (properties.changedProperties & LayerChange::BorderColorChanged)
+        layer.borderColor = cgColorFromColor(properties.borderColor).get();
+
+    if (properties.changedProperties & LayerChange::BorderWidthChanged)
+        layer.borderWidth = properties.borderWidth;
+
+    if (properties.changedProperties & LayerChange::DoubleSidedChanged)
+        layer.doubleSided = properties.doubleSided;
+
+    if (properties.changedProperties & LayerChange::OpaqueChanged)
+        layer.opaque = properties.opaque;
+
+    if (properties.changedProperties & LayerChange::ContentsRectChanged)
+        layer.contentsRect = properties.contentsRect;
+
+    if (properties.changedProperties & LayerChange::CornerRadiusChanged) {
+        layer.cornerRadius = properties.cornerRadius;
+        if (properties.cornerRadius)
+            layer.cornerCurve = kCACornerCurveCircular;
+    }
+
+    if (properties.changedProperties & LayerChange::ShapeRoundedRectChanged) {
         Path path;
         if (properties.shapeRoundedRect)
             path.addRoundedRect(*properties.shapeRoundedRect);
-        ASSERT([layer isKindOfClass:[CAShapeLayer class]]);
-        [(CAShapeLayer *)layer setPath:path.platformPath()];
+        dynamic_objc_cast<CAShapeLayer>(layer).path = path.platformPath();
     }
 
-    if (properties.changedProperties & RemoteLayerTreeTransaction::ShapePathChanged) {
-        ASSERT([layer isKindOfClass:[CAShapeLayer class]]);
-        [(CAShapeLayer *)layer setPath:properties.shapePath.platformPath()];
-    }
+    if (properties.changedProperties & LayerChange::ShapePathChanged)
+        dynamic_objc_cast<CAShapeLayer>(layer).path = properties.shapePath.platformPath();
 
-    if (properties.changedProperties & RemoteLayerTreeTransaction::MinificationFilterChanged)
+    if (properties.changedProperties & LayerChange::MinificationFilterChanged)
         layer.minificationFilter = toCAFilterType(properties.minificationFilter);
 
-    if (properties.changedProperties & RemoteLayerTreeTransaction::MagnificationFilterChanged)
+    if (properties.changedProperties & LayerChange::MagnificationFilterChanged)
         layer.magnificationFilter = toCAFilterType(properties.magnificationFilter);
 
-    if (properties.changedProperties & RemoteLayerTreeTransaction::BlendModeChanged)
+    if (properties.changedProperties & LayerChange::BlendModeChanged)
         PlatformCAFilters::setBlendingFiltersOnLayer(layer, properties.blendMode);
 
-    if (properties.changedProperties & RemoteLayerTreeTransaction::WindRuleChanged) {
-        ASSERT([layer isKindOfClass:[CAShapeLayer class]]);
-        CAShapeLayer *shapeLayer = (CAShapeLayer *)layer;
-        switch (properties.windRule) {
-        case WindRule::NonZero:
-            shapeLayer.fillRule = kCAFillRuleNonZero;
-            break;
-        case WindRule::EvenOdd:
-            shapeLayer.fillRule = kCAFillRuleEvenOdd;
-            break;
+    if (properties.changedProperties & LayerChange::WindRuleChanged) {
+        if (auto *shapeLayer = dynamic_objc_cast<CAShapeLayer>(layer)) {
+            switch (properties.windRule) {
+            case WindRule::NonZero:
+                shapeLayer.fillRule = kCAFillRuleNonZero;
+                break;
+            case WindRule::EvenOdd:
+                shapeLayer.fillRule = kCAFillRuleEvenOdd;
+                break;
+            }
         }
     }
 
-    if (properties.changedProperties & RemoteLayerTreeTransaction::SpeedChanged)
+    if (properties.changedProperties & LayerChange::SpeedChanged)
         layer.speed = properties.speed;
 
-    if (properties.changedProperties & RemoteLayerTreeTransaction::TimeOffsetChanged)
+    if (properties.changedProperties & LayerChange::TimeOffsetChanged)
         layer.timeOffset = properties.timeOffset;
 
-    if (properties.changedProperties & RemoteLayerTreeTransaction::BackingStoreChanged
-        || properties.changedProperties & RemoteLayerTreeTransaction::BackingStoreAttachmentChanged)
+    if (properties.changedProperties & LayerChange::BackingStoreChanged
+        || properties.changedProperties & LayerChange::BackingStoreAttachmentChanged)
     {
-        RemoteLayerBackingStore* backingStore = properties.backingStore.get();
-        if (backingStore && properties.backingStoreAttached)
-            backingStore->applyBackingStoreToLayer(layer, layerContentsType);
-        else {
-            layer.contents = nil;
-            layer.contentsOpaque = NO;
-        }
+        auto* backingStore = properties.backingStoreOrProperties.properties.get();
+        if (backingStore && properties.backingStoreAttached) {
+            std::optional<WebCore::RenderingResourceIdentifier> asyncContentsIdentifier;
+            if (layerTreeNode) {
+                backingStore->updateCachedBuffers(*layerTreeNode, layerContentsType);
+                asyncContentsIdentifier = layerTreeNode->asyncContentsIdentifier();
+            }
+
+            backingStore->applyBackingStoreToLayer(layer, layerContentsType, asyncContentsIdentifier, layerTreeHost->replayDynamicContentScalingDisplayListsIntoBackingStore());
+        } else
+            [layer _web_clearContents];
     }
 
-    if (properties.changedProperties & RemoteLayerTreeTransaction::FiltersChanged)
-        PlatformCAFilters::setFiltersOnLayer(layer, properties.filters ? *properties.filters : FilterOperations());
+    if (properties.changedProperties & LayerChange::BackdropRootIsOpaqueChanged && layerTreeNode)
+        layerTreeNode->setBackdropRootIsOpaque(properties.backdropRootIsOpaque);
 
-    if (properties.changedProperties & RemoteLayerTreeTransaction::AnimationsChanged)
-        PlatformCAAnimationRemote::updateLayerAnimations(layer, layerTreeHost, properties.addedAnimations, properties.keyPathsOfAnimationsToRemove);
+    if (properties.changedProperties & LayerChange::FiltersChanged)
+        PlatformCAFilters::setFiltersOnLayer(layer, properties.filters ? *properties.filters : FilterOperations(), layerTreeNode && layerTreeNode->backdropRootIsOpaque());
 
-    if (properties.changedProperties & RemoteLayerTreeTransaction::EdgeAntialiasingMaskChanged)
-        layer.edgeAntialiasingMask = properties.edgeAntialiasingMask;
+    if (properties.changedProperties & LayerChange::AnimationsChanged) {
+#if ENABLE(THREADED_ANIMATION_RESOLUTION)
+        if (layerTreeHost->threadedAnimationResolutionEnabled()) {
+            LOG_WITH_STREAM(Animations, stream << "RemoteLayerTreePropertyApplier::applyProperties() for layer " << layerTreeNode->layerID() << " found " << properties.animationChanges.effects.size() << " effects.");
+            layerTreeNode->setAcceleratedEffectsAndBaseValues(properties.animationChanges.effects, properties.animationChanges.baseValues, *layerTreeHost);
+        } else
+#endif
+        PlatformCAAnimationRemote::updateLayerAnimations(layer, layerTreeHost, properties.animationChanges.addedAnimations, properties.animationChanges.keysOfAnimationsToRemove);
+    }
 
-    if (properties.changedProperties & RemoteLayerTreeTransaction::CustomAppearanceChanged)
+    if (properties.changedProperties & LayerChange::AntialiasesEdgesChanged)
+        layer.edgeAntialiasingMask = properties.antialiasesEdges ? (kCALayerLeftEdge | kCALayerRightEdge | kCALayerBottomEdge | kCALayerTopEdge) : 0;
+
+    if (properties.changedProperties & LayerChange::CustomAppearanceChanged)
         updateCustomAppearance(layer, properties.customAppearance);
 
+    if (properties.changedProperties & LayerChange::BackdropRootChanged)
+        layer.shouldRasterize = properties.backdropRoot;
+
 #if HAVE(CORE_ANIMATION_SEPARATED_LAYERS)
-    if (properties.changedProperties & RemoteLayerTreeTransaction::SeparatedChanged) {
+    if (properties.changedProperties & LayerChange::SeparatedChanged) {
         layer.separated = properties.isSeparated;
         if (properties.isSeparated)
             configureSeparatedLayer(layer);
     }
 
 #if HAVE(CORE_ANIMATION_SEPARATED_PORTALS)
-    if (properties.changedProperties & RemoteLayerTreeTransaction::SeparatedPortalChanged) {
+    if (properties.changedProperties & LayerChange::SeparatedPortalChanged) {
         // FIXME: Implement SeparatedPortalChanged.
     }
 
-    if (properties.changedProperties & RemoteLayerTreeTransaction::DescendentOfSeparatedPortalChanged) {
+    if (properties.changedProperties & LayerChange::DescendentOfSeparatedPortalChanged) {
         // FIXME: Implement DescendentOfSeparatedPortalChanged.
     }
 #endif
 #endif
+
+#if HAVE(AVKIT)
+    if (properties.changedProperties & LayerChange::VideoGravityChanged) {
+        auto *playerLayer = layer;
+#if PLATFORM(IOS_FAMILY)
+        if (layerTreeNode && [layerTreeNode->uiView() isKindOfClass:WKVideoView.class])
+            playerLayer = [(WKVideoView*)layerTreeNode->uiView() playerLayer];
+#endif
+        ASSERT([playerLayer respondsToSelector:@selector(setVideoGravity:)]);
+        if ([playerLayer respondsToSelector:@selector(setVideoGravity:)])
+            [(WebAVPlayerLayer*)playerLayer setVideoGravity:convertMediaPlayerToAVLayerVideoGravity(properties.videoGravity)];
+    }
+#endif
 }
 
-void RemoteLayerTreePropertyApplier::applyProperties(RemoteLayerTreeNode& node, RemoteLayerTreeHost* layerTreeHost, const RemoteLayerTreeTransaction::LayerProperties& properties, const RelatedLayerMap& relatedLayers, RemoteLayerBackingStore::LayerContentsType layerContentsType)
+void RemoteLayerTreePropertyApplier::applyProperties(RemoteLayerTreeNode& node, RemoteLayerTreeHost* layerTreeHost, const LayerProperties& properties, const RelatedLayerMap& relatedLayers, LayerContentsType layerContentsType)
 {
     BEGIN_BLOCK_OBJC_EXCEPTIONS
 
-    applyPropertiesToLayer(node.layer(), layerTreeHost, properties, layerContentsType);
+    applyPropertiesToLayer(node.layer(), &node, layerTreeHost, properties, layerContentsType);
+    if (properties.changedProperties & LayerChange::EventRegionChanged)
+        node.setEventRegion(properties.eventRegion);
     updateMask(node, properties, relatedLayers);
 
-    if (properties.changedProperties & RemoteLayerTreeTransaction::EventRegionChanged)
-        node.setEventRegion(properties.eventRegion);
+#if ENABLE(GAZE_GLOW_FOR_INTERACTION_REGIONS)
+    if (properties.changedProperties & LayerChange::VisibleRectChanged)
+        node.setVisibleRect(properties.visibleRect);
+    if (properties.changedProperties & LayerChange::EventRegionChanged || properties.changedProperties & LayerChange::VisibleRectChanged)
+        updateLayersForInteractionRegions(node);
+#endif
+
+#if ENABLE(SCROLLING_THREAD)
+    if (properties.changedProperties & LayerChange::ScrollingNodeIDChanged)
+        node.setScrollingNodeID(properties.scrollingNodeID.value_or(ScrollingNodeID { }));
+#endif
 
 #if PLATFORM(IOS_FAMILY)
     applyPropertiesToUIView(node.uiView(), properties, relatedLayers);
@@ -310,11 +355,11 @@ void RemoteLayerTreePropertyApplier::applyProperties(RemoteLayerTreeNode& node, 
     END_BLOCK_OBJC_EXCEPTIONS
 }
 
-void RemoteLayerTreePropertyApplier::applyHierarchyUpdates(RemoteLayerTreeNode& node, const RemoteLayerTreeTransaction::LayerProperties& properties, const RelatedLayerMap& relatedLayers)
+void RemoteLayerTreePropertyApplier::applyHierarchyUpdates(RemoteLayerTreeNode& node, const LayerProperties& properties, const RelatedLayerMap& relatedLayers)
 {
     BEGIN_BLOCK_OBJC_EXCEPTIONS
 
-    if (!properties.changedProperties.contains(RemoteLayerTreeTransaction::ChildrenChanged))
+    if (!properties.changedProperties.contains(LayerChange::ChildrenChanged))
         return;
 
 #if PLATFORM(IOS_FAMILY)
@@ -328,18 +373,9 @@ void RemoteLayerTreePropertyApplier::applyHierarchyUpdates(RemoteLayerTreeNode& 
         return childNode && childNode->uiView();
     };
 
-    auto contentView = [&] {
-        if (properties.customAppearance == GraphicsLayer::CustomAppearance::LightBackdrop || properties.customAppearance == GraphicsLayer::CustomAppearance::DarkBackdrop) {
-            // This is a UIBackdropView, which should have children attached to
-            // its content view, not directly on its layers.
-            return [(_UIBackdropView *)node.uiView() contentView];
-        }
-        return node.uiView();
-    };
-
     if (hasViewChildren()) {
         ASSERT(node.uiView());
-        [contentView() _web_setSubviews:createNSArray(properties.children, [&] (auto& child) -> UIView * {
+        [node.uiView() _web_setSubviews:createNSArray(properties.children, [&] (auto& child) -> UIView * {
             auto* childNode = relatedLayers.get(child);
             ASSERT(childNode);
             if (!childNode)
@@ -347,6 +383,9 @@ void RemoteLayerTreePropertyApplier::applyHierarchyUpdates(RemoteLayerTreeNode& 
             ASSERT(childNode->uiView());
             return childNode->uiView();
         }).get()];
+#if ENABLE(GAZE_GLOW_FOR_INTERACTION_REGIONS)
+        node.updateInteractionRegionAfterHierarchyChange();
+#endif
         return;
     }
 #endif
@@ -365,30 +404,19 @@ void RemoteLayerTreePropertyApplier::applyHierarchyUpdates(RemoteLayerTreeNode& 
     END_BLOCK_OBJC_EXCEPTIONS
 }
 
-void RemoteLayerTreePropertyApplier::updateMask(RemoteLayerTreeNode& node, const RemoteLayerTreeTransaction::LayerProperties& properties, const RelatedLayerMap& relatedLayers)
+void RemoteLayerTreePropertyApplier::updateMask(RemoteLayerTreeNode& node, const LayerProperties& properties, const RelatedLayerMap& relatedLayers)
 {
-    if (!properties.changedProperties.contains(RemoteLayerTreeTransaction::MaskLayerChanged))
+    if (!properties.changedProperties.contains(LayerChange::MaskLayerChanged))
         return;
 
-    auto maskOwnerLayer = [&] {
-        CALayer *layer = node.layer();
-#if PLATFORM(IOS_FAMILY)
-        if (properties.customAppearance == GraphicsLayer::CustomAppearance::LightBackdrop || properties.customAppearance == GraphicsLayer::CustomAppearance::DarkBackdrop) {
-            // This is a UIBackdropView, which means any mask must be applied to the CABackdropLayer rather
-            // that the view's layer. The backdrop is the first layer child.
-            if (layer.sublayers.count && [layer.sublayers[0] isKindOfClass:[CABackdropLayer class]])
-                layer = layer.sublayers[0];
-        }
-#endif
-        return layer;
-    };
+    auto maskOwnerLayer = node.layer();
 
     if (!properties.maskLayerID) {
-        maskOwnerLayer().mask = nullptr;
+        maskOwnerLayer.mask = nullptr;
         return;
     }
 
-    auto* maskNode = relatedLayers.get(properties.maskLayerID);
+    auto* maskNode = properties.maskLayerID ? relatedLayers.get(*properties.maskLayerID) : nullptr;
     ASSERT(maskNode);
     if (!maskNode)
         return;
@@ -396,13 +424,13 @@ void RemoteLayerTreePropertyApplier::updateMask(RemoteLayerTreeNode& node, const
     ASSERT(!maskLayer.superlayer);
     if (maskLayer.superlayer)
         return;
-    maskOwnerLayer().mask = maskLayer;
+    maskOwnerLayer.mask = maskLayer;
 }
 
 #if PLATFORM(IOS_FAMILY)
-void RemoteLayerTreePropertyApplier::applyPropertiesToUIView(UIView *view, const RemoteLayerTreeTransaction::LayerProperties& properties, const RelatedLayerMap& relatedLayers)
+void RemoteLayerTreePropertyApplier::applyPropertiesToUIView(UIView *view, const LayerProperties& properties, const RelatedLayerMap& relatedLayers)
 {
-    if (properties.changedProperties.containsAny({ RemoteLayerTreeTransaction::ContentsHiddenChanged, RemoteLayerTreeTransaction::UserInteractionEnabledChanged }))
+    if (properties.changedProperties.containsAny({ LayerChange::ContentsHiddenChanged, LayerChange::UserInteractionEnabledChanged }))
         view.userInteractionEnabled = !properties.contentsHidden && properties.userInteractionEnabled;
 }
 #endif

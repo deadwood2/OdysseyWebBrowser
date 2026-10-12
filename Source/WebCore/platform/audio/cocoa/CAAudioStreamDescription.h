@@ -31,12 +31,10 @@
 namespace WebCore {
 
 WEBCORE_EXPORT bool operator==(const AudioStreamBasicDescription&, const AudioStreamBasicDescription&);
-inline bool operator!=(const AudioStreamBasicDescription& a, const AudioStreamBasicDescription& b) { return !(a == b); }
 
 class WEBCORE_EXPORT CAAudioStreamDescription final : public AudioStreamDescription {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    CAAudioStreamDescription();
     CAAudioStreamDescription(const AudioStreamBasicDescription&);
     CAAudioStreamDescription(double, uint32_t, PCMFormat, bool);
     ~CAAudioStreamDescription();
@@ -60,16 +58,12 @@ public:
     uint32_t bytesPerPacket() const;
     uint32_t formatFlags() const;
 
-    bool operator==(const AudioStreamBasicDescription& other) const;
-    bool operator!=(const AudioStreamBasicDescription& other) const;
-    bool operator==(const AudioStreamDescription& other) const;
-    bool operator!=(const AudioStreamDescription& other) const;
+    bool operator==(const CAAudioStreamDescription& other) const { return operator==(static_cast<const AudioStreamDescription&>(other)); }
+    bool operator==(const AudioStreamBasicDescription&) const;
+    bool operator==(const AudioStreamDescription&) const;
 
     const AudioStreamBasicDescription& streamDescription() const;
     AudioStreamBasicDescription& streamDescription();
-
-    template<class Encoder> void encode(Encoder&) const;
-    template<class Decoder> static WARN_UNUSED_RETURN bool decode(Decoder&, CAAudioStreamDescription&);
 
 private:
     AudioStreamBasicDescription m_streamDescription;
@@ -77,22 +71,10 @@ private:
     mutable PCMFormat m_format { None };
 };
 
-template<class Encoder>
-void CAAudioStreamDescription::encode(Encoder& encoder) const
-{
-    encoder.encodeFixedLengthData(reinterpret_cast<const uint8_t*>(&m_streamDescription), sizeof(m_streamDescription), 1);
-}
-
-template<class Decoder>
-bool CAAudioStreamDescription::decode(Decoder& decoder, CAAudioStreamDescription& description)
-{
-    return decoder.decodeFixedLengthData(reinterpret_cast<uint8_t*>(&description.m_streamDescription), sizeof(description.m_streamDescription), 1);
-}
-
 inline CAAudioStreamDescription toCAAudioStreamDescription(const AudioStreamDescription& description)
 {
     ASSERT(description.platformDescription().type == PlatformDescription::CAAudioStreamBasicType);
-    return CAAudioStreamDescription(*WTF::get<const AudioStreamBasicDescription*>(description.platformDescription().description));
+    return CAAudioStreamDescription(*std::get<const AudioStreamBasicDescription*>(description.platformDescription().description));
 }
 
 }

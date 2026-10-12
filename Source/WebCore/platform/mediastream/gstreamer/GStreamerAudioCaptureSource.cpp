@@ -32,33 +32,24 @@
 #include <gst/app/gstappsink.h>
 #include <gst/gst.h>
 #include <wtf/NeverDestroyed.h>
+#include <wtf/text/MakeString.h>
 
 namespace WebCore {
 
-static CapabilityValueOrRange defaultVolumeCapability()
+static DoubleCapabilityRange defaultVolumeCapability()
 {
-    return CapabilityValueOrRange(0.0, 1.0);
+    return { 0.0, 1.0 };
 }
 const static RealtimeMediaSourceCapabilities::EchoCancellation defaultEchoCancellationCapability = RealtimeMediaSourceCapabilities::EchoCancellation::ReadWrite;
 
 GST_DEBUG_CATEGORY(webkit_audio_capture_source_debug);
 #define GST_CAT_DEFAULT webkit_audio_capture_source_debug
 
-static void initializeDebugCategory()
-{
-    ensureGStreamerInitialized();
-
-    static std::once_flag debugRegisteredFlag;
-    std::call_once(debugRegisteredFlag, [] {
-        GST_DEBUG_CATEGORY_INIT(webkit_audio_capture_source_debug, "webkitaudiocapturesource", 0, "WebKit Audio Capture Source.");
-    });
-}
-
 class GStreamerAudioCaptureSourceFactory : public AudioCaptureFactory {
 public:
-    CaptureSourceOrError createAudioCaptureSource(const CaptureDevice& device, String&& hashSalt, const MediaConstraints* constraints) final
+    CaptureSourceOrError createAudioCaptureSource(const CaptureDevice& device, MediaDeviceHashSalts&& hashSalts, const MediaConstraints* constraints, PageIdentifier) final
     {
-        return GStreamerAudioCaptureSource::create(String { device.persistentId() }, WTFMove(hashSalt), constraints);
+        return GStreamerAudioCaptureSource::create(String { device.persistentId() }, WTFMove(hashSalts), constraints);
     }
 private:
     CaptureDeviceManager& audioCaptureDeviceManager() final { return GStreamerAudioCaptureDeviceManager::singleton(); }
@@ -73,19 +64,19 @@ static GStreamerAudioCaptureSourceFactory& libWebRTCAudioCaptureSourceFactory()
     return factory.get();
 }
 
-CaptureSourceOrError GStreamerAudioCaptureSource::create(String&& deviceID, String&& hashSalt, const MediaConstraints* constraints)
+CaptureSourceOrError GStreamerAudioCaptureSource::create(String&& deviceID, MediaDeviceHashSalts&& hashSalts, const MediaConstraints* constraints)
 {
     auto device = GStreamerAudioCaptureDeviceManager::singleton().gstreamerDeviceWithUID(deviceID);
     if (!device) {
-        auto errorMessage = makeString("GStreamerAudioCaptureSource::create(): GStreamer did not find the device: ", deviceID, '.');
-        return CaptureSourceOrError(WTFMove(errorMessage));
+        auto errorMessage = makeString("GStreamerAudioCaptureSource::create(): GStreamer did not find the device: "_s, deviceID, '.');
+        return CaptureSourceOrError({ WTFMove(errorMessage), MediaAccessDenialReason::PermissionDenied });
     }
 
-    auto source = adoptRef(*new GStreamerAudioCaptureSource(device.value(), WTFMove(hashSalt)));
+    auto source = adoptRef(*new GStreamerAudioCaptureSource(WTFMove(*device), WTFMove(hashSalts)));
 
     if (constraints) {
         if (auto result = source->applyConstraints(*constraints))
-            return WTFMove(result->badConstraint);
+            return CaptureSourceOrError(CaptureSourceError { result->invalidConstraint });
     }
     return CaptureSourceOrError(WTFMove(source));
 }
@@ -95,51 +86,48 @@ AudioCaptureFactory& GStreamerAudioCaptureSource::factory()
     return libWebRTCAudioCaptureSourceFactory();
 }
 
-GStreamerAudioCaptureSource::GStreamerAudioCaptureSource(GStreamerCaptureDevice device, String&& hashSalt)
-    : RealtimeMediaSource(RealtimeMediaSource::Type::Audio, String { device.persistentId() }, String { device.label() }, WTFMove(hashSalt))
-    , m_capturer(makeUnique<GStreamerAudioCapturer>(device))
+GStreamerAudioCaptureSource::GStreamerAudioCaptureSource(GStreamerCaptureDevice&& device, MediaDeviceHashSalts&& hashSalts)
+    : RealtimeMediaSource(device, WTFMove(hashSalts))
+    , m_capturer(adoptRef(*new GStreamerAudioCapturer(WTFMove(device))))
 {
-    initializeDebugCategory();
-}
+    ensureGStreamerInitialized();
 
-GStreamerAudioCaptureSource::GStreamerAudioCaptureSource(String&& deviceID, String&& name, String&& hashSalt)
-    : RealtimeMediaSource(RealtimeMediaSource::Type::Audio, WTFMove(deviceID), WTFMove(name), WTFMove(hashSalt))
-    , m_capturer(makeUnique<GStreamerAudioCapturer>())
-{
-    initializeDebugCategory();
+    static std::once_flag debugRegisteredFlag;
+    std::call_once(debugRegisteredFlag, [] {
+        GST_DEBUG_CATEGORY_INIT(webkit_audio_capture_source_debug, "webkitaudiocapturesource", 0, "WebKit Audio Capture Source.");
+    });
+
+    auto& singleton = GStreamerAudioCaptureDeviceManager::singleton();
+    singleton.registerCapturer(m_capturer);
 }
 
 GStreamerAudioCaptureSource::~GStreamerAudioCaptureSource()
 {
+    auto& singleton = GStreamerAudioCaptureDeviceManager::singleton();
+    singleton.unregisterCapturer(*m_capturer);
+}
+
+void GStreamerAudioCaptureSource::captureEnded()
+{
+    m_capturer->stop();
+    captureFailed();
 }
 
 void GStreamerAudioCaptureSource::startProducingData()
 {
     m_capturer->setupPipeline();
     m_capturer->setSampleRate(sampleRate());
-    g_signal_connect(m_capturer->sink(), "new-sample", G_CALLBACK(newSampleCallback), this);
-    m_capturer->play();
-}
-
-GstFlowReturn GStreamerAudioCaptureSource::newSampleCallback(GstElement* sink, GStreamerAudioCaptureSource* source)
-{
-    auto sample = adoptGRef(gst_app_sink_pull_sample(GST_APP_SINK(sink)));
-
-    // FIXME - figure out a way to avoid copying (on write) the data.
-    auto* buffer = gst_sample_get_buffer(sample.get());
-    GStreamerAudioData frames(WTFMove(sample));
-    GStreamerAudioStreamDescription description(frames.getAudioInfo());
-
-    source->audioSamplesAvailable(
-        MediaTime(GST_TIME_AS_USECONDS(GST_BUFFER_PTS(buffer)), G_USEC_PER_SEC),
-        frames, description, gst_buffer_get_size(buffer) / description.getInfo().bpf);
-
-    return GST_FLOW_OK;
+    m_capturer->setSinkAudioCallback([this](auto&& sample, auto&& presentationTime) {
+        auto bufferSize = gst_buffer_get_size(gst_sample_get_buffer(sample.get()));
+        GStreamerAudioData frames(WTFMove(sample));
+        GStreamerAudioStreamDescription description(frames.getAudioInfo());
+        audioSamplesAvailable(presentationTime, frames, description, bufferSize / description.getInfo().bpf);
+    });
+    m_capturer->start();
 }
 
 void GStreamerAudioCaptureSource::stopProducingData()
 {
-    g_signal_handlers_disconnect_by_func(m_capturer->sink(), reinterpret_cast<gpointer>(newSampleCallback), this);
     m_capturer->stop();
 }
 
@@ -149,7 +137,7 @@ const RealtimeMediaSourceCapabilities& GStreamerAudioCaptureSource::capabilities
         return m_capabilities.value();
 
     uint i;
-    GRefPtr<GstCaps> caps = m_capturer->caps();
+    auto caps = m_capturer->caps();
     int minSampleRate = 0, maxSampleRate = 0;
     for (i = 0; i < gst_caps_get_size(caps.get()); i++) {
         int capabilityMinSampleRate = 0, capabilityMaxSampleRate = 0;
@@ -173,7 +161,7 @@ const RealtimeMediaSourceCapabilities& GStreamerAudioCaptureSource::capabilities
     capabilities.setDeviceId(hashedId());
     capabilities.setEchoCancellation(defaultEchoCancellationCapability);
     capabilities.setVolume(defaultVolumeCapability());
-    capabilities.setSampleRate(CapabilityValueOrRange(minSampleRate, maxSampleRate));
+    capabilities.setSampleRate({ minSampleRate, maxSampleRate });
     m_capabilities = WTFMove(capabilities);
 
     return m_capabilities.value();
@@ -210,7 +198,10 @@ const RealtimeMediaSourceSettings& GStreamerAudioCaptureSource::settings()
 
 bool GStreamerAudioCaptureSource::interrupted() const
 {
-    return m_capturer->isInterrupted() || RealtimeMediaSource::interrupted();
+    if (m_capturer->pipeline())
+        return m_capturer->isInterrupted() || RealtimeMediaSource::interrupted();
+
+    return RealtimeMediaSource::interrupted();
 }
 
 void GStreamerAudioCaptureSource::setInterruptedForTesting(bool isInterrupted)
@@ -218,6 +209,8 @@ void GStreamerAudioCaptureSource::setInterruptedForTesting(bool isInterrupted)
     m_capturer->setInterrupted(isInterrupted);
     RealtimeMediaSource::setInterruptedForTesting(isInterrupted);
 }
+
+#undef GST_CAT_DEFAULT
 
 } // namespace WebCore
 

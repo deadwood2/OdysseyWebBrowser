@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019-2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2019-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -24,13 +24,16 @@
  */
 
 #import "config.h"
+#import "JSBase.h"
 #import "JSScriptInternal.h"
 
 #import "APICast.h"
 #import "BytecodeCacheError.h"
 #import "CachedTypes.h"
 #import "CodeCache.h"
+#import "Completion.h"
 #import "Identifier.h"
+#import "IntegrityInlines.h"
 #import "JSContextInternal.h"
 #import "JSScriptSourceProvider.h"
 #import "JSSourceCode.h"
@@ -40,9 +43,11 @@
 #import <sys/stat.h>
 #import <wtf/FileSystem.h>
 #import <wtf/SHA1.h>
+#import <wtf/SafeStrerror.h>
 #import <wtf/Scope.h>
 #import <wtf/WeakObjCPtr.h>
 #import <wtf/spi/darwin/DataVaultSPI.h>
+#import <wtf/text/MakeString.h>
 
 #if JSC_OBJC_API_ENABLED
 
@@ -69,7 +74,7 @@ static bool validateBytecodeCachePath(NSURL* cachePath, NSError** error)
         return true;
 
     URL cachePathURL([cachePath absoluteURL]);
-    if (!cachePathURL.isLocalFile()) {
+    if (!cachePathURL.protocolIsFile()) {
         createError([NSString stringWithFormat:@"Cache path `%@` is not a local file", static_cast<NSURL *>(cachePathURL)], error);
         return false;
     }
@@ -125,7 +130,7 @@ static bool validateBytecodeCachePath(NSURL* cachePath, NSError** error)
         return nil;
 
     URL filePathURL([filePath absoluteURL]);
-    if (!filePathURL.isLocalFile())
+    if (!filePathURL.protocolIsFile())
         return createError([NSString stringWithFormat:@"File path %@ is not a local file", static_cast<NSURL *>(filePathURL)], error);
 
     bool success = false;
@@ -134,13 +139,13 @@ static bool validateBytecodeCachePath(NSURL* cachePath, NSError** error)
     if (!success)
         return createError([NSString stringWithFormat:@"File at path %@ could not be mapped.", static_cast<NSString *>(systemPath)], error);
 
-    if (!charactersAreAllASCII(reinterpret_cast<const LChar*>(fileData.data()), fileData.size()))
+    if (!charactersAreAllASCII(fileData.span()))
         return createError([NSString stringWithFormat:@"Not all characters in file at %@ are ASCII.", static_cast<NSString *>(systemPath)], error);
 
     auto result = adoptNS([[JSScript alloc] init]);
     result->m_virtualMachine = vm;
     result->m_type = type;
-    result->m_source = String(StringImpl::createWithoutCopying(bitwise_cast<const LChar*>(fileData.data()), fileData.size()));
+    result->m_source = String(StringImpl::createWithoutCopying(fileData.span()));
     result->m_mappedSource = WTFMove(fileData);
     result->m_sourceURL = sourceURL;
     result->m_cachePath = cachePath;
@@ -153,8 +158,7 @@ static bool validateBytecodeCachePath(NSURL* cachePath, NSError** error)
     if (!m_cachePath)
         return;
 
-    NSString *cachePathString = [m_cachePath path];
-    const char* cacheFilename = cachePathString.UTF8String;
+    String cacheFilename = [m_cachePath path];
 
     auto fd = FileSystem::openAndLockFile(cacheFilename, FileSystem::FileOpenMode::Read, {FileSystem::FileLockMode::Exclusive, FileSystem::FileLockMode::Nonblocking});
     if (!FileSystem::isHandleValid(fd))
@@ -168,24 +172,24 @@ static bool validateBytecodeCachePath(NSURL* cachePath, NSError** error)
     if (!success)
         return;
 
-    const uint8_t* fileData = reinterpret_cast<const uint8_t*>(mappedFile.data());
-    unsigned fileTotalSize = mappedFile.size();
+    auto fileData = mappedFile.span();
 
     // Ensure we at least have a SHA1::Digest to read.
-    if (fileTotalSize < sizeof(SHA1::Digest)) {
+    if (fileData.size() < sizeof(SHA1::Digest)) {
         FileSystem::deleteFile(cacheFilename);
         return;
     }
 
-    unsigned fileDataSize = fileTotalSize - sizeof(SHA1::Digest);
+    unsigned fileDataSize = fileData.size() - sizeof(SHA1::Digest);
 
     SHA1::Digest computedHash;
     SHA1 sha1;
-    sha1.addBytes(fileData, fileDataSize);
+    sha1.addBytes(fileData.subspan(0, fileDataSize));
     sha1.computeHash(computedHash);
 
     SHA1::Digest fileHash;
-    memcpy(&fileHash, fileData + fileDataSize, sizeof(SHA1::Digest));
+    auto hashSpan = fileData.subspan(fileDataSize, sizeof(SHA1::Digest));
+    memcpy(&fileHash, hashSpan.data(), hashSpan.size());
 
     if (computedHash != fileHash) {
         FileSystem::deleteFile(cacheFilename);
@@ -270,7 +274,7 @@ static bool validateBytecodeCachePath(NSURL* cachePath, NSError** error)
     URL url = URL({ }, filename);
     auto type = m_type == kJSScriptTypeModule ? JSC::SourceProviderSourceType::Module : JSC::SourceProviderSourceType::Program;
     JSC::SourceOrigin origin(url);
-    Ref<JSScriptSourceProvider> sourceProvider = JSScriptSourceProvider::create(self, origin, WTFMove(filename), startPosition, type);
+    Ref<JSScriptSourceProvider> sourceProvider = JSScriptSourceProvider::create(self, origin, WTFMove(filename), String(), JSC::SourceTaintedOrigin::Untainted, startPosition, type);
     JSC::SourceCode sourceCode(WTFMove(sourceProvider), startPosition.m_line.oneBasedInt(), startPosition.m_column.oneBasedInt());
     return sourceCode;
 }
@@ -304,7 +308,7 @@ static bool validateBytecodeCachePath(NSURL* cachePath, NSError** error)
     const char* tempFileName = [cachePathString stringByAppendingString:@".tmp"].UTF8String;
     int fd = open(cacheFileName, O_CREAT | O_WRONLY | O_EXLOCK | O_NONBLOCK, 0600);
     if (fd == -1) {
-        error = makeString("Could not open or lock the bytecode cache file. It's likely another VM or process is already using it. Error: ", strerror(errno));
+        error = makeString("Could not open or lock the bytecode cache file. It's likely another VM or process is already using it. Error: "_s, safeStrerror(errno).span());
         return NO;
     }
 
@@ -314,7 +318,7 @@ static bool validateBytecodeCachePath(NSURL* cachePath, NSError** error)
 
     int tempFD = open(tempFileName, O_CREAT | O_RDWR | O_EXLOCK | O_NONBLOCK, 0600);
     if (tempFD == -1) {
-        error = makeString("Could not open or lock the bytecode cache temp file. Error: ", strerror(errno));
+        error = makeString("Could not open or lock the bytecode cache temp file. Error: "_s, safeStrerror(errno).span());
         return NO;
     }
 
@@ -337,15 +341,15 @@ static bool validateBytecodeCachePath(NSURL* cachePath, NSError** error)
     if (cacheError.isValid()) {
         m_cachedBytecode = JSC::CachedBytecode::create();
         FileSystem::truncateFile(fd, 0);
-        error = makeString("Unable to generate bytecode for this JSScript because: ", cacheError.message());
+        error = makeString("Unable to generate bytecode for this JSScript because: "_s, cacheError.message());
         return NO;
     }
 
     SHA1::Digest computedHash;
     SHA1 sha1;
-    sha1.addBytes(m_cachedBytecode->data(), m_cachedBytecode->size());
+    sha1.addBytes(m_cachedBytecode->span());
     sha1.computeHash(computedHash);
-    FileSystem::writeToFile(tempFD, computedHash.data(), sizeof(computedHash));
+    FileSystem::writeToFile(tempFD, computedHash);
 
     fsync(tempFD);
     rename(tempFileName, cacheFileName);

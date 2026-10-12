@@ -28,17 +28,22 @@
 
 #if ENABLE(WEB_AUTHN)
 
+#include "CcidService.h"
 #include "HidService.h"
 #include "LocalService.h"
+#include "MockCcidService.h"
 #include "MockHidService.h"
 #include "MockLocalService.h"
 #include "MockNfcService.h"
 #include "NfcService.h"
 #include <wtf/RunLoop.h>
+#include <wtf/TZoneMalloc.h>
 
 namespace WebKit {
 
-UniqueRef<AuthenticatorTransportService> AuthenticatorTransportService::create(WebCore::AuthenticatorTransport transport, Observer& observer)
+WTF_MAKE_TZONE_ALLOCATED_IMPL(AuthenticatorTransportService);
+
+UniqueRef<AuthenticatorTransportService> AuthenticatorTransportService::create(WebCore::AuthenticatorTransport transport, AuthenticatorTransportServiceObserver& observer)
 {
     switch (transport) {
     case WebCore::AuthenticatorTransport::Internal:
@@ -47,13 +52,15 @@ UniqueRef<AuthenticatorTransportService> AuthenticatorTransportService::create(W
         return makeUniqueRef<HidService>(observer);
     case WebCore::AuthenticatorTransport::Nfc:
         return makeUniqueRef<NfcService>(observer);
+    case WebCore::AuthenticatorTransport::SmartCard:
+        return makeUniqueRef<CcidService>(observer);
     default:
         ASSERT_NOT_REACHED();
         return makeUniqueRef<LocalService>(observer);
     }
 }
 
-UniqueRef<AuthenticatorTransportService> AuthenticatorTransportService::createMock(WebCore::AuthenticatorTransport transport, Observer& observer, const WebCore::MockWebAuthenticationConfiguration& configuration)
+UniqueRef<AuthenticatorTransportService> AuthenticatorTransportService::createMock(WebCore::AuthenticatorTransport transport, AuthenticatorTransportServiceObserver& observer, const WebCore::MockWebAuthenticationConfiguration& configuration)
 {
     switch (transport) {
     case WebCore::AuthenticatorTransport::Internal:
@@ -62,20 +69,22 @@ UniqueRef<AuthenticatorTransportService> AuthenticatorTransportService::createMo
         return makeUniqueRef<MockHidService>(observer, configuration);
     case WebCore::AuthenticatorTransport::Nfc:
         return makeUniqueRef<MockNfcService>(observer, configuration);
+    case WebCore::AuthenticatorTransport::SmartCard:
+        return makeUniqueRef<MockCcidService>(observer, configuration);
     default:
         ASSERT_NOT_REACHED();
         return makeUniqueRef<MockLocalService>(observer, configuration);
     }
 }
 
-AuthenticatorTransportService::AuthenticatorTransportService(Observer& observer)
-    : m_observer(makeWeakPtr(observer))
+AuthenticatorTransportService::AuthenticatorTransportService(AuthenticatorTransportServiceObserver& observer)
+    : m_observer(observer)
 {
 }
 
 void AuthenticatorTransportService::startDiscovery()
 {
-    RunLoop::main().dispatch([weakThis = makeWeakPtr(*this)] {
+    RunLoop::main().dispatch([weakThis = WeakPtr { *this }] {
         if (!weakThis)
             return;
         weakThis->startDiscoveryInternal();
@@ -84,7 +93,7 @@ void AuthenticatorTransportService::startDiscovery()
 
 void AuthenticatorTransportService::restartDiscovery()
 {
-    RunLoop::main().dispatch([weakThis = makeWeakPtr(*this)] {
+    RunLoop::main().dispatch([weakThis = WeakPtr { *this }] {
         if (!weakThis)
             return;
         weakThis->restartDiscoveryInternal();

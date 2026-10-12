@@ -36,13 +36,19 @@ class OpenPanelParameters;
 
 namespace WebKit {
 class WebOpenPanelResultListenerProxy;
+enum class PickerDismissalReason : uint8_t;
 }
 
 @interface WKFileUploadPanel : UIViewController
-@property (nonatomic, assign) id <WKFileUploadPanelDelegate> delegate;
+@property (nonatomic, weak) id <WKFileUploadPanelDelegate> delegate;
 - (instancetype)initWithView:(WKContentView *)view;
 - (void)presentWithParameters:(API::OpenPanelParameters*)parameters resultListener:(WebKit::WebOpenPanelResultListenerProxy*)listener;
-- (void)dismiss;
+
+- (BOOL)dismissIfNeededWithReason:(WebKit::PickerDismissalReason)reason;
+
+#if USE(UICONTEXTMENU)
+- (void)repositionContextMenuIfNeeded;
+#endif
 
 - (NSArray<NSString *> *)currentAvailableActionTitles;
 - (NSArray<NSString *> *)acceptedTypeIdentifiers;
@@ -52,6 +58,9 @@ class WebOpenPanelResultListenerProxy;
 @optional
 - (void)fileUploadPanelDidDismiss:(WKFileUploadPanel *)fileUploadPanel;
 - (BOOL)fileUploadPanelDestinationIsManaged:(WKFileUploadPanel *)fileUploadPanel;
+#if HAVE(PHOTOS_UI)
+- (BOOL)fileUploadPanelPhotoPickerPrefersOriginalImageFormat:(WKFileUploadPanel *)fileUploadPanel;
+#endif
 @end
 
 #endif // PLATFORM(IOS_FAMILY)

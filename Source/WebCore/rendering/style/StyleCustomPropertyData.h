@@ -22,8 +22,9 @@
 #pragma once
 
 #include "CSSCustomPropertyValue.h"
-#include <wtf/Forward.h>
+#include <wtf/Function.h>
 #include <wtf/HashMap.h>
+#include <wtf/IterationStatus.h>
 #include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
 #include <wtf/text/AtomStringHash.h>
@@ -31,39 +32,38 @@
 namespace WebCore {
 
 class StyleCustomPropertyData : public RefCounted<StyleCustomPropertyData> {
+private:
+    using CustomPropertyValueMap = HashMap<AtomString, RefPtr<const CSSCustomPropertyValue>>;
+
 public:
     static Ref<StyleCustomPropertyData> create() { return adoptRef(*new StyleCustomPropertyData); }
     Ref<StyleCustomPropertyData> copy() const { return adoptRef(*new StyleCustomPropertyData(*this)); }
-    
-    bool operator==(const StyleCustomPropertyData& other) const
-    {
-        if (values.size() != other.values.size())
-            return false;
 
-        for (auto& entry : values) {
-            auto otherEntry = other.values.find(entry.key);
-            if (otherEntry == other.values.end() || !entry.value->equals(*otherEntry->value))
-                return false;
-        }
+    bool operator==(const StyleCustomPropertyData&) const;
 
-        return true;
-    }
+    const CSSCustomPropertyValue* get(const AtomString&) const;
+    void set(const AtomString&, Ref<const CSSCustomPropertyValue>&&);
 
-    bool operator!=(const StyleCustomPropertyData& other) const { return !(*this == other); }
-    
-    void setCustomPropertyValue(const AtomString& name, Ref<CSSCustomPropertyValue>&& value)
-    {
-        values.set(name, WTFMove(value));
-    }
+    unsigned size() const { return m_size; }
+    bool mayHaveAnimatableProperties() const { return m_mayHaveAnimatableProperties; }
 
-    CustomPropertyValueMap values;
+    void forEach(const Function<IterationStatus(const KeyValuePair<AtomString, RefPtr<const CSSCustomPropertyValue>>&)>&) const;
+    AtomString findKeyAtIndex(unsigned) const;
 
 private:
     StyleCustomPropertyData() = default;
-    StyleCustomPropertyData(const StyleCustomPropertyData& other)
-        : RefCounted<StyleCustomPropertyData>()
-        , values(other.values)
-    { }
+    StyleCustomPropertyData(const StyleCustomPropertyData&);
+
+    template<typename Callback> void forEachInternal(Callback&&) const;
+
+    RefPtr<const StyleCustomPropertyData> m_parentValues;
+    CustomPropertyValueMap m_ownValues;
+    unsigned m_size { 0 };
+    unsigned m_ancestorCount { 0 };
+    bool m_mayHaveAnimatableProperties { false };
+#if ASSERT_ENABLED
+    mutable bool m_hasChildren { false };
+#endif
 };
 
 } // namespace WebCore

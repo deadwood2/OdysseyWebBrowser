@@ -6,57 +6,69 @@ list(APPEND WebKitTestRunner_DEPENDENCIES WebKitTestRunner-forwarding-headers)
 list(APPEND WebKitTestRunner_SOURCES
     cairo/TestInvocationCairo.cpp
 
-    wpe/EventSenderProxyWPE.cpp
-    wpe/PlatformWebViewWPE.cpp
+    libwpe/EventSenderProxyClientLibWPE.cpp
+    libwpe/EventSenderProxyLibWPE.cpp
+    libwpe/PlatformWebViewClientLibWPE.cpp
+    libwpe/PlatformWebViewLibWPE.cpp
+
+    skia/TestInvocationSkia.cpp
+
+    wpe/EventSenderProxyClientWPE.cpp
+    wpe/PlatformWebViewClientWPE.cpp
     wpe/TestControllerWPE.cpp
     wpe/UIScriptControllerWPE.cpp
     wpe/main.cpp
 )
 
+list(APPEND WebKitTestRunner_PRIVATE_INCLUDE_DIRECTORIES
+    ${CMAKE_SOURCE_DIR}/Source
+    ${WebKitTestRunner_DIR}/libwpe
+    ${WebKitTestRunner_DIR}/wpe
+    $<TARGET_PROPERTY:WebKit,INCLUDE_DIRECTORIES>
+)
+
 list(APPEND WebKitTestRunner_INCLUDE_DIRECTORIES
     ${FORWARDING_HEADERS_DIR}
-    ${TOOLS_DIR}/wpe/backends
 )
 
 list(APPEND WebKitTestRunner_SYSTEM_INCLUDE_DIRECTORIES
-    ${ATK_INCLUDE_DIRS}
     ${GLIB_INCLUDE_DIRS}
     ${LIBXKBCOMMON_INCLUDE_DIRS}
-    ${WPEBACKEND_FDO_INCLUDE_DIRS}
 )
 
-list(APPEND WebKitTestRunner_LIBRARIES
+list(APPEND WebKitTestRunner_PRIVATE_LIBRARIES
+    WebKit::WPEToolingBackends
     ${GLIB_LIBRARIES}
     ${LIBXKBCOMMON_LIBRARIES}
-    ${WPEBACKEND_FDO_LIBRARIES}
-    Cairo::Cairo
-    WPEToolingBackends
 )
 
-list(APPEND WebKitTestRunnerInjectedBundle_LIBRARIES
-    ${ATK_LIBRARIES}
+if (ENABLE_WPE_PLATFORM)
+    list(APPEND WebKitTestRunner_LIBRARIES
+        WPEPlatform-${WPE_API_VERSION}
+    )
+endif ()
+
+list(APPEND TestRunnerInjectedBundle_LIBRARIES
     ${GLIB_LIBRARIES}
-    Cairo::Cairo
 )
 
-list(APPEND WebKitTestRunnerInjectedBundle_SOURCES
-    InjectedBundle/atk/AccessibilityControllerAtk.cpp
-    InjectedBundle/atk/AccessibilityNotificationHandlerAtk.cpp
-    InjectedBundle/atk/AccessibilityUIElementAtk.cpp
+list(APPEND TestRunnerInjectedBundle_SOURCES
+    InjectedBundle/atspi/AccessibilityControllerAtspi.cpp
+    InjectedBundle/atspi/AccessibilityNotificationHandler.cpp
+    InjectedBundle/atspi/AccessibilityUIElementAtspi.cpp
 
     InjectedBundle/wpe/ActivateFontsWPE.cpp
     InjectedBundle/wpe/InjectedBundleWPE.cpp
     InjectedBundle/wpe/TestRunnerWPE.cpp
 )
 
-list(APPEND WebKitTestRunnerInjectedBundle_INCLUDE_DIRECTORIES
-    ${ATK_INCLUDE_DIRS}
+list(APPEND TestRunnerInjectedBundle_INCLUDE_DIRECTORIES
+    ${CMAKE_SOURCE_DIR}/Source
     ${GLIB_INCLUDE_DIRS}
-    ${WebKitTestRunner_DIR}/InjectedBundle/atk
+    ${WebKitTestRunner_DIR}/InjectedBundle/atspi
     ${WebKitTestRunner_DIR}/InjectedBundle/wpe
 )
 
 add_definitions(
-    -DFONTS_CONF_DIR="${TOOLS_DIR}/WebKitTestRunner/gtk/fonts"
     -DTOP_LEVEL_DIR="${CMAKE_SOURCE_DIR}"
 )

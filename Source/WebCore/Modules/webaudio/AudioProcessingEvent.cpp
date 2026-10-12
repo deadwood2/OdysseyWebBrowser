@@ -31,11 +31,13 @@
 #include "AudioBuffer.h"
 #include "AudioProcessingEventInit.h"
 #include "EventNames.h"
-#include <wtf/IsoMallocInlines.h>
+#include <JavaScriptCore/GenericTypedArrayViewInlines.h>
+#include <JavaScriptCore/TypedArrayAdaptors.h>
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(AudioProcessingEvent);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(AudioProcessingEvent);
 
 Ref<AudioProcessingEvent> AudioProcessingEvent::create(const AtomString& eventType, AudioProcessingEventInit&& eventInitDict)
 {
@@ -45,7 +47,7 @@ Ref<AudioProcessingEvent> AudioProcessingEvent::create(const AtomString& eventTy
 }
 
 AudioProcessingEvent::AudioProcessingEvent(RefPtr<AudioBuffer>&& inputBuffer, RefPtr<AudioBuffer>&& outputBuffer, double playbackTime)
-    : Event(eventNames().audioprocessEvent, CanBubble::Yes, IsCancelable::No)
+    : Event(EventInterfaceType::AudioProcessingEvent, eventNames().audioprocessEvent, CanBubble::Yes, IsCancelable::No)
     , m_inputBuffer(WTFMove(inputBuffer))
     , m_outputBuffer(WTFMove(outputBuffer))
     , m_playbackTime(playbackTime)
@@ -53,7 +55,7 @@ AudioProcessingEvent::AudioProcessingEvent(RefPtr<AudioBuffer>&& inputBuffer, Re
 }
 
 AudioProcessingEvent::AudioProcessingEvent(const AtomString& eventType, AudioProcessingEventInit&& eventInitDict)
-    : Event(eventType, eventInitDict, IsTrusted::No)
+    : Event(EventInterfaceType::AudioProcessingEvent, eventType, eventInitDict, IsTrusted::No)
     , m_inputBuffer(eventInitDict.inputBuffer.releaseNonNull())
     , m_outputBuffer(eventInitDict.outputBuffer.releaseNonNull())
     , m_playbackTime(eventInitDict.playbackTime)
@@ -61,11 +63,6 @@ AudioProcessingEvent::AudioProcessingEvent(const AtomString& eventType, AudioPro
 }
 
 AudioProcessingEvent::~AudioProcessingEvent() = default;
-
-EventInterface AudioProcessingEvent::eventInterface() const
-{
-    return AudioProcessingEventInterfaceType;
-}
 
 } // namespace WebCore
 

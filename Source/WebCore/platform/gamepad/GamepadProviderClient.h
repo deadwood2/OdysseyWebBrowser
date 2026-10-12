@@ -28,6 +28,16 @@
 #if ENABLE(GAMEPAD)
 
 #include <wtf/Forward.h>
+#include <wtf/WeakPtr.h>
+
+namespace WebCore {
+class GamepadProviderClient;
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebCore::GamepadProviderClient> : std::true_type { };
+}
 
 namespace WebCore {
 
@@ -38,7 +48,7 @@ enum class EventMakesGamepadsVisible : bool {
     Yes,
 };
 
-class GamepadProviderClient {
+class GamepadProviderClient : public CanMakeWeakPtr<GamepadProviderClient> {
 public:
     virtual ~GamepadProviderClient() = default;
 

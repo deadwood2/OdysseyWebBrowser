@@ -47,6 +47,8 @@ static WebCore::AutoFillButtonType toAutoFillButtonType(WKAutoFillButtonType wkA
         return WebCore::AutoFillButtonType::StrongPassword;
     case kWKAutoFillButtonTypeCreditCard:
         return WebCore::AutoFillButtonType::CreditCard;
+    case kWKAutoFillButtonTypeLoading:
+        return WebCore::AutoFillButtonType::Loading;
     }
     ASSERT_NOT_REACHED();
     return WebCore::AutoFillButtonType::None;
@@ -65,6 +67,8 @@ static WKAutoFillButtonType toWKAutoFillButtonType(WebCore::AutoFillButtonType a
         return kWKAutoFillButtonTypeStrongPassword;
     case WebCore::AutoFillButtonType::CreditCard:
         return kWKAutoFillButtonTypeCreditCard;
+    case WebCore::AutoFillButtonType::Loading:
+        return kWKAutoFillButtonTypeLoading;
     }
     ASSERT_NOT_REACHED();
     return kWKAutoFillButtonTypeNone;
@@ -134,6 +138,11 @@ void WKBundleNodeHandleSetHTMLInputElementAutoFilled(WKBundleNodeHandleRef htmlI
 void WKBundleNodeHandleSetHTMLInputElementAutoFilledAndViewable(WKBundleNodeHandleRef htmlInputElementHandleRef, bool autoFilledAndViewable)
 {
     WebKit::toImpl(htmlInputElementHandleRef)->setHTMLInputElementAutoFilledAndViewable(autoFilledAndViewable);
+}
+
+void WKBundleNodeHandleSetHTMLInputElementAutoFilledAndObscured(WKBundleNodeHandleRef htmlInputElementHandleRef, bool autoFilledAndObscured)
+{
+    WebKit::toImpl(htmlInputElementHandleRef)->setHTMLInputElementAutoFilledAndObscured(autoFilledAndObscured);
 }
 
 bool WKBundleNodeHandleGetHTMLInputElementAutoFillButtonEnabled(WKBundleNodeHandleRef)

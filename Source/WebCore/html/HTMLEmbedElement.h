@@ -27,7 +27,8 @@
 namespace WebCore {
 
 class HTMLEmbedElement final : public HTMLPlugInImageElement {
-    WTF_MAKE_ISO_ALLOCATED(HTMLEmbedElement);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(HTMLEmbedElement);
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(HTMLEmbedElement);
 public:
     static Ref<HTMLEmbedElement> create(Document&);
     static Ref<HTMLEmbedElement> create(const QualifiedName&, Document&);
@@ -35,7 +36,7 @@ public:
 private:
     HTMLEmbedElement(const QualifiedName&, Document&);
 
-    void parseAttribute(const QualifiedName&, const AtomString&) final;
+    void attributeChanged(const QualifiedName&, const AtomString& oldValue, const AtomString& newValue, AttributeModificationReason) final;
     void collectPresentationalHintsForAttribute(const QualifiedName&, const AtomString&, MutableStyleProperties&) final;
 
     bool rendererIsNeeded(const RenderStyle&) final;
@@ -51,7 +52,7 @@ private:
 
     void addSubresourceAttributeURLs(ListHashSet<URL>&) const final;
 
-    void parametersForPlugin(Vector<String>& paramNames, Vector<String>& paramValues);
+    void parametersForPlugin(Vector<AtomString>& paramNames, Vector<AtomString>& paramValues);
 };
 
 } // namespace WebCore

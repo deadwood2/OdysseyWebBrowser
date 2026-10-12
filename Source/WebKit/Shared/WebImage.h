@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,33 +27,56 @@
 
 #include "APIObject.h"
 #include "ImageOptions.h"
-#include "ShareableBitmap.h"
+#include <WebCore/ShareableBitmap.h>
 #include <wtf/Ref.h>
 
 namespace WebCore {
+class ChromeClient;
+class GraphicsContext;
+class ImageBuffer;
 class IntSize;
+class NativeImage;
+struct ImageBufferParameters;
 }
 
 namespace WebKit {
 
 // WebImage - An image type suitable for vending to an API.
 
-class WebImage : public API::ObjectImpl<API::Object::Type::Image> {
+class WebImage final : public API::ObjectImpl<API::Object::Type::Image> {
 public:
-    static RefPtr<WebImage> create(const WebCore::IntSize&, ImageOptions);
-    static RefPtr<WebImage> create(const WebCore::IntSize&, ImageOptions, const ShareableBitmap::Configuration&);
-    static Ref<WebImage> create(Ref<ShareableBitmap>&&);
-    ~WebImage();
-    
-    const WebCore::IntSize& size() const;
+    using ParametersAndHandle = std::pair<WebCore::ImageBufferParameters, WebCore::ShareableBitmap::Handle>;
 
-    ShareableBitmap& bitmap() { return m_bitmap.get(); }
-    const ShareableBitmap& bitmap() const { return m_bitmap.get(); }
+    static Ref<WebImage> create(const WebCore::IntSize&, ImageOptions, const WebCore::DestinationColorSpace&, WebCore::ChromeClient* = nullptr);
+    static Ref<WebImage> create(std::optional<ParametersAndHandle>&&);
+    static Ref<WebImage> create(Ref<WebCore::ImageBuffer>&&);
+    static Ref<WebImage> createEmpty();
+
+    virtual ~WebImage();
+
+    WebCore::IntSize size() const;
+    const WebCore::ImageBufferParameters* parameters() const;
+    std::optional<ParametersAndHandle> parametersAndHandle() const;
+    bool isEmpty() const { return !m_buffer; }
+
+    WebCore::GraphicsContext* context() const;
+
+    RefPtr<WebCore::NativeImage> copyNativeImage(WebCore::BackingStoreCopy = WebCore::CopyBackingStore) const;
+    RefPtr<WebCore::ShareableBitmap> bitmap() const;
+#if USE(CAIRO)
+    RefPtr<cairo_surface_t> createCairoSurface();
+#endif
+
+    std::optional<WebCore::ShareableBitmap::Handle> createHandle(WebCore::SharedMemory::Protection = WebCore::SharedMemory::Protection::ReadWrite) const;
 
 private:
-    WebImage(Ref<ShareableBitmap>&&);
+    WebImage(RefPtr<WebCore::ImageBuffer>&&);
 
-    Ref<ShareableBitmap> m_bitmap;
+    RefPtr<WebCore::ImageBuffer> m_buffer;
 };
 
 } // namespace WebKit
+
+SPECIALIZE_TYPE_TRAITS_BEGIN(WebKit::WebImage)
+static bool isType(const API::Object& object) { return object.type() == API::Object::Type::Image; }
+SPECIALIZE_TYPE_TRAITS_END()

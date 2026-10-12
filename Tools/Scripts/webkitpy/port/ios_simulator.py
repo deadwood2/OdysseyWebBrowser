@@ -1,4 +1,4 @@
-# Copyright (C) 2014-2018 Apple Inc. All rights reserved.
+# Copyright (C) 2014-2022 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -38,17 +38,22 @@ class IOSSimulatorPort(IOSPort):
     port_name = "ios-simulator"
 
     FUTURE_VERSION = 'future'
-    ARCHITECTURES = ['x86_64', 'i386']
+    ARCHITECTURES = ['x86_64', 'i386', 'arm64']
     DEFAULT_ARCHITECTURE = 'x86_64'
 
     DEVICE_MANAGER = SimulatedDeviceManager
 
     DEFAULT_DEVICE_TYPES = [
-        DeviceType(hardware_family='iPhone', hardware_type='SE'),
-        DeviceType(hardware_family='iPad', hardware_type='(5th generation)'),
-        DeviceType(hardware_family='iPhone', hardware_type='7'),
+        DeviceType(hardware_family='iPhone', hardware_type='12'),
+        DeviceType(hardware_family='iPad', hardware_type='(9th generation)'),
     ]
     SDK = apple_additions().get_sdk('iphonesimulator') if apple_additions() else 'iphonesimulator'
+
+    def architecture(self):
+        result = self.get_option('architecture') or self.host.platform.architecture()
+        if result == 'arm64e':
+            return 'arm64'
+        return result
 
     @staticmethod
     def _version_from_name(name):
@@ -101,20 +106,13 @@ class IOSSimulatorPort(IOSPort):
     def developer_dir(self):
         return self._executive.run_command(['xcode-select', '--print-path']).rstrip()
 
-    def logging_patterns_to_strip(self):
-        return []
-
-    def stderr_patterns_to_strip(self):
-        return []
-
 
 class IPhoneSimulatorPort(IOSSimulatorPort):
     port_name = 'iphone-simulator'
 
     DEVICE_TYPE = DeviceType(hardware_family='iPhone')
     DEFAULT_DEVICE_TYPES = [
-        DeviceType(hardware_family='iPhone', hardware_type='SE'),
-        DeviceType(hardware_family='iPhone', hardware_type='7'),
+        DeviceType(hardware_family='iPhone', hardware_type='12'),
     ]
 
     def __init__(self, *args, **kwargs):
@@ -126,7 +124,7 @@ class IPadSimulatorPort(IOSSimulatorPort):
     port_name = 'ipad-simulator'
 
     DEVICE_TYPE = DeviceType(hardware_family='iPad')
-    DEFAULT_DEVICE_TYPES = [DeviceType(hardware_family='iPad', hardware_type='(5th generation)')]
+    DEFAULT_DEVICE_TYPES = [DeviceType(hardware_family='iPad', hardware_type='(9th generation)')]
 
     def __init__(self, *args, **kwargs):
         super(IPadSimulatorPort, self).__init__(*args, **kwargs)

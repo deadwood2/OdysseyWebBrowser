@@ -26,6 +26,7 @@
 #pragma once
 
 #include "RenderStyleConstants.h"
+#include "TextSizeAdjustment.h"
 #include <wtf/OptionSet.h>
 
 namespace WebCore {
@@ -37,19 +38,24 @@ class RenderStyle;
 class SVGElement;
 class Settings;
 
-enum class AnimationImpact;
+enum class AnimationImpact : uint8_t;
 
 namespace Style {
 
+class Update;
+
 class Adjuster {
 public:
-    Adjuster(const Document&, const RenderStyle& parentStyle, const RenderStyle* parentBoxStyle, const Element*);
+    Adjuster(const Document&, const RenderStyle& parentStyle, const RenderStyle* parentBoxStyle, Element*);
 
     void adjust(RenderStyle&, const RenderStyle* userAgentAppearanceStyle) const;
     void adjustAnimatedStyle(RenderStyle&, OptionSet<AnimationImpact>) const;
 
+    static void adjustVisibilityForPseudoElement(RenderStyle&, const Element& host);
     static void adjustSVGElementStyle(RenderStyle&, const SVGElement&);
-    static void adjustEventListenerRegionTypesForRootStyle(RenderStyle&, const Document&);
+    static bool adjustEventListenerRegionTypesForRootStyle(RenderStyle&, const Document&);
+    static void propagateToDocumentElementAndInitialContainingBlock(Update&, const Document&);
+    static std::unique_ptr<RenderStyle> restoreUsedDocumentElementStyleToComputed(const RenderStyle&);
 
 #if ENABLE(TEXT_AUTOSIZING)
     struct AdjustmentForTextAutosizing {
@@ -66,12 +72,15 @@ public:
 private:
     void adjustDisplayContentsStyle(RenderStyle&) const;
     void adjustForSiteSpecificQuirks(RenderStyle&) const;
-    static OptionSet<EventListenerRegionType> computeEventListenerRegionTypes(const EventTarget&, OptionSet<EventListenerRegionType>);
+
+    void adjustThemeStyle(RenderStyle&, const RenderStyle* userAgentAppearanceStyle) const;
+
+    static OptionSet<EventListenerRegionType> computeEventListenerRegionTypes(const Document&, const RenderStyle&, const EventTarget&, OptionSet<EventListenerRegionType>);
 
     const Document& m_document;
     const RenderStyle& m_parentStyle;
     const RenderStyle& m_parentBoxStyle;
-    const Element* m_element;
+    Element* m_element;
 };
 
 }

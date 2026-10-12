@@ -142,19 +142,19 @@ void linearToDecibels(const float* inputVector, float* outputVector, size_t numb
 
 #else
 
-static inline bool is16ByteAligned(const float* vector)
-{
-    return !(reinterpret_cast<uintptr_t>(vector) & 0x0F);
-}
-
 static inline bool isEquallyAligned(const float* vectorA, const float *vectorB)
 {
 	return (reinterpret_cast<uintptr_t>(vectorA) & 0x0F) == (reinterpret_cast<uintptr_t>(vectorB) & 0x0F);
 }
 
+static inline bool is16ByteAligned(const float* vector)
+{
+    return !(reinterpret_cast<uintptr_t>(vector) & 0x0F);
+}
+
 void multiplyByScalarThenAddToVector(const float* inputVector1, float scalar, const float* inputVector2, float* outputVector, size_t numberOfElementsToProcess)
 {
-    multiplyByScalarThenAddToOutput(inputVector1, scalar, outputVector, numberOfElementsToProcess);
+    multiplyByScalar(inputVector1, scalar, outputVector, numberOfElementsToProcess);
     add(outputVector, inputVector2, outputVector, numberOfElementsToProcess);
 }
 

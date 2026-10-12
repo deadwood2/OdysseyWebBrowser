@@ -62,6 +62,11 @@ ResourceError interruptedForPolicyChangeError(const ResourceRequest& request)
     return ResourceError(API::Error::webKitPolicyErrorDomain(), API::Error::Policy::FrameLoadInterruptedByPolicyChange, request.url(), WEB_UI_STRING("Frame load interrupted", "WebKitErrorFrameLoadInterruptedByPolicyChange description"));
 }
 
+ResourceError ftpDisabledError(const ResourceRequest& request)
+{
+    return ResourceError(errorDomainWebKitInternal, 0, request.url(), "FTP URLs are disabled"_s, ResourceError::Type::AccessControl);
+}
+
 ResourceError failedCustomProtocolSyncLoad(const ResourceRequest& request)
 {
     return ResourceError(errorDomainWebKitInternal, 0, request.url(), WEB_UI_STRING("Error handling synchronous load with custom protocol", "Custom protocol synchronous load failure description"));
@@ -94,6 +99,21 @@ ResourceError fileDoesNotExistError(const ResourceResponse& response)
 {
     return ResourceError(API::Error::webKitNetworkErrorDomain(), API::Error::Network::FileDoesNotExist, response.url(), WEB_UI_STRING("File does not exist", "The requested file doesn't exist"));
 }
+
+ResourceError decodeError(const URL&)
+{
+    return { };
+}
 #endif
+
+ResourceError httpsUpgradeRedirectLoopError(const ResourceRequest& request)
+{
+    return ResourceError(API::Error::webKitNetworkErrorDomain(), API::Error::Network::HTTPSUpgradeRedirectLoop, request.url(), WEB_UI_STRING("HTTPS Upgrade redirect loop detected", "WebKitErrorHTTPSUpgradeRedirectLoop description"));
+}
+
+ResourceError httpNavigationWithHTTPSOnlyError(const ResourceRequest& request)
+{
+    return ResourceError(API::Error::webKitNetworkErrorDomain(), API::Error::Network::HTTPNavigationWithHTTPSOnlyError, request.url(), WEB_UI_STRING("Navigation failed because the request was for an HTTP URL with HTTPS-Only enabled", "WebKitErrorHTTPSOnlyHTTPURL description"));
+}
 
 } // namespace WebKit

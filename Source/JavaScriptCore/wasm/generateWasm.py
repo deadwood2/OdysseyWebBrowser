@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#!/usr/bin/env python3
 
 # Copyright (C) 2016-2017 Apple Inc. All rights reserved.
 #
@@ -39,6 +39,7 @@ class Wasm:
                 self.expectedVersionNumber = str(pre["value"])
         self.preamble = wasm["preamble"]
         self.types = wasm["type"]
+        self.packed_types = wasm["packed_type"]
         self.opcodes = wasm["opcode"]
         self.header = """/*
  * Copyright (C) 2016-2017 Apple Inc. All rights reserved.
@@ -135,5 +136,5 @@ def memoryLog2Alignment(op):
         if not match:
             print(op["name"])
         memoryBits = int(match.group(2) if match.group(2) else match.group(1))
-    assert 2 ** math.log(memoryBits, 2) == memoryBits
+    assert 2 ** int(math.log(memoryBits, 2)) == memoryBits
     return str(int(math.log(memoryBits / 8, 2)))

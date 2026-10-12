@@ -6,13 +6,11 @@
 # found in the LICENSE file.
 #
 # This file houses the build configuration for the ANGLE GL back-ends.
+# Copyright 2022 The ANGLE Project Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
 
-
-
-
-
-
-set(_gl_backend_sources
+set(gl_backend_sources
     "src/libANGLE/renderer/gl/BlitGL.cpp"
     "src/libANGLE/renderer/gl/BlitGL.h"
     "src/libANGLE/renderer/gl/BufferGL.cpp"
@@ -37,6 +35,10 @@ set(_gl_backend_sources
     "src/libANGLE/renderer/gl/ImageGL.h"
     "src/libANGLE/renderer/gl/MemoryObjectGL.cpp"
     "src/libANGLE/renderer/gl/MemoryObjectGL.h"
+    "src/libANGLE/renderer/gl/PLSProgramCache.cpp"
+    "src/libANGLE/renderer/gl/PLSProgramCache.h"
+    "src/libANGLE/renderer/gl/ProgramExecutableGL.cpp"
+    "src/libANGLE/renderer/gl/ProgramExecutableGL.h"
     "src/libANGLE/renderer/gl/ProgramGL.cpp"
     "src/libANGLE/renderer/gl/ProgramGL.h"
     "src/libANGLE/renderer/gl/ProgramPipelineGL.cpp"
@@ -73,9 +75,8 @@ set(_gl_backend_sources
     "src/libANGLE/renderer/gl/renderergl_utils.h"
 )
 
-
 if(is_win)
-    list(APPEND _gl_backend_sources
+    list(APPEND gl_backend_sources
         "src/libANGLE/renderer/gl/../../../third_party/khronos/GL/wglext.h"
         "src/libANGLE/renderer/gl/wgl/ContextWGL.cpp"
         "src/libANGLE/renderer/gl/wgl/ContextWGL.h"
@@ -100,19 +101,17 @@ if(is_win)
     )
 endif()
 
-
 if(angle_use_x11)
-    list(APPEND _gl_backend_sources
+    list(APPEND gl_backend_sources
         "src/libANGLE/renderer/gl/glx/DisplayGLX.cpp"
         "src/libANGLE/renderer/gl/glx/DisplayGLX.h"
+        "src/libANGLE/renderer/gl/glx/DisplayGLX_api.h"
         "src/libANGLE/renderer/gl/glx/FunctionsGLX.cpp"
         "src/libANGLE/renderer/gl/glx/FunctionsGLX.h"
         "src/libANGLE/renderer/gl/glx/PbufferSurfaceGLX.cpp"
         "src/libANGLE/renderer/gl/glx/PbufferSurfaceGLX.h"
         "src/libANGLE/renderer/gl/glx/PixmapSurfaceGLX.cpp"
         "src/libANGLE/renderer/gl/glx/PixmapSurfaceGLX.h"
-        "src/libANGLE/renderer/gl/glx/RendererGLX.cpp"
-        "src/libANGLE/renderer/gl/glx/RendererGLX.h"
         "src/libANGLE/renderer/gl/glx/SurfaceGLX.h"
         "src/libANGLE/renderer/gl/glx/WindowSurfaceGLX.cpp"
         "src/libANGLE/renderer/gl/glx/WindowSurfaceGLX.h"
@@ -123,11 +122,12 @@ if(angle_use_x11)
     )
 endif()
 
-
 if(is_android OR is_linux OR is_chromeos)
-    list(APPEND _gl_backend_sources
+    list(APPEND gl_backend_sources
         "src/libANGLE/renderer/gl/egl/ContextEGL.cpp"
         "src/libANGLE/renderer/gl/egl/ContextEGL.h"
+        "src/libANGLE/renderer/gl/egl/DeviceEGL.cpp"
+        "src/libANGLE/renderer/gl/egl/DeviceEGL.h"
         "src/libANGLE/renderer/gl/egl/DisplayEGL.cpp"
         "src/libANGLE/renderer/gl/egl/DisplayEGL.h"
         "src/libANGLE/renderer/gl/egl/DmaBufImageSiblingEGL.cpp"
@@ -155,19 +155,8 @@ if(is_android OR is_linux OR is_chromeos)
     )
 endif()
 
-
-if(ozone_platform_gbm)
-    list(APPEND _gl_backend_sources
-        "src/libANGLE/renderer/gl/egl/gbm/DisplayGbm.cpp"
-        "src/libANGLE/renderer/gl/egl/gbm/DisplayGbm.h"
-        "src/libANGLE/renderer/gl/egl/gbm/SurfaceGbm.cpp"
-        "src/libANGLE/renderer/gl/egl/gbm/SurfaceGbm.h"
-    )
-endif()
-
-
 if(is_android)
-    list(APPEND _gl_backend_sources
+    list(APPEND gl_backend_sources
         "src/libANGLE/renderer/gl/egl/android/DisplayAndroid.cpp"
         "src/libANGLE/renderer/gl/egl/android/DisplayAndroid.h"
         "src/libANGLE/renderer/gl/egl/android/NativeBufferImageSiblingAndroid.cpp"
@@ -175,9 +164,8 @@ if(is_android)
     )
 endif()
 
-
-if(is_mac)
-    list(APPEND _gl_backend_sources
+if(angle_enable_cgl)
+    list(APPEND gl_backend_sources
         "src/libANGLE/renderer/gl/cgl/ContextCGL.cpp"
         "src/libANGLE/renderer/gl/cgl/ContextCGL.h"
         "src/libANGLE/renderer/gl/cgl/DeviceCGL.cpp"
@@ -188,18 +176,33 @@ if(is_mac)
         "src/libANGLE/renderer/gl/cgl/IOSurfaceSurfaceCGL.h"
         "src/libANGLE/renderer/gl/cgl/PbufferSurfaceCGL.cpp"
         "src/libANGLE/renderer/gl/cgl/PbufferSurfaceCGL.h"
-        "src/libANGLE/renderer/gl/cgl/RendererCGL.cpp"
-        "src/libANGLE/renderer/gl/cgl/RendererCGL.h"
         "src/libANGLE/renderer/gl/cgl/WindowSurfaceCGL.h"
         "src/libANGLE/renderer/gl/cgl/WindowSurfaceCGL.mm"
     )
 endif()
 
+if(angle_enable_eagl)
+    list(APPEND gl_backend_sources
+        "src/libANGLE/renderer/gl/eagl/ContextEAGL.cpp"
+        "src/libANGLE/renderer/gl/eagl/ContextEAGL.h"
+        "src/libANGLE/renderer/gl/eagl/DeviceEAGL.cpp"
+        "src/libANGLE/renderer/gl/eagl/DeviceEAGL.h"
+        "src/libANGLE/renderer/gl/eagl/DisplayEAGL.h"
+        "src/libANGLE/renderer/gl/eagl/DisplayEAGL.mm"
+        "src/libANGLE/renderer/gl/eagl/FunctionsEAGL.h"
+        "src/libANGLE/renderer/gl/eagl/FunctionsEAGL.mm"
+        "src/libANGLE/renderer/gl/eagl/IOSurfaceSurfaceEAGL.h"
+        "src/libANGLE/renderer/gl/eagl/IOSurfaceSurfaceEAGL.mm"
+        "src/libANGLE/renderer/gl/eagl/PbufferSurfaceEAGL.cpp"
+        "src/libANGLE/renderer/gl/eagl/PbufferSurfaceEAGL.h"
+        "src/libANGLE/renderer/gl/eagl/WindowSurfaceEAGL.h"
+        "src/libANGLE/renderer/gl/eagl/WindowSurfaceEAGL.mm"
+    )
+endif()
 
 if(angle_enable_gl_null)
-    list(APPEND _gl_backend_sources
+    list(APPEND gl_backend_sources
         "src/libANGLE/renderer/gl/null_functions.cpp"
         "src/libANGLE/renderer/gl/null_functions.h"
     )
 endif()
-

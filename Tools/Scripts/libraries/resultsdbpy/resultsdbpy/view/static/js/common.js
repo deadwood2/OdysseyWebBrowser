@@ -28,6 +28,10 @@ function ErrorDisplay(json) {
     </div>`;
 }
 
+function intersection(listA, listB) {
+    return listA.filter(value => listB.includes(value));
+}
+
 function queryToParams(query) {
     if (!query)
         return {};
@@ -59,6 +63,17 @@ function paramsToQuery(json) {
                 return;
             result += (result ? '&' : '') + encodeURIComponent(parameter) + '=' + encodeURIComponent(value);
         });
+    }
+    return result;
+}
+
+function mergeQueries(queryA, queryB) {
+    let result = {...queryA};
+    for (const key in queryB) {
+        if (!Object.hasOwn(result, key))
+            result[key] = queryB[key];
+        else
+            result[key] = intersection(result[key], queryB[key]);
     }
     return result;
 }
@@ -139,6 +154,21 @@ function escapeHTML(text) {
   });
 }
 
+function escapeEndpoint(text) {
+    if (!text)
+        return text;
+    return text.replace(/[#?]/g, function(character) {
+        switch (character) {
+            case '#':
+                return '$23';
+            case '?':
+                return '$3F';
+            default:
+                return character;
+        }
+  });
+}
+
 function linkify(text) {
     return text.replace(/\b(https?|rdar):\/{2}[^\s<>&]+[^\.\s<>&,]/gmi, `<a href="$&" target="_blank">$&</a>`);
 }
@@ -189,12 +219,18 @@ function percentage(value, max)
 
 function elapsedTime(startTimestamp, endTimestamp)
 {
-    const time = new Date((endTimestamp - startTimestamp) * 1000);
-    let result = '';
-    if (time.getMinutes())
-        result += `${time.getMinutes()} minute${time.getMinutes() == 1 ? '' : 's'} and `;
-    result += `${time.getSeconds()} second${time.getSeconds() == 1 ? '' : 's'} to run`;
+    const elapsed = Math.round(endTimestamp - startTimestamp);
+    const seconds = elapsed % 60;
+    const minutes = Math.floor(elapsed / 60) % 60;
+    const hours = Math.floor(elapsed / 3600);
+
+    let result = `${seconds} second${seconds == 1 ? '' : 's'} to run`;
+    if (minutes)
+        result = `${minutes} minute${minutes == 1 ? '' : 's'} and ${result}`;
+    if (hours)
+        result = `${hours} hour${hours == 1 ? '' : 's'}${minutes ? ', ' : ' and '}${result}`;
+
     return result;
 }
 
-export {deepCompare, ErrorDisplay, queryToParams, paramsToQuery, QueryModifier, escapeHTML, linkify, percentage, elapsedTime};
+export {deepCompare, ErrorDisplay, intersection, queryToParams, paramsToQuery, mergeQueries, QueryModifier, escapeHTML, escapeEndpoint, linkify, percentage, elapsedTime};

@@ -35,9 +35,11 @@
 #import "WKGeolocationManager.h"
 #import "WKProcessPoolInternal.h"
 #import "WKUIDelegatePrivate.h"
+#import "WKWebGeolocationPolicyDecider.h"
 #import "WKWebViewInternal.h"
 #import "WebFrameProxy.h"
 #import "WebGeolocationManagerProxy.h"
+#import "WebPageProxy.h"
 #import "WebProcessPool.h"
 #import "_WKGeolocationCoreLocationProvider.h"
 #import "_WKGeolocationPositionInternal.h"
@@ -50,26 +52,14 @@
 #import <wtf/RetainPtr.h>
 #import <wtf/URL.h>
 
-// FIXME: Remove use of WebKit1 from WebKit2
-#import <WebKit/WebGeolocationCoreLocationProvider.h>
-#import <WebKit/WebAllowDenyPolicyListener.h>
-
 ALLOW_DEPRECATED_DECLARATIONS_BEGIN
 
 @interface WKGeolocationProviderIOS (_WKGeolocationCoreLocationListener) <_WKGeolocationCoreLocationListener>
 @end
 
-@interface WKLegacyCoreLocationProvider : NSObject<_WKGeolocationCoreLocationProvider, WebGeolocationCoreLocationUpdateListener>
-@end
-
-@interface WKWebAllowDenyPolicyListener : NSObject<WebAllowDenyPolicyListener>
+@interface WKWebAllowDenyPolicyListener : NSObject<WKWebAllowDenyPolicyListener>
 - (id)initWithCompletionHandler:(Function<void(bool)>&&)completionHandler;
-- (void)denyOnlyThisRequest NO_RETURN_DUE_TO_ASSERT;
 @end
-
-namespace WebKit {
-void decidePolicyForGeolocationRequestFromOrigin(WebCore::SecurityOrigin&, const URL&, id<WebAllowDenyPolicyListener>, UIView*);
-};
 
 struct GeolocationRequestData {
     URL url;
@@ -146,25 +136,43 @@ static void setEnableHighAccuracy(WKGeolocationManagerRef geolocationManager, bo
     self = [super init];
     if (!self)
         return nil;
-    _geolocationManager = processPool.supplement<WebKit::WebGeolocationManagerProxy>();
-    WKGeolocationProviderV1 providerCallback = {
-        { 1, self },
-        startUpdatingCallback,
-        stopUpdatingCallback,
-        setEnableHighAccuracy
-    };
-    WKGeolocationManagerSetProvider(toAPI(_geolocationManager.get()), &providerCallback.base);
-    _coreLocationProvider = wrapper(processPool)._coreLocationProvider ?: adoptNS(static_cast<id <_WKGeolocationCoreLocationProvider>>([[WKLegacyCoreLocationProvider alloc] init]));
-    [_coreLocationProvider setListener:self];
+
+    // On iOS, WebKit normally provides the location. However, if the client sets a coreLocationProvider, then we use that one instead.
+    // This is useful for WebKitTestRunner to provide a dummy geolocation provider. It is also used by certain apps to deny all
+    // geolocation authorization as a way to disable support for geolocation.
+    Ref protectedProcessPool { processPool };
+    if (wrapper(protectedProcessPool.get())._coreLocationProvider) {
+        _geolocationManager = protectedProcessPool->supplement<WebKit::WebGeolocationManagerProxy>();
+        WKGeolocationProviderV1 providerCallback = {
+            { 1, self },
+            startUpdatingCallback,
+            stopUpdatingCallback,
+            setEnableHighAccuracy
+        };
+        WKGeolocationManagerSetProvider(toAPI(_geolocationManager.get()), &providerCallback.base);
+        _coreLocationProvider = wrapper(protectedProcessPool.get())._coreLocationProvider;
+        [_coreLocationProvider setListener:self];
+    }
     return self;
 }
 
 - (void)decidePolicyForGeolocationRequestFromOrigin:(WebKit::FrameInfoData&&)frameInfo completionHandler:(Function<void(bool)>&&)completionHandler view:(WKWebView *)contentView
 {
-    // Step 1: ask the user if the app can use Geolocation.
+    WebCore::RegistrableDomain registrableDomain(frameInfo.securityOrigin);
     GeolocationRequestData geolocationRequestData { [contentView URL], WTFMove(frameInfo), WTFMove(completionHandler), contentView };
     _requestsWaitingForCoreLocationAuthorization.append(WTFMove(geolocationRequestData));
-    [_coreLocationProvider requestGeolocationAuthorization];
+    if (_coreLocationProvider) {
+        // Step 1: ask the user if the app can use Geolocation.
+        [_coreLocationProvider requestGeolocationAuthorization];
+    } else {
+        // Step 1: ask CoreLocation if the app can use Geolocation.
+        WebCore::CoreLocationGeolocationProvider::requestAuthorization(registrableDomain, [self, strongSelf = retainPtr(self)](bool authorized) {
+            if (authorized)
+                [self geolocationAuthorizationGranted];
+            else
+                [self geolocationAuthorizationDenied];
+        });
+    }
 }
 @end
 
@@ -174,7 +182,7 @@ static void setEnableHighAccuracy(WKGeolocationManagerRef geolocationManager, bo
 
 - (void)geolocationAuthorizationGranted
 {
-    // Step 2: ask the user if this particular page can use gelocation.
+    // Step 2: ask the user if this particular page can use geolocation.
     if (_requestsWaitingForCoreLocationAuthorization.isEmpty())
         return;
 
@@ -198,7 +206,7 @@ static void setEnableHighAccuracy(WKGeolocationManagerRef geolocationManager, bo
     }
 
     auto policyListener = adoptNS([[WKWebAllowDenyPolicyListener alloc] initWithCompletionHandler:WTFMove(decisionHandler)]);
-    WebKit::decidePolicyForGeolocationRequestFromOrigin(WebCore::SecurityOrigin::create(request.url).get(), request.url, policyListener.get(), request.view.get());
+    [[WKWebGeolocationPolicyDecider sharedPolicyDecider] decidePolicyForGeolocationRequestFromOrigin:WebCore::SecurityOriginData::fromURLWithoutStrictOpaqueness(request.url) requestingURL:request.url view:request.view.get() listener:policyListener.get()];
 }
 
 - (void)geolocationAuthorizationDenied
@@ -226,81 +234,6 @@ static void setEnableHighAccuracy(WKGeolocationManagerRef geolocationManager, bo
 
 @end
 
-# pragma mark - Implementation of WKLegacyCoreLocationProvider
-
-@implementation WKLegacyCoreLocationProvider {
-    id <_WKGeolocationCoreLocationListener> _listener;
-    RetainPtr<WebGeolocationCoreLocationProvider> _provider;
-}
-
-// <_WKGeolocationCoreLocationProvider> Methods
-
-- (void)setListener:(id<_WKGeolocationCoreLocationListener>)listener
-{
-    ASSERT(listener && !_listener && !_provider);
-    _listener = listener;
-    _provider = adoptNS([[WebGeolocationCoreLocationProvider alloc] initWithListener:self]);
-}
-
-- (void)requestGeolocationAuthorization
-{
-    ASSERT(_provider);
-    [_provider requestGeolocationAuthorization];
-}
-
-- (void)start
-{
-    ASSERT(_provider);
-    [_provider start];
-}
-
-- (void)stop
-{
-    ASSERT(_provider);
-    [_provider stop];
-}
-
-- (void)setEnableHighAccuracy:(BOOL)flag
-{
-    ASSERT(_provider);
-    [_provider setEnableHighAccuracy:flag];
-}
-
-// <WebGeolocationCoreLocationUpdateListener> Methods
-
-- (void)geolocationAuthorizationGranted
-{
-    ASSERT(_listener);
-    [_listener geolocationAuthorizationGranted];
-}
-
-- (void)geolocationAuthorizationDenied
-{
-    ASSERT(_listener);
-    [_listener geolocationAuthorizationDenied];
-}
-
-- (void)positionChanged:(WebCore::GeolocationPositionData&&)corePosition
-{
-    ASSERT(_listener);
-    auto position = WebKit::WebGeolocationPosition::create(WTFMove(corePosition));
-    [_listener positionChanged:wrapper(position.get())];
-}
-
-- (void)errorOccurred:(NSString *)errorMessage
-{
-    ASSERT(_listener);
-    [_listener errorOccurred:errorMessage];
-}
-
-- (void)resetGeolocation
-{
-    ASSERT(_listener);
-    [_listener resetGeolocation];
-}
-
-@end
-
 # pragma mark - Implementation of WKWebAllowDenyPolicyListener
 @implementation WKWebAllowDenyPolicyListener {
     Function<void(bool)> _completionHandler;
@@ -324,17 +257,6 @@ static void setEnableHighAccuracy(WKGeolocationManagerRef geolocationManager, bo
 - (void)deny
 {
     _completionHandler(false);
-}
-
-- (void)denyOnlyThisRequest
-{
-    // The method denyOnlyThisRequest is iAd specific for WebKit1.
-    ASSERT_NOT_REACHED();
-}
-
-- (BOOL)shouldClearCache
-{
-    return NO;
 }
 @end
 

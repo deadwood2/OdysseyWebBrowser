@@ -28,10 +28,10 @@
 
 #include "CertificateInfo.h"
 #include <openssl/crypto.h>
+#include <variant>
 #include <wtf/HashMap.h>
 #include <wtf/HashSet.h>
 #include <wtf/NeverDestroyed.h>
-#include <wtf/Variant.h>
 #include <wtf/text/StringHash.h>
 
 // all version of LibreSSL and OpenSSL prior to 1.1.0 need thread support
@@ -49,17 +49,19 @@ class CurlSSLHandle {
     using ClientCertificate = std::pair<String, String>;
 
 public:
-    using CACertInfo = Variant<Monostate, String, CertificateInfo::Certificate>;
+    using CACertInfo = std::variant<std::monostate, String, CertificateInfo::Certificate>;
 
     CurlSSLHandle();
 
-    const String& getCipherList() const { return m_cipherList; }
-    const String& getSignatureAlgorithmsList() const { return m_signatureAlgorithmsList; }
-    const String& getCurvesList() const { return m_curvesList; }
+    const CString& cipherList() const { return m_cipherList; }
+    const CString& cipherListTLS1_3() const { return m_cipherListTLS1_3; }
+    const CString& signatureAlgorithmsList() const { return m_signatureAlgorithmsList; }
+    const CString& ecCurves() const { return m_ecCurves; }
 
-    WEBCORE_EXPORT void setCipherList(String&& data) { m_cipherList = WTFMove(data); }
-    WEBCORE_EXPORT void setSignatureAlgorithmsList(String&& data) { m_signatureAlgorithmsList = WTFMove(data); }
-    WEBCORE_EXPORT void setCurvesList(String&& data) { m_curvesList = WTFMove(data); }
+    void setCipherList(CString&& data) { m_cipherList = WTFMove(data); }
+    void setCipherListTLS1_3(CString&& data) { m_cipherListTLS1_3 = WTFMove(data); }
+    void setSignatureAlgorithmsList(CString&& data) { m_signatureAlgorithmsList = WTFMove(data); }
+    void setECCurves(CString&& data) { m_ecCurves = WTFMove(data); }
 
     bool shouldIgnoreSSLErrors() const { return m_ignoreSSLErrors; }
     WEBCORE_EXPORT void setIgnoreSSLErrors(bool flag) { m_ignoreSSLErrors = flag; }
@@ -106,9 +108,10 @@ private:
 
     void platformInitialize();
 
-    String m_cipherList;
-    String m_signatureAlgorithmsList;
-    String m_curvesList;
+    CString m_cipherList;
+    CString m_cipherListTLS1_3;
+    CString m_signatureAlgorithmsList;
+    CString m_ecCurves;
     CACertInfo m_caCertInfo;
 
     bool m_ignoreSSLErrors { false };

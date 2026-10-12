@@ -39,38 +39,17 @@
 
 namespace WebCore {
 
-static bool g_shouldApplyMacAscentHack;
-
-void Font::setShouldApplyMacAscentHack(bool b)
+void Font::platformCharWidthInit()
 {
-    g_shouldApplyMacAscentHack = b;
+    m_avgCharWidth = 0;
+    m_maxCharWidth = 0;
+    initCharWidths();
 }
 
-bool Font::shouldApplyMacAscentHack()
+void Font::platformInit()
 {
-    return g_shouldApplyMacAscentHack;
-}
+    m_syntheticBoldOffset = m_platformData.syntheticBold() ? 1.0f : 0.f;
 
-float Font::ascentConsideringMacAscentHack(const WCHAR* faceName, float ascent, float descent)
-{
-    if (!shouldApplyMacAscentHack())
-        return ascent;
-
-    // This code comes from FontDataMac.mm. We only ever do this when running regression tests so that our metrics will match Mac.
-
-    // We need to adjust Times, Helvetica, and Courier to closely match the
-    // vertical metrics of their Microsoft counterparts that are the de facto
-    // web standard. The AppKit adjustment of 20% is too big and is
-    // incorrectly added to line spacing, so we use a 15% adjustment instead
-    // and add it to the ascent.
-    if (!wcscmp(faceName, L"Times") || !wcscmp(faceName, L"Helvetica") || !wcscmp(faceName, L"Courier"))
-        ascent += floorf(((ascent + descent) * 0.15f) + 0.5f);
-
-    return ascent;
-}
-
-void Font::initGDIFont()
-{
     if (!m_platformData.size()) {
         m_fontMetrics.reset();
         m_avgCharWidth = 0;
@@ -78,51 +57,67 @@ void Font::initGDIFont()
         return;
     }
 
-    HWndDC hdc(0);
-    HGDIOBJ oldFont = SelectObject(hdc, m_platformData.hfont());
+    HWndDC dc(0);
+    SaveDC(dc);
+
+    const double metricsMultiplier = 1. / cWindowsFontScaleFactor;
+    HGDIOBJ oldFont = SelectObject(dc, m_platformData.hfont());
+
+    wchar_t faceName[LF_FACESIZE];
+    GetTextFace(dc, LF_FACESIZE, faceName);
+
     OUTLINETEXTMETRIC metrics;
-    GetOutlineTextMetrics(hdc, sizeof(metrics), &metrics);
-    TEXTMETRIC& textMetrics = metrics.otmTextMetrics;
-    // FIXME: Needs to take OS/2 USE_TYPO_METRICS flag into account
-    // https://bugs.webkit.org/show_bug.cgi?id=199186
-    float ascent = textMetrics.tmAscent;
-    float descent = textMetrics.tmDescent;
-    float lineGap = textMetrics.tmExternalLeading;
-    m_fontMetrics.setAscent(ascent);
-    m_fontMetrics.setDescent(descent);
-    m_fontMetrics.setLineGap(lineGap);
-    m_fontMetrics.setLineSpacing(lroundf(ascent) + lroundf(descent) + lroundf(lineGap));
-    m_avgCharWidth = textMetrics.tmAveCharWidth;
-    m_maxCharWidth = textMetrics.tmMaxCharWidth;
-    float xHeight = ascent * 0.56f; // Best guess for xHeight if no x glyph is present.
+    if (!GetOutlineTextMetrics(dc, sizeof(metrics), &metrics))
+        return;
+
+    std::optional<float> xHeightActual;
     GLYPHMETRICS gm;
     static const MAT2 identity = { { 0, 1 }, { 0, 0 }, { 0, 0 }, { 0, 1 } };
-    DWORD len = GetGlyphOutline(hdc, 'x', GGO_METRICS, &gm, 0, 0, &identity);
+    DWORD len = GetGlyphOutline(dc, 'x', GGO_METRICS, &gm, 0, 0, &identity);
     if (len != GDI_ERROR && gm.gmptGlyphOrigin.y > 0)
-        xHeight = gm.gmptGlyphOrigin.y;
-    m_fontMetrics.setXHeight(xHeight);
-    m_fontMetrics.setUnitsPerEm(metrics.otmEMSquare);
+        xHeightActual = gm.gmptGlyphOrigin.y * metricsMultiplier;
 
-    SelectObject(hdc, oldFont);
-}
+    SelectObject(dc, oldFont);
+    RestoreDC(dc, -1);
 
-void Font::platformCharWidthInit()
-{
-    // GDI Fonts init charwidths in initGDIFont.
-    if (!m_platformData.useGDI()) {
-        m_avgCharWidth = 0.f;
-        m_maxCharWidth = 0.f;
-        initCharWidths();
+    // Disable antialiasing when rendering with Ahem because many tests require this.
+    if (!_wcsicmp(faceName, L"Ahem"))
+        m_allowsAntialiasing = false;
+
+    float ascent, descent, capHeight, lineGap;
+    // The Open Font Format describes the OS/2 USE_TYPO_METRICS flag as follows:
+    // "If set, it is strongly recommended to use OS/2.sTypoAscender - OS/2.sTypoDescender+ OS/2.sTypoLineGap as a value for default line spacing for this font."
+    const UINT useTypoMetricsMask = 1 << 7;
+    if (metrics.otmfsSelection & useTypoMetricsMask) {
+        ascent = metrics.otmAscent * metricsMultiplier;
+        descent = -metrics.otmDescent * metricsMultiplier;
+        capHeight = metrics.otmsCapEmHeight * metricsMultiplier;
+        lineGap = metrics.otmLineGap * metricsMultiplier;
+    } else {
+        ascent = metrics.otmTextMetrics.tmAscent * metricsMultiplier;
+        descent = metrics.otmTextMetrics.tmDescent * metricsMultiplier;
+        capHeight = (metrics.otmTextMetrics.tmAscent - metrics.otmTextMetrics.tmInternalLeading) * metricsMultiplier;
+        lineGap = metrics.otmTextMetrics.tmExternalLeading * metricsMultiplier;
     }
+    float xHeight = xHeightActual.value_or(ascent * 0.56f); // Best guess for xHeight if no x glyph is present.
+
+    m_fontMetrics.setAscent(ascent);
+    m_fontMetrics.setDescent(descent);
+    m_fontMetrics.setCapHeight(capHeight);
+    m_fontMetrics.setLineGap(lineGap);
+    m_fontMetrics.setLineSpacing(lroundf(ascent) + lroundf(descent) + lroundf(lineGap));
+    m_fontMetrics.setUnitsPerEm(metrics.otmEMSquare);
+    m_fontMetrics.setXHeight(xHeight);
+    m_avgCharWidth = metrics.otmTextMetrics.tmAveCharWidth * metricsMultiplier;
+    m_maxCharWidth = metrics.otmTextMetrics.tmMaxCharWidth * metricsMultiplier;
 }
 
 void Font::platformDestroy()
 {
     ScriptFreeCache(&m_scriptCache);
-    delete m_scriptFontProperties;
 }
 
-RefPtr<Font> Font::platformCreateScaledFont(const FontDescription& fontDescription, float scaleFactor) const
+RefPtr<Font> Font::platformCreateScaledFont(const FontDescription&, float scaleFactor) const
 {
     float scaledSize = scaleFactor * m_platformData.size();
     if (origin() == Origin::Remote)
@@ -130,59 +125,35 @@ RefPtr<Font> Font::platformCreateScaledFont(const FontDescription& fontDescripti
 
     LOGFONT winfont;
     GetObject(m_platformData.hfont(), sizeof(LOGFONT), &winfont);
-    winfont.lfHeight = -lroundf(scaledSize * (m_platformData.useGDI() ? 1 : 32));
+    winfont.lfHeight = -lroundf(scaledSize * cWindowsFontScaleFactor);
     auto hfont = adoptGDIObject(::CreateFontIndirect(&winfont));
-    return Font::create(FontPlatformData(WTFMove(hfont), scaledSize, m_platformData.syntheticBold(), m_platformData.syntheticOblique(), m_platformData.useGDI()), origin());
+    return Font::create(FontPlatformData(WTFMove(hfont), scaledSize, m_platformData.syntheticBold(), m_platformData.syntheticOblique(), m_platformData.customPlatformData()), origin());
 }
 
-FloatRect Font::boundsForGDIGlyph(Glyph glyph) const
+bool Font::platformSupportsCodePoint(char32_t character, std::optional<char32_t> variation) const
 {
-    HWndDC hdc(0);
-    SetGraphicsMode(hdc, GM_ADVANCED);
-    HGDIOBJ oldFont = SelectObject(hdc, m_platformData.hfont());
-
-    GLYPHMETRICS gdiMetrics;
-    static const MAT2 identity = { { 0, 1 }, { 0, 0 }, { 0, 0 }, { 0, 1 } };
-    GetGlyphOutline(hdc, glyph, GGO_METRICS | GGO_GLYPH_INDEX, &gdiMetrics, 0, 0, &identity);
-
-    SelectObject(hdc, oldFont);
-
-    return FloatRect(gdiMetrics.gmptGlyphOrigin.x, -gdiMetrics.gmptGlyphOrigin.y,
-        gdiMetrics.gmBlackBoxX + m_syntheticBoldOffset, gdiMetrics.gmBlackBoxY); 
+    return variation ? false : glyphForCharacter(character);
 }
 
-float Font::widthForGDIGlyph(Glyph glyph) const
+void Font::determinePitch()
 {
-    HWndDC hdc(0);
-    SetGraphicsMode(hdc, GM_ADVANCED);
-    HGDIOBJ oldFont = SelectObject(hdc, m_platformData.hfont());
-
-    GLYPHMETRICS gdiMetrics;
-    static const MAT2 identity = { { 0, 1 }, { 0, 0 }, { 0, 0 }, { 0, 1 } };
-    GetGlyphOutline(hdc, glyph, GGO_METRICS | GGO_GLYPH_INDEX, &gdiMetrics, 0, 0, &identity);
-    float result = gdiMetrics.gmCellIncX + m_syntheticBoldOffset;
-
-    SelectObject(hdc, oldFont);
-
-    return result;
-}
-
-SCRIPT_FONTPROPERTIES* Font::scriptFontProperties() const
-{
-    if (!m_scriptFontProperties) {
-        m_scriptFontProperties = new SCRIPT_FONTPROPERTIES;
-        memset(m_scriptFontProperties, 0, sizeof(SCRIPT_FONTPROPERTIES));
-        m_scriptFontProperties->cBytes = sizeof(SCRIPT_FONTPROPERTIES);
-        HRESULT result = ScriptGetFontProperties(0, scriptCache(), m_scriptFontProperties);
-        if (result == E_PENDING) {
-            HWndDC dc(0);
-            SaveDC(dc);
-            SelectObject(dc, m_platformData.hfont());
-            ScriptGetFontProperties(dc, scriptCache(), m_scriptFontProperties);
-            RestoreDC(dc, -1);
-        }
+    if (origin() == Origin::Remote) {
+        m_treatAsFixedPitch = false;
+        return;
     }
-    return m_scriptFontProperties;
+
+    // TEXTMETRICS have this. Set m_treatAsFixedPitch based off that.
+    HWndDC dc(0);
+    SaveDC(dc);
+    SelectObject(dc, m_platformData.hfont());
+
+    // Yes, this looks backwards, but the fixed pitch bit is actually set if the font
+    // is *not* fixed pitch. Unbelievable but true!
+    TEXTMETRIC tm;
+    GetTextMetrics(dc, &tm);
+    m_treatAsFixedPitch = !(tm.tmPitchAndFamily & TMPF_FIXED_PITCH);
+
+    RestoreDC(dc, -1);
 }
 
 } // namespace WebCore

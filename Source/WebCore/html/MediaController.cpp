@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2011 Apple Inc. All rights reserved.
+ * Copyright (C) 2011-2023 Apple Inc. All rights reserved.
+ * Copyright (C) 2014 Google Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -32,14 +33,14 @@
 #include "HTMLMediaElement.h"
 #include "TimeRanges.h"
 #include <pal/system/Clock.h>
-#include <wtf/IsoMallocInlines.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/StdLibExtras.h>
+#include <wtf/TZoneMallocInlines.h>
 #include <wtf/text/AtomString.h>
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(MediaController);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(MediaController);
 
 Ref<MediaController> MediaController::create(ScriptExecutionContext& context)
 {
@@ -47,7 +48,8 @@ Ref<MediaController> MediaController::create(ScriptExecutionContext& context)
 }
 
 MediaController::MediaController(ScriptExecutionContext& context)
-    : m_paused(false)
+    : ContextDestructionObserver(&context)
+    , m_paused(false)
     , m_defaultPlaybackRate(1)
     , m_volume(1)
     , m_position(MediaPlayer::invalidTime())
@@ -58,7 +60,6 @@ MediaController::MediaController(ScriptExecutionContext& context)
     , m_clearPositionTimer(*this, &MediaController::clearPositionTimerFired)
     , m_closedCaptionsVisible(false)
     , m_clock(PAL::Clock::create())
-    , m_scriptExecutionContext(context)
     , m_timeupdateTimer(*this, &MediaController::scheduleTimeupdateEvent)
 {
 }
@@ -77,11 +78,6 @@ void MediaController::removeMediaElement(HTMLMediaElement& element)
 {
     ASSERT(m_mediaElements.contains(&element));
     m_mediaElements.remove(m_mediaElements.find(&element));
-}
-
-bool MediaController::containsMediaElement(HTMLMediaElement& element) const
-{
-    return m_mediaElements.contains(&element);
 }
 
 Ref<TimeRanges> MediaController::buffered() const
@@ -166,6 +162,7 @@ void MediaController::setCurrentTime(double time)
     time = std::min(time, duration());
     
     // Set the media controller position to the new playback position.
+    m_position = time;
     m_clock->setCurrentTime(time);
     
     // Seek each mediagroup element to the new playback position relative to the media element timeline.
@@ -256,7 +253,7 @@ ExceptionOr<void> MediaController::setVolume(double level)
     // If the new value is outside the range 0.0 to 1.0 inclusive, then, on setting, an 
     // IndexSizeError exception must be raised instead.
     if (!(level >= 0 && level <= 1))
-        return Exception { IndexSizeError };
+        return Exception { ExceptionCode::IndexSizeError };
 
     // The volume attribute, on setting, if the new value is in the range 0.0 to 1.0 inclusive,
     // must set the MediaController's media controller volume multiplier to the new value
@@ -289,19 +286,19 @@ void MediaController::setMuted(bool flag)
 
 static const AtomString& playbackStateWaiting()
 {
-    static MainThreadNeverDestroyed<const AtomString> waiting("waiting", AtomString::ConstructFromLiteral);
+    static MainThreadNeverDestroyed<const AtomString> waiting("waiting"_s);
     return waiting;
 }
 
 static const AtomString& playbackStatePlaying()
 {
-    static MainThreadNeverDestroyed<const AtomString> playing("playing", AtomString::ConstructFromLiteral);
+    static MainThreadNeverDestroyed<const AtomString> playing("playing"_s);
     return playing;
 }
 
 static const AtomString& playbackStateEnded()
 {
-    static MainThreadNeverDestroyed<const AtomString> ended("ended", AtomString::ConstructFromLiteral);
+    static MainThreadNeverDestroyed<const AtomString> ended("ended"_s);
     return ended;
 }
 

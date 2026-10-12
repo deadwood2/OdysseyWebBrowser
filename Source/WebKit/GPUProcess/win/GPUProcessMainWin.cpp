@@ -30,14 +30,18 @@
 
 #include "AuxiliaryProcessMain.h"
 #include "GPUProcess.h"
+#include <Objbase.h>
 
 namespace WebKit {
 
-class GPUProcessMainWin final: public AuxiliaryProcessMainBaseNoSingleton<GPUProcess> {
+class GPUProcessMainWin final: public AuxiliaryProcessMainBase<GPUProcess> {
 };
 
 int GPUProcessMain(int argc, char** argv)
 {
+    // for DirectX
+    HRESULT hr = ::CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    RELEASE_ASSERT(SUCCEEDED(hr));
     return AuxiliaryProcessMain<GPUProcessMainWin>(argc, argv);
 }
 

@@ -29,7 +29,7 @@
 
 namespace WebKit {
 
-enum MediaRecorderIdentifierType { };
-using MediaRecorderIdentifier = ObjectIdentifier<MediaRecorderIdentifierType>;
+enum class MediaRecorderIdentifierType { };
+using MediaRecorderIdentifier = LegacyNullableObjectIdentifier<MediaRecorderIdentifierType>;
 
 } // namespace WebKit

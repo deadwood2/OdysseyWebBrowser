@@ -27,6 +27,7 @@
 #import "LaunchServicesDatabaseManager.h"
 
 #import "LaunchServicesDatabaseXPCConstants.h"
+#import "Logging.h"
 #import "XPCEndpoint.h"
 #import <pal/spi/cocoa/LaunchServicesSPI.h>
 #import <wtf/cocoa/Entitlements.h>
@@ -37,25 +38,25 @@ namespace WebKit {
 
 LaunchServicesDatabaseManager& LaunchServicesDatabaseManager::singleton()
 {
-    static NeverDestroyed<LaunchServicesDatabaseManager> manager;
+    static LazyNeverDestroyed<LaunchServicesDatabaseManager> manager;
+    static std::once_flag onceKey;
+    std::call_once(onceKey, [] {
+        manager.construct();
+    });
     return manager.get();
 }
 
 void LaunchServicesDatabaseManager::handleEvent(xpc_object_t message)
 {
-    String messageName = xpc_dictionary_get_string(message, XPCEndpoint::xpcMessageNameKey);
-    if (messageName.isEmpty())
-        return;
-    if (messageName == LaunchServicesDatabaseXPCConstants::xpcUpdateLaunchServicesDatabaseMessageName) {
+    auto* messageName = xpc_dictionary_get_string(message, XPCEndpoint::xpcMessageNameKey);
+    if (LaunchServicesDatabaseXPCConstants::xpcUpdateLaunchServicesDatabaseMessageName == messageName) {
 #if HAVE(LSDATABASECONTEXT)
         auto database = xpc_dictionary_get_value(message, LaunchServicesDatabaseXPCConstants::xpcLaunchServicesDatabaseKey);
 
-        if (database) {
-            auto context = [NSClassFromString(@"LSDatabaseContext") sharedDatabaseContext];
-            if (![context respondsToSelector:@selector(observeDatabaseChange4WebKit:)])
-                return;
-            [context observeDatabaseChange4WebKit:database];
-        }
+        RELEASE_LOG(Loading, "Received Launch Services database %p", database);
+
+        if (database)
+            [LSDatabaseContext.sharedDatabaseContext observeDatabaseChange4WebKit:database];
 #endif
         m_semaphore.signal();
         m_hasReceivedLaunchServicesDatabase = true;
@@ -79,6 +80,22 @@ bool LaunchServicesDatabaseManager::waitForDatabaseUpdate(Seconds timeout)
     if (m_hasReceivedLaunchServicesDatabase)
         return true;
     return m_semaphore.waitFor(timeout);
+}
+
+void LaunchServicesDatabaseManager::waitForDatabaseUpdate()
+{
+    auto startTime = MonotonicTime::now();
+#ifdef NDEBUG
+    constexpr auto waitTime = 5_s;
+#else
+    constexpr auto waitTime = 10_s;
+#endif
+    bool databaseUpdated = waitForDatabaseUpdate(waitTime);
+    auto elapsedTime = MonotonicTime::now() - startTime;
+    if (elapsedTime > 0.5_s)
+        RELEASE_LOG_ERROR(Loading, "Waiting for Launch Services database update took %f seconds", elapsedTime.value());
+    if (!databaseUpdated)
+        RELEASE_LOG_FAULT(Loading, "Timed out waiting for Launch Services database update.");
 }
 
 }

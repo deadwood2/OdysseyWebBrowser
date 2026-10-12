@@ -26,10 +26,10 @@
 #include <wtf/glib/WTFGType.h>
 
 /**
- * SECTION: WebKitPointerLockPermissionRequest
- * @Short_description: A permission request for locking the pointer
- * @Title: WebKitPointerLockPermissionRequest
+ * WebKitPointerLockPermissionRequest:
  * @See_also: #WebKitPermissionRequest, #WebKitWebView
+ *
+ * A permission request for locking the pointer.
  *
  * WebKitPointerLockPermissionRequest represents a request for
  * permission to decide whether WebKit can lock the pointer device when
@@ -41,17 +41,22 @@
  * Since: 2.28
  */
 
-static void webkit_permission_request_interface_init(WebKitPermissionRequestIface*);
+#if !ENABLE(2022_GLIB_API)
+typedef WebKitPermissionRequestIface WebKitPermissionRequestInterface;
+#endif
+
+static void webkit_permission_request_interface_init(WebKitPermissionRequestInterface*);
 
 struct _WebKitPointerLockPermissionRequestPrivate {
     GRefPtr<WebKitWebView> webView;
     bool madeDecision;
 };
 
-WEBKIT_DEFINE_TYPE_WITH_CODE(
-    WebKitPointerLockPermissionRequest, webkit_pointer_lock_permission_request, G_TYPE_OBJECT,
+WEBKIT_DEFINE_FINAL_TYPE_WITH_CODE(
+    WebKitPointerLockPermissionRequest, webkit_pointer_lock_permission_request, G_TYPE_OBJECT, GObject,
     G_IMPLEMENT_INTERFACE(WEBKIT_TYPE_PERMISSION_REQUEST, webkit_permission_request_interface_init))
 
+#if ENABLE(POINTER_LOCK)
 static void webkitPointerLockPermissionRequestAllow(WebKitPermissionRequest* request)
 {
     ASSERT(WEBKIT_IS_POINTER_LOCK_PERMISSION_REQUEST(request));
@@ -79,17 +84,25 @@ static void webkitPointerLockPermissionRequestDeny(WebKitPermissionRequest* requ
     webkitWebViewDenyPointerLockRequest(priv->webView.get());
     priv->madeDecision = true;
 }
+#endif // ENABLE(POINTER_LOCK)
 
-static void webkit_permission_request_interface_init(WebKitPermissionRequestIface* iface)
+static void webkit_permission_request_interface_init(WebKitPermissionRequestInterface* iface)
 {
+#if ENABLE(POINTER_LOCK)
     iface->allow = webkitPointerLockPermissionRequestAllow;
     iface->deny = webkitPointerLockPermissionRequestDeny;
+#else
+    iface->allow = nullptr;
+    iface->deny = nullptr;
+#endif // ENABLE(POINTER_LOCK)
 }
 
 static void webkitPointerLockPermissionRequestDispose(GObject* object)
 {
     // Default behaviour when no decision has been made is allowing the request.
+#if ENABLE(POINTER_LOCK)
     webkitPointerLockPermissionRequestAllow(WEBKIT_PERMISSION_REQUEST(object));
+#endif // ENABLE(POINTER_LOCK)
     G_OBJECT_CLASS(webkit_pointer_lock_permission_request_parent_class)->dispose(object);
 }
 

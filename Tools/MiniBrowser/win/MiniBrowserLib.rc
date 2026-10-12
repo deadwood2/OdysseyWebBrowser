@@ -44,8 +44,7 @@ BEGIN
     BEGIN
         MENUITEM "&Print\tCtrl-P",              IDM_PRINT
         MENUITEM "E&xit",                       IDM_EXIT
-        MENUITEM "New WebKit Window",           IDM_NEW_WEBKIT_WINDOW
-        MENUITEM "New WebKitLegacy Window",     IDM_NEW_WEBKITLEGACY_WINDOW
+        MENUITEM "New Window",                  IDM_NEW_WEBKIT_WINDOW
         MENUITEM "Close\tCtrl-W",               IDM_CLOSE_WINDOW
     END
     POPUP "&View"
@@ -75,6 +74,16 @@ BEGIN
     END
     POPUP "D&evelop"
     BEGIN
+        POPUP "Experimental Features"
+        BEGIN
+            MENUITEM "Reset All to Defaults",       IDM_EXPERIMENTAL_FEATURES_RESET_ALL_TO_DEFAULTS
+            MENUITEM SEPARATOR
+        END
+        POPUP "Internal Debug Features"
+        BEGIN
+            MENUITEM "Reset All to Defaults",       IDM_INTERNAL_DEBUG_FEATURES_RESET_ALL_TO_DEFAULTS
+            MENUITEM SEPARATOR
+        END
         MENUITEM "Show Web Inspector",          IDM_WEB_INSPECTOR
         POPUP "User Agent"
         BEGIN
@@ -98,6 +107,9 @@ BEGIN
         END
         MENUITEM "Proxy Settings...",           IDM_PROXY_SETTINGS
         MENUITEM "Set Default URL to Current URL", IDM_SET_DEFAULT_URL
+        MENUITEM SEPARATOR
+        MENUITEM "Clear Cookies",               IDM_CLEAR_COOKIES
+        MENUITEM "Clear Website Data",          IDM_CLEAR_WEBSITE_DATA
         MENUITEM SEPARATOR
         MENUITEM "Disable Images",              IDM_DISABLE_IMAGES
         MENUITEM "Disable Styles",              IDM_DISABLE_STYLES

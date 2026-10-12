@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,22 +28,24 @@
 
 #import "AccessibilitySupportSPI.h"
 #import "CodeSigning.h"
-#import "HighPerformanceGPUManager.h"
+#import "CoreIPCAuditToken.h"
+#import "DefaultWebBrowserChecks.h"
 #import "Logging.h"
-#import "ObjCObjectGraph.h"
 #import "SandboxUtilities.h"
-#import "SharedBufferDataReference.h"
+#import "SharedBufferReference.h"
+#import "WKAPICast.h"
 #import "WKBrowsingContextControllerInternal.h"
 #import "WKBrowsingContextHandleInternal.h"
-#import "WKTypeRefWrapper.h"
 #import "WebProcessMessages.h"
 #import "WebProcessPool.h"
+#import <WebCore/ActivityState.h>
 #import <WebCore/RuntimeApplicationChecks.h>
-#import <WebCore/WebMAudioUtilitiesCocoa.h>
+#import <pal/spi/ios/MobileGestaltSPI.h>
 #import <sys/sysctl.h>
 #import <wtf/NeverDestroyed.h>
 #import <wtf/Scope.h>
 #import <wtf/cocoa/Entitlements.h>
+#import <wtf/cocoa/TypeCastsCocoa.h>
 #import <wtf/cocoa/VectorCocoa.h>
 #import <wtf/spi/darwin/SandboxSPI.h>
 
@@ -52,18 +54,21 @@
 #endif
 
 #if ENABLE(REMOTE_INSPECTOR)
+#import "WebInspectorUtilities.h"
 #import <JavaScriptCore/RemoteInspectorConstants.h>
 #endif
 
 #if HAVE(MEDIA_ACCESSIBILITY_FRAMEWORK)
-#include <WebCore/CaptionUserPreferencesMediaAF.h>
+#import <WebCore/CaptionUserPreferencesMediaAF.h>
 #endif
 
-#if PLATFORM(MAC)
-#include "TCCSoftLink.h"
+#if PLATFORM(MAC) || PLATFORM(MACCATALYST)
+#import "WindowServerConnection.h"
 #endif
 
-#import <pal/cf/AudioToolboxSoftLink.h>
+#if PLATFORM(MAC) || PLATFORM(MACCATALYST)
+#import "TCCSoftLink.h"
+#endif
 
 namespace WebKit {
 
@@ -73,84 +78,10 @@ const MemoryCompactLookupOnlyRobinHoodHashSet<String>& WebProcessProxy::platform
 {
     static NeverDestroyed<MemoryCompactLookupOnlyRobinHoodHashSet<String>> platformPathsWithAssumedReadAccess(std::initializer_list<String> {
         [NSBundle bundleWithIdentifier:@"com.apple.WebCore"].resourcePath.stringByStandardizingPath,
-        [NSBundle bundleWithIdentifier:@"com.apple.WebKit"].resourcePath.stringByStandardizingPath
+        [NSBundle bundleForClass:NSClassFromString(@"WKWebView")].resourcePath.stringByStandardizingPath
     });
 
     return platformPathsWithAssumedReadAccess;
-}
-
-RefPtr<ObjCObjectGraph> WebProcessProxy::transformHandlesToObjects(ObjCObjectGraph& objectGraph)
-{
-    struct Transformer final : ObjCObjectGraph::Transformer {
-        Transformer(WebProcessProxy& webProcessProxy)
-            : m_webProcessProxy(webProcessProxy)
-        {
-        }
-
-        bool shouldTransformObject(id object) const override
-        {
-            if (dynamic_objc_cast<WKBrowsingContextHandle>(object))
-                return true;
-
-            ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-            if (dynamic_objc_cast<WKTypeRefWrapper>(object))
-                return true;
-            ALLOW_DEPRECATED_DECLARATIONS_END
-            return false;
-        }
-
-        RetainPtr<id> transformObject(id object) const override
-        {
-            if (auto* handle = dynamic_objc_cast<WKBrowsingContextHandle>(object)) {
-                if (auto* webPageProxy = m_webProcessProxy.webPage(handle.pageProxyID)) {
-                    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-                    return [WKBrowsingContextController _browsingContextControllerForPageRef:toAPI(webPageProxy)];
-                    ALLOW_DEPRECATED_DECLARATIONS_END
-                }
-
-                return [NSNull null];
-            }
-
-            ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-            if (auto* wrapper = dynamic_objc_cast<WKTypeRefWrapper>(object))
-                return adoptNS([[WKTypeRefWrapper alloc] initWithObject:toAPI(m_webProcessProxy.transformHandlesToObjects(toImpl(wrapper.object)).get())]);
-            ALLOW_DEPRECATED_DECLARATIONS_END
-            return object;
-        }
-
-        WebProcessProxy& m_webProcessProxy;
-    };
-
-    return ObjCObjectGraph::create(ObjCObjectGraph::transform(objectGraph.rootObject(), Transformer(*this)).get());
-}
-
-RefPtr<ObjCObjectGraph> WebProcessProxy::transformObjectsToHandles(ObjCObjectGraph& objectGraph)
-{
-    struct Transformer final : ObjCObjectGraph::Transformer {
-        bool shouldTransformObject(id object) const override
-        {
-            ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-            if (dynamic_objc_cast<WKBrowsingContextController>(object))
-                return true;
-            if (dynamic_objc_cast<WKTypeRefWrapper>(object))
-                return true;
-            ALLOW_DEPRECATED_DECLARATIONS_END
-            return false;
-        }
-
-        RetainPtr<id> transformObject(id object) const override
-        {
-            ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-            if (auto* controller = dynamic_objc_cast<WKBrowsingContextController>(object))
-                return controller.handle;
-            if (auto* wrapper = dynamic_objc_cast<WKTypeRefWrapper>(object))
-                return adoptNS([[WKTypeRefWrapper alloc] initWithObject:toAPI(transformObjectsToHandles(toImpl(wrapper.object)).get())]);
-            ALLOW_DEPRECATED_DECLARATIONS_END
-            return object;
-        }
-    };
-
-    return ObjCObjectGraph::create(ObjCObjectGraph::transform(objectGraph.rootObject(), Transformer()).get());
 }
 
 static Vector<String>& mediaTypeCache()
@@ -166,8 +97,8 @@ void WebProcessProxy::cacheMediaMIMETypes(const Vector<String>& types)
         return;
 
     mediaTypeCache() = types;
-    for (auto& process : processPool().processes()) {
-        if (process != *this)
+    for (Ref process : processPool().processes()) {
+        if (process.ptr() != this)
             cacheMediaMIMETypesInternal(types);
     }
 }
@@ -186,30 +117,13 @@ Vector<String> WebProcessProxy::mediaMIMETypes() const
     return mediaTypeCache();
 }
 
-#if PLATFORM(MAC)
-void WebProcessProxy::requestHighPerformanceGPU()
-{
-    LOG(WebGL, "WebProcessProxy::requestHighPerformanceGPU()");
-    HighPerformanceGPUManager::singleton().addProcessRequiringHighPerformance(*this);
-}
-
-void WebProcessProxy::releaseHighPerformanceGPU()
-{
-    LOG(WebGL, "WebProcessProxy::releaseHighPerformanceGPU()");
-    HighPerformanceGPUManager::singleton().removeProcessRequiringHighPerformance(*this);
-}
-#endif
-
 #if ENABLE(REMOTE_INSPECTOR)
 bool WebProcessProxy::shouldEnableRemoteInspector()
 {
 #if PLATFORM(IOS_FAMILY)
     return CFPreferencesGetAppIntegerValue(WIRRemoteInspectorEnabledKey, WIRRemoteInspectorDomainName, nullptr);
 #else
-    auto sandboxBrokerBundleIdentifier = CFSTR("com.apple.Safari.SandboxBroker");
-    if (WebCore::applicationBundleIdentifier() == "com.apple.SafariTechnologyPreview"_s)
-        sandboxBrokerBundleIdentifier = CFSTR("com.apple.SafariTechnologyPreview.SandboxBroker");
-    return CFPreferencesGetAppIntegerValue(CFSTR("ShowDevelopMenu"), sandboxBrokerBundleIdentifier, nullptr);
+    return CFPreferencesGetAppIntegerValue(CFSTR("ShowDevelopMenu"), bundleIdentifierForSandboxBroker(), nullptr);
 #endif
 }
 
@@ -241,74 +155,55 @@ void WebProcessProxy::unblockAccessibilityServerIfNeeded()
     if (!_AXSApplicationAccessibilityEnabled())
         return;
 #endif
-    if (!processIdentifier())
+    if (!processID())
         return;
     if (!canSendMessage())
         return;
 
     Vector<SandboxExtension::Handle> handleArray;
 #if PLATFORM(IOS_FAMILY)
-    handleArray = SandboxExtension::createHandlesForMachLookup({ "com.apple.iphone.axserver-systemwide"_s, "com.apple.frontboard.systemappservices"_s }, connection() ? connection()->getAuditToken() : std::nullopt);
-    ASSERT(handleArray.size() == 2);
+    handleArray = SandboxExtension::createHandlesForMachLookup({ }, auditToken(), SandboxExtension::MachBootstrapOptions::EnableMachBootstrap);
 #endif
 
-    send(Messages::WebProcess::UnblockServicesRequiredByAccessibility(handleArray), 0);
+    send(Messages::WebProcess::UnblockServicesRequiredByAccessibility(WTFMove(handleArray)), 0);
     m_hasSentMessageToUnblockAccessibilityServer = true;
 }
 
-#if ENABLE(CFPREFS_DIRECT_MODE)
-void WebProcessProxy::unblockPreferenceServiceIfNeeded()
+#if PLATFORM(MAC) || PLATFORM(MACCATALYST)
+void WebProcessProxy::isAXAuthenticated(CoreIPCAuditToken&& auditToken, CompletionHandler<void(bool)>&& completionHandler)
 {
-    if (m_hasSentMessageToUnblockPreferenceService)
-        return;
-    if (!processIdentifier())
-        return;
-    if (!canSendMessage())
-        return;
-
-    auto handleArray = SandboxExtension::createHandlesForMachLookup({ "com.apple.cfprefsd.agent"_s, "com.apple.cfprefsd.daemon"_s }, connection() ? connection()->getAuditToken() : std::nullopt);
-    ASSERT(handleArray.size() == 2);
-    
-    send(Messages::WebProcess::UnblockPreferenceService(WTFMove(handleArray)), 0);
-    m_hasSentMessageToUnblockPreferenceService = true;
-}
-#endif
-
-Vector<String> WebProcessProxy::platformOverrideLanguages() const
-{
-    static const NeverDestroyed<Vector<String>> overrideLanguages = makeVector<String>([[NSUserDefaults standardUserDefaults] valueForKey:@"AppleLanguages"]);
-    return overrideLanguages;
-}
-
-#if PLATFORM(MAC)
-void WebProcessProxy::isAXAuthenticated(audit_token_t auditToken, CompletionHandler<void(bool)>&& completionHandler)
-{
-    auto authenticated = TCCAccessCheckAuditToken(get_TCC_kTCCServiceAccessibility(), auditToken, nullptr);
+    auto authenticated = TCCAccessCheckAuditToken(get_TCC_kTCCServiceAccessibility(), auditToken.auditToken(), nullptr);
     completionHandler(authenticated);
 }
 #endif
 
+#if PLATFORM(MAC) || PLATFORM(MACCATALYST)
+void WebProcessProxy::hardwareConsoleStateChanged()
+{
+    m_isConnectedToHardwareConsole = WindowServerConnection::singleton().hardwareConsoleState() == WindowServerConnection::HardwareConsoleState::Connected;
+    for (const auto& page : m_pageMap.values())
+        page->activityStateDidChange(WebCore::ActivityState::IsConnectedToHardwareConsole);
+}
+#endif
+
+#if HAVE(AUDIO_COMPONENT_SERVER_REGISTRATIONS)
 void WebProcessProxy::sendAudioComponentRegistrations()
 {
-    using namespace PAL;
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), [weakThis = WeakPtr { *this }] () mutable {
 
-    if (!PAL::isAudioToolboxCoreFrameworkAvailable() || !PAL::canLoad_AudioToolboxCore_AudioComponentFetchServerRegistrations())
-        return;
-
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), [protectedThis = makeRef(*this)] () mutable {
-        CFDataRef registrations { nullptr };
-
-        WebCore::registerOpusDecoderIfNeeded();
-        WebCore::registerVorbisDecoderIfNeeded();
-        if (noErr != AudioComponentFetchServerRegistrations(&registrations) || !registrations)
+        auto registrations = fetchAudioComponentServerRegistrations();
+        if (!registrations)
             return;
+        
+        RunLoop::main().dispatch([weakThis = WTFMove(weakThis), registrations = WTFMove(registrations)] () mutable {
+            if (!weakThis)
+                return;
 
-        RunLoop::main().dispatch([protectedThis = WTFMove(protectedThis), registrations = adoptCF(registrations)] () mutable {
-            auto registrationData = WebCore::SharedBuffer::create(registrations.get());
-            protectedThis->send(Messages::WebProcess::ConsumeAudioComponentRegistrations({ registrationData }), 0);
+            weakThis->send(Messages::WebProcess::ConsumeAudioComponentRegistrations(IPC::SharedBufferReference(WTFMove(registrations))), 0);
         });
     });
 }
+#endif
 
 bool WebProcessProxy::messageSourceIsValidWebContentProcess()
 {
@@ -318,7 +213,7 @@ bool WebProcessProxy::messageSourceIsValidWebContentProcess()
     }
 
 #if USE(APPLE_INTERNAL_SDK)
-#if PLATFORM(IOS)
+#if PLATFORM(IOS) || PLATFORM(VISION)
     // FIXME(rdar://80908833): On iOS, we can only perform the below checks for platform binaries until rdar://80908833 is fixed.
     if (!currentProcessIsPlatformBinary())
         return true;
@@ -329,9 +224,9 @@ bool WebProcessProxy::messageSourceIsValidWebContentProcess()
         return true;
 
     // Confirm that the connection is from a WebContent process:
-    auto [signingIdentifier, isPlatformBinary] = codeSigningIdentifierAndPlatformBinaryStatus(connection()->xpcConnection());
+    auto [signingIdentifier, isPlatformBinary] = codeSigningIdentifierAndPlatformBinaryStatus(connection().xpcConnection());
 
-    if (!isPlatformBinary || !signingIdentifier.startsWith("com.apple.WebKit.WebContent")) {
+    if (!isPlatformBinary || !signingIdentifier.startsWith("com.apple.WebKit.WebContent"_s)) {
         RELEASE_LOG_ERROR(Process, "Process is not an entitled WebContent process.");
         return false;
     }
@@ -340,4 +235,29 @@ bool WebProcessProxy::messageSourceIsValidWebContentProcess()
     return true;
 }
 
+std::optional<audit_token_t> WebProcessProxy::auditToken() const
+{
+    if (!hasConnection())
+        return std::nullopt;
+    
+    return connection().getAuditToken();
 }
+
+std::optional<Vector<SandboxExtension::Handle>> WebProcessProxy::fontdMachExtensionHandles()
+{
+    if (std::exchange(m_sentFontdMachExtensionHandles, true))
+        return std::nullopt;
+    return SandboxExtension::createHandlesForMachLookup({ "com.apple.fonts"_s }, auditToken(), SandboxExtension::MachBootstrapOptions::EnableMachBootstrap);
+}
+
+#if USE(APPLE_INTERNAL_SDK) && __has_include(<WebKitAdditions/WebProcessProxyCocoaAdditions.mm>)
+#import <WebKitAdditions/WebProcessProxyCocoaAdditions.mm>
+#else
+bool WebProcessProxy::shouldDisableJITCage() const
+{
+    return false;
+}
+#endif
+
+}
+

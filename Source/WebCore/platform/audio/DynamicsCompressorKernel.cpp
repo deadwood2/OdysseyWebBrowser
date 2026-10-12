@@ -60,9 +60,9 @@ void DynamicsCompressorKernel::setNumberOfChannels(unsigned numberOfChannels)
     if (m_preDelayBuffers.size() == numberOfChannels)
         return;
 
-    m_preDelayBuffers.clear();
-    for (unsigned i = 0; i < numberOfChannels; ++i)
-        m_preDelayBuffers.append(makeUnique<AudioFloatArray>(MaxPreDelayFrames));
+    m_preDelayBuffers = Vector<std::unique_ptr<AudioFloatArray>>(numberOfChannels, [](size_t) {
+        return makeUnique<AudioFloatArray>(MaxPreDelayFrames);
+    });
 }
 
 void DynamicsCompressorKernel::setPreDelayTime(float preDelayTime)

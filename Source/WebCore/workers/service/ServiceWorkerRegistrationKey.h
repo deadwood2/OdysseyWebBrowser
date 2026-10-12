@@ -25,41 +25,41 @@
 
 #pragma once
 
-#if ENABLE(SERVICE_WORKER)
-
 #include "SecurityOriginData.h"
+#include <wtf/Hasher.h>
 #include <wtf/URL.h>
 
 namespace WebCore {
+
+struct ClientOrigin;
+class RegistrableDomain;
 
 class ServiceWorkerRegistrationKey {
 public:
     ServiceWorkerRegistrationKey() = default;
     WEBCORE_EXPORT ServiceWorkerRegistrationKey(SecurityOriginData&& topOrigin, URL&& scope);
 
-    static ServiceWorkerRegistrationKey emptyKey();
-    unsigned hash() const;
+    WEBCORE_EXPORT static ServiceWorkerRegistrationKey emptyKey();
 
-    bool operator==(const ServiceWorkerRegistrationKey&) const;
-    bool operator!=(const ServiceWorkerRegistrationKey& key) const { return !(*this == key); }
+    friend bool operator==(const ServiceWorkerRegistrationKey&, const ServiceWorkerRegistrationKey&) = default;
     bool isEmpty() const { return *this == emptyKey(); }
     WEBCORE_EXPORT bool isMatching(const SecurityOriginData& topOrigin, const URL& clientURL) const;
     bool originIsMatching(const SecurityOriginData& topOrigin, const URL& clientURL) const;
     size_t scopeLength() const { return m_scope.string().length(); }
 
+    WEBCORE_EXPORT ClientOrigin clientOrigin() const;
     const SecurityOriginData& topOrigin() const { return m_topOrigin; }
+    WEBCORE_EXPORT RegistrableDomain firstPartyForCookies() const;
     const URL& scope() const { return m_scope; }
     void setScope(URL&& scope) { m_scope = WTFMove(scope); }
 
     bool relatesToOrigin(const SecurityOriginData&) const;
 
-    ServiceWorkerRegistrationKey isolatedCopy() const;
-
-    template<class Encoder> void encode(Encoder&) const;
-    template<class Decoder> static std::optional<ServiceWorkerRegistrationKey> decode(Decoder&);
+    WEBCORE_EXPORT ServiceWorkerRegistrationKey isolatedCopy() const &;
+    WEBCORE_EXPORT ServiceWorkerRegistrationKey isolatedCopy() &&;
 
     String toDatabaseKey() const;
-    static std::optional<ServiceWorkerRegistrationKey> fromDatabaseKey(const String&);
+    WEBCORE_EXPORT static std::optional<ServiceWorkerRegistrationKey> fromDatabaseKey(const String&);
 
 #if !LOG_DISABLED
     String loggingString() const;
@@ -72,27 +72,9 @@ private:
     URL m_scope;
 };
 
-template<class Encoder>
-void ServiceWorkerRegistrationKey::encode(Encoder& encoder) const
+inline void add(Hasher& hasher, const ServiceWorkerRegistrationKey& key)
 {
-    RELEASE_ASSERT(!m_topOrigin.isEmpty());
-    RELEASE_ASSERT(!m_scope.isNull());
-    encoder << m_topOrigin << m_scope;
-}
-
-template<class Decoder>
-std::optional<ServiceWorkerRegistrationKey> ServiceWorkerRegistrationKey::decode(Decoder& decoder)
-{
-    std::optional<SecurityOriginData> topOrigin;
-    decoder >> topOrigin;
-    if (!topOrigin)
-        return std::nullopt;
-
-    URL scope;
-    if (!decoder.decode(scope))
-        return std::nullopt;
-
-    return ServiceWorkerRegistrationKey { WTFMove(*topOrigin), WTFMove(scope) };
+    add(hasher, key.topOrigin(), key.scope());
 }
 
 } // namespace WebCore
@@ -100,7 +82,7 @@ std::optional<ServiceWorkerRegistrationKey> ServiceWorkerRegistrationKey::decode
 namespace WTF {
 
 struct ServiceWorkerRegistrationKeyHash {
-    static unsigned hash(const WebCore::ServiceWorkerRegistrationKey& key) { return key.hash(); }
+    static unsigned hash(const WebCore::ServiceWorkerRegistrationKey& key) { return computeHash(key); }
     static bool equal(const WebCore::ServiceWorkerRegistrationKey& a, const WebCore::ServiceWorkerRegistrationKey& b) { return a == b; }
     static const bool safeToCompareToEmptyOrDeleted = false;
 };
@@ -115,5 +97,3 @@ template<> struct HashTraits<WebCore::ServiceWorkerRegistrationKey> : GenericHas
 template<> struct DefaultHash<WebCore::ServiceWorkerRegistrationKey> : ServiceWorkerRegistrationKeyHash { };
 
 } // namespace WTF
-
-#endif // ENABLE(SERVICE_WORKER)

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013, 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,6 +27,7 @@
 #include "JSPromiseConstructor.h"
 
 #include "BuiltinNames.h"
+#include "GetterSetter.h"
 #include "JSCBuiltins.h"
 #include "JSCInlines.h"
 #include "JSPromisePrototype.h"
@@ -41,7 +42,7 @@ STATIC_ASSERT_IS_TRIVIALLY_DESTRUCTIBLE(JSPromiseConstructor);
 
 namespace JSC {
 
-const ClassInfo JSPromiseConstructor::s_info = { "Function", &Base::s_info, &promiseConstructorTable, nullptr, CREATE_METHOD_TABLE(JSPromiseConstructor) };
+const ClassInfo JSPromiseConstructor::s_info = { "Function"_s, &Base::s_info, &promiseConstructorTable, nullptr, CREATE_METHOD_TABLE(JSPromiseConstructor) };
 
 /* Source for JSPromiseConstructor.lut.h
 @begin promiseConstructorTable
@@ -54,12 +55,12 @@ const ClassInfo JSPromiseConstructor::s_info = { "Function", &Base::s_info, &pro
 @end
 */
 
-JSPromiseConstructor* JSPromiseConstructor::create(VM& vm, Structure* structure, JSPromisePrototype* promisePrototype, GetterSetter* speciesSymbol)
+JSPromiseConstructor* JSPromiseConstructor::create(VM& vm, Structure* structure, JSPromisePrototype* promisePrototype)
 {
     JSGlobalObject* globalObject = structure->globalObject();
     FunctionExecutable* executable = promiseConstructorPromiseConstructorCodeGenerator(vm);
-    JSPromiseConstructor* constructor = new (NotNull, allocateCell<JSPromiseConstructor>(vm.heap)) JSPromiseConstructor(vm, executable, globalObject, structure);
-    constructor->finishCreation(vm, promisePrototype, speciesSymbol);
+    JSPromiseConstructor* constructor = new (NotNull, allocateCell<JSPromiseConstructor>(vm)) JSPromiseConstructor(vm, executable, globalObject, structure);
+    constructor->finishCreation(vm, promisePrototype);
     constructor->addOwnInternalSlots(vm, globalObject);
     return constructor;
 }
@@ -74,12 +75,19 @@ JSPromiseConstructor::JSPromiseConstructor(VM& vm, FunctionExecutable* executabl
 {
 }
 
-void JSPromiseConstructor::finishCreation(VM& vm, JSPromisePrototype* promisePrototype, GetterSetter* speciesSymbol)
+void JSPromiseConstructor::finishCreation(VM& vm, JSPromisePrototype* promisePrototype)
 {
     Base::finishCreation(vm);
     putDirectWithoutTransition(vm, vm.propertyNames->prototype, promisePrototype, PropertyAttribute::DontEnum | PropertyAttribute::DontDelete | PropertyAttribute::ReadOnly);
     putDirectWithoutTransition(vm, vm.propertyNames->length, jsNumber(1), PropertyAttribute::DontEnum | PropertyAttribute::ReadOnly);
-    putDirectNonIndexAccessorWithoutTransition(vm, vm.propertyNames->speciesSymbol, speciesSymbol, PropertyAttribute::Accessor | PropertyAttribute::ReadOnly | PropertyAttribute::DontEnum);
+
+    JSGlobalObject* globalObject = this->globalObject();
+
+    GetterSetter* speciesGetterSetter = GetterSetter::create(vm, globalObject, JSFunction::create(vm, globalObject, 0, "get [Symbol.species]"_s, globalFuncSpeciesGetter, ImplementationVisibility::Public, SpeciesGetterIntrinsic), nullptr);
+    putDirectNonIndexAccessorWithoutTransition(vm, vm.propertyNames->speciesSymbol, speciesGetterSetter, PropertyAttribute::Accessor | PropertyAttribute::ReadOnly | PropertyAttribute::DontEnum);
+    JSC_BUILTIN_FUNCTION_WITHOUT_TRANSITION(vm.propertyNames->builtinNames().withResolversPublicName(), promiseConstructorWithResolversCodeGenerator, static_cast<unsigned>(PropertyAttribute::DontEnum));
+    if (Options::usePromiseTryMethod())
+        JSC_BUILTIN_FUNCTION_WITHOUT_TRANSITION(vm.propertyNames->tryKeyword, promiseConstructorTryCodeGenerator, static_cast<unsigned>(PropertyAttribute::DontEnum));
 }
 
 void JSPromiseConstructor::addOwnInternalSlots(VM& vm, JSGlobalObject* globalObject)

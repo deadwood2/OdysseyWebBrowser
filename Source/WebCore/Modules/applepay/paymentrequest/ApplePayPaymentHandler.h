@@ -59,25 +59,26 @@ private:
 
     ExceptionOr<Vector<ApplePayShippingMethod>> computeShippingMethods() const;
     ExceptionOr<std::tuple<ApplePayLineItem, Vector<ApplePayLineItem>>> computeTotalAndLineItems() const;
-    Vector<RefPtr<ApplePayError>> computeErrors(String&& error, AddressErrors&&, PayerErrorFields&&, JSC::JSObject* paymentMethodErrors) const;
-    Vector<RefPtr<ApplePayError>> computeErrors(JSC::JSObject* paymentMethodErrors) const;
-    void computeAddressErrors(String&& error, AddressErrors&&, Vector<RefPtr<ApplePayError>>&) const;
-    void computePayerErrors(PayerErrorFields&&, Vector<RefPtr<ApplePayError>>&) const;
-    ExceptionOr<void> computePaymentMethodErrors(JSC::JSObject* paymentMethodErrors, Vector<RefPtr<ApplePayError>>&) const;
+    Vector<Ref<ApplePayError>> computeErrors(String&& error, AddressErrors&&, PayerErrorFields&&, JSC::JSObject* paymentMethodErrors) const;
+    Vector<Ref<ApplePayError>> computeErrors(JSC::JSObject* paymentMethodErrors) const;
+    void computeAddressErrors(String&& error, AddressErrors&&, Vector<Ref<ApplePayError>>&) const;
+    void computePayerErrors(PayerErrorFields&&, Vector<Ref<ApplePayError>>&) const;
+    ExceptionOr<void> computePaymentMethodErrors(JSC::JSObject* paymentMethodErrors, Vector<Ref<ApplePayError>>&) const;
     ExceptionOr<std::optional<std::tuple<PaymentDetailsModifier, ApplePayModifier>>> firstApplicableModifier() const;
 
-    ExceptionOr<void> shippingAddressUpdated(Vector<RefPtr<ApplePayError>>&& errors);
+    ExceptionOr<void> shippingAddressUpdated(Vector<Ref<ApplePayError>>&& errors);
     ExceptionOr<void> shippingOptionUpdated();
-    ExceptionOr<void> paymentMethodUpdated(Vector<RefPtr<ApplePayError>>&& errors);
+    ExceptionOr<void> paymentMethodUpdated(Vector<Ref<ApplePayError>>&& errors);
 
     // PaymentHandler
-    ExceptionOr<void> convertData(JSC::JSValue) final;
+    ExceptionOr<void> convertData(Document&, JSC::JSValue) final;
     ExceptionOr<void> show(Document&) final;
+    bool canAbortSession() final { return true; }
     void hide() final;
-    void canMakePayment(Document&, WTF::Function<void(bool)>&& completionHandler) final;
+    void canMakePayment(Document&, Function<void(bool)>&& completionHandler) final;
     ExceptionOr<void> detailsUpdated(PaymentRequest::UpdateReason, String&& error, AddressErrors&&, PayerErrorFields&&, JSC::JSObject* paymentMethodErrors) final;
     ExceptionOr<void> merchantValidationCompleted(JSC::JSValue&&) final;
-    void complete(std::optional<PaymentComplete>&&) final;
+    ExceptionOr<void> complete(Document&, std::optional<PaymentComplete>&&, String&& serializedData) final;
     ExceptionOr<void> retry(PaymentValidationErrors&&) final;
 
     // PaymentSession

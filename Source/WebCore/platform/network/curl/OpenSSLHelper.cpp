@@ -30,6 +30,7 @@
 #include <wtf/DateMath.h>
 #include <wtf/HexNumber.h>
 #include <wtf/Seconds.h>
+#include <wtf/text/MakeString.h>
 #include <wtf/text/StringBuilder.h>
 
 namespace OpenSSL {
@@ -67,14 +68,21 @@ private:
 
 class StackOfX509 {
 public:
+    StackOfX509(STACK_OF(X509)* certs)
+        : m_certs { certs }
+        , m_owner { false }
+    {
+    }
+
     StackOfX509(X509_STORE_CTX* ctx)
         : m_certs { X509_STORE_CTX_get1_chain(ctx) }
+        , m_owner { true }
     {
     }
 
     ~StackOfX509()
     {
-        if (m_certs)
+        if (m_certs && m_owner)
             sk_X509_pop_free(m_certs, X509_free);
     }
 
@@ -82,7 +90,8 @@ public:
     X509* item(int i) { return sk_X509_value(m_certs, i); }
 
 private:
-    STACK_OF(X509)* m_certs { nullptr };
+    STACK_OF(X509)* m_certs;
+    bool m_owner;
 };
 
 class BIO {
@@ -116,7 +125,7 @@ public:
         if (length < 0)
             return std::nullopt;
 
-        return Vector { data, static_cast<size_t>(length) };
+        return Vector(std::span<const uint8_t> { data, static_cast<size_t>(length) });
     }
 
     String getDataAsString() const
@@ -126,7 +135,7 @@ public:
         if (length < 0)
             return String();
 
-        return String(data, length);
+        return String({ data, static_cast<size_t>(length) });
     }
 
     std::unique_ptr<X509, deleter<X509>> readX509()
@@ -141,10 +150,9 @@ private:
 };
 
 
-static Vector<WebCore::CertificateInfo::Certificate> pemDataFromCtx(X509_STORE_CTX* ctx)
+static WebCore::CertificateInfo::CertificateChain pemDataFromCtx(StackOfX509&& certs)
 {
-    Vector<WebCore::CertificateInfo::Certificate> result;
-    StackOfX509 certs { ctx };
+    WebCore::CertificateInfo::CertificateChain result;
 
     for (int i = 0; i < certs.count(); i++) {
         BIO bio(certs.item(i));
@@ -158,12 +166,22 @@ static Vector<WebCore::CertificateInfo::Certificate> pemDataFromCtx(X509_STORE_C
     return result;
 }
 
-std::optional<WebCore::CertificateInfo> createCertificateInfo(X509_STORE_CTX* ctx)
+std::unique_ptr<WebCore::CertificateInfo> createCertificateInfo(std::optional<long>&& verifyResult, SSL* ssl)
+{
+    if (!verifyResult || !ssl)
+        return nullptr;
+
+    auto certChain = SSL_get_peer_cert_chain(ssl);
+
+    return makeUnique<WebCore::CertificateInfo>(*verifyResult, pemDataFromCtx(StackOfX509(certChain)));
+}
+
+WebCore::CertificateInfo::CertificateChain createCertificateChain(X509_STORE_CTX* ctx)
 {
     if (!ctx)
-        return std::nullopt;
+        return { };
 
-    return WebCore::CertificateInfo(X509_STORE_CTX_get_error(ctx), pemDataFromCtx(ctx));
+    return pemDataFromCtx(StackOfX509(ctx));
 }
 
 static String toString(const ASN1_STRING* name)
@@ -173,7 +191,7 @@ static String toString(const ASN1_STRING* name)
     if (length <= 0)
         return String();
 
-    String result(data, length);
+    String result({ data, static_cast<size_t>(length) });
     OPENSSL_free(data);
     return result;
 }
@@ -282,19 +300,64 @@ static void getSubjectAltName(const X509* x509, Vector<String>& dnsNames, Vector
         } else if (value->type == GEN_IPADD) {
             auto data = value->d.iPAddress->data;
             if (value->d.iPAddress->length == 4)
-                ipAddresses.append(makeString(data[0], ".", data[1], ".", data[2], ".", data[3]));
+                ipAddresses.append(makeString(data[0], '.', data[1], '.', data[2], '.', data[3]));
             else if (value->d.iPAddress->length == 16) {
-                StringBuilder ipAddress;
-                for (int i = 0; i < 8; i++) {
-                    ipAddress.append(makeString(hex(data[0] << 8 | data[1], 4)));
-                    if (i != 7)
-                        ipAddress.append(":");
-                    data += 2;
-                }
-                ipAddresses.append(ipAddress.toString());
+                std::span<uint8_t, 16> dataSpan { data, 16 };
+                ipAddresses.append(canonicalizeIPv6Address(dataSpan));
             }
         }
     }
+}
+
+String canonicalizeIPv6Address(std::span<uint8_t, 16> data)
+{
+    bool compressCurrentSection = false;
+    size_t maxZeros = 0;
+    std::optional<size_t> startRunner;
+    std::optional<size_t> endRunner;
+    std::optional<size_t> start;
+    std::optional<size_t> end;
+
+    for (int i = 0; i < 8; i++) {
+        compressCurrentSection = !data[2 * i] && !data[2 * i + 1];
+        if (compressCurrentSection) {
+            startRunner = !startRunner.has_value() ? i : startRunner;
+            endRunner = i;
+            size_t len = endRunner.value() - startRunner.value() + 1;
+            if (len > maxZeros) {
+                start = startRunner;
+                end = endRunner;
+                maxZeros = len;
+            }
+        } else
+            startRunner.reset();
+    }
+
+    size_t minimum = 1;
+    StringBuilder ipAddress;
+    String oldSection = ""_s;
+    StringBuilder newSection;
+    for (int j = 0; j < 8; j++) {
+        if (j == start && maxZeros > minimum) {
+            if (ipAddress.isEmpty())
+                ipAddress.append(':');
+            ipAddress.append(':');
+
+            j = end.value();
+            continue;
+        }
+        oldSection = makeString(hex(data[2 * j] << 8 | data[2 * j + 1], 4, Lowercase));
+        newSection = StringBuilder();
+        for (int k = 0; k < 4; k++) {
+            if (oldSection[k] != '0' || !newSection.isEmpty() || k == 3)
+                newSection.append(oldSection[k]);
+        }
+        ipAddress.append(newSection.toString());
+
+        if (j != 7)
+            ipAddress.append(':');
+    }
+    return ipAddress.toString();
 }
 
 std::optional<WebCore::CertificateSummary> createSummaryInfo(const Vector<uint8_t>& pem)
@@ -319,6 +382,16 @@ std::optional<WebCore::CertificateSummary> createSummaryInfo(const Vector<uint8_
     getSubjectAltName(x509.get(), summaryInfo.dnsNames, summaryInfo.ipAddresses);
 
     return summaryInfo;
+}
+
+String tlsVersion(const SSL* ssl)
+{
+    return String::fromLatin1(SSL_get_version(ssl));
+}
+
+String tlsCipherName(const SSL* ssl)
+{
+    return String::fromLatin1(SSL_CIPHER_get_name(SSL_get_current_cipher(ssl)));
 }
 
 }

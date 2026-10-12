@@ -29,11 +29,21 @@
 
 #include "SampleBufferDisplayLayer.h"
 #include <wtf/HashMap.h>
+#include <wtf/TZoneMalloc.h>
+
+namespace WebKit {
+class SampleBufferDisplayLayerManager;
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebKit::SampleBufferDisplayLayerManager> : std::true_type { };
+}
 
 namespace WebKit {
 
 class SampleBufferDisplayLayerManager : public CanMakeWeakPtr<SampleBufferDisplayLayerManager> {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED(SampleBufferDisplayLayerManager);
 public:
     SampleBufferDisplayLayerManager() = default;
     ~SampleBufferDisplayLayerManager() = default;
@@ -42,7 +52,7 @@ public:
     void removeLayer(SampleBufferDisplayLayer&);
 
     void didReceiveLayerMessage(IPC::Connection&, IPC::Decoder&);
-    std::unique_ptr<WebCore::SampleBufferDisplayLayer> createLayer(WebCore::SampleBufferDisplayLayer::Client&);
+    RefPtr<WebCore::SampleBufferDisplayLayer> createLayer(WebCore::SampleBufferDisplayLayerClient&);
 
 private:
     HashMap<SampleBufferDisplayLayerIdentifier, WeakPtr<SampleBufferDisplayLayer>> m_layers;

@@ -42,6 +42,8 @@ pas_tiny_large_map_second_level_hashtable_in_flux_stash pas_tiny_large_map_secon
 
 pas_large_map_entry pas_large_map_find(uintptr_t begin)
 {
+    PAS_PROFILE(LARGE_MAP_FIND, begin);
+
     uintptr_t tiny_base;
     pas_first_level_tiny_large_map_entry* first_level_tiny_entry;
     pas_small_large_map_entry* small_entry;
@@ -76,6 +78,8 @@ void pas_large_map_add(pas_large_map_entry entry)
     
     pas_heap_lock_assert_held();
 
+    PAS_PROFILE(LARGE_MAP_ADD, entry.begin, entry.end);
+
     if (verbose)
         pas_log("adding %p...%p, heap = %p.\n", (void*)entry.begin, (void*)entry.end, entry.heap);
 
@@ -92,7 +96,7 @@ void pas_large_map_add(pas_large_map_entry entry)
         tiny_entry = pas_tiny_large_map_entry_create(entry);
 
         if (verbose)
-            pas_log("adding base = %p.\n", tiny_base);
+            pas_log("adding base = %p.\n", (void*)tiny_base);
 
         add_result = pas_tiny_large_map_hashtable_add(
             &pas_tiny_large_map_hashtable_instance, tiny_base,
@@ -152,6 +156,8 @@ pas_large_map_entry pas_large_map_take(uintptr_t begin)
     pas_first_level_tiny_large_map_entry* first_level_tiny_entry;
     pas_small_large_map_entry small_entry;
 
+    PAS_PROFILE(LARGE_MAP_TAKE, begin);
+
     pas_heap_lock_assert_held();
 
     if (verbose)
@@ -159,7 +165,7 @@ pas_large_map_entry pas_large_map_take(uintptr_t begin)
 
     tiny_base = pas_tiny_large_map_entry_base(begin);
     if (verbose)
-        pas_log("tiny_base = %p.\n", tiny_base);
+        pas_log("tiny_base = %p.\n", (void*)tiny_base);
     first_level_tiny_entry = pas_tiny_large_map_hashtable_find(
         &pas_tiny_large_map_hashtable_instance, tiny_base);
     if (first_level_tiny_entry) {

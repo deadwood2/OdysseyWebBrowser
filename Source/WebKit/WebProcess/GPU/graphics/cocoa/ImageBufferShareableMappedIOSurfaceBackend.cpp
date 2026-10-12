@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2020-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,60 +30,67 @@
 
 #include "Logging.h"
 #include <WebCore/GraphicsContextCG.h>
-#include <pal/spi/cocoa/IOSurfaceSPI.h>
-#include <wtf/IsoMallocInlines.h>
+#include <WebCore/IOSurfacePool.h>
 #include <wtf/StdLibExtras.h>
+#include <wtf/TZoneMallocInlines.h>
+#include <wtf/spi/cocoa/IOSurfaceSPI.h>
+#include <wtf/text/TextStream.h>
 
 namespace WebKit {
 using namespace WebCore;
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(ImageBufferShareableMappedIOSurfaceBackend);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(ImageBufferShareableMappedIOSurfaceBackend);
 
-std::unique_ptr<ImageBufferShareableMappedIOSurfaceBackend> ImageBufferShareableMappedIOSurfaceBackend::create(const Parameters& parameters, const HostWindow*)
+std::unique_ptr<ImageBufferShareableMappedIOSurfaceBackend> ImageBufferShareableMappedIOSurfaceBackend::create(const Parameters& parameters, const ImageBufferCreationContext& creationContext)
 {
     IntSize backendSize = calculateSafeBackendSize(parameters);
     if (backendSize.isEmpty())
         return nullptr;
 
-    auto surface = IOSurface::create(backendSize, backendSize, parameters.colorSpace, IOSurface::formatForPixelFormat(parameters.pixelFormat));
+    auto surface = IOSurface::create(creationContext.surfacePool, backendSize, parameters.colorSpace, IOSurface::nameForRenderingPurpose(parameters.purpose), convertToIOSurfaceFormat(parameters.pixelFormat));
     if (!surface)
         return nullptr;
+    if (creationContext.resourceOwner)
+        surface->setOwnershipIdentity(creationContext.resourceOwner);
 
-    RetainPtr<CGContextRef> cgContext = surface->ensurePlatformContext();
+    RetainPtr<CGContextRef> cgContext = surface->createPlatformContext();
     if (!cgContext)
         return nullptr;
 
     CGContextClearRect(cgContext.get(), FloatRect(FloatPoint::zero(), backendSize));
 
-    return makeUnique<ImageBufferShareableMappedIOSurfaceBackend>(parameters, WTFMove(surface));
+    return std::unique_ptr<ImageBufferShareableMappedIOSurfaceBackend> { new ImageBufferShareableMappedIOSurfaceBackend { parameters, WTFMove(surface), WTFMove(cgContext), 0, creationContext.surfacePool } };
 }
 
 std::unique_ptr<ImageBufferShareableMappedIOSurfaceBackend> ImageBufferShareableMappedIOSurfaceBackend::create(const Parameters& parameters, ImageBufferBackendHandle handle)
 {
-    if (!WTF::holds_alternative<MachSendRight>(handle)) {
+    if (!std::holds_alternative<MachSendRight>(handle)) {
         ASSERT_NOT_REACHED();
         return nullptr;
     }
 
-    auto surface = IOSurface::createFromSendRight(WTFMove(WTF::get<MachSendRight>(handle)), parameters.colorSpace);
+    auto surface = IOSurface::createFromSendRight(WTFMove(std::get<MachSendRight>(handle)));
     if (!surface)
         return nullptr;
+    auto cgContext = surface->createPlatformContext();
+    if (!cgContext)
+        return nullptr;
 
-    return makeUnique<ImageBufferShareableMappedIOSurfaceBackend>(parameters, WTFMove(surface));
+    ASSERT(surface->colorSpace() == parameters.colorSpace);
+    return std::unique_ptr<ImageBufferShareableMappedIOSurfaceBackend> { new ImageBufferShareableMappedIOSurfaceBackend { parameters, WTFMove(surface), WTFMove(cgContext), 0, nullptr } };
 }
 
-ImageBufferBackendHandle ImageBufferShareableMappedIOSurfaceBackend::createImageBufferBackendHandle() const
+std::optional<ImageBufferBackendHandle> ImageBufferShareableMappedIOSurfaceBackend::createBackendHandle(SharedMemory::Protection) const
 {
     return ImageBufferBackendHandle(m_surface->createSendRight());
 }
 
-#if HAVE(IOSURFACE_SET_OWNERSHIP_IDENTITY)
-void ImageBufferShareableMappedIOSurfaceBackend::setProcessOwnership(task_id_token_t processIdentityToken)
+String ImageBufferShareableMappedIOSurfaceBackend::debugDescription() const
 {
-    ASSERT(surface());
-    surface()->setOwnershipIdentity(processIdentityToken);
+    TextStream stream;
+    stream << "ImageBufferShareableMappedIOSurfaceBackend " << this << " " << ValueOrNull(m_surface.get());
+    return stream.release();
 }
-#endif
 
 } // namespace WebKit
 

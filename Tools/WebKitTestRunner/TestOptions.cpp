@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -45,6 +45,20 @@ static constexpr bool mediaSourceEnabledValue = false;
 static constexpr bool mediaSourceEnabledValue = true;
 #endif
 
+#if ENABLE(GPU_PROCESS)
+#if ENABLE(GPU_PROCESS_DOM_RENDERING_BY_DEFAULT)
+static constexpr bool fullGPUProcessEnabledValue = true;
+#else
+static constexpr bool fullGPUProcessEnabledValue = false;
+#endif
+#endif
+
+#if PLATFORM(MAC)
+static constexpr bool eventHandlerDrivenSmoothKeyboardScrollingEnabledValue = true;
+#else
+static constexpr bool eventHandlerDrivenSmoothKeyboardScrollingEnabledValue = false;
+#endif
+
 const TestFeatures& TestOptions::defaults()
 {
     static TestFeatures features;
@@ -57,14 +71,17 @@ const TestFeatures& TestOptions::defaults()
             // an experimental feature which gets enabled by default automatically)
             // as it adds a small amount of unnecessary work per-test.
 
-            { "AcceleratedDrawingEnabled", false },
             { "AllowFileAccessFromFileURLs", true },
             { "AllowTopNavigationToDataURLs", true },
             { "AllowUniversalAccessFromFileURLs", true },
             { "AllowsInlineMediaPlayback", true },
+            { "AppBadgeEnabled", true },
             { "AsyncFrameScrollingEnabled", false },
             { "AsyncOverflowScrollingEnabled", false },
+            { "BroadcastChannelOriginPartitioningEnabled", false },
+            { "BuiltInNotificationsEnabled", false },
             { "CSSOMViewScrollingAPIEnabled", true },
+            { "CSSUnprefixedBackdropFilterEnabled", true },
             { "CaptureAudioInGPUProcessEnabled", captureAudioInGPUProcessEnabledValue },
             { "CaptureAudioInUIProcessEnabled", false },
             { "CaptureVideoInGPUProcessEnabled", captureVideoInGPUProcessEnabledValue },
@@ -72,11 +89,13 @@ const TestFeatures& TestOptions::defaults()
             { "ContentChangeObserverEnabled", false },
             { "CustomPasteboardDataEnabled", true },
             { "DOMPasteAllowed", true },
+            { "DOMTestingAPIsEnabled", true },
             { "DataTransferItemsEnabled", true },
             { "DeveloperExtrasEnabled", true },
             { "DirectoryUploadEnabled", true },
+            { "EncryptedMediaAPIEnabled", true },
+            { "EventHandlerDrivenSmoothKeyboardScrollingEnabled", eventHandlerDrivenSmoothKeyboardScrollingEnabledValue },
             { "ExposeSpeakersEnabled", true },
-            { "FrameFlatteningEnabled", false },
             { "FullScreenEnabled", true },
             { "GenericCueAPIEnabled", false },
             { "HiddenPageCSSAnimationSuspensionEnabled", false },
@@ -90,36 +109,45 @@ const TestFeatures& TestOptions::defaults()
             { "JavaScriptCanAccessClipboard", true },
             { "JavaScriptCanOpenWindowsAutomatically", true },
             { "LargeImageAsyncDecodingEnabled", false },
+            { "MediaCapabilitiesEnabled", true },
             { "MediaDevicesEnabled", true },
             { "MediaPreloadingEnabled", true },
             { "MediaSourceEnabled", mediaSourceEnabledValue },
+            { "MockScrollbarsControllerEnabled", false },
             { "MockCaptureDevicesEnabled", true },
             { "MockScrollbarsEnabled", true },
             { "ModernMediaControlsEnabled", true },
             { "NeedsSiteSpecificQuirks", false },
             { "NeedsStorageAccessFromFileURLsQuirk", false },
-            { "OfflineWebApplicationCacheEnabled", true },
-            { "OffscreenCanvasEnabled", true },
-            { "OffscreenCanvasInWorkersEnabled", true },
             { "PageVisibilityBasedProcessSuppressionEnabled", false },
-            { "PluginsEnabled", true },
+            { "PeerConnectionVideoScalingAdaptationDisabled", true },
+            { "PDFJSViewerEnabled", false },
+            { "PushAPIEnabled", true },
             { "RequiresUserGestureForAudioPlayback", false },
             { "RequiresUserGestureForMediaPlayback", false },
             { "RequiresUserGestureForVideoPlayback", false },
+            { "ScrollToTextFragmentIndicatorEnabled", false },
+            { "ShowModalDialogEnabled", false },
             { "SpeakerSelectionRequiresUserGesture", false },
-            { "SubpixelAntialiasedLayerTextEnabled", false },
             { "TabsToLinks", false },
             { "TextAutosizingEnabled", false },
             { "TextAutosizingUsesIdempotentMode", false },
+            { "UnifiedPDFEnabled", false },
             { "UsesBackForwardCache", false },
             { "WebAuthenticationEnabled", true },
-            { "WebRTCMDNSICECandidatesEnabled", false },
+#if ENABLE(WEBGL)
+            { "WebGLDraftExtensionsEnabled", true },
+#endif
+            { "WebRTCRemoteVideoFrameEnabled", true },
             { "XSSAuditorEnabled", false },
 #if PLATFORM(IOS_FAMILY_SIMULATOR)
             { "VP9DecoderEnabled", false },
 #endif
-#if ENABLE(GPU_PROCESS) && ENABLE(WEBGL)
-            { "UseGPUProcessForWebGLEnabled", false },
+#if ENABLE(GPU_PROCESS)
+            { "UseGPUProcessForDOMRenderingEnabled", fullGPUProcessEnabledValue },
+#endif
+#if ENABLE(GPU_PROCESS) && ENABLE(WEBGL) && !PLATFORM(WIN)
+            { "UseGPUProcessForWebGLEnabled", fullGPUProcessEnabledValue },
 #endif
         };
         features.stringWebPreferenceFeatures = {
@@ -134,17 +162,20 @@ const TestFeatures& TestOptions::defaults()
         };
         features.boolTestRunnerFeatures = {
             { "allowsLinkPreview", true },
+            { "allowTestOnlyIPC", false },
+            { "appHighlightsEnabled", false },
             { "dumpJSConsoleLogInStdErr", false },
             { "editable", false },
             { "enableInAppBrowserPrivacy", false },
             { "enableProcessSwapOnNavigation", true },
-            { "enableProcessSwapOnWindowOpen", false },
-            { "appHighlightsEnabled", false },
+            { "findInteractionEnabled", false },
             { "ignoreSynchronousMessagingTimeouts", false },
             { "ignoresViewportScaleLimits", false },
             { "isAppBoundWebView", false },
             { "isAppInitiated", true },
+            { "advancedPrivacyProtectionsEnabled", false },
             { "runSingly", false },
+            { "runInCrossOriginFrame", false },
             { "shouldHandleRunOpenPanel", true },
             { "shouldPresentPopovers", true },
             { "shouldShowTouches", false },
@@ -156,26 +187,41 @@ const TestFeatures& TestOptions::defaults()
             { "useEphemeralSession", false },
             { "useFlexibleViewport", false },
             { "useRemoteLayerTree", false },
+            { "noUseRemoteLayerTree", false },
             { "useThreadedScrolling", false },
+            { "suppressInputAccessoryView", false },
+            { "allowsInlinePredictions", false },
+            { "showsScrollIndicators", true },
+            { "longPressActionsEnabled", true },
+            { "enhancedWindowingEnabled", false },
+            { "textExtractionEnabled", false },
         };
         features.doubleTestRunnerFeatures = {
             { "contentInset.top", 0 },
+            { "obscuredInset.top", 0 },
             { "horizontalSystemMinimumLayoutMargin", 0 },
             { "deviceScaleFactor", 1 },
             { "viewHeight", 600 },
             { "viewWidth", 800 },
+        };
+        features.uint16TestRunnerFeatures = {
+            { "insecureUpgradePort", 80 },
+            { "secureUpgradePort", 443 },
         };
         features.stringTestRunnerFeatures = {
             { "additionalSupportedImageTypes", { } },
             { "applicationBundleIdentifier", { } },
             { "applicationManifest", { } },
             { "contentMode", { } },
+            { "contentSecurityPolicyExtensionMode", { } },
             { "dragInteractionPolicy", { } },
+            { "focusStartsInputSessionPolicy", { } },
             { "jscOptions", { } },
+            { "captionDisplayMode", { } },
             { "standaloneWebApplicationURL", { } },
         };
         features.stringVectorTestRunnerFeatures = {
-            { "language", { } },
+            { "language", { "en-US" } },
         };
     }
     
@@ -188,17 +234,20 @@ const std::unordered_map<std::string, TestHeaderKeyType>& TestOptions::keyTypeMa
         GENERATED_WEB_PREFERENCE_KEY_TYPE_MAPPINGS
 
         { "allowsLinkPreview", TestHeaderKeyType::BoolTestRunner },
+        { "appHighlightsEnabled", TestHeaderKeyType::BoolTestRunner },
+        { "allowTestOnlyIPC", TestHeaderKeyType::BoolTestRunner },
         { "dumpJSConsoleLogInStdErr", TestHeaderKeyType::BoolTestRunner },
         { "editable", TestHeaderKeyType::BoolTestRunner },
         { "enableInAppBrowserPrivacy", TestHeaderKeyType::BoolTestRunner },
         { "enableProcessSwapOnNavigation", TestHeaderKeyType::BoolTestRunner },
-        { "enableProcessSwapOnWindowOpen", TestHeaderKeyType::BoolTestRunner },
-        { "appHighlightsEnabled", TestHeaderKeyType::BoolTestRunner },
+        { "findInteractionEnabled", TestHeaderKeyType::BoolTestRunner },
         { "ignoreSynchronousMessagingTimeouts", TestHeaderKeyType::BoolTestRunner },
         { "ignoresViewportScaleLimits", TestHeaderKeyType::BoolTestRunner },
         { "isAppBoundWebView", TestHeaderKeyType::BoolTestRunner },
         { "isAppInitiated", TestHeaderKeyType::BoolTestRunner },
+        { "advancedPrivacyProtectionsEnabled", TestHeaderKeyType::BoolTestRunner },
         { "runSingly", TestHeaderKeyType::BoolTestRunner },
+        { "runInCrossOriginFrame", TestHeaderKeyType::BoolTestRunner },
         { "shouldHandleRunOpenPanel", TestHeaderKeyType::BoolTestRunner },
         { "shouldPresentPopovers", TestHeaderKeyType::BoolTestRunner },
         { "shouldShowTouches", TestHeaderKeyType::BoolTestRunner },
@@ -211,19 +260,31 @@ const std::unordered_map<std::string, TestHeaderKeyType>& TestOptions::keyTypeMa
         { "useFlexibleViewport", TestHeaderKeyType::BoolTestRunner },
         { "useRemoteLayerTree", TestHeaderKeyType::BoolTestRunner },
         { "useThreadedScrolling", TestHeaderKeyType::BoolTestRunner },
-    
+        { "suppressInputAccessoryView", TestHeaderKeyType::BoolTestRunner },
+        { "allowsInlinePredictions", TestHeaderKeyType::BoolTestRunner },
+        { "showsScrollIndicators", TestHeaderKeyType::BoolTestRunner },
+        { "longPressActionsEnabled", TestHeaderKeyType::BoolTestRunner },
+        { "enhancedWindowingEnabled", TestHeaderKeyType::BoolTestRunner },
+        { "textExtractionEnabled", TestHeaderKeyType::BoolTestRunner },
         { "contentInset.top", TestHeaderKeyType::DoubleTestRunner },
+        { "obscuredInset.top", TestHeaderKeyType::DoubleTestRunner },
         { "horizontalSystemMinimumLayoutMargin", TestHeaderKeyType::DoubleTestRunner },
         { "deviceScaleFactor", TestHeaderKeyType::DoubleTestRunner },
         { "viewHeight", TestHeaderKeyType::DoubleTestRunner },
         { "viewWidth", TestHeaderKeyType::DoubleTestRunner },
 
+        { "insecureUpgradePort", TestHeaderKeyType::UInt16TestRunner },
+        { "secureUpgradePort", TestHeaderKeyType::UInt16TestRunner },
+
         { "additionalSupportedImageTypes", TestHeaderKeyType::StringTestRunner },
         { "applicationBundleIdentifier", TestHeaderKeyType::StringTestRunner },
         { "applicationManifest", TestHeaderKeyType::StringRelativePathTestRunner },
         { "contentMode", TestHeaderKeyType::StringTestRunner },
+        { "contentSecurityPolicyExtensionMode", TestHeaderKeyType::StringTestRunner },
         { "dragInteractionPolicy", TestHeaderKeyType::StringTestRunner },
+        { "focusStartsInputSessionPolicy", TestHeaderKeyType::StringTestRunner },
         { "jscOptions", TestHeaderKeyType::StringTestRunner },
+        { "captionDisplayMode", TestHeaderKeyType::StringTestRunner },
         { "standaloneWebApplicationURL", TestHeaderKeyType::StringURLTestRunner },
 
         { "language", TestHeaderKeyType::StringVectorTestRunner },
@@ -263,6 +324,11 @@ bool TestOptions::boolTestRunnerFeatureValue(std::string key) const
 double TestOptions::doubleTestRunnerFeatureValue(std::string key) const
 {
     return testRunnerFeatureValue(key, m_features.doubleTestRunnerFeatures);
+}
+
+uint16_t TestOptions::uint16TestRunnerFeatureValue(std::string key) const
+{
+    return testRunnerFeatureValue(key, m_features.uint16TestRunnerFeatures);
 }
 
 std::string TestOptions::stringTestRunnerFeatureValue(std::string key) const

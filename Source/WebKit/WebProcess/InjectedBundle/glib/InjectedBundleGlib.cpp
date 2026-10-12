@@ -34,7 +34,7 @@
 
 namespace WebKit {
 
-bool InjectedBundle::initialize(const WebProcessCreationParameters&, API::Object* initializationUserData)
+bool InjectedBundle::initialize(const WebProcessCreationParameters&, RefPtr<API::Object>&& initializationUserData)
 {
     m_platformBundle = g_module_open(FileSystem::fileSystemRepresentation(m_path).data(), G_MODULE_BIND_LOCAL);
     if (!m_platformBundle) {
@@ -48,15 +48,15 @@ bool InjectedBundle::initialize(const WebProcessCreationParameters&, API::Object
         return false;
     }
 
-    initializeFunction(toAPI(this), toAPI(initializationUserData));
+    initializeFunction(toAPI(this), toAPI(initializationUserData.get()));
     return true;
 }
 
-void InjectedBundle::setBundleParameter(WTF::String const&, IPC::DataReference const&)
+void InjectedBundle::setBundleParameter(WTF::String const&, std::span<const uint8_t>)
 {
 }
 
-void InjectedBundle::setBundleParameters(const IPC::DataReference&)
+void InjectedBundle::setBundleParameters(std::span<const uint8_t>)
 {
 }
 

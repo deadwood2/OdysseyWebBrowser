@@ -45,7 +45,8 @@ public:
     std::unique_ptr<webrtc::VideoEncoderFactory> createEncoderFactory() override;
 
 private:
-    void setActive(bool) final;
+    std::optional<MediaCapabilitiesInfo> computeVPParameters(const VideoConfiguration&) final;
+    bool isVPSoftwareDecoderSmooth(const VideoConfiguration&) final;
 };
 
 } // namespace WebCore

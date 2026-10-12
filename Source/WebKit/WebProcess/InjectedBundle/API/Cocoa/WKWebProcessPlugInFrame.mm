@@ -29,6 +29,7 @@
 #import "WKNSArray.h"
 #import "WKNSURLExtras.h"
 #import "WKWebProcessPlugInBrowserContextControllerInternal.h"
+#import "WKWebProcessPlugInCSSStyleDeclarationHandleInternal.h"
 #import "WKWebProcessPlugInHitTestResultInternal.h"
 #import "WKWebProcessPlugInNodeHandleInternal.h"
 #import "WKWebProcessPlugInRangeHandleInternal.h"
@@ -37,10 +38,10 @@
 #import "_WKFrameHandleInternal.h"
 #import <JavaScriptCore/JSValue.h>
 #import <WebCore/CertificateInfo.h>
-#import <WebCore/Frame.h>
 #import <WebCore/IntPoint.h>
 #import <WebCore/LinkIconCollector.h>
 #import <WebCore/LinkIconType.h>
+#import <WebCore/LocalFrame.h>
 #import <WebCore/WebCoreObjCExtras.h>
 #import <wtf/cocoa/VectorCocoa.h>
 
@@ -55,7 +56,12 @@
 
 + (instancetype)lookUpFrameFromJSContext:(JSContext *)context
 {
-    return wrapper(WebKit::WebFrame::frameForContext(context.JSGlobalContextRef));
+    return wrapper(WebKit::WebFrame::frameForContext(context.JSGlobalContextRef)).autorelease();
+}
+
++ (instancetype)lookUpContentFrameFromWindowOrFrameElement:(JSValue *)value
+{
+    return wrapper(WebKit::WebFrame::contentFrameForWindowOrFrameElement(value.context.JSGlobalContextRef, value.JSValueRef)).autorelease();
 }
 
 - (void)dealloc
@@ -71,9 +77,16 @@
     return [JSContext contextWithJSGlobalContextRef:_frame->jsContextForWorld(&[world _scriptWorld])];
 }
 
+- (JSContext *)jsContextForServiceWorkerWorld:(WKWebProcessPlugInScriptWorld *)world
+{
+    if (auto context = _frame->jsContextForServiceWorkerWorld(&[world _scriptWorld]))
+        return [JSContext contextWithJSGlobalContextRef:context];
+    return nil;
+}
+
 - (WKWebProcessPlugInHitTestResult *)hitTest:(CGPoint)point
 {
-    return wrapper(_frame->hitTest(WebCore::IntPoint(point)));
+    return wrapper(_frame->hitTest(WebCore::IntPoint(point))).autorelease();
 }
 
 - (WKWebProcessPlugInHitTestResult *)hitTest:(CGPoint)point options:(WKHitTestOptions)options
@@ -81,7 +94,13 @@
     auto types = WebKit::WebFrame::defaultHitTestRequestTypes();
     if (options & WKHitTestOptionAllowUserAgentShadowRootContent)
         types.remove(WebCore::HitTestRequest::Type::DisallowUserAgentShadowContent);
-    return wrapper(_frame->hitTest(WebCore::IntPoint(point), types));
+    return wrapper(_frame->hitTest(WebCore::IntPoint(point), types)).autorelease();
+}
+
+- (JSValue *)jsCSSStyleDeclarationForCSSStyleDeclarationHandle:(WKWebProcessPlugInCSSStyleDeclarationHandle *)cssStyleDeclarationHandle inWorld:(WKWebProcessPlugInScriptWorld *)world
+{
+    JSValueRef valueRef = _frame->jsWrapperForWorld(&[cssStyleDeclarationHandle _cssStyleDeclarationHandle], &[world _scriptWorld]);
+    return [JSValue valueWithJSValueRef:valueRef inContext:[self jsContextForWorld:world]];
 }
 
 - (JSValue *)jsNodeForNodeHandle:(WKWebProcessPlugInNodeHandle *)nodeHandle inWorld:(WKWebProcessPlugInScriptWorld *)world
@@ -98,17 +117,19 @@
 
 - (WKWebProcessPlugInBrowserContextController *)_browserContextController
 {
+    if (!_frame->page())
+        return nil;
     return WebKit::wrapper(*_frame->page());
 }
 
 - (NSURL *)URL
 {
-    return [NSURL _web_URLWithWTFString:_frame->url().string()];
+    return _frame->url();
 }
 
 - (NSArray *)childFrames
 {
-    return WebKit::wrapper(_frame->childFrames());
+    return WebKit::wrapper(_frame->childFrames()).autorelease();
 }
 
 - (BOOL)containsAnyFormElements
@@ -123,42 +144,42 @@
 
 - (_WKFrameHandle *)handle
 {
-    return wrapper(API::FrameHandle::create(_frame->frameID()));
+    return wrapper(API::FrameHandle::create(_frame->frameID())).autorelease();
 }
 
 - (NSString *)_securityOrigin
 {
-    auto* coreFrame = _frame->coreFrame();
+    auto* coreFrame = _frame->coreLocalFrame();
     if (!coreFrame)
         return nil;
     return coreFrame->document()->securityOrigin().toString();
 }
 
-static RetainPtr<NSArray> collectIcons(WebCore::Frame* frame, OptionSet<WebCore::LinkIconType> iconTypes)
+static RetainPtr<NSArray> collectIcons(WebCore::LocalFrame* frame, OptionSet<WebCore::LinkIconType> iconTypes)
 {
     if (!frame)
         return @[];
-    auto document = frame->document();
+    RefPtr document = frame->document();
     if (!document)
         return @[];
-    return createNSArray(WebCore::LinkIconCollector(*document).iconsOfTypes(iconTypes), [] (auto& icon) -> NSURL * {
+    return createNSArray(WebCore::LinkIconCollector(*document).iconsOfTypes(iconTypes), [] (auto&& icon) -> NSURL * {
         return icon.url;
     });
 }
 
 - (NSArray *)appleTouchIconURLs
 {
-    return collectIcons(_frame->coreFrame(), { WebCore::LinkIconType::TouchIcon, WebCore::LinkIconType::TouchPrecomposedIcon }).autorelease();
+    return collectIcons(_frame->coreLocalFrame(), { WebCore::LinkIconType::TouchIcon, WebCore::LinkIconType::TouchPrecomposedIcon }).autorelease();
 }
 
 - (NSArray *)faviconURLs
 {
-    return collectIcons(_frame->coreFrame(), WebCore::LinkIconType::Favicon).autorelease();
+    return collectIcons(_frame->coreLocalFrame(), WebCore::LinkIconType::Favicon).autorelease();
 }
 
 - (WKWebProcessPlugInFrame *)_parentFrame
 {
-    return wrapper(_frame->parentFrame());
+    return wrapper(_frame->parentFrame()).autorelease();
 }
 
 - (BOOL)_hasCustomContentProvider
@@ -171,16 +192,12 @@ static RetainPtr<NSArray> collectIcons(WebCore::Frame* frame, OptionSet<WebCore:
 
 - (NSArray *)_certificateChain
 {
-    return retainPtr((NSArray *)_frame->certificateInfo().certificateChain()).autorelease();
+    return (NSArray *)WebCore::CertificateInfo::certificateChainFromSecTrust(_frame->certificateInfo().trust().get()).autorelease();
 }
 
 - (SecTrustRef)_serverTrust
 {
-#if HAVE(SEC_TRUST_SERIALIZATION)
-    return _frame->certificateInfo().trust();
-#else
-    return nil;
-#endif
+    return _frame->certificateInfo().trust().get();
 }
 
 - (NSURL *)_provisionalURL

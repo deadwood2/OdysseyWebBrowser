@@ -47,11 +47,20 @@ public:
     int m_id;
     bool m_firedOrCancelled;
 
+#if OS(MORPHOS)
+    static constexpr Seconds fullSpeedAnimationInterval { 30_ms };
+    static constexpr Seconds halfSpeedThrottlingAnimationInterval { 60_ms };
+    static constexpr Seconds aggressiveThrottlingAnimationInterval { 10_s };
+#else
     // Allow a little more than 60fps to make sure we can at least hit that frame rate.
     static constexpr Seconds fullSpeedAnimationInterval { 15_ms };
     // Allow a little more than 30fps to make sure we can at least hit that frame rate.
     static constexpr Seconds halfSpeedThrottlingAnimationInterval { 30_ms };
     static constexpr Seconds aggressiveThrottlingAnimationInterval { 10_s };
+#endif
+
+private:
+    virtual bool hasCallback() const = 0;
 };
 
 } // namespace WebCore

@@ -29,12 +29,12 @@
 
 namespace TestWebKitAPI {
 
-class SharedBufferTest : public testing::Test {
+class FragmentedSharedBufferTest : public testing::Test {
 public:
     void SetUp() override;
     void TearDown() override;
 
-    static const char* testData() { return "This is a test"; }
+    static ASCIILiteral testData() { return "This is a test"_s; }
     const String& tempFilePath() { return m_tempFilePath; }
     const String& tempEmptyFilePath() { return m_tempEmptyFilePath; }
 
@@ -42,5 +42,10 @@ private:
     String m_tempFilePath;
     String m_tempEmptyFilePath;
 };
+
+#if ENABLE(MHTML)
+class SharedBufferChunkReaderTest : public testing::Test {
+};
+#endif
 
 } // namespace TestWebKitAPI

@@ -33,6 +33,7 @@
 #include "ResourceResponse.h"
 #include <wtf/MainThread.h>
 #include <wtf/NeverDestroyed.h>
+#include <wtf/text/MakeString.h>
 #include <wtf/text/StringToIntegerConversion.h>
 
 namespace WebCore {
@@ -48,7 +49,7 @@ CrossOriginPreflightResultCache::CrossOriginPreflightResultCache()
 static bool parseAccessControlMaxAge(const String& string, Seconds& expiryDelta)
 {
     // FIXME: This should probably reject strings that have a leading "+".
-    auto parsedInteger = parseInteger<uint64_t>(string);
+    auto parsedInteger = parseInteger<int64_t>(string);
     expiryDelta = Seconds(static_cast<double>(parsedInteger.value_or(0)));
     return parsedInteger.has_value();
 }
@@ -57,11 +58,11 @@ Expected<UniqueRef<CrossOriginPreflightResultCacheItem>, String> CrossOriginPref
 {
     auto methods = parseAccessControlAllowList(response.httpHeaderField(HTTPHeaderName::AccessControlAllowMethods));
     if (!methods)
-        return makeUnexpected(makeString("Header Access-Control-Allow-Methods has an invalid value: ", response.httpHeaderField(HTTPHeaderName::AccessControlAllowMethods)));
+        return makeUnexpected(makeString("Header Access-Control-Allow-Methods has an invalid value: "_s, response.httpHeaderField(HTTPHeaderName::AccessControlAllowMethods)));
 
     auto headers = parseAccessControlAllowList<ASCIICaseInsensitiveHash>(response.httpHeaderField(HTTPHeaderName::AccessControlAllowHeaders));
     if (!headers)
-        return makeUnexpected(makeString("Header Access-Control-Allow-Headers has an invalid value: ", response.httpHeaderField(HTTPHeaderName::AccessControlAllowHeaders)));
+        return makeUnexpected(makeString("Header Access-Control-Allow-Headers has an invalid value: "_s, response.httpHeaderField(HTTPHeaderName::AccessControlAllowHeaders)));
 
     Seconds expiryDelta = 0_s;
     if (parseAccessControlMaxAge(response.httpHeaderField(HTTPHeaderName::AccessControlMaxAge), expiryDelta)) {
@@ -76,21 +77,21 @@ Expected<UniqueRef<CrossOriginPreflightResultCacheItem>, String> CrossOriginPref
 std::optional<String> CrossOriginPreflightResultCacheItem::validateMethodAndHeaders(const String& method, const HTTPHeaderMap& requestHeaders) const
 {
     if (!allowsCrossOriginMethod(method, m_storedCredentialsPolicy))
-        return makeString("Method ", method, " is not allowed by Access-Control-Allow-Methods.");
+        return makeString("Method "_s, method, " is not allowed by Access-Control-Allow-Methods."_s);
 
     if (auto badHeader = validateCrossOriginHeaders(requestHeaders, m_storedCredentialsPolicy))
-        return makeString("Request header field ", *badHeader, " is not allowed by Access-Control-Allow-Headers.");
+        return makeString("Request header field "_s, *badHeader, " is not allowed by Access-Control-Allow-Headers."_s);
     return { };
 }
 
 bool CrossOriginPreflightResultCacheItem::allowsCrossOriginMethod(const String& method, StoredCredentialsPolicy storedCredentialsPolicy) const
 {
-    return m_methods.contains(method) || (m_methods.contains("*") && storedCredentialsPolicy != StoredCredentialsPolicy::Use) || isOnAccessControlSimpleRequestMethodAllowlist(method);
+    return m_methods.contains(method) || (m_methods.contains<HashTranslatorASCIILiteral>("*"_s) && storedCredentialsPolicy != StoredCredentialsPolicy::Use) || isOnAccessControlSimpleRequestMethodAllowlist(method);
 }
 
 std::optional<String> CrossOriginPreflightResultCacheItem::validateCrossOriginHeaders(const HTTPHeaderMap& requestHeaders, StoredCredentialsPolicy storedCredentialsPolicy) const
 {
-    bool validWildcard = m_headers.contains("*") && storedCredentialsPolicy != StoredCredentialsPolicy::Use;
+    bool validWildcard = m_headers.contains<HashTranslatorASCIILiteral>("*"_s) && storedCredentialsPolicy != StoredCredentialsPolicy::Use;
     for (const auto& header : requestHeaders) {
         if (header.keyAsHTTPHeaderName && isCrossOriginSafeRequestHeader(header.keyAsHTTPHeaderName.value(), header.value))
             continue;

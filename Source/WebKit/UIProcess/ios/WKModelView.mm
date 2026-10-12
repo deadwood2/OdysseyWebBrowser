@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2021-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,11 +26,12 @@
 #import "config.h"
 #import "WKModelView.h"
 
-#if HAVE(ARKIT_INLINE_PREVIEW_IOS)
+#if ENABLE(ARKIT_INLINE_PREVIEW_IOS)
 
 #import "Logging.h"
 #import "RemoteLayerTreeViews.h"
 #import "WKModelInteractionGestureRecognizer.h"
+#import "WebPageProxy.h"
 #import "WebsiteDataStore.h"
 #import <WebCore/Model.h>
 #import <pal/spi/cocoa/QuartzCoreSPI.h>
@@ -40,6 +41,7 @@
 #import <wtf/RetainPtr.h>
 #import <wtf/SoftLinking.h>
 #import <wtf/UUID.h>
+#import <wtf/text/MakeString.h>
 
 SOFT_LINK_PRIVATE_FRAMEWORK(AssetViewer);
 SOFT_LINK_CLASS(AssetViewer, ASVInlinePreview);
@@ -49,6 +51,8 @@ SOFT_LINK_CLASS(AssetViewer, ASVInlinePreview);
     RetainPtr<WKModelInteractionGestureRecognizer> _modelInteractionGestureRecognizer;
     String _filePath;
     CGRect _lastBounds;
+    WebCore::PlatformLayerIdentifier _layerID;
+    WeakPtr<WebKit::WebPageProxy> _page;
 }
 
 - (ASVInlinePreview *)preview
@@ -66,39 +70,18 @@ SOFT_LINK_CLASS(AssetViewer, ASVInlinePreview);
     return nil;
 }
 
-- (instancetype)initWithModel:(WebCore::Model&)model
+- (instancetype)initWithModel:(WebCore::Model&)model layerID:(WebCore::PlatformLayerIdentifier)layerID page:(WebKit::WebPageProxy&)page
 {
-    self = [super initWithFrame:CGRectZero];
+    _lastBounds = CGRectZero;
+    self = [super initWithFrame:_lastBounds];
     if (!self)
         return nil;
 
-    if (![self createFileForModel:model])
-        return self;
+    _layerID = layerID;
+    _page = page;
 
-    _preview = adoptNS([allocASVInlinePreviewInstance() initWithFrame:self.bounds]);
-    [self.layer addSublayer:[_preview layer]];
-
-    auto url = adoptNS([[NSURL alloc] initFileURLWithPath:_filePath]);
-
-    [_preview setupRemoteConnectionWithCompletionHandler:^(NSError *contextError) {
-        if (contextError) {
-            LOG(ModelElement, "Unable to create remote connection, error: %@", [contextError localizedDescription]);
-            return;
-        }
-
-        [_preview preparePreviewOfFileAtURL:url.get() completionHandler:^(NSError *loadError) {
-            if (loadError) {
-                LOG(ModelElement, "Unable to load file, error: %@", [loadError localizedDescription]);
-                return;
-            }
-
-            LOG(ModelElement, "File loaded successfully.");
-            [self updateBounds];
-        }];
-    }];
-
-    _modelInteractionGestureRecognizer = adoptNS([[WKModelInteractionGestureRecognizer alloc] init]);
-    [self addGestureRecognizer:_modelInteractionGestureRecognizer.get()];
+    [self createFileForModel:model];
+    [self updateBounds];
 
     return self;
 }
@@ -120,13 +103,13 @@ SOFT_LINK_CLASS(AssetViewer, ASVInlinePreview);
         return NO;
     }
 
-    auto fileName = FileSystem::encodeForFileName(createCanonicalUUIDString()) + ".usdz";
+    String fileName = makeString(WTF::UUID::createVersion4(), ".usdz"_s);
     auto filePath = FileSystem::pathByAppendingComponent(pathToDirectory, fileName);
-    auto file = FileSystem::openFile(filePath, FileSystem::FileOpenMode::Write);
+    auto file = FileSystem::openFile(filePath, FileSystem::FileOpenMode::Truncate);
     if (file <= 0)
         return NO;
 
-    auto byteCount = static_cast<std::size_t>(FileSystem::writeToFile(file, model.data()->data(), model.data()->size()));
+    auto byteCount = static_cast<std::size_t>(FileSystem::writeToFile(file, model.data()->span()));
     ASSERT_UNUSED(byteCount, byteCount == model.data()->size());
     FileSystem::closeFile(file);
     _filePath = filePath;
@@ -134,11 +117,46 @@ SOFT_LINK_CLASS(AssetViewer, ASVInlinePreview);
     return YES;
 }
 
+- (void)createPreview
+{
+    if (!_filePath)
+        return;
+
+    auto bounds = self.bounds;
+    ASSERT(!CGRectEqualToRect(bounds, CGRectZero));
+
+    _preview = adoptNS([allocASVInlinePreviewInstance() initWithFrame:bounds]);
+    [self.layer addSublayer:[_preview layer]];
+
+    auto url = adoptNS([[NSURL alloc] initFileURLWithPath:_filePath]);
+
+    [_preview setupRemoteConnectionWithCompletionHandler:^(NSError *contextError) {
+        if (contextError) {
+            LOG(ModelElement, "Unable to create remote connection, error: %@", [contextError localizedDescription]);
+            _page->modelInlinePreviewDidFailToLoad(_layerID, WebCore::ResourceError { contextError });
+            return;
+        }
+
+        [_preview preparePreviewOfFileAtURL:url.get() completionHandler:^(NSError *loadError) {
+            if (loadError) {
+                LOG(ModelElement, "Unable to load file, error: %@", [loadError localizedDescription]);
+                _page->modelInlinePreviewDidFailToLoad(_layerID, WebCore::ResourceError { loadError });
+                return;
+            }
+
+            LOG(ModelElement, "File loaded successfully.");
+            _page->modelInlinePreviewDidLoad(_layerID);
+        }];
+    }];
+
+    _modelInteractionGestureRecognizer = adoptNS([[WKModelInteractionGestureRecognizer alloc] init]);
+    [self addGestureRecognizer:_modelInteractionGestureRecognizer.get()];
+}
+
 - (void)layoutSubviews
 {
     [super layoutSubviews];
-    if (!CGRectEqualToRect(_lastBounds, CGRectZero))
-        [self updateBounds];
+    [self updateBounds];
 }
 
 - (void)updateBounds
@@ -149,6 +167,11 @@ SOFT_LINK_CLASS(AssetViewer, ASVInlinePreview);
 
     _lastBounds = bounds;
 
+    if (!_preview) {
+        [self createPreview];
+        return;
+    }
+
     [_preview updateFrame:bounds completionHandler:^(CAFenceHandle *fenceHandle, NSError *error) {
         if (error) {
             LOG(ModelElement, "Unable to update frame, error: %@", [error localizedDescription]);
@@ -156,8 +179,11 @@ SOFT_LINK_CLASS(AssetViewer, ASVInlinePreview);
             return;
         }
 
-        [self.layer.context addFence:fenceHandle];
-        [fenceHandle invalidate];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self.layer.context addFence:fenceHandle];
+            [_preview setFrameWithinFencedTransaction:bounds];
+            [fenceHandle invalidate];
+        });
     }];
 }
 

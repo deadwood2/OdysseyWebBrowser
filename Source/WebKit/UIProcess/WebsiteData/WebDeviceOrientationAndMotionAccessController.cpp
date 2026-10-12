@@ -30,6 +30,7 @@
 
 #include "APIUIClient.h"
 #include "FrameInfoData.h"
+#include "PageLoadState.h"
 #include "WebPageProxy.h"
 
 namespace WebKit {
@@ -50,7 +51,7 @@ void WebDeviceOrientationAndMotionAccessController::shouldAllowAccess(WebPagePro
     if (pendingRequests.size() > 1)
         return;
 
-    page.uiClient().shouldAllowDeviceOrientationAndMotionAccess(page, frame, WTFMove(frameInfo), [this, weakThis = makeWeakPtr(this), originData](bool granted) mutable {
+    page.uiClient().shouldAllowDeviceOrientationAndMotionAccess(page, frame, WTFMove(frameInfo), [this, weakThis = WeakPtr { *this }, originData](bool granted) mutable {
         if (!weakThis)
             return;
         m_deviceOrientationPermissionDecisions.set(originData, granted);

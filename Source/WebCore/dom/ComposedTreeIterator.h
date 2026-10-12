@@ -26,6 +26,7 @@
 #pragma once
 
 #include "ElementAndTextDescendantIterator.h"
+#include "ElementRareData.h"
 #include "HTMLSlotElement.h"
 #include "ShadowRoot.h"
 
@@ -44,7 +45,6 @@ public:
     Node* operator->() { return &current(); }
 
     bool operator==(const ComposedTreeIterator& other) const { return context().iterator == other.context().iterator; }
-    bool operator!=(const ComposedTreeIterator& other) const { return context().iterator != other.context().iterator; }
 
     ComposedTreeIterator& operator++() { return traverseNext(); }
 
@@ -62,7 +62,7 @@ private:
     void traverseNextInShadowTree();
     void traverseNextLeavingContext();
     void traverseShadowRoot(ShadowRoot&);
-    bool advanceInSlot(int direction);
+    bool advanceInSlot(int direction, const HTMLSlotElement&);
     void traverseSiblingInSlot(int direction);
 
     struct Context {
@@ -86,8 +86,8 @@ private:
 };
 
 inline ComposedTreeIterator::ComposedTreeIterator()
+    : m_contextStack({ Context { } })
 {
-    m_contextStack.uncheckedAppend({ });
 }
 
 inline ComposedTreeIterator& ComposedTreeIterator::traverseNext()
@@ -155,7 +155,7 @@ public:
     ComposedTreeIterator at(const Node& child) { return ComposedTreeIterator(m_parent, const_cast<Node&>(child)); }
     
 private:
-    ContainerNode& m_parent;
+    CheckedRef<ContainerNode> m_parent;
 };
 
 class ComposedTreeChildAdapter {
@@ -183,7 +183,7 @@ public:
     Iterator at(const Node& child) { return Iterator(m_parent, const_cast<Node&>(child)); }
 
 private:
-    ContainerNode& m_parent;
+    CheckedRef<ContainerNode> m_parent;
 };
 
 // FIXME: We should have const versions too.
@@ -224,8 +224,8 @@ inline Node* firstChildInComposedTreeIgnoringUserAgentShadow(Node& node)
 {
     if (auto* shadowRoot = shadowRootIgnoringUserAgentShadow(node))
         return shadowRoot->firstChild();
-    if (is<HTMLSlotElement>(node)) {
-        if (auto* assignedNodes = downcast<HTMLSlotElement>(node).assignedNodes())
+    if (auto slot = dynamicDowncast<HTMLSlotElement>(node)) {
+        if (auto* assignedNodes = slot->assignedNodes())
             return assignedNodes->at(0).get();
     }
     return node.firstChild();

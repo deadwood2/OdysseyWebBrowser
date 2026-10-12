@@ -1,4 +1,4 @@
-# Copyright (C) 2020-2021 Apple Inc. All rights reserved.
+# Copyright (C) 2020-2023 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -68,7 +68,7 @@ class TestLocalSvn(testing.PathTestCase):
     def test_tags(self):
         with mocks.local.Svn(self.path):
             self.assertEqual(
-                local.Svn(self.path).tags,
+                local.Svn(self.path).tags(),
                 ['tag-1', 'tag-2'],
             )
 
@@ -283,7 +283,7 @@ class TestRemoteSvn(testing.TestCase):
     def test_tags(self):
         with mocks.remote.Svn():
             self.assertEqual(
-                remote.Svn(self.remote).tags,
+                remote.Svn(self.remote).tags(),
                 ['tag-1', 'tag-2'],
             )
 
@@ -384,3 +384,11 @@ class TestRemoteSvn(testing.TestCase):
                 svn.commit(revision='r2'),
                 svn.commit(revision='r1'),
             ]), Commit.Encoder().default(list(svn.commits(begin=dict(argument='r1'), end=dict(argument='r7')))))
+
+    def test_checkout_url(self):
+        self.assertEqual(remote.Svn(self.remote).checkout_url(), 'https://svn.example.org/repository/webkit/trunk')
+        self.assertEqual(remote.Svn(self.remote).checkout_url(http=True), 'https://svn.example.org/repository/webkit/trunk')
+        with self.assertRaises(ValueError):
+            remote.Svn(self.remote).checkout_url(ssh=True)
+        with self.assertRaises(ValueError):
+            remote.Svn(self.remote).checkout_url(http=True, ssh=True)

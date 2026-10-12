@@ -9,10 +9,10 @@
 #import <WebCore/ResourceResponse.h>
 #import <WebCore/ResourceHandle.h>
 #import <WebCore/ResourceResponse.h>
-#import <WebCore/TextEncoding.h>
 #import <WebCore/MediaPlayerMorphOS.h>
 #import <WebCore/CurlProxySettings.h>
 #import <WebCore/NetworkStorageSession.h>
+#include <WebCore/FontCascade.h>
 #import "../WebCoreSupport/NetworkStorageSessionMap.h"
 #import <wtf/FileSystem.h>
 #import <WebProcess.h>
@@ -51,7 +51,6 @@ namespace WebCore {
 	bool _adBlocker;
 	bool _thCookies;
 	bool _localStorage;
-	bool _offlineCache;
 	bool _invisiblePlaybackNotAllowed;
 	bool _requiresUserGestureForMediaPlayback;
 	bool _mediaEnabled;
@@ -75,7 +74,6 @@ namespace WebCore {
 		_adBlocker = YES;
 		_thCookies = YES;
 		_localStorage = YES;
-		_offlineCache = YES;
 		_throttling = WkSettings_Throttling_InvisibleBrowsers;
 		_interpolation = WkSettings_Interpolation_Medium; // medium is the WebCore default, let's stick to that
 		_interpolationForImageViews = WkSettings_Interpolation_Medium; // medium is the WebCore default, let's stick to that
@@ -133,16 +131,6 @@ namespace WebCore {
 - (void)setLocalStorageEnabled:(BOOL)enabled
 {
 	_localStorage = enabled;
-}
-
-- (BOOL)offlineWebApplicationCacheEnabled
-{
-	return _offlineCache;
-}
-
-- (void)setOfflineWebApplicationCacheEnabled:(BOOL)enabled
-{
-	_offlineCache = enabled;
 }
 
 - (WkSettings_Throttling)throttling
@@ -384,15 +372,6 @@ namespace WebCore {
 
 }
 
-- (BOOL)offlineWebApplicationCacheEnabled
-{
-	return YES;
-}
-
-- (void)setOfflineWebApplicationCacheEnabled:(BOOL)enabled
-{
-}
-
 - (WkSettings_Throttling)throttling
 {
 	return WkSettings_Throttling_InvisibleBrowsers;
@@ -573,7 +552,7 @@ namespace WebCore {
 
 + (OBString *)downloadPath
 {
-	WTF::String str = WTF::FileSystemImpl::temporaryFilePathForPrefix("download");
+	WTF::String str = WTF::FileSystemImpl::temporaryFilePathForPrefix("download"_s);
 	auto udata = str.utf8();
 	return [OBString stringWithUTF8String:udata.data()];
 }
@@ -582,7 +561,7 @@ namespace WebCore {
 {
 	const char *cpath = [path nativeCString];
 	WebCore::CurlRequest::SetDownloadPath(WTF::String(cpath, strlen(cpath), MIBENUM_SYSTEM));
-	WTF::FileSystemImpl::setTemporaryFilePathForPrefix(cpath, "download");
+	WTF::FileSystemImpl::setTemporaryFilePathForPrefix(cpath, "download"_s);
 }
 
 static cairo_antialias_t defaultAA;
@@ -608,13 +587,33 @@ static cairo_antialias_t defaultAA;
 	WebCore::setDefaultCairoFontAntialias(defaultAA);
 }
 
++ (WkGlobalSettings_FontCodePath)fontCodePath
+{
+    return WkGlobalSettings_FontCodePath(WebCore::FontCascade::codePath());
+}
+
++ (void)setFontCodePath:(WkGlobalSettings_FontCodePath)codePath
+{
+    WebCore::FontCascade::setCodePath(WebCore::FontCascade::CodePath(codePath));
+}
+
++ (void)setAdBlockBaseName:(OBString *)path
+{
+    WebKit::WebProcess::singleton().setEasyListPath([path nativeCString]);
+}
+
++ (ULONG)requestsBlockedByAdBlock
+{
+    return WebKit::WebProcess::singleton().blockedRequests();
+}
+
 + (void)setCustomCertificate:(OBString *)pathToPEM forHost:(OBString *)host withKey:(OBString *)key
 {
 	if ([pathToPEM length] && [host length])
 	{
 		WTF::String sPath = WTF::String::fromUTF8([[pathToPEM absolutePath] nativeCString]);
 		WTF::String sDomain = WTF::String::fromUTF8([host cString]);
-		WTF::String sKey = key ? WTF::String::fromUTF8([key cString]) : "";
+		WTF::String sKey = key ? WTF::String::fromUTF8([key cString]) : emptyString();
 		WebCore::ResourceHandle::setClientCertificateInfo(sDomain, sPath, sKey);
 	}
 	else if ([host length])
@@ -635,6 +634,7 @@ static cairo_antialias_t defaultAA;
 
 + (void)setCaching:(WkGlobalSettings_Caching)caching
 {
+    WTF::initializeMainThread();
 	WebKit::CacheModel cacheModel = WebKit::CacheModel::PrimaryWebBrowser;
 	if (WkGlobalSettings_Caching_Minimal == caching)
 		cacheModel = WebKit::CacheModel::DocumentViewer;
@@ -704,11 +704,11 @@ static cairo_antialias_t defaultAA;
 
 + (void)setProxyURL:(OBURL *)url user:(OBString *)user password:(OBString *)password ignoredHosts:(OBString *)hosts
 {
-	WTF::URL wurl = WTF::URL(WTF::URL(), WTF::String([[url absoluteString] cString]));
-	WebCore::CurlProxySettings settings(std::move(wurl), [hosts cString]);
+	WTF::URL wurl = WTF::URL(WTF::URL(), WTF::String::fromUTF8([[url absoluteString] cString]));
+	WebCore::CurlProxySettings settings(std::move(wurl), String::fromUTF8([hosts cString]));
 
 	if (user && password) {
-		settings.setUserPass([user cString], [password cString]);
+		settings.setUserPass(String::fromUTF8([user cString]), String::fromUTF8([password cString]));
 	}
 
 	NetworkStorageSessionMap::defaultStorageSession().setProxySettings(std::move(settings));
@@ -718,6 +718,17 @@ static cairo_antialias_t defaultAA;
 {
 	WebCore::CurlProxySettings settings;
 	NetworkStorageSessionMap::defaultStorageSession().setProxySettings(std::move(settings));
+}
+
++ (void)setCookieJarPath:(OBString *)path
+{
+    if ([path length])
+        WebKit::WebProcess::singleton().setCookieJarPath(String::fromUTF8([path cString]));
+}
+
++ (void)setHTTP2Mode:(WkGlobalSettings_HTTP2)http2
+{
+    NetworkStorageSessionMap::defaultStorageSession().setHTTP2Mode(WebCore::NetworkStorageSession::CurlHTTP2Mode(http2));
 }
 
 @end

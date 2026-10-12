@@ -22,18 +22,14 @@
 
 #if USE(COORDINATED_GRAPHICS)
 
-#include <WebCore/CoordinatedGraphicsState.h>
-#include <WebCore/GraphicsContext.h>
-#include <WebCore/GraphicsLayer.h>
-#include <WebCore/IntRect.h>
-#include <WebCore/IntSize.h>
+#include <WebCore/Damage.h>
+#include <WebCore/NicosiaImageBackingStore.h>
 #include <WebCore/NicosiaPlatformLayer.h>
+#include <WebCore/NicosiaScene.h>
 #include <WebCore/TextureMapper.h>
-#include <WebCore/TextureMapperBackingStore.h>
 #include <WebCore/TextureMapperFPSCounter.h>
 #include <WebCore/TextureMapperLayer.h>
 #include <WebCore/TextureMapperPlatformLayerProxy.h>
-#include <WebCore/Timer.h>
 #include <wtf/Function.h>
 #include <wtf/HashSet.h>
 #include <wtf/Lock.h>
@@ -47,7 +43,6 @@ class Buffer;
 
 namespace WebCore {
 class CoordinatedBackingStore;
-class TextureMapperGL;
 }
 
 namespace WebKit {
@@ -58,13 +53,15 @@ public:
     virtual void updateViewport() = 0;
 };
 
-class CoordinatedGraphicsScene : public ThreadSafeRefCounted<CoordinatedGraphicsScene>, public WebCore::TextureMapperPlatformLayerProxy::Compositor {
+class CoordinatedGraphicsScene : public ThreadSafeRefCounted<CoordinatedGraphicsScene>, public WebCore::TextureMapperPlatformLayerProxy::Compositor
+    , public WebCore::TextureMapperLayerDamageVisitor {
 public:
-    explicit CoordinatedGraphicsScene(CoordinatedGraphicsSceneClient*);
+    CoordinatedGraphicsScene(CoordinatedGraphicsSceneClient*, WebCore::Damage::ShouldPropagate);
     virtual ~CoordinatedGraphicsScene();
 
-    void applyStateChanges(const Vector<WebCore::CoordinatedGraphicsState>&);
-    void paintToCurrentGLContext(const WebCore::TransformationMatrix&, const WebCore::FloatRect&, WebCore::TextureMapper::PaintFlags = 0);
+    void applyStateChanges(const Vector<RefPtr<Nicosia::Scene>>&);
+    void paintToCurrentGLContext(const WebCore::TransformationMatrix&, const WebCore::FloatRect&, bool flipY = false);
+    void updateSceneState();
     void detach();
 
     // The painting thread must lock the main thread to use below two methods, because two methods access members that the main thread manages. See m_client.
@@ -74,9 +71,11 @@ public:
     bool isActive() const { return m_isActive; }
     void setActive(bool active) { m_isActive = active; }
 
+    const WebCore::Damage& lastDamage() const { return m_damage; }
+    void recordDamage(const WebCore::FloatRect&) override;
+
 private:
-    void commitSceneState(const WebCore::CoordinatedGraphicsState::NicosiaState&);
-    void updateSceneState();
+    void commitSceneState(const RefPtr<Nicosia::Scene>&);
 
     WebCore::TextureMapperLayer* rootLayer() { return m_rootLayer.get(); }
 
@@ -92,10 +91,14 @@ private:
     } m_nicosia;
 
     std::unique_ptr<WebCore::TextureMapper> m_textureMapper;
+    HashSet<Ref<Nicosia::ImageBackingStore::BackingStoreContainer>> m_imageBackingStoreContainers;
 
     // Below two members are accessed by only the main thread. The painting thread must lock the main thread to access both members.
     CoordinatedGraphicsSceneClient* m_client;
     bool m_isActive { false };
+
+    WebCore::Damage::ShouldPropagate m_propagateDamage;
+    WebCore::Damage m_damage;
 
     std::unique_ptr<WebCore::TextureMapperLayer> m_rootLayer;
 

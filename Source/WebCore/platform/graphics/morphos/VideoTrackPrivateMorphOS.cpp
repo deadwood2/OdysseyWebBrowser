@@ -12,7 +12,6 @@ VideoTrackPrivateMorphOS::VideoTrackPrivateMorphOS(WeakPtr<MediaPlayerPrivateMor
 	: m_index(index)
 	, m_player(player)
 {
-	m_id = "V" + String::number(index);
 	D(dprintf("%s(%p)\n", __PRETTY_FUNCTION__, this));
 }
 

@@ -21,16 +21,37 @@
 
 #if USE(GSTREAMER)
 
-#include <gst/gst.h>
 #include <wtf/glib/GRefPtr.h>
+
+#include <gst/gst.h>
+#include <gst/pbutils/encoding-profile.h>
 
 typedef struct _WebKitVideoSink WebKitVideoSink;
 struct WebKitWebSrc;
+typedef struct _GstBaseSink GstBaseSink;
 
 #if USE(GSTREAMER_GL)
 typedef struct _GstGLDisplay GstGLDisplay;
 typedef struct _GstGLContext GstGLContext;
 typedef struct _GstEGLImage GstEGLImage;
+typedef struct _GstGLColorConvert GstGLColorConvert;
+#endif
+
+#if USE(GSTREAMER_WEBRTC)
+typedef struct _GstPromise GstPromise;
+typedef struct _GstWebRTCDTLSTransport GstWebRTCDTLSTransport;
+typedef struct _GstWebRTCDataChannel GstWebRTCDataChannel;
+typedef struct _GstWebRTCICETransport GstWebRTCICETransport;
+typedef struct _GstWebRTCRTPReceiver GstWebRTCRTPReceiver;
+typedef struct _GstWebRTCRTPSender GstWebRTCRTPSender;
+typedef struct _GstWebRTCRTPTransceiver GstWebRTCRTPTransceiver;
+typedef struct _GstRTPHeaderExtension GstRTPHeaderExtension;
+typedef struct _GstWebRTCICE GstWebRTCICE;
+#endif
+
+#if USE(GSTREAMER_TRANSCODER)
+typedef struct _GstTranscoder GstTranscoder;
+typedef struct _GstTranscoderSignalAdapter GstTranscoderSignalAdapter;
 #endif
 
 namespace WTF {
@@ -43,9 +64,17 @@ template<> GRefPtr<GstMiniObject> adoptGRef(GstMiniObject* ptr);
 template<> GstMiniObject* refGPtr<GstMiniObject>(GstMiniObject* ptr);
 template<> void derefGPtr<GstMiniObject>(GstMiniObject* ptr);
 
+template<> GRefPtr<GstObject> adoptGRef(GstObject* ptr);
+template<> GstObject* refGPtr<GstObject>(GstObject* ptr);
+template<> void derefGPtr<GstObject>(GstObject* ptr);
+
 template<> GRefPtr<GstElement> adoptGRef(GstElement* ptr);
 template<> GstElement* refGPtr<GstElement>(GstElement* ptr);
 template<> void derefGPtr<GstElement>(GstElement* ptr);
+
+template<> GRefPtr<GstBaseSink> adoptGRef(GstBaseSink* ptr);
+template<> GstBaseSink* refGPtr<GstBaseSink>(GstBaseSink* ptr);
+template<> void derefGPtr<GstBaseSink>(GstBaseSink* ptr);
 
 template<> GRefPtr<GstPad> adoptGRef(GstPad* ptr);
 template<> GstPad* refGPtr<GstPad>(GstPad* ptr);
@@ -86,6 +115,10 @@ template<> void derefGPtr<GstBufferList>(GstBufferList*);
 template<> GRefPtr<GstBufferPool> adoptGRef(GstBufferPool*);
 template<> GstBufferPool* refGPtr<GstBufferPool>(GstBufferPool*);
 template<> void derefGPtr<GstBufferPool>(GstBufferPool*);
+
+template<> GRefPtr<GstMemory> adoptGRef(GstMemory*);
+template<> GstMemory* refGPtr<GstMemory>(GstMemory*);
+template<> void derefGPtr<GstMemory>(GstMemory*);
 
 template<> GRefPtr<GstSample> adoptGRef(GstSample* ptr);
 template<> GstSample* refGPtr<GstSample>(GstSample* ptr);
@@ -132,6 +165,18 @@ template<> GRefPtr<GstClock> adoptGRef(GstClock*);
 template<> GstClock* refGPtr<GstClock>(GstClock*);
 template<> void derefGPtr<GstClock>(GstClock*);
 
+template<> GRefPtr<GstDeviceMonitor> adoptGRef(GstDeviceMonitor*);
+template<> GstDeviceMonitor* refGPtr<GstDeviceMonitor>(GstDeviceMonitor*);
+template<> void derefGPtr<GstDeviceMonitor>(GstDeviceMonitor*);
+
+template<> GRefPtr<GstDevice> adoptGRef(GstDevice*);
+template<> GstDevice* refGPtr<GstDevice>(GstDevice*);
+template<> void derefGPtr<GstDevice>(GstDevice*);
+
+template<> GRefPtr<GstTracer> adoptGRef(GstTracer*);
+template<> GstTracer* refGPtr<GstTracer>(GstTracer*);
+template<> void derefGPtr<GstTracer>(GstTracer*);
+
 #if USE(GSTREAMER_GL)
 template<> GRefPtr<GstGLDisplay> adoptGRef(GstGLDisplay* ptr);
 template<> GstGLDisplay* refGPtr<GstGLDisplay>(GstGLDisplay* ptr);
@@ -144,7 +189,65 @@ template<> void derefGPtr<GstGLContext>(GstGLContext* ptr);
 template<> GRefPtr<GstEGLImage> adoptGRef(GstEGLImage* ptr);
 template<> GstEGLImage* refGPtr<GstEGLImage>(GstEGLImage* ptr);
 template<> void derefGPtr<GstEGLImage>(GstEGLImage* ptr);
+
+template<> GRefPtr<GstGLColorConvert> adoptGRef(GstGLColorConvert* ptr);
+template<> GstGLColorConvert* refGPtr<GstGLColorConvert>(GstGLColorConvert* ptr);
+template<> void derefGPtr<GstGLColorConvert>(GstGLColorConvert* ptr);
+
 #endif
+
+template<> GRefPtr<GstEncodingProfile> adoptGRef(GstEncodingProfile*);
+template<> GstEncodingProfile* refGPtr<GstEncodingProfile>(GstEncodingProfile*);
+template<> void derefGPtr<GstEncodingProfile>(GstEncodingProfile*);
+
+#if USE(GSTREAMER_WEBRTC)
+template <> GRefPtr<GstWebRTCRTPReceiver> adoptGRef(GstWebRTCRTPReceiver*);
+template <> GstWebRTCRTPReceiver* refGPtr<GstWebRTCRTPReceiver>(GstWebRTCRTPReceiver*);
+template <> void derefGPtr<GstWebRTCRTPReceiver>(GstWebRTCRTPReceiver*);
+
+template <> GRefPtr<GstWebRTCRTPSender> adoptGRef(GstWebRTCRTPSender*);
+template <> GstWebRTCRTPSender* refGPtr<GstWebRTCRTPSender>(GstWebRTCRTPSender*);
+template <> void derefGPtr<GstWebRTCRTPSender>(GstWebRTCRTPSender*);
+
+template <> GRefPtr<GstWebRTCRTPTransceiver> adoptGRef(GstWebRTCRTPTransceiver*);
+template <> GstWebRTCRTPTransceiver* refGPtr<GstWebRTCRTPTransceiver>(GstWebRTCRTPTransceiver*);
+template <> void derefGPtr<GstWebRTCRTPTransceiver>(GstWebRTCRTPTransceiver*);
+
+template <> GRefPtr<GstWebRTCDataChannel> adoptGRef(GstWebRTCDataChannel*);
+template <> GstWebRTCDataChannel* refGPtr<GstWebRTCDataChannel>(GstWebRTCDataChannel*);
+template <> void derefGPtr<GstWebRTCDataChannel>(GstWebRTCDataChannel*);
+
+template <> GRefPtr<GstWebRTCDTLSTransport> adoptGRef(GstWebRTCDTLSTransport*);
+template <> GstWebRTCDTLSTransport* refGPtr<GstWebRTCDTLSTransport>(GstWebRTCDTLSTransport*);
+template <> void derefGPtr<GstWebRTCDTLSTransport>(GstWebRTCDTLSTransport*);
+
+template <> GRefPtr<GstWebRTCICETransport> adoptGRef(GstWebRTCICETransport*);
+template <> GstWebRTCICETransport* refGPtr<GstWebRTCICETransport>(GstWebRTCICETransport*);
+template <> void derefGPtr<GstWebRTCICETransport>(GstWebRTCICETransport*);
+
+template <> GRefPtr<GstPromise> adoptGRef(GstPromise*);
+template <> GstPromise* refGPtr<GstPromise>(GstPromise*);
+template <> void derefGPtr<GstPromise>(GstPromise*);
+
+template<> GRefPtr<GstRTPHeaderExtension> adoptGRef(GstRTPHeaderExtension*);
+template<> GstRTPHeaderExtension* refGPtr<GstRTPHeaderExtension>(GstRTPHeaderExtension*);
+template<> void derefGPtr<GstRTPHeaderExtension>(GstRTPHeaderExtension*);
+
+template<> GRefPtr<GstWebRTCICE> adoptGRef(GstWebRTCICE*);
+template<> GstWebRTCICE* refGPtr<GstWebRTCICE>(GstWebRTCICE*);
+template<> void derefGPtr<GstWebRTCICE>(GstWebRTCICE*);
+
+#endif
+
+#if USE(GSTREAMER_TRANSCODER)
+template<> GRefPtr<GstTranscoder> adoptGRef(GstTranscoder*);
+template<> GstTranscoder* refGPtr<GstTranscoder>(GstTranscoder*);
+template<> void derefGPtr<GstTranscoder>(GstTranscoder*);
+
+template<> GRefPtr<GstTranscoderSignalAdapter> adoptGRef(GstTranscoderSignalAdapter*);
+template<> GstTranscoderSignalAdapter* refGPtr<GstTranscoderSignalAdapter>(GstTranscoderSignalAdapter*);
+template<> void derefGPtr<GstTranscoderSignalAdapter>(GstTranscoderSignalAdapter*);
+#endif // USE(GSTREAMER_TRANSCODER)
 
 } // namespace WTF
 

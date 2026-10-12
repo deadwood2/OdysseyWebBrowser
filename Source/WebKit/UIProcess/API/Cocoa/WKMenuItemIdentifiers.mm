@@ -29,6 +29,7 @@
 NSString * const _WKMenuItemIdentifierCopy = @"WKMenuItemIdentifierCopy";
 NSString * const _WKMenuItemIdentifierCopyImage = @"WKMenuItemIdentifierCopyImage";
 NSString * const _WKMenuItemIdentifierCopyLink = @"WKMenuItemIdentifierCopyLink";
+NSString * const _WKMenuItemIdentifierCopyLinkToHighlight = @"WKMenuItemIdentifierCopyLinkToHighlight";
 NSString * const _WKMenuItemIdentifierCopyMediaLink = @"WKMenuItemIdentifierCopyMediaLink";
 NSString * const _WKMenuItemIdentifierDownloadImage = @"WKMenuItemIdentifierDownloadImage";
 NSString * const _WKMenuItemIdentifierDownloadLinkedFile = @"WKMenuItemIdentifierDownloadLinkedFile";
@@ -39,9 +40,6 @@ NSString * const _WKMenuItemIdentifierInspectElement = @"WKMenuItemIdentifierIns
 NSString * const _WKMenuItemIdentifierLookUp = @"WKMenuItemIdentifierLookUp";
 NSString * const _WKMenuItemIdentifierAddHighlightToCurrentQuickNote = @"WKMenuItemIdentifierAddHighlightToCurrentQuickNote";
 NSString * const _WKMenuItemIdentifierAddHighlightToNewQuickNote = @"WKMenuItemIdentifierAddHighlightToNewQuickNote";
-// FIXME: Remove below after staging complete
-NSString * const _WKMenuItemIdentifierAddHighlightToCurrentGroup = @"WKMenuItemIdentifierAddHighlightToCurrentGroup";
-NSString * const _WKMenuItemIdentifierAddHighlightToNewGroup = @"WKMenuItemIdentifierAddHighlightToNewGroup";
 
 NSString * const _WKMenuItemIdentifierOpenFrameInNewWindow = @"WKMenuItemIdentifierOpenFrameInNewWindow";
 NSString * const _WKMenuItemIdentifierOpenImageInNewWindow = @"WKMenuItemIdentifierOpenImageInNewWindow";
@@ -53,10 +51,24 @@ NSString * const _WKMenuItemIdentifierReload = @"WKMenuItemIdentifierReload";
 NSString * const _WKMenuItemIdentifierRevealImage = @"WKMenuItemIdentifierRevealImage";
 NSString * const _WKMenuItemIdentifierSearchWeb = @"WKMenuItemIdentifierSearchWeb";
 NSString * const _WKMenuItemIdentifierShowHideMediaControls = @"WKMenuItemIdentifierShowHideMediaControls";
+NSString * const _WKMenuItemIdentifierShowHideMediaStats = @"WKMenuItemIdentifierShowHideMediaStats";
 NSString * const _WKMenuItemIdentifierToggleEnhancedFullScreen = @"WKMenuItemIdentifierToggleEnhancedFullScreen";
 NSString * const _WKMenuItemIdentifierToggleFullScreen = @"WKMenuItemIdentifierToggleFullScreen";
+NSString * const _WKMenuItemIdentifierToggleVideoViewer = @"WKMenuItemIdentifierToggleVideoViewer";
 
 NSString * const _WKMenuItemIdentifierShareMenu = @"WKMenuItemIdentifierShareMenu";
 NSString * const _WKMenuItemIdentifierSpeechMenu = @"WKMenuItemIdentifierSpeechMenu";
 
 NSString * const _WKMenuItemIdentifierTranslate = @"WKMenuItemIdentifierTranslate";
+NSString * const _WKMenuItemIdentifierWritingTools = @"__NSTextViewContextSubmenuIdentifierWritingTools"; // AppKit creates this menu item.
+NSString * const _WKMenuItemIdentifierCopySubject = @"WKMenuItemIdentifierCopySubject";
+
+NSString * const _WKMenuItemIdentifierSpellingMenu = @"WKMenuItemIdentifierSpellingMenu";
+NSString * const _WKMenuItemIdentifierShowSpellingPanel = @"WKMenuItemIdentifierShowSpellingPanel";
+NSString * const _WKMenuItemIdentifierCheckSpelling = @"WKMenuItemIdentifierCheckSpelling";
+NSString * const _WKMenuItemIdentifierCheckSpellingWhileTyping = @"WKMenuItemIdentifierCheckSpellingWhileTyping";
+NSString * const _WKMenuItemIdentifierCheckGrammarWithSpelling = @"WKMenuItemIdentifierCheckGrammarWithSpelling";
+NSString * const _WKMenuItemIdentifierPlayAllAnimations = @"WKMenuItemIdentifierPlayAllAnimations";
+NSString * const _WKMenuItemIdentifierPauseAllAnimations = @"WKMenuItemIdentifierPauseAllAnimations";
+NSString * const _WKMenuItemIdentifierPlayAnimation = @"WKMenuItemIdentifierPlayAnimation";
+NSString * const _WKMenuItemIdentifierPauseAnimation = @"WKMenuItemIdentifierPauseAnimation";

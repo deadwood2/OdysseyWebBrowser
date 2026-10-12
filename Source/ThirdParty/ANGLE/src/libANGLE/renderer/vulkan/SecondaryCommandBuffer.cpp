@@ -44,6 +44,8 @@ const char *GetCommandString(CommandID id)
             return "BindTransformFeedbackBuffers";
         case CommandID::BindVertexBuffers:
             return "BindVertexBuffers";
+        case CommandID::BindVertexBuffers2:
+            return "BindVertexBuffers2";
         case CommandID::BlitImage:
             return "BlitImage";
         case CommandID::BufferBarrier:
@@ -92,12 +94,12 @@ const char *GetCommandString(CommandID id)
             return "EndQuery";
         case CommandID::EndTransformFeedback:
             return "EndTransformFeedback";
-        case CommandID::ExecutionBarrier:
-            return "ExecutionBarrier";
         case CommandID::FillBuffer:
             return "FillBuffer";
         case CommandID::ImageBarrier:
             return "ImageBarrier";
+        case CommandID::ImageWaitEvent:
+            return "ImageWaitEvent";
         case CommandID::InsertDebugUtilsLabel:
             return "InsertDebugUtilsLabel";
         case CommandID::MemoryBarrier:
@@ -114,10 +116,50 @@ const char *GetCommandString(CommandID id)
             return "ResetQueryPool";
         case CommandID::ResolveImage:
             return "ResolveImage";
+        case CommandID::SetBlendConstants:
+            return "SetBlendConstants";
+        case CommandID::SetCullMode:
+            return "SetCullMode";
+        case CommandID::SetDepthBias:
+            return "SetDepthBias";
+        case CommandID::SetDepthBiasEnable:
+            return "SetDepthBiasEnable";
+        case CommandID::SetDepthCompareOp:
+            return "SetDepthCompareOp";
+        case CommandID::SetDepthTestEnable:
+            return "SetDepthTestEnable";
+        case CommandID::SetDepthWriteEnable:
+            return "SetDepthWriteEnable";
         case CommandID::SetEvent:
             return "SetEvent";
+        case CommandID::SetFragmentShadingRate:
+            return "SetFragmentShadingRate";
+        case CommandID::SetFrontFace:
+            return "SetFrontFace";
+        case CommandID::SetLineWidth:
+            return "SetLineWidth";
+        case CommandID::SetLogicOp:
+            return "SetLogicOp";
+        case CommandID::SetPrimitiveRestartEnable:
+            return "SetPrimitiveRestartEnable";
+        case CommandID::SetRasterizerDiscardEnable:
+            return "SetRasterizerDiscardEnable";
         case CommandID::SetScissor:
             return "SetScissor";
+        case CommandID::SetStencilCompareMask:
+            return "SetStencilCompareMask";
+        case CommandID::SetStencilOp:
+            return "SetStencilOp";
+        case CommandID::SetStencilReference:
+            return "SetStencilReference";
+        case CommandID::SetStencilTestEnable:
+            return "SetStencilTestEnable";
+        case CommandID::SetStencilWriteMask:
+            return "SetStencilWriteMask";
+        case CommandID::SetVertexInput:
+            return "SetVertexInput";
+        case CommandID::SetViewport:
+            return "SetViewport";
         case CommandID::WaitEvents:
             return "WaitEvents";
         case CommandID::WriteTimestamp:
@@ -128,6 +170,23 @@ const char *GetCommandString(CommandID id)
             return "--unreachable--";
     }
 }
+
+// Given the pointer to the parameter struct, returns the pointer to the first array parameter.
+template <typename T, typename StructType>
+ANGLE_INLINE const T *GetFirstArrayParameter(StructType *param)
+{
+    // The first array parameter is always right after the struct itself.
+    return Offset<T>(param, sizeof(*param));
+}
+
+// Given the pointer to one array parameter (and its array count), returns the pointer to the next
+// array parameter.
+template <typename NextT, typename PrevT>
+ANGLE_INLINE const NextT *GetNextArrayParameter(const PrevT *array, size_t arrayLen)
+{
+    const size_t arrayAllocateBytes = roundUpPow2<size_t>(sizeof(*array) * arrayLen, 8u);
+    return Offset<NextT>(array, arrayAllocateBytes);
+}
 }  // namespace
 
 ANGLE_INLINE const CommandHeader *NextCommand(const CommandHeader *command)
@@ -136,20 +195,16 @@ ANGLE_INLINE const CommandHeader *NextCommand(const CommandHeader *command)
                                                    command->size);
 }
 
-// Add any queued resetQueryPool commands to the given cmdBuffer
-void SecondaryCommandBuffer::executeQueuedResetQueryPoolCommands(VkCommandBuffer cmdBuffer)
-{
-    for (const ResetQueryPoolParams &queryParams : mResetQueryQueue)
-    {
-        vkCmdResetQueryPool(cmdBuffer, queryParams.queryPool, queryParams.firstQuery,
-                            queryParams.queryCount);
-    }
-}
-
 // Parse the cmds in this cmd buffer into given primary cmd buffer
-void SecondaryCommandBuffer::executeCommands(VkCommandBuffer cmdBuffer)
+void SecondaryCommandBuffer::executeCommands(PrimaryCommandBuffer *primary)
 {
+    VkCommandBuffer cmdBuffer = primary->getHandle();
+
     ANGLE_TRACE_EVENT0("gpu.angle", "SecondaryCommandBuffer::executeCommands");
+
+    // Used for ring buffer allocators only.
+    mCommandAllocator.terminateLastCommandBlock();
+
     for (const CommandHeader *command : mCommands)
     {
         for (const CommandHeader *currentCommand                      = command;
@@ -161,7 +216,7 @@ void SecondaryCommandBuffer::executeCommands(VkCommandBuffer cmdBuffer)
                 {
                     const DebugUtilsLabelParams *params =
                         getParamPtr<DebugUtilsLabelParams>(currentCommand);
-                    const char *pLabelName = Offset<char>(params, sizeof(DebugUtilsLabelParams));
+                    const char *pLabelName           = GetFirstArrayParameter<char>(params);
                     const VkDebugUtilsLabelEXT label = {
                         VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
                         nullptr,
@@ -174,21 +229,19 @@ void SecondaryCommandBuffer::executeCommands(VkCommandBuffer cmdBuffer)
                 case CommandID::BeginQuery:
                 {
                     const BeginQueryParams *params = getParamPtr<BeginQueryParams>(currentCommand);
-                    vkCmdBeginQuery(cmdBuffer, params->queryPool, params->query, params->flags);
+                    vkCmdBeginQuery(cmdBuffer, params->queryPool, params->query, 0);
                     break;
                 }
                 case CommandID::BeginTransformFeedback:
                 {
                     const BeginTransformFeedbackParams *params =
                         getParamPtr<BeginTransformFeedbackParams>(currentCommand);
-                    const VkBuffer *counterBuffers =
-                        Offset<VkBuffer>(params, sizeof(BeginTransformFeedbackParams));
-                    // Workaround for AMD driver bug where it expects the offsets array to be
-                    // non-null
-                    gl::TransformFeedbackBuffersArray<VkDeviceSize> offsets;
-                    offsets.fill(0);
+                    const VkBuffer *counterBuffers = GetFirstArrayParameter<VkBuffer>(params);
+                    const VkDeviceSize *counterBufferOffsets =
+                        reinterpret_cast<const VkDeviceSize *>(counterBuffers +
+                                                               params->bufferCount);
                     vkCmdBeginTransformFeedbackEXT(cmdBuffer, 0, params->bufferCount,
-                                                   counterBuffers, offsets.data());
+                                                   counterBuffers, counterBufferOffsets);
                     break;
                 }
                 case CommandID::BindComputePipeline:
@@ -203,9 +256,9 @@ void SecondaryCommandBuffer::executeCommands(VkCommandBuffer cmdBuffer)
                     const BindDescriptorSetParams *params =
                         getParamPtr<BindDescriptorSetParams>(currentCommand);
                     const VkDescriptorSet *descriptorSets =
-                        Offset<VkDescriptorSet>(params, sizeof(BindDescriptorSetParams));
-                    const uint32_t *dynamicOffsets = Offset<uint32_t>(
-                        descriptorSets, sizeof(VkDescriptorSet) * params->descriptorSetCount);
+                        GetFirstArrayParameter<VkDescriptorSet>(params);
+                    const uint32_t *dynamicOffsets =
+                        GetNextArrayParameter<uint32_t>(descriptorSets, params->descriptorSetCount);
                     vkCmdBindDescriptorSets(cmdBuffer, params->pipelineBindPoint, params->layout,
                                             params->firstSet, params->descriptorSetCount,
                                             descriptorSets, params->dynamicOffsetCount,
@@ -231,12 +284,11 @@ void SecondaryCommandBuffer::executeCommands(VkCommandBuffer cmdBuffer)
                 {
                     const BindTransformFeedbackBuffersParams *params =
                         getParamPtr<BindTransformFeedbackBuffersParams>(currentCommand);
-                    const VkBuffer *buffers =
-                        Offset<VkBuffer>(params, sizeof(BindTransformFeedbackBuffersParams));
+                    const VkBuffer *buffers = GetFirstArrayParameter<VkBuffer>(params);
                     const VkDeviceSize *offsets =
-                        Offset<VkDeviceSize>(buffers, sizeof(VkBuffer) * params->bindingCount);
+                        GetNextArrayParameter<VkDeviceSize>(buffers, params->bindingCount);
                     const VkDeviceSize *sizes =
-                        Offset<VkDeviceSize>(offsets, sizeof(VkDeviceSize) * params->bindingCount);
+                        GetNextArrayParameter<VkDeviceSize>(offsets, params->bindingCount);
                     vkCmdBindTransformFeedbackBuffersEXT(cmdBuffer, 0, params->bindingCount,
                                                          buffers, offsets, sizes);
                     break;
@@ -245,11 +297,23 @@ void SecondaryCommandBuffer::executeCommands(VkCommandBuffer cmdBuffer)
                 {
                     const BindVertexBuffersParams *params =
                         getParamPtr<BindVertexBuffersParams>(currentCommand);
-                    const VkBuffer *buffers =
-                        Offset<VkBuffer>(params, sizeof(BindVertexBuffersParams));
+                    const VkBuffer *buffers = GetFirstArrayParameter<VkBuffer>(params);
                     const VkDeviceSize *offsets =
-                        Offset<VkDeviceSize>(buffers, sizeof(VkBuffer) * params->bindingCount);
+                        GetNextArrayParameter<VkDeviceSize>(buffers, params->bindingCount);
                     vkCmdBindVertexBuffers(cmdBuffer, 0, params->bindingCount, buffers, offsets);
+                    break;
+                }
+                case CommandID::BindVertexBuffers2:
+                {
+                    const BindVertexBuffers2Params *params =
+                        getParamPtr<BindVertexBuffers2Params>(currentCommand);
+                    const VkBuffer *buffers = GetFirstArrayParameter<VkBuffer>(params);
+                    const VkDeviceSize *offsets =
+                        GetNextArrayParameter<VkDeviceSize>(buffers, params->bindingCount);
+                    const VkDeviceSize *strides =
+                        GetNextArrayParameter<VkDeviceSize>(offsets, params->bindingCount);
+                    vkCmdBindVertexBuffers2EXT(cmdBuffer, 0, params->bindingCount, buffers, offsets,
+                                               nullptr, strides);
                     break;
                 }
                 case CommandID::BlitImage:
@@ -265,8 +329,9 @@ void SecondaryCommandBuffer::executeCommands(VkCommandBuffer cmdBuffer)
                 {
                     const BufferBarrierParams *params =
                         getParamPtr<BufferBarrierParams>(currentCommand);
-                    vkCmdPipelineBarrier(cmdBuffer, params->srcStageMask, params->dstStageMask, 0,
-                                         0, nullptr, 1, &params->bufferMemoryBarrier, 0, nullptr);
+                    vkCmdPipelineBarrier(cmdBuffer, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                                         VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, nullptr, 1,
+                                         &params->bufferMemoryBarrier, 0, nullptr);
                     break;
                 }
                 case CommandID::ClearAttachments:
@@ -274,7 +339,7 @@ void SecondaryCommandBuffer::executeCommands(VkCommandBuffer cmdBuffer)
                     const ClearAttachmentsParams *params =
                         getParamPtr<ClearAttachmentsParams>(currentCommand);
                     const VkClearAttachment *attachments =
-                        Offset<VkClearAttachment>(params, sizeof(ClearAttachmentsParams));
+                        GetFirstArrayParameter<VkClearAttachment>(params);
                     vkCmdClearAttachments(cmdBuffer, params->attachmentCount, attachments, 1,
                                           &params->rect);
                     break;
@@ -298,8 +363,7 @@ void SecondaryCommandBuffer::executeCommands(VkCommandBuffer cmdBuffer)
                 case CommandID::CopyBuffer:
                 {
                     const CopyBufferParams *params = getParamPtr<CopyBufferParams>(currentCommand);
-                    const VkBufferCopy *regions =
-                        Offset<VkBufferCopy>(params, sizeof(CopyBufferParams));
+                    const VkBufferCopy *regions    = GetFirstArrayParameter<VkBufferCopy>(params);
                     vkCmdCopyBuffer(cmdBuffer, params->srcBuffer, params->destBuffer,
                                     params->regionCount, regions);
                     break;
@@ -365,7 +429,8 @@ void SecondaryCommandBuffer::executeCommands(VkCommandBuffer cmdBuffer)
                 {
                     const DrawIndexedIndirectParams *params =
                         getParamPtr<DrawIndexedIndirectParams>(currentCommand);
-                    vkCmdDrawIndexedIndirect(cmdBuffer, params->buffer, params->offset, 1, 0);
+                    vkCmdDrawIndexedIndirect(cmdBuffer, params->buffer, params->offset,
+                                             params->drawCount, params->stride);
                     break;
                 }
                 case CommandID::DrawIndexedInstanced:
@@ -397,7 +462,8 @@ void SecondaryCommandBuffer::executeCommands(VkCommandBuffer cmdBuffer)
                 {
                     const DrawIndirectParams *params =
                         getParamPtr<DrawIndirectParams>(currentCommand);
-                    vkCmdDrawIndirect(cmdBuffer, params->buffer, params->offset, 1, 0);
+                    vkCmdDrawIndirect(cmdBuffer, params->buffer, params->offset, params->drawCount,
+                                      params->stride);
                     break;
                 }
                 case CommandID::DrawInstanced:
@@ -432,22 +498,12 @@ void SecondaryCommandBuffer::executeCommands(VkCommandBuffer cmdBuffer)
                 {
                     const EndTransformFeedbackParams *params =
                         getParamPtr<EndTransformFeedbackParams>(currentCommand);
-                    const VkBuffer *counterBuffers =
-                        Offset<VkBuffer>(params, sizeof(EndTransformFeedbackParams));
-                    // Workaround for AMD driver bug where it expects the offsets array to be
-                    // non-null
-                    gl::TransformFeedbackBuffersArray<VkDeviceSize> offsets;
-                    offsets.fill(0);
+                    const VkBuffer *counterBuffers = GetFirstArrayParameter<VkBuffer>(params);
+                    const VkDeviceSize *counterBufferOffsets =
+                        reinterpret_cast<const VkDeviceSize *>(counterBuffers +
+                                                               params->bufferCount);
                     vkCmdEndTransformFeedbackEXT(cmdBuffer, 0, params->bufferCount, counterBuffers,
-                                                 offsets.data());
-                    break;
-                }
-                case CommandID::ExecutionBarrier:
-                {
-                    const ExecutionBarrierParams *params =
-                        getParamPtr<ExecutionBarrierParams>(currentCommand);
-                    vkCmdPipelineBarrier(cmdBuffer, params->stageMask, params->stageMask, 0, 0,
-                                         nullptr, 0, nullptr, 0, nullptr);
+                                                 counterBufferOffsets);
                     break;
                 }
                 case CommandID::FillBuffer:
@@ -461,15 +517,28 @@ void SecondaryCommandBuffer::executeCommands(VkCommandBuffer cmdBuffer)
                 {
                     const ImageBarrierParams *params =
                         getParamPtr<ImageBarrierParams>(currentCommand);
+                    const VkImageMemoryBarrier *imageMemoryBarriers =
+                        GetFirstArrayParameter<VkImageMemoryBarrier>(params);
                     vkCmdPipelineBarrier(cmdBuffer, params->srcStageMask, params->dstStageMask, 0,
-                                         0, nullptr, 0, nullptr, 1, &params->imageMemoryBarrier);
+                                         0, nullptr, 0, nullptr, 1, imageMemoryBarriers);
+                    break;
+                }
+                case CommandID::ImageWaitEvent:
+                {
+                    const ImageWaitEventParams *params =
+                        getParamPtr<ImageWaitEventParams>(currentCommand);
+                    const VkImageMemoryBarrier *imageMemoryBarriers =
+                        GetFirstArrayParameter<VkImageMemoryBarrier>(params);
+                    vkCmdWaitEvents(cmdBuffer, 1, &(params->event), params->srcStageMask,
+                                    params->dstStageMask, 0, nullptr, 0, nullptr, 1,
+                                    imageMemoryBarriers);
                     break;
                 }
                 case CommandID::InsertDebugUtilsLabel:
                 {
                     const DebugUtilsLabelParams *params =
                         getParamPtr<DebugUtilsLabelParams>(currentCommand);
-                    const char *pLabelName = Offset<char>(params, sizeof(DebugUtilsLabelParams));
+                    const char *pLabelName           = GetFirstArrayParameter<char>(params);
                     const VkDebugUtilsLabelEXT label = {
                         VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
                         nullptr,
@@ -483,15 +552,15 @@ void SecondaryCommandBuffer::executeCommands(VkCommandBuffer cmdBuffer)
                 {
                     const MemoryBarrierParams *params =
                         getParamPtr<MemoryBarrierParams>(currentCommand);
+                    const VkMemoryBarrier *memoryBarriers =
+                        GetFirstArrayParameter<VkMemoryBarrier>(params);
                     vkCmdPipelineBarrier(cmdBuffer, params->srcStageMask, params->dstStageMask, 0,
-                                         1, &params->memoryBarrier, 0, nullptr, 0, nullptr);
+                                         1, memoryBarriers, 0, nullptr, 0, nullptr);
                     break;
                 }
                 case CommandID::NextSubpass:
                 {
-                    const NextSubpassParams *params =
-                        getParamPtr<NextSubpassParams>(currentCommand);
-                    vkCmdNextSubpass(cmdBuffer, params->subpassContents);
+                    vkCmdNextSubpass(cmdBuffer, VK_SUBPASS_CONTENTS_INLINE);
                     break;
                 }
                 case CommandID::PipelineBarrier:
@@ -499,25 +568,21 @@ void SecondaryCommandBuffer::executeCommands(VkCommandBuffer cmdBuffer)
                     const PipelineBarrierParams *params =
                         getParamPtr<PipelineBarrierParams>(currentCommand);
                     const VkMemoryBarrier *memoryBarriers =
-                        Offset<VkMemoryBarrier>(params, sizeof(PipelineBarrierParams));
-                    const VkBufferMemoryBarrier *bufferMemoryBarriers =
-                        Offset<VkBufferMemoryBarrier>(
-                            memoryBarriers, params->memoryBarrierCount * sizeof(VkMemoryBarrier));
-                    const VkImageMemoryBarrier *imageMemoryBarriers = Offset<VkImageMemoryBarrier>(
-                        bufferMemoryBarriers,
-                        params->bufferMemoryBarrierCount * sizeof(VkBufferMemoryBarrier));
+                        GetFirstArrayParameter<VkMemoryBarrier>(params);
+                    const VkImageMemoryBarrier *imageMemoryBarriers =
+                        GetNextArrayParameter<VkImageMemoryBarrier>(memoryBarriers,
+                                                                    params->memoryBarrierCount);
                     vkCmdPipelineBarrier(cmdBuffer, params->srcStageMask, params->dstStageMask,
                                          params->dependencyFlags, params->memoryBarrierCount,
-                                         memoryBarriers, params->bufferMemoryBarrierCount,
-                                         bufferMemoryBarriers, params->imageMemoryBarrierCount,
-                                         imageMemoryBarriers);
+                                         memoryBarriers, 0, nullptr,
+                                         params->imageMemoryBarrierCount, imageMemoryBarriers);
                     break;
                 }
                 case CommandID::PushConstants:
                 {
                     const PushConstantsParams *params =
                         getParamPtr<PushConstantsParams>(currentCommand);
-                    const void *data = Offset<void>(params, sizeof(PushConstantsParams));
+                    const void *data = GetFirstArrayParameter<void>(params);
                     vkCmdPushConstants(cmdBuffer, params->layout, params->flag, params->offset,
                                        params->size, data);
                     break;
@@ -545,10 +610,106 @@ void SecondaryCommandBuffer::executeCommands(VkCommandBuffer cmdBuffer)
                                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &params->region);
                     break;
                 }
+                case CommandID::SetBlendConstants:
+                {
+                    const SetBlendConstantsParams *params =
+                        getParamPtr<SetBlendConstantsParams>(currentCommand);
+                    vkCmdSetBlendConstants(cmdBuffer, params->blendConstants);
+                    break;
+                }
+                case CommandID::SetCullMode:
+                {
+                    const SetCullModeParams *params =
+                        getParamPtr<SetCullModeParams>(currentCommand);
+                    vkCmdSetCullModeEXT(cmdBuffer, params->cullMode);
+                    break;
+                }
+                case CommandID::SetDepthBias:
+                {
+                    const SetDepthBiasParams *params =
+                        getParamPtr<SetDepthBiasParams>(currentCommand);
+                    vkCmdSetDepthBias(cmdBuffer, params->depthBiasConstantFactor,
+                                      params->depthBiasClamp, params->depthBiasSlopeFactor);
+                    break;
+                }
+                case CommandID::SetDepthBiasEnable:
+                {
+                    const SetDepthBiasEnableParams *params =
+                        getParamPtr<SetDepthBiasEnableParams>(currentCommand);
+                    vkCmdSetDepthBiasEnableEXT(cmdBuffer, params->depthBiasEnable);
+                    break;
+                }
+                case CommandID::SetDepthCompareOp:
+                {
+                    const SetDepthCompareOpParams *params =
+                        getParamPtr<SetDepthCompareOpParams>(currentCommand);
+                    vkCmdSetDepthCompareOpEXT(cmdBuffer, params->depthCompareOp);
+                    break;
+                }
+                case CommandID::SetDepthTestEnable:
+                {
+                    const SetDepthTestEnableParams *params =
+                        getParamPtr<SetDepthTestEnableParams>(currentCommand);
+                    vkCmdSetDepthTestEnableEXT(cmdBuffer, params->depthTestEnable);
+                    break;
+                }
+                case CommandID::SetDepthWriteEnable:
+                {
+                    const SetDepthWriteEnableParams *params =
+                        getParamPtr<SetDepthWriteEnableParams>(currentCommand);
+                    vkCmdSetDepthWriteEnableEXT(cmdBuffer, params->depthWriteEnable);
+                    break;
+                }
                 case CommandID::SetEvent:
                 {
                     const SetEventParams *params = getParamPtr<SetEventParams>(currentCommand);
                     vkCmdSetEvent(cmdBuffer, params->event, params->stageMask);
+                    break;
+                }
+                case CommandID::SetFragmentShadingRate:
+                {
+                    const SetFragmentShadingRateParams *params =
+                        getParamPtr<SetFragmentShadingRateParams>(currentCommand);
+                    const VkExtent2D fragmentSize = {params->fragmentWidth, params->fragmentHeight};
+                    const VkFragmentShadingRateCombinerOpKHR ops[2] = {
+                        VK_FRAGMENT_SHADING_RATE_COMBINER_OP_KEEP_KHR,
+                        static_cast<VkFragmentShadingRateCombinerOpKHR>(
+                            params->vkFragmentShadingRateCombinerOp1)};
+                    vkCmdSetFragmentShadingRateKHR(cmdBuffer, &fragmentSize, ops);
+                    break;
+                }
+                case CommandID::SetFrontFace:
+                {
+                    const SetFrontFaceParams *params =
+                        getParamPtr<SetFrontFaceParams>(currentCommand);
+                    vkCmdSetFrontFaceEXT(cmdBuffer, params->frontFace);
+                    break;
+                }
+                case CommandID::SetLineWidth:
+                {
+                    const SetLineWidthParams *params =
+                        getParamPtr<SetLineWidthParams>(currentCommand);
+                    vkCmdSetLineWidth(cmdBuffer, params->lineWidth);
+                    break;
+                }
+                case CommandID::SetLogicOp:
+                {
+                    const SetLogicOpParams *params = getParamPtr<SetLogicOpParams>(currentCommand);
+                    vkCmdSetLogicOpEXT(cmdBuffer, params->logicOp);
+                    break;
+                }
+                case CommandID::SetPrimitiveRestartEnable:
+                {
+                    const SetPrimitiveRestartEnableParams *params =
+                        getParamPtr<SetPrimitiveRestartEnableParams>(currentCommand);
+                    vkCmdSetPrimitiveRestartEnableEXT(cmdBuffer, params->primitiveRestartEnable);
+                    break;
+                }
+                case CommandID::SetRasterizerDiscardEnable:
+                {
+                    const SetRasterizerDiscardEnableParams *params =
+                        getParamPtr<SetRasterizerDiscardEnableParams>(currentCommand);
+                    vkCmdSetRasterizerDiscardEnableEXT(cmdBuffer, params->rasterizerDiscardEnable);
                     break;
                 }
                 case CommandID::SetScissor:
@@ -557,22 +718,90 @@ void SecondaryCommandBuffer::executeCommands(VkCommandBuffer cmdBuffer)
                     vkCmdSetScissor(cmdBuffer, 0, 1, &params->scissor);
                     break;
                 }
+                case CommandID::SetStencilCompareMask:
+                {
+                    const SetStencilCompareMaskParams *params =
+                        getParamPtr<SetStencilCompareMaskParams>(currentCommand);
+                    vkCmdSetStencilCompareMask(cmdBuffer, VK_STENCIL_FACE_FRONT_BIT,
+                                               params->compareFrontMask);
+                    vkCmdSetStencilCompareMask(cmdBuffer, VK_STENCIL_FACE_BACK_BIT,
+                                               params->compareBackMask);
+                    break;
+                }
+                case CommandID::SetStencilOp:
+                {
+                    const SetStencilOpParams *params =
+                        getParamPtr<SetStencilOpParams>(currentCommand);
+                    vkCmdSetStencilOpEXT(cmdBuffer,
+                                         static_cast<VkStencilFaceFlags>(params->faceMask),
+                                         static_cast<VkStencilOp>(params->failOp),
+                                         static_cast<VkStencilOp>(params->passOp),
+                                         static_cast<VkStencilOp>(params->depthFailOp),
+                                         static_cast<VkCompareOp>(params->compareOp));
+                    break;
+                }
+                case CommandID::SetStencilReference:
+                {
+                    const SetStencilReferenceParams *params =
+                        getParamPtr<SetStencilReferenceParams>(currentCommand);
+                    vkCmdSetStencilReference(cmdBuffer, VK_STENCIL_FACE_FRONT_BIT,
+                                             params->frontReference);
+                    vkCmdSetStencilReference(cmdBuffer, VK_STENCIL_FACE_BACK_BIT,
+                                             params->backReference);
+                    break;
+                }
+                case CommandID::SetStencilTestEnable:
+                {
+                    const SetStencilTestEnableParams *params =
+                        getParamPtr<SetStencilTestEnableParams>(currentCommand);
+                    vkCmdSetStencilTestEnableEXT(cmdBuffer, params->stencilTestEnable);
+                    break;
+                }
+                case CommandID::SetStencilWriteMask:
+                {
+                    const SetStencilWriteMaskParams *params =
+                        getParamPtr<SetStencilWriteMaskParams>(currentCommand);
+                    vkCmdSetStencilWriteMask(cmdBuffer, VK_STENCIL_FACE_FRONT_BIT,
+                                             params->writeFrontMask);
+                    vkCmdSetStencilWriteMask(cmdBuffer, VK_STENCIL_FACE_BACK_BIT,
+                                             params->writeBackMask);
+                    break;
+                }
+                case CommandID::SetVertexInput:
+                {
+                    const SetVertexInputParams *params =
+                        getParamPtr<SetVertexInputParams>(currentCommand);
+                    const VkVertexInputBindingDescription2EXT *vertexBindingDescriptions =
+                        GetFirstArrayParameter<VkVertexInputBindingDescription2EXT>(params);
+                    const VkVertexInputAttributeDescription2EXT *vertexAttributeDescriptions =
+                        GetNextArrayParameter<VkVertexInputAttributeDescription2EXT,
+                                              VkVertexInputBindingDescription2EXT>(
+                            vertexBindingDescriptions, params->vertexBindingDescriptionCount);
+
+                    vkCmdSetVertexInputEXT(
+                        cmdBuffer, params->vertexBindingDescriptionCount, vertexBindingDescriptions,
+                        params->vertexAttributeDescriptionCount, vertexAttributeDescriptions);
+                    break;
+                }
+                case CommandID::SetViewport:
+                {
+                    const SetViewportParams *params =
+                        getParamPtr<SetViewportParams>(currentCommand);
+                    vkCmdSetViewport(cmdBuffer, 0, 1, &params->viewport);
+                    break;
+                }
                 case CommandID::WaitEvents:
                 {
                     const WaitEventsParams *params = getParamPtr<WaitEventsParams>(currentCommand);
-                    const VkEvent *events = Offset<VkEvent>(params, sizeof(WaitEventsParams));
+                    const VkEvent *events          = GetFirstArrayParameter<VkEvent>(params);
                     const VkMemoryBarrier *memoryBarriers =
-                        Offset<VkMemoryBarrier>(events, params->eventCount * sizeof(VkEvent));
-                    const VkBufferMemoryBarrier *bufferMemoryBarriers =
-                        Offset<VkBufferMemoryBarrier>(
-                            memoryBarriers, params->memoryBarrierCount * sizeof(VkMemoryBarrier));
-                    const VkImageMemoryBarrier *imageMemoryBarriers = Offset<VkImageMemoryBarrier>(
-                        bufferMemoryBarriers,
-                        params->bufferMemoryBarrierCount * sizeof(VkBufferMemoryBarrier));
+                        GetNextArrayParameter<VkMemoryBarrier>(events, params->eventCount);
+                    const VkImageMemoryBarrier *imageMemoryBarriers =
+                        GetNextArrayParameter<VkImageMemoryBarrier>(memoryBarriers,
+                                                                    params->memoryBarrierCount);
                     vkCmdWaitEvents(cmdBuffer, params->eventCount, events, params->srcStageMask,
                                     params->dstStageMask, params->memoryBarrierCount,
-                                    memoryBarriers, params->bufferMemoryBarrierCount,
-                                    bufferMemoryBarriers, params->imageMemoryBarrierCount,
+                                    memoryBarriers, 0, nullptr, params->imageMemoryBarrierCount,
                                     imageMemoryBarriers);
                     break;
                 }
@@ -580,8 +809,8 @@ void SecondaryCommandBuffer::executeCommands(VkCommandBuffer cmdBuffer)
                 {
                     const WriteTimestampParams *params =
                         getParamPtr<WriteTimestampParams>(currentCommand);
-                    vkCmdWriteTimestamp(cmdBuffer, params->pipelineStage, params->queryPool,
-                                        params->query);
+                    vkCmdWriteTimestamp(cmdBuffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                                        params->queryPool, params->query);
                     break;
                 }
                 default:
@@ -597,7 +826,14 @@ void SecondaryCommandBuffer::executeCommands(VkCommandBuffer cmdBuffer)
 void SecondaryCommandBuffer::getMemoryUsageStats(size_t *usedMemoryOut,
                                                  size_t *allocatedMemoryOut) const
 {
-    *allocatedMemoryOut = kBlockSize * mCommands.size();
+    mCommandAllocator.getMemoryUsageStats(usedMemoryOut, allocatedMemoryOut);
+}
+
+void SecondaryCommandBuffer::getMemoryUsageStatsForPoolAlloc(size_t blockSize,
+                                                             size_t *usedMemoryOut,
+                                                             size_t *allocatedMemoryOut) const
+{
+    *allocatedMemoryOut = blockSize * mCommands.size();
 
     *usedMemoryOut = 0;
     for (const CommandHeader *command : mCommands)

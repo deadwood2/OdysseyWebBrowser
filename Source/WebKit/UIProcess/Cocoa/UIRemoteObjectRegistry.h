@@ -26,6 +26,7 @@
 #pragma once
 
 #include "RemoteObjectRegistry.h"
+#include <wtf/WeakRef.h>
 
 namespace WebKit {
 
@@ -34,15 +35,17 @@ class WebPageProxy;
 class UIRemoteObjectRegistry final : public RemoteObjectRegistry {
 public:
     UIRemoteObjectRegistry(_WKRemoteObjectRegistry *, WebPageProxy&);
-    
+    ~UIRemoteObjectRegistry();
+
     void sendInvocation(const RemoteObjectInvocation&) final;
 
 private:
-    IPC::MessageSender& messageSender() final;
+    Ref<WebPageProxy> protectedPage();
+    MessageSender messageSender() final;
     uint64_t messageDestinationID() final;
     std::unique_ptr<ProcessThrottler::BackgroundActivity> backgroundActivity(ASCIILiteral) final;
 
-    WebPageProxy& m_page;
+    WeakRef<WebPageProxy> m_page;
 };
 
 } // namespace WebKit

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Apple Inc.  All rights reserved.
+ * Copyright (C) 2016-2023 Apple Inc.  All rights reserved.
  * Copyright (C) 2008-2009 Torch Mobile, Inc.
  * Copyright (C) Research In Motion Limited 2009-2010. All rights reserved.
  *
@@ -23,41 +23,52 @@
 #include "config.h"
 #include "ScalableImageDecoder.h"
 
+#include "NotImplemented.h"
+#include "SharedBuffer.h"
+
+#if !PLATFORM(COCOA)
 #include "BMPImageDecoder.h"
 #include "GIFImageDecoder.h"
 #include "ICOImageDecoder.h"
 #include "JPEGImageDecoder.h"
-#include "NotImplemented.h"
 #include "PNGImageDecoder.h"
-#include "SharedBuffer.h"
+#include "WEBPImageDecoder.h"
+#endif
 #if USE(AVIF)
 #include "AVIFImageDecoder.h"
 #endif
-#if USE(OPENJPEG)
-#include "JPEG2000ImageDecoder.h"
+#if USE(JPEGXL)
+#include "JPEGXLImageDecoder.h"
 #endif
-#if USE(WEBP)
-#include "WEBPImageDecoder.h"
+
+#if USE(CG)
+#include "ImageDecoderCG.h"
+#include <ImageIO/ImageIO.h>
 #endif
 
 #include <algorithm>
 #include <cmath>
 
+#if PLATFORM(COCOA) && USE(JPEGXL)
+#include <wtf/darwin/WeakLinking.h>
+
+WTF_WEAK_LINK_FORCE_IMPORT(JxlSignatureCheck);
+#endif
 
 namespace WebCore {
 
 namespace {
 
-static unsigned copyFromSharedBuffer(char* buffer, unsigned bufferLength, const SharedBuffer& sharedBuffer)
+static unsigned copyFromSharedBuffer(char* buffer, unsigned bufferLength, const FragmentedSharedBuffer& sharedBuffer)
 {
     unsigned bytesExtracted = 0;
     for (const auto& element : sharedBuffer) {
         if (bytesExtracted + element.segment->size() <= bufferLength) {
-            memcpy(buffer + bytesExtracted, element.segment->data(), element.segment->size());
+            memcpy(buffer + bytesExtracted, element.segment->span().data(), element.segment->size());
             bytesExtracted += element.segment->size();
         } else {
             ASSERT(bufferLength - bytesExtracted < element.segment->size());
-            memcpy(buffer + bytesExtracted, element.segment->data(), bufferLength - bytesExtracted);
+            memcpy(buffer + bytesExtracted, element.segment->span().data(), bufferLength - bytesExtracted);
             bytesExtracted = bufferLength;
             break;
         }
@@ -65,66 +76,75 @@ static unsigned copyFromSharedBuffer(char* buffer, unsigned bufferLength, const 
     return bytesExtracted;
 }
 
-bool matchesGIFSignature(char* contents)
+#if !PLATFORM(COCOA)
+static bool matchesGIFSignature(char* contents)
 {
     return !memcmp(contents, "GIF87a", 6) || !memcmp(contents, "GIF89a", 6);
 }
 
-bool matchesPNGSignature(char* contents)
+static bool matchesPNGSignature(char* contents)
 {
     return !memcmp(contents, "\x89\x50\x4E\x47\x0D\x0A\x1A\x0A", 8);
 }
 
-bool matchesJPEGSignature(char* contents)
+static bool matchesJPEGSignature(char* contents)
 {
     return !memcmp(contents, "\xFF\xD8\xFF", 3);
 }
 
-#if USE(AVIF)
-bool matchesAVIFSignature(char* contents)
+static bool matchesBMPSignature(char* contents)
 {
-    return !memcmp(contents + 4, "\x66\x74\x79\x70", 4);
-}
-#endif
-
-#if USE(OPENJPEG)
-bool matchesJP2Signature(char* contents)
-{
-    return !memcmp(contents, "\x00\x00\x00\x0C\x6A\x50\x20\x20\x0D\x0A\x87\x0A", 12)
-        || !memcmp(contents, "\x0D\x0A\x87\x0A", 4);
+    return !memcmp(contents, "BM", 2);
 }
 
-bool matchesJ2KSignature(char* contents)
+static bool matchesICOSignature(char* contents)
 {
-    return !memcmp(contents, "\xFF\x4F\xFF\x51", 4);
+    return !memcmp(contents, "\x00\x00\x01\x00", 4);
 }
-#endif
 
-#if USE(WEBP)
-bool matchesWebPSignature(char* contents)
+static bool matchesCURSignature(char* contents)
+{
+    return !memcmp(contents, "\x00\x00\x02\x00", 4);
+}
+
+static bool matchesWebPSignature(char* contents)
 {
     return !memcmp(contents, "RIFF", 4) && !memcmp(contents + 8, "WEBPVP", 6);
 }
 #endif
 
-bool matchesBMPSignature(char* contents)
+#if USE(AVIF)
+static bool matchesAVIFSignature(char* contents, FragmentedSharedBuffer& data)
 {
-    return !memcmp(contents, "BM", 2);
+#if USE(CG)
+    UNUSED_PARAM(contents);
+    auto sharedBuffer = data.makeContiguous();
+    auto cfData = sharedBuffer->createCFData();
+    auto imageSource = adoptCF(CGImageSourceCreateWithData(cfData.get(), nullptr));
+    auto uti = ImageDecoderCG::decodeUTI(imageSource.get(), sharedBuffer.get());
+    return uti == "public.avif"_s || uti == "public.avis"_s;
+#else
+    UNUSED_PARAM(data);
+    return !memcmp(contents + 4, "\x66\x74\x79\x70", 4);
+#endif
 }
+#endif // USE(AVIF)
 
-bool matchesICOSignature(char* contents)
+#if USE(JPEGXL)
+static bool matchesJPEGXLSignature(const uint8_t* contents, size_t length)
 {
-    return !memcmp(contents, "\x00\x00\x01\x00", 4);
+#if PLATFORM(COCOA)
+    if (!&JxlSignatureCheck)
+        return false;
+#endif
+    JxlSignature signature = JxlSignatureCheck(contents, length);
+    return signature != JXL_SIG_NOT_ENOUGH_BYTES && signature != JXL_SIG_INVALID;
 }
+#endif
 
-bool matchesCURSignature(char* contents)
-{
-    return !memcmp(contents, "\x00\x00\x02\x00", 4);
-}
+} // Anonymous namespace
 
-}
-
-RefPtr<ScalableImageDecoder> ScalableImageDecoder::create(SharedBuffer& data, AlphaOption alphaOption, GammaAndColorProfileOption gammaAndColorProfileOption)
+RefPtr<ScalableImageDecoder> ScalableImageDecoder::create(FragmentedSharedBuffer& data, AlphaOption alphaOption, GammaAndColorProfileOption gammaAndColorProfileOption)
 {
     static const unsigned lengthOfLongestSignature = 14; // To wit: "RIFF????WEBPVP"
     char contents[lengthOfLongestSignature];
@@ -132,6 +152,7 @@ RefPtr<ScalableImageDecoder> ScalableImageDecoder::create(SharedBuffer& data, Al
     if (length < lengthOfLongestSignature)
         return nullptr;
 
+#if !PLATFORM(COCOA)
     if (matchesGIFSignature(contents))
         return GIFImageDecoder::create(alphaOption, gammaAndColorProfileOption);
 
@@ -144,26 +165,25 @@ RefPtr<ScalableImageDecoder> ScalableImageDecoder::create(SharedBuffer& data, Al
     if (matchesJPEGSignature(contents))
         return JPEGImageDecoder::create(alphaOption, gammaAndColorProfileOption);
 
-#if USE(AVIF)
-    if (matchesAVIFSignature(contents))
-        return AVIFImageDecoder::create(alphaOption, gammaAndColorProfileOption);
-#endif
+    if (matchesBMPSignature(contents))
+        return BMPImageDecoder::create(alphaOption, gammaAndColorProfileOption);
 
-#if USE(OPENJPEG)
-    if (matchesJP2Signature(contents))
-        return JPEG2000ImageDecoder::create(JPEG2000ImageDecoder::Format::JP2, alphaOption, gammaAndColorProfileOption);
-
-    if (matchesJ2KSignature(contents))
-        return JPEG2000ImageDecoder::create(JPEG2000ImageDecoder::Format::J2K, alphaOption, gammaAndColorProfileOption);
-#endif
-
-#if USE(WEBP)
     if (matchesWebPSignature(contents))
         return WEBPImageDecoder::create(alphaOption, gammaAndColorProfileOption);
 #endif
 
-    if (matchesBMPSignature(contents))
-        return BMPImageDecoder::create(alphaOption, gammaAndColorProfileOption);
+#if USE(AVIF)
+    if (matchesAVIFSignature(contents, data))
+        return AVIFImageDecoder::create(alphaOption, gammaAndColorProfileOption);
+#else
+    UNUSED_PARAM(alphaOption);
+    UNUSED_PARAM(gammaAndColorProfileOption);
+#endif
+
+#if USE(JPEGXL)
+    if (matchesJPEGXLSignature(reinterpret_cast<const uint8_t*>(contents), length))
+        return JPEGXLImageDecoder::create(alphaOption, gammaAndColorProfileOption);
+#endif
 
     return nullptr;
 }
@@ -234,12 +254,5 @@ PlatformImagePtr ScalableImageDecoder::createFrameImageAtIndex(size_t index, Sub
     // is already in a native container, and this just increments its refcount.
     return buffer->backingStore()->image();
 }
-
-#if USE(DIRECT2D)
-void ScalableImageDecoder::setTargetContext(ID2D1RenderTarget*)
-{
-    notImplemented();
-}
-#endif
 
 }

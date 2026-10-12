@@ -14,7 +14,7 @@
 
 #include "compiler/translator/HashNames.h"
 #include "compiler/translator/ImmutableString.h"
-#include "compiler/translator/Operator.h"
+#include "compiler/translator/Operator_autogen.h"
 #include "compiler/translator/Types.h"
 
 // If overflow happens, clamp the value to UINT_MIN or UINT_MAX.
@@ -36,6 +36,7 @@ enum class ImplicitTypeConversion
 };
 
 class TIntermBlock;
+class TIntermDeclaration;
 class TSymbolTable;
 class TIntermTyped;
 
@@ -54,8 +55,13 @@ GLenum GLVariablePrecision(const TType &type);
 bool IsVaryingIn(TQualifier qualifier);
 bool IsVaryingOut(TQualifier qualifier);
 bool IsVarying(TQualifier qualifier);
+bool IsMatrixGLType(GLenum type);
 bool IsGeometryShaderInput(GLenum shaderType, TQualifier qualifier);
+bool IsTessellationControlShaderInput(GLenum shaderType, TQualifier qualifier);
+bool IsTessellationControlShaderOutput(GLenum shaderType, TQualifier qualifier);
+bool IsTessellationEvaluationShaderInput(GLenum shaderType, TQualifier qualifier);
 InterpolationType GetInterpolationType(TQualifier qualifier);
+InterpolationType GetFieldInterpolationType(TQualifier qualifier);
 
 // Returns array brackets including size with outermost array size first, as specified in GLSL ES
 // 3.10 section 4.1.9.
@@ -72,12 +78,13 @@ bool IsBuiltinFragmentInputVariable(TQualifier qualifier);
 bool CanBeInvariantESSL1(TQualifier qualifier);
 bool CanBeInvariantESSL3OrGreater(TQualifier qualifier);
 bool IsShaderOutput(TQualifier qualifier);
+bool IsFragmentOutput(TQualifier qualifier);
 bool IsOutputESSL(ShShaderOutput output);
 bool IsOutputGLSL(ShShaderOutput output);
 bool IsOutputHLSL(ShShaderOutput output);
-bool IsOutputVulkan(ShShaderOutput output);
-bool IsOutputMetal(ShShaderOutput output);
-bool IsOutputMetalDirect(ShShaderOutput output);
+bool IsOutputSPIRV(ShShaderOutput output);
+bool IsOutputMSL(ShShaderOutput output);
+bool IsOutputWGSL(ShShaderOutput output);
 
 bool IsInShaderStorageBlock(TIntermTyped *node);
 
@@ -90,7 +97,25 @@ ImplicitTypeConversion GetConversion(TBasicType t1, TBasicType t2);
 
 bool IsValidImplicitConversion(ImplicitTypeConversion conversion, TOperator op);
 
+// Whether the given basic type requires precision.
+bool IsPrecisionApplicableToType(TBasicType type);
+
+// Whether this is the name of a built-in that can be redeclared by the shader.
+bool IsRedeclarableBuiltIn(const ImmutableString &name);
+
 size_t FindFieldIndex(const TFieldList &fieldList, const char *fieldName);
+
+// A convenience view of a TIntermDeclaration node's children.
+struct Declaration
+{
+    TIntermSymbol &symbol;
+    TIntermTyped *initExpr;  // Non-null iff declaration is initialized.
+};
+
+// Returns a `Declaration` view of the given node, for declarator `index` of
+// the declarations in `declNode`.
+Declaration ViewDeclaration(TIntermDeclaration &declNode, uint32_t index = 0);
+
 }  // namespace sh
 
 #endif  // COMPILER_TRANSLATOR_UTIL_H_

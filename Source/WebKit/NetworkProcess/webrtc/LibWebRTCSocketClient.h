@@ -25,10 +25,21 @@
 
 #pragma once
 
+#if !PLATFORM(COCOA)
+
 #if USE(LIBWEBRTC)
 
 #include "NetworkRTCProvider.h"
+
+ALLOW_COMMA_BEGIN
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+
 #include <webrtc/rtc_base/async_packet_socket.h>
+
+ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_COMMA_END
+
+#include <wtf/TZoneMalloc.h>
 
 namespace rtc {
 class AsyncPacketSocket;
@@ -39,7 +50,7 @@ typedef int64_t PacketTime;
 namespace WebKit {
 
 class LibWebRTCSocketClient final : public NetworkRTCProvider::Socket, public sigslot::has_slots<> {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED(LibWebRTCSocketClient);
 public:
     LibWebRTCSocketClient(WebCore::LibWebRTCSocketIdentifier, NetworkRTCProvider&, std::unique_ptr<rtc::AsyncPacketSocket>&&, Type, Ref<IPC::Connection>&&);
 
@@ -49,14 +60,13 @@ private:
     void close() final;
 
     void setOption(int option, int value) final;
-    void sendTo(const uint8_t*, size_t, const rtc::SocketAddress&, const rtc::PacketOptions&) final;
+    void sendTo(std::span<const uint8_t>, const rtc::SocketAddress&, const rtc::PacketOptions&) final;
 
-    void signalReadPacket(rtc::AsyncPacketSocket*, const char*, size_t, const rtc::SocketAddress&, const rtc::PacketTime&);
+    void signalReadPacket(rtc::AsyncPacketSocket*, const unsigned char*, size_t, const rtc::SocketAddress&, int64_t);
     void signalSentPacket(rtc::AsyncPacketSocket*, const rtc::SentPacket&);
     void signalAddressReady(rtc::AsyncPacketSocket*, const rtc::SocketAddress&);
     void signalConnect(rtc::AsyncPacketSocket*);
     void signalClose(rtc::AsyncPacketSocket*, int);
-    void signalNewConnection(rtc::AsyncPacketSocket* socket, rtc::AsyncPacketSocket* newSocket);
 
     void signalAddressReady();
 
@@ -71,3 +81,5 @@ private:
 } // namespace WebKit
 
 #endif // USE(LIBWEBRTC)
+
+#endif // !PLATFORM(COCOA)

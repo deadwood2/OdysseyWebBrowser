@@ -25,9 +25,11 @@
 
 #include "config.h"
 
+#include "Test.h"
 #include "Utilities.h"
 #include <wtf/RunLoop.h>
 #include <wtf/Threading.h>
+#include <wtf/threads/BinarySemaphore.h>
 
 namespace TestWebKitAPI {
 
@@ -70,7 +72,7 @@ TEST(WTF_RunLoop, NestedInOrder)
 
         Util::run(&done);
     });
-    RunLoop::main().dispatch([&didExecuteOuter] { 
+    RunLoop::main().dispatch([&didExecuteOuter] {
         didExecuteOuter = true;
     });
 
@@ -84,7 +86,7 @@ TEST(WTF_RunLoop, DispatchCrossThreadWhileNested)
     bool done = false;
 
     RunLoop::main().dispatch([&done] {
-        Thread::create("DispatchCrossThread", [&done] {
+        Thread::create("DispatchCrossThread"_s, [&done] {
             RunLoop::main().dispatch([&done] {
                 done = true;
             });
@@ -104,7 +106,7 @@ TEST(WTF_RunLoop, CallOnMainCrossThreadWhileNested)
     bool done = false;
 
     callOnMainThread([&done] {
-        Thread::create("CallOnMainCrossThread", [&done] {
+        Thread::create("CallOnMainCrossThread"_s, [&done] {
             callOnMainThread([&done] {
                 done = true;
             });
@@ -117,10 +119,10 @@ TEST(WTF_RunLoop, CallOnMainCrossThreadWhileNested)
     Util::run(&done);
 }
 
-class DerivedOneShotTimer : public RunLoop::Timer<DerivedOneShotTimer> {
+class DerivedOneShotTimer : public RunLoop::Timer {
 public:
     DerivedOneShotTimer(bool& testFinished)
-        : RunLoop::Timer<DerivedOneShotTimer>(RunLoop::current(), this, &DerivedOneShotTimer::fired)
+        : RunLoop::Timer(RunLoop::current(), this, &DerivedOneShotTimer::fired)
         , m_testFinished(testFinished)
     {
     }
@@ -149,10 +151,10 @@ TEST(WTF_RunLoop, OneShotTimer)
     Util::run(&testFinished);
 }
 
-class DerivedRepeatingTimer : public RunLoop::Timer<DerivedRepeatingTimer> {
+class DerivedRepeatingTimer : public RunLoop::Timer {
 public:
     DerivedRepeatingTimer(bool& testFinished)
-        : RunLoop::Timer<DerivedRepeatingTimer>(RunLoop::current(), this, &DerivedRepeatingTimer::fired)
+        : RunLoop::Timer(RunLoop::current(), this, &DerivedRepeatingTimer::fired)
         , m_testFinished(testFinished)
     {
     }
@@ -206,7 +208,7 @@ TEST(WTF_RunLoop, ManyTimes)
         unsigned m_count { 0 };
     };
 
-    Thread::create("RunLoopManyTimes", [] {
+    Thread::create("RunLoopManyTimes"_s, [] {
         Counter counter;
         RunLoop::current().dispatch([&counter] {
             counter.run();
@@ -219,8 +221,8 @@ TEST(WTF_RunLoop, ThreadTerminationSelfReferenceCleanup)
 {
     RefPtr<RunLoop> runLoop;
 
-    Thread::create("RunLoopThreadTerminationSelfReferenceCleanup", [&] {
-        runLoop = makeRefPtr(RunLoop::current());
+    Thread::create("RunLoopThreadTerminationSelfReferenceCleanup"_s, [&] {
+        runLoop = &RunLoop::current();
 
         // This stores a RunLoop reference in the dispatch queue that will not be released
         // via the usual dispatch, but should still be released upon thread termination.
@@ -230,6 +232,144 @@ TEST(WTF_RunLoop, ThreadTerminationSelfReferenceCleanup)
     })->waitForCompletion();
 
     EXPECT_TRUE(runLoop->hasOneRef());
+}
+
+TEST(WTF_RunLoop, CapabilityIsCurrentIsSupported)
+{
+    WTF::initializeMainThread();
+    struct {
+        int i WTF_GUARDED_BY_CAPABILITY(RunLoop::main()) { 77 };
+    } z;
+    assertIsCurrent(RunLoop::main());
+    bool result = z.i == 77;
+    EXPECT_TRUE(result);
+}
+
+TEST(WTF_RunLoopDeathTest, MAYBE_ASSERT_ENABLED_DEATH_TEST(CapabilityIsCurrentFailureAsserts))
+{
+    ::testing::FLAGS_gtest_death_test_style = "threadsafe";
+    ASSERT_DEATH_IF_SUPPORTED({
+        WTF::initializeMainThread();
+        Thread::create("CapabilityIsCurrentNegative thread"_s, [&] {
+            assertIsCurrent(RunLoop::main()); // This should assert.
+        })->waitForCompletion();
+    }, "ASSERTION FAILED: runLoop.isCurrent\\(\\)");
+}
+
+TEST(WTF_RunLoop, Create)
+{
+    RefPtr<RunLoop> runLoop = RunLoop::create("RunLoopCreateTestThread"_s, ThreadType::Unknown);
+    Thread* runLoopThread = nullptr;
+    {
+        BinarySemaphore semaphore;
+        runLoop->dispatch([&] {
+            runLoopThread = &Thread::current();
+            semaphore.signal();
+        });
+        semaphore.wait();
+    }
+    {
+        Locker threadsLock { Thread::allThreadsLock() };
+        EXPECT_TRUE(Thread::allThreads().contains(runLoopThread));
+    }
+
+    runLoop->dispatch([] {
+        RunLoop::current().stop();
+    });
+    runLoop = nullptr;
+    Util::runFor(.2_s);
+
+    // Expect that RunLoop Thread does not leak.
+    {
+        Locker threadsLock { Thread::allThreadsLock() };
+        EXPECT_FALSE(Thread::allThreads().contains(runLoopThread));
+    }
+}
+
+// FIXME(https://bugs.webkit.org/show_bug.cgi?id=246569): glib and Windows runloop does not match Cocoa.
+#if USE(GLIB) || OS(WINDOWS)
+#define MAYBE_DispatchInRunLoopIterationDispatchesOnNextIteration1 DISABLED_DispatchInRunLoopIterationDispatchesOnNextIteration1
+#define MAYBE_DispatchInRunLoopIterationDispatchesOnNextIteration2 DISABLED_DispatchInRunLoopIterationDispatchesOnNextIteration2
+#else
+#define MAYBE_DispatchInRunLoopIterationDispatchesOnNextIteration1 DispatchInRunLoopIterationDispatchesOnNextIteration1
+#define MAYBE_DispatchInRunLoopIterationDispatchesOnNextIteration2 DispatchInRunLoopIterationDispatchesOnNextIteration2
+#endif
+
+// Tests that RunLoop::dispatch() respects run loop iteration isolation. E.g. all functions
+// dispatched within a run loop iteration will be executed on subsequent iteration.
+// Note: At the time of writing, run loop iteration isolation is not respected by 
+// RunLoop::dispatchAfter().
+TEST(WTF_RunLoop, MAYBE_DispatchInRunLoopIterationDispatchesOnNextIteration1)
+{
+    WTF::initializeMainThread();
+    auto& runLoop = RunLoop::current();
+    bool outer = false;
+    bool inner = false;
+    int i = 0;
+    for (; i < 100; ++i) {
+        SCOPED_TRACE(i);
+        runLoop.dispatch([&] {
+            outer = true;
+            runLoop.dispatch([&] {
+                inner = true;
+            });
+            // No matter how long the runloop task takes, all dispatch()es
+            // will execute on the next iteration.
+            sleep(Seconds { i / 100000. });
+        });
+        EXPECT_FALSE(outer);
+        EXPECT_FALSE(inner);
+        runLoop.cycle();
+        EXPECT_TRUE(outer);
+        EXPECT_FALSE(inner);
+        runLoop.cycle();
+        EXPECT_TRUE(outer);
+        EXPECT_TRUE(inner);
+        inner = outer = false;
+    }
+    // Cleanup local references.
+    bool done = false;
+    runLoop.dispatch([&] {
+        done = true;
+    });
+    while (!done)
+        runLoop.cycle();
+}
+
+TEST(WTF_RunLoop, MAYBE_DispatchInRunLoopIterationDispatchesOnNextIteration2)
+{
+    WTF::initializeMainThread();
+    auto& runLoop = RunLoop::current();
+    int outer = 0;
+    int inner = 0;
+    int i = 0;
+    for (; i < 100; ++i) {
+        SCOPED_TRACE(i);
+        runLoop.dispatch([&] {
+            outer++;
+            runLoop.dispatch([&] {
+                inner++;
+            });
+            // No matter how long the runloop task takes, all dispatch()es
+            // will execute on the next iteration.
+            sleep(Seconds { i / 100000. });
+        });
+    }
+    EXPECT_EQ(outer, 0);
+    EXPECT_EQ(inner, 0);
+    runLoop.cycle();
+    EXPECT_EQ(outer, 100);
+    EXPECT_EQ(inner, 0);
+    runLoop.cycle();
+    EXPECT_EQ(outer, 100);
+    EXPECT_EQ(inner, 100);
+    // Cleanup local references.
+    bool done = false;
+    runLoop.dispatch([&] {
+        done = true;
+    });
+    while (!done)
+        runLoop.cycle();
 }
 
 } // namespace TestWebKitAPI

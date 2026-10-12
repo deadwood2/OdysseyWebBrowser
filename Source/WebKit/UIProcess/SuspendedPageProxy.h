@@ -26,12 +26,14 @@
 #pragma once
 
 #include "Connection.h"
-#include "MessageSender.h"
 #include "ProcessThrottler.h"
 #include "WebBackForwardListItem.h"
-#include "WebPageProxyMessagesReplies.h"
+#include "WebPageProxyMessageReceiverRegistration.h"
+#include "WebProcessProxy.h"
 #include <WebCore/FrameIdentifier.h>
+#include <WebCore/NavigationIdentifier.h>
 #include <wtf/RefCounted.h>
+#include <wtf/TZoneMalloc.h>
 #include <wtf/WeakPtr.h>
 
 namespace WebCore {
@@ -40,10 +42,11 @@ class RegistrableDomain;
 
 namespace WebKit {
 
+class BrowsingContextGroup;
+class RemotePageProxy;
 class WebBackForwardCache;
 class WebPageProxy;
 class WebProcessPool;
-class WebProcessProxy;
 class WebsiteDataStore;
 
 #if HAVE(VISIBILITY_PROPAGATION_VIEW)
@@ -52,18 +55,20 @@ using LayerHostingContextID = uint32_t;
 
 enum class ShouldDelayClosingUntilFirstLayerFlush : bool { No, Yes };
 
-class SuspendedPageProxy final: public IPC::MessageReceiver, public IPC::MessageSender {
-    WTF_MAKE_FAST_ALLOCATED;
+class SuspendedPageProxy final: public IPC::MessageReceiver, public CanMakeCheckedPtr<SuspendedPageProxy> {
+    WTF_MAKE_TZONE_ALLOCATED(SuspendedPageProxy);
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(SuspendedPageProxy);
 public:
-    SuspendedPageProxy(WebPageProxy&, Ref<WebProcessProxy>&&, WebCore::FrameIdentifier mainFrameID, ShouldDelayClosingUntilFirstLayerFlush);
+    SuspendedPageProxy(WebPageProxy&, Ref<WebProcessProxy>&&, Ref<WebFrameProxy>&& mainFrame, Ref<BrowsingContextGroup>&&, ShouldDelayClosingUntilFirstLayerFlush);
     ~SuspendedPageProxy();
 
-    static RefPtr<WebProcessProxy> findReusableSuspendedPageProcess(WebProcessPool&, const WebCore::RegistrableDomain&, WebsiteDataStore&);
+    static RefPtr<WebProcessProxy> findReusableSuspendedPageProcess(WebProcessPool&, const WebCore::RegistrableDomain&, WebsiteDataStore&, WebProcessProxy::LockdownMode, const API::PageConfiguration&);
 
-    WebPageProxy& page() const { return m_page; }
+    WebPageProxy& page() const;
     WebCore::PageIdentifier webPageID() const { return m_webPageID; }
     WebProcessProxy& process() const { return m_process.get(); }
-    WebCore::FrameIdentifier mainFrameID() const { return m_mainFrameID; }
+    WebFrameProxy& mainFrame() { return m_mainFrame.get(); }
+    BrowsingContextGroup& browsingContextGroup() { return m_browsingContextGroup.get(); }
 
     WebBackForwardCache& backForwardCache() const;
 
@@ -83,37 +88,39 @@ public:
 #endif
 
 #if !LOG_DISABLED
-    const char* loggingString() const;
+    String loggingString() const;
 #endif
 
 private:
+    Ref<WebPageProxy> protectedPage() const;
+
     enum class SuspensionState : uint8_t { Suspending, FailedToSuspend, Suspended, Resumed };
     void didProcessRequestToSuspend(SuspensionState);
     void suspensionTimedOut();
 
     void close();
+    void didDestroyNavigation(WebCore::NavigationIdentifier);
 
     // IPC::MessageReceiver
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) final;
     bool didReceiveSyncMessage(IPC::Connection&, IPC::Decoder&, UniqueRef<IPC::Encoder>&) final;
 
-    // IPC::MessageSender
-    IPC::Connection* messageSenderConnection() const final;
-    uint64_t messageSenderDestinationID() const final;
-    bool sendMessage(UniqueRef<IPC::Encoder>&&, OptionSet<IPC::SendOption>, std::optional<std::pair<CompletionHandler<void(IPC::Decoder*)>, uint64_t>>&&) final;
+    template<typename T> void sendToAllProcesses(T&&);
 
-    WebPageProxy& m_page;
+    WeakRef<WebPageProxy> m_page;
     WebCore::PageIdentifier m_webPageID;
     Ref<WebProcessProxy> m_process;
-    WebCore::FrameIdentifier m_mainFrameID;
+    Ref<WebFrameProxy> m_mainFrame;
+    Ref<BrowsingContextGroup> m_browsingContextGroup;
+    WebPageProxyMessageReceiverRegistration m_messageReceiverRegistration;
     bool m_isClosed { false };
     ShouldDelayClosingUntilFirstLayerFlush m_shouldDelayClosingUntilFirstLayerFlush { ShouldDelayClosingUntilFirstLayerFlush::No };
     bool m_shouldCloseWhenEnteringAcceleratedCompositingMode { false };
 
     SuspensionState m_suspensionState { SuspensionState::Suspending };
     CompletionHandler<void(SuspendedPageProxy*)> m_readyToUnsuspendHandler;
-    RunLoop::Timer<SuspendedPageProxy> m_suspensionTimeoutTimer;
-#if PLATFORM(IOS_FAMILY)
+    RunLoop::Timer m_suspensionTimeoutTimer;
+#if USE(RUNNINGBOARD)
     std::unique_ptr<ProcessThrottler::BackgroundActivity> m_suspensionActivity;
 #endif
 #if HAVE(VISIBILITY_PROPAGATION_VIEW)

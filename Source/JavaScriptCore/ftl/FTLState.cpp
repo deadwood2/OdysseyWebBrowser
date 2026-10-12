@@ -67,7 +67,7 @@ State::State(Graph& graph)
     graph.m_plan.setFinalizer(makeUnique<JITFinalizer>(graph.m_plan));
     finalizer = static_cast<JITFinalizer*>(graph.m_plan.finalizer());
 
-    proc = makeUnique<Procedure>();
+    proc = makeUnique<Procedure>(/* usesSIMD = */ false);
 
     if (graph.m_vm.shouldBuilderPCToCodeOriginMapping())
         proc->setNeedsPCToOriginMap();
@@ -80,13 +80,12 @@ State::State(Graph& graph)
     proc->setFrontendData(&graph);
 }
 
-void State::dumpDisassembly(PrintStream& out, const ScopedLambda<void(DFG::Node*)>& perDFGNodeCallback)
+void State::dumpDisassembly(PrintStream& out, LinkBuffer& linkBuffer, const ScopedLambda<void(DFG::Node*)>& perDFGNodeCallback)
 {
     B3::Air::Disassembler* disassembler = proc->code().disassembler();
 
     out.print("Generated ", graph.m_plan.mode(), " code for ", CodeBlockWithJITType(graph.m_codeBlock, JITType::FTLJIT), ", instructions size = ", graph.m_codeBlock->instructionsSize(), ":\n");
 
-    LinkBuffer& linkBuffer = *finalizer->b3CodeLinkBuffer;
     B3::Value* currentB3Value = nullptr;
     Node* currentDFGNode = nullptr;
 
@@ -149,16 +148,31 @@ void State::dumpDisassembly(PrintStream& out, const ScopedLambda<void(DFG::Node*
         printedValues.add(value);
     };
 
+    B3::Value* prevOrigin = nullptr;
     auto forEachInst = scopedLambda<void(B3::Air::Inst&)>([&] (B3::Air::Inst& inst) {
-        printB3Value(inst.origin);
+        if (inst.origin != prevOrigin) {
+            printB3Value(inst.origin);
+            prevOrigin = inst.origin;
+        }
     });
 
     disassembler->dump(proc->code(), out, linkBuffer, airPrefix, asmPrefix, forEachInst);
     linkBuffer.didAlreadyDisassemble();
 }
 
-State::~State()
+State::~State() = default;
+
+StructureStubInfo* State::addStructureStubInfo()
 {
+    ASSERT(!graph.m_plan.isUnlinked());
+    auto* stubInfo = jitCode->common.m_stubInfos.add();
+    stubInfo->useDataIC = Options::useDataICInFTL();
+    return stubInfo;
+}
+
+OptimizingCallLinkInfo* State::addCallLinkInfo(CodeOrigin codeOrigin)
+{
+    return jitCode->common.m_callLinkInfos.add(codeOrigin, graph.m_codeBlock);
 }
 
 } } // namespace JSC::FTL

@@ -40,7 +40,7 @@ class BaseAudioContext;
 class AudioWorkletMessagingProxy;
 
 class AudioWorklet final : public Worklet {
-    WTF_MAKE_ISO_ALLOCATED(AudioWorklet);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(AudioWorklet);
 public:
     static Ref<AudioWorklet> create(BaseAudioContext&);
 
@@ -55,7 +55,7 @@ private:
     // Worklet.
     Vector<Ref<WorkletGlobalScopeProxy>> createGlobalScopes() final;
 
-    WeakPtr<BaseAudioContext> m_audioContext;
+    WeakPtr<BaseAudioContext, WeakPtrImplWithEventTargetData> m_audioContext;
 };
 
 } // namespace WebCore

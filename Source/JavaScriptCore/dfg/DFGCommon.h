@@ -92,7 +92,7 @@ inline bool validationEnabled()
 #endif
 }
 
-inline bool enableInt52()
+inline bool constexpr enableInt52()
 {
 #if USE(JSVALUE64)
     return true;
@@ -252,7 +252,8 @@ inline KillStatus killStatusForDoesKill(bool doesKill)
 
 enum class PlanStage {
     Initial,
-    AfterFixup
+    AfterFixup,
+    LICMAndLater
 };
 
 // If possible, this will acquire a lock to make sure that if multiple threads

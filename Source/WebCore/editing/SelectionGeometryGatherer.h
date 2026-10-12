@@ -27,8 +27,10 @@
 
 #if ENABLE(SERVICE_CONTROLS)
 
+#include <wtf/CheckedRef.h>
 #include <wtf/Noncopyable.h>
 #include <wtf/Vector.h>
+#include <wtf/WeakRef.h>
 
 namespace WebCore {
 
@@ -45,8 +47,8 @@ class SelectionGeometryGatherer {
 public:
     SelectionGeometryGatherer(RenderView&);
 
-    void addQuad(RenderLayerModelObject *repaintContainer, const FloatQuad&);
-    void addGapRects(RenderLayerModelObject *repaintContainer, const GapRects&);
+    void addQuad(const RenderLayerModelObject* repaintContainer, const FloatQuad&);
+    void addGapRects(const RenderLayerModelObject* repaintContainer, const GapRects&);
     void setTextOnly(bool isTextOnly) { m_isTextOnly = isTextOnly; }
     bool isTextOnly() const { return m_isTextOnly; }
 
@@ -66,7 +68,7 @@ public:
 private:
     Vector<LayoutRect> boundingRects() const;
 
-    RenderView& m_renderView;
+    SingleThreadWeakRef<RenderView> m_renderView;
 
     // All rects are in RenderView coordinates.
     Vector<FloatQuad> m_quads;

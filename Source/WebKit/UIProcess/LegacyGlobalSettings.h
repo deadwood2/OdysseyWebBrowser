@@ -28,12 +28,13 @@
 #include "CacheModel.h"
 #include <wtf/Forward.h>
 #include <wtf/HashSet.h>
+#include <wtf/TZoneMalloc.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebKit {
 
 class LegacyGlobalSettings {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED(LegacyGlobalSettings);
 public:
     static LegacyGlobalSettings& singleton();
 
@@ -52,6 +53,9 @@ public:
     const HashSet<String>& schemesToRegisterAsNoAccess() { return m_schemesToRegisterAsNoAccess; }
     void registerURLSchemeAsNoAccess(const String& scheme) { m_schemesToRegisterAsNoAccess.add(scheme); }
 
+    const HashSet<String>& hostnamesToRegisterAsLocal() const { return m_hostnamesToRegisterAsLocal; }
+    void registerHostnameAsLocal(const String& hostname) { m_hostnamesToRegisterAsLocal.add(hostname); }
+
 private:
     friend class NeverDestroyed<LegacyGlobalSettings>;
     LegacyGlobalSettings();
@@ -61,6 +65,9 @@ private:
     HashSet<String> m_schemesToRegisterAsBypassingContentSecurityPolicy;
     HashSet<String> m_schemesToRegisterAsLocal;
     HashSet<String> m_schemesToRegisterAsNoAccess;
+    HashSet<String> m_hostnamesToRegisterAsLocal;
 };
+
+bool experimentalFeatureEnabled(const String& key, bool defaultValue = false);
 
 } // namespace WebKit

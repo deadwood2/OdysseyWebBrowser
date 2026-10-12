@@ -45,6 +45,7 @@ public:
     void doAsyncTask(JSValueRef) override;
     void setContinuousSpellCheckingEnabled(bool) override;
     void copyText(JSStringRef) override;
+    void paste() override;
     void dismissMenu() override;
     bool isShowingMenu() const override;
     void activateAtPoint(long x, long y, JSValueRef callback) override;
@@ -52,6 +53,13 @@ public:
     void simulateAccessibilitySettingsChangeNotification(JSValueRef) override;
     void removeViewFromWindow(JSValueRef) override;
     void addViewToWindow(JSValueRef) override;
+    void setWebViewEditable(bool) override;
+    double zoomScale() const override;
+    void zoomToScale(double, JSValueRef) override;
+
+private:
+    void overridePreference(JSStringRef, JSStringRef) override;
+    JSObjectRef contentsOfUserInterfaceItem(JSStringRef) const override;
 };
 
 } // namespace WTR

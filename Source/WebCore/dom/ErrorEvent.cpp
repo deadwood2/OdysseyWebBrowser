@@ -36,15 +36,15 @@
 #include "EventNames.h"
 #include <JavaScriptCore/HeapInlines.h>
 #include <JavaScriptCore/StrongInlines.h>
-#include <wtf/IsoMallocInlines.h>
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
 using namespace JSC;
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(ErrorEvent);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(ErrorEvent);
 
 ErrorEvent::ErrorEvent(const AtomString& type, const Init& initializer, IsTrusted isTrusted)
-    : Event(type, initializer, isTrusted)
+    : Event(EventInterfaceType::ErrorEvent, type, initializer, isTrusted)
     , m_message(initializer.message)
     , m_fileName(initializer.filename)
     , m_lineNumber(initializer.lineno)
@@ -54,7 +54,7 @@ ErrorEvent::ErrorEvent(const AtomString& type, const Init& initializer, IsTruste
 }
 
 ErrorEvent::ErrorEvent(const AtomString& type, const String& message, const String& fileName, unsigned lineNumber, unsigned columnNumber, JSC::Strong<JSC::Unknown> error)
-    : Event(type, CanBubble::No, IsCancelable::Yes)
+    : Event(EventInterfaceType::ErrorEvent, type, CanBubble::No, IsCancelable::Yes)
     , m_message(message)
     , m_fileName(fileName)
     , m_lineNumber(lineNumber)
@@ -70,17 +70,12 @@ ErrorEvent::ErrorEvent(const String& message, const String& fileName, unsigned l
 
 ErrorEvent::~ErrorEvent() = default;
 
-EventInterface ErrorEvent::eventInterface() const
-{
-    return ErrorEventInterfaceType;
-}
-
 JSValue ErrorEvent::error(JSGlobalObject& globalObject)
 {    
-    JSValue error = m_error;
-    if (!error)
+    if (!m_error)
         return jsNull();
 
+    JSValue error = m_error.getValue();
     if (!isWorldCompatible(globalObject, error)) {
         // We need to make sure ErrorEvents do not leak their error property across isolated DOM worlds.
         // Ideally, we would check that the worlds have different privileges but that's not possible yet.
@@ -96,7 +91,7 @@ JSValue ErrorEvent::error(JSGlobalObject& globalObject)
 RefPtr<SerializedScriptValue> ErrorEvent::trySerializeError(JSGlobalObject& exec)
 {
     if (!m_serializedError && !m_triedToSerialize) {
-        m_serializedError = SerializedScriptValue::create(exec, m_error, SerializationErrorMode::NonThrowing);
+        m_serializedError = SerializedScriptValue::create(exec, m_error.getValue(), SerializationForStorage::No, SerializationErrorMode::NonThrowing);
         m_triedToSerialize = true;
     }
     return m_serializedError;

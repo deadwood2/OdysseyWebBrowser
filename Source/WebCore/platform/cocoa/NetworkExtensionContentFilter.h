@@ -49,13 +49,12 @@ public:
 
     void willSendRequest(ResourceRequest&, const ResourceResponse&) override;
     void responseReceived(const ResourceResponse&) override;
-    void addData(const uint8_t* data, int length) override;
+    void addData(const SharedBuffer&) override;
     void finishedAddingData() override;
-    Ref<SharedBuffer> replacementData() const override;
+    Ref<FragmentedSharedBuffer> replacementData() const override;
     ContentFilterUnblockHandler unblockHandler() const override;
 
     WEBCORE_EXPORT static bool isRequired();
-    WEBCORE_EXPORT static void setHasConsumedSandboxExtensions(bool);
 
 private:
     static bool enabled();
@@ -63,14 +62,6 @@ private:
     NetworkExtensionContentFilter() = default;
     void initialize(const URL* = nullptr);
     void handleDecision(NEFilterSourceStatus, NSData *replacementData);
-
-    enum class SandboxExtensionsState : uint8_t {
-        Consumed,
-        NotConsumed,
-        NotSet
-    };
-
-    WEBCORE_EXPORT static SandboxExtensionsState m_sandboxExtensionsState;
 
     OSObjectPtr<dispatch_queue_t> m_queue;
     RetainPtr<NSData> m_replacementData;

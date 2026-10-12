@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2024 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -39,6 +39,7 @@
 #include "LLIntData.h"
 #include "LLIntSlowPaths.h"
 #include "JSCInlines.h"
+#include "SuperSampler.h"
 #include <wtf/Assertions.h>
 #include <wtf/MathExtras.h>
 
@@ -87,9 +88,7 @@ using namespace JSC::LLInt;
 // Define the opcode dispatch mechanism when using the C loop:
 //
 
-#if ENABLE(UNIFIED_AND_FREEZABLE_CONFIG_RECORD)
 using WebConfig::g_config;
-#endif
 
 // These are for building a C Loop interpreter:
 #define OFFLINE_ASM_BEGIN
@@ -129,6 +128,8 @@ using WebConfig::g_config;
 
 namespace JSC {
 
+class CallLinkInfo;
+
 //============================================================================
 // CLoopRegister is the storage for an emulated CPU register.
 // It defines the policy of how ints smaller than intptr_t are packed into the
@@ -161,11 +162,12 @@ public:
     ALWAYS_INLINE Opcode opcode() const { return bitwise_cast<Opcode>(m_value); }
 
     operator CallFrame*() { return bitwise_cast<CallFrame*>(m_value); }
-    operator const Instruction*() { return bitwise_cast<const Instruction*>(m_value); }
+    operator const JSInstruction*() { return bitwise_cast<const JSInstruction*>(m_value); }
     operator JSCell*() { return bitwise_cast<JSCell*>(m_value); }
     operator ProtoCallFrame*() { return bitwise_cast<ProtoCallFrame*>(m_value); }
     operator Register*() { return bitwise_cast<Register*>(m_value); }
     operator VM*() { return bitwise_cast<VM*>(m_value); }
+    operator CallLinkInfo*() { return bitwise_cast<CallLinkInfo*>(m_value); }
 
     template<typename T, typename = std::enable_if_t<sizeof(T) == sizeof(uintptr_t)>>
     ALWAYS_INLINE void operator=(T value) { m_value = bitwise_cast<uintptr_t>(value); }
@@ -226,7 +228,7 @@ static void double2Ints(double val, CLoopRegister& lo, CLoopRegister& hi)
 }
 #endif // USE(JSVALUE32_64)
 
-static void decodeResult(SlowPathReturnType result, CLoopRegister& t0, CLoopRegister& t1)
+static void decodeResult(UGPRPair result, CLoopRegister& t0, CLoopRegister& t1)
 {
     const void* t0Result;
     const void* t1Result;
@@ -275,8 +277,10 @@ JSValue CLoop::execute(OpcodeID entryOpcodeID, void* executableAddress, VM* vm, 
             opcodeMap[__opcode] = __opcode;
 #endif
         FOR_EACH_BYTECODE_ID(OPCODE_ENTRY)
+        FOR_EACH_BYTECODE_HELPER_ID(OPCODE_ENTRY)
         FOR_EACH_CLOOP_BYTECODE_HELPER_ID(LLINT_OPCODE_ENTRY)
         FOR_EACH_LLINT_NATIVE_HELPER(LLINT_OPCODE_ENTRY)
+        FOR_EACH_CLOOP_RETURN_HELPER_ID(LLINT_OPCODE_ENTRY)
         #undef OPCODE_ENTRY
         #undef LLINT_OPCODE_ENTRY
 
@@ -284,7 +288,7 @@ JSValue CLoop::execute(OpcodeID entryOpcodeID, void* executableAddress, VM* vm, 
         // initialized the opcodeMap above. This is because getCodePtr()
         // can depend on the opcodeMap.
         uint8_t* exceptionInstructions = reinterpret_cast<uint8_t*>(LLInt::exceptionInstructions());
-        for (unsigned i = 0; i < maxOpcodeLength + 1; ++i)
+        for (unsigned i = 0; i < maxBytecodeStructLength + 1; ++i)
             exceptionInstructions[i] = llint_throw_from_slow_path_trampoline;
 
         return JSValue();
@@ -317,13 +321,21 @@ JSValue CLoop::execute(OpcodeID entryOpcodeID, void* executableAddress, VM* vm, 
     // 2. 32 bit result values will be in the low 32-bit of t0.
     // 3. 64 bit result values will be in t0.
 
-    CLoopRegister t0, t1, t2, t3, t5, sp, cfr, lr, pc;
+    CLoopRegister t0, t1, t2, t3, t5, t6, t7, sp, cfr, lr, pc;
 #if USE(JSVALUE64)
     CLoopRegister numberTag, notCellMask;
 #endif
     CLoopRegister pcBase;
     CLoopRegister metadataTable;
     CLoopDoubleRegister d0, d1;
+
+    UNUSED_VARIABLE(t0);
+    UNUSED_VARIABLE(t1);
+    UNUSED_VARIABLE(t2);
+    UNUSED_VARIABLE(t3);
+    UNUSED_VARIABLE(t5);
+//    UNUSED_VARIABLE(t6);
+//    UNUSED_VARIABLE(t7);
 
     struct StackPointerScope {
         StackPointerScope(CLoopStack& stack)
@@ -341,7 +353,7 @@ JSValue CLoop::execute(OpcodeID entryOpcodeID, void* executableAddress, VM* vm, 
         void* m_originalStackPointer;
     };
 
-    CLoopStack& cloopStack = vm->interpreter->cloopStack();
+    CLoopStack& cloopStack = vm->interpreter.cloopStack();
     StackPointerScope stackPointerScope(cloopStack);
 
     lr = getOpcode(llint_return_to_host);
@@ -469,14 +481,48 @@ JSValue CLoop::execute(OpcodeID entryOpcodeID, void* executableAddress, VM* vm, 
 
 } // namespace JSC
 
-#elif !COMPILER(MSVC)
+#else // !ENABLE(C_LOOP)
 
 //============================================================================
 // Define the opcode dispatch mechanism when using an ASM loop:
 //
 
+#if COMPILER(CLANG)
+
+// We need an OFFLINE_ASM_BEGIN_SPACER because we'll be declaring every OFFLINE_ASM_GLOBAL_LABEL
+// as an alt entry. However, Clang will error out if the first global label is also an alt entry.
+// To work around this, we'll make OFFLINE_ASM_BEGIN emit an unused global label (which will now
+// be the first) that is not an alt entry, and insert a spacer instruction between it and the
+// actual first global label emitted by the offlineasm. Clang also requires that these 2 labels
+// not point to the same spot in memory; hence, the need for the spacer.
+//
+// For the spacer instruction, we'll choose a breakpoint instruction. However, we can
+// also just emit an unused piece of data. A breakpoint instruction is preferable.
+
+#if CPU(ARM_THUMB2)
+#define OFFLINE_ASM_BEGIN_SPACER "bkpt #0\n"
+#elif CPU(ARM64)
+#define OFFLINE_ASM_BEGIN_SPACER "brk #" STRINGIZE_VALUE_OF(WTF_FATAL_CRASH_CODE) "\n"
+#elif CPU(X86_64)
+#define OFFLINE_ASM_BEGIN_SPACER "int3\n"
+#else
+#define OFFLINE_ASM_BEGIN_SPACER ".int 0xbadbeef0\n"
+#endif
+
+#else
+#define OFFLINE_ASM_BEGIN_SPACER
+#endif // COMPILER(CLANG)
+
 // These are for building an interpreter from generated assembly code:
+
+#if ENABLE(OFFLINE_ASM_ALT_ENTRY)
+#define OFFLINE_ASM_BEGIN   asm ( \
+    OFFLINE_ASM_GLOBAL_LABEL_IMPL(jsc_llint_begin, OFFLINE_ASM_NO_ALT_ENTRY_DIRECTIVE, OFFLINE_ASM_ALIGN4B, HIDE_SYMBOL) \
+    OFFLINE_ASM_BEGIN_SPACER
+#else
 #define OFFLINE_ASM_BEGIN   asm (
+#endif
+
 #define OFFLINE_ASM_END     );
 
 #if ENABLE(LLINT_EMBEDDED_OPCODE_ID)
@@ -490,39 +536,99 @@ JSValue CLoop::execute(OpcodeID entryOpcodeID, void* executableAddress, VM* vm, 
     OFFLINE_ASM_OPCODE_DEBUG_LABEL(llint_##__opcode) \
     OFFLINE_ASM_LOCAL_LABEL(llint_##__opcode)
 
-#define OFFLINE_ASM_GLUE_LABEL(__opcode)   OFFLINE_ASM_LOCAL_LABEL(__opcode)
+#define OFFLINE_ASM_GLUE_LABEL(__opcode) \
+    OFFLINE_ASM_OPCODE_DEBUG_LABEL(__opcode) \
+    OFFLINE_ASM_LOCAL_LABEL(__opcode)
+
+#define OFFLINE_ASM_NO_ALT_ENTRY_DIRECTIVE(label)
+
+#if COMPILER(CLANG)
+#define OFFLINE_ASM_ALT_ENTRY_DIRECTIVE(label) \
+    ".alt_entry " SYMBOL_STRING(label) "\n"
+#else
+#define OFFLINE_ASM_ALT_ENTRY_DIRECTIVE(label)
+#endif
+
+#if OS(DARWIN)
+#define OFFLINE_ASM_TEXT_SECTION ".section __TEXT,__jsc_int,regular,pure_instructions\n"
+#else
+#define OFFLINE_ASM_TEXT_SECTION ".text\n"
+#endif
 
 #if CPU(ARM_THUMB2)
-#define OFFLINE_ASM_GLOBAL_LABEL(label)          \
-    ".text\n"                                    \
-    ".balign 4\n"                                 \
+#define OFFLINE_ASM_GLOBAL_LABEL_IMPL(label, ALT_ENTRY, ALIGNMENT, VISIBILITY) \
+    OFFLINE_ASM_TEXT_SECTION                     \
+    ALIGNMENT                                    \
+    ALT_ENTRY(label)                             \
     ".globl " SYMBOL_STRING(label) "\n"          \
-    HIDE_SYMBOL(label) "\n"                      \
+    VISIBILITY(label) "\n"                       \
     ".thumb\n"                                   \
     ".thumb_func " THUMB_FUNC_PARAM(label) "\n"  \
     SYMBOL_STRING(label) ":\n"
-#elif CPU(ARM64)
-#define OFFLINE_ASM_GLOBAL_LABEL(label)         \
-    ".text\n"                                   \
-    ".balign 4\n"                                \
-    ".globl " SYMBOL_STRING(label) "\n"         \
-    HIDE_SYMBOL(label) "\n"                     \
-    SYMBOL_STRING(label) ":\n"
 #else
-#define OFFLINE_ASM_GLOBAL_LABEL(label)         \
-    ".text\n"                                   \
+#define OFFLINE_ASM_GLOBAL_LABEL_IMPL(label, ALT_ENTRY, ALIGNMENT, VISIBILITY) \
+    OFFLINE_ASM_TEXT_SECTION                    \
+    ALIGNMENT                                   \
+    ALT_ENTRY(label)                            \
     ".globl " SYMBOL_STRING(label) "\n"         \
-    HIDE_SYMBOL(label) "\n"                     \
+    VISIBILITY(label) "\n"                      \
     SYMBOL_STRING(label) ":\n"
 #endif
 
-#define OFFLINE_ASM_LOCAL_LABEL(label)   LOCAL_LABEL_STRING(label) ":\n"
+#define OFFLINE_ASM_ALIGN4B ".balign 4\n"
+#define OFFLINE_ASM_NOALIGN ""
+
+#if CPU(ARM64) || CPU(ARM64E)
+#define OFFLINE_ASM_ALIGN_TRAP(align) OFFLINE_ASM_BEGIN_SPACER "\n .balignl " #align ", 0xd4388e20\n" // pad with brk instructions
+#elif CPU(X86_64)
+#define OFFLINE_ASM_ALIGN_TRAP(align) OFFLINE_ASM_BEGIN_SPACER "\n .balign " #align ", 0xcc\n" // pad with int 3 instructions
+#elif CPU(ARM)
+#define OFFLINE_ASM_ALIGN_TRAP(align) OFFLINE_ASM_BEGIN_SPACER "\n .balignw " #align ", 0xde00\n" // pad with udf instructions
+#endif
+
+#define OFFLINE_ASM_EXPORT_SYMBOL(symbol)
+
+#if ENABLE(OFFLINE_ASM_ALT_ENTRY)
+#define OFFLINE_ASM_GLOBAL_LABEL(label) \
+    OFFLINE_ASM_GLOBAL_LABEL_IMPL(label, OFFLINE_ASM_ALT_ENTRY_DIRECTIVE, OFFLINE_ASM_ALIGN4B, HIDE_SYMBOL)
+#define OFFLINE_ASM_UNALIGNED_GLOBAL_LABEL(label) \
+    OFFLINE_ASM_GLOBAL_LABEL_IMPL(label, OFFLINE_ASM_ALT_ENTRY_DIRECTIVE, OFFLINE_ASM_NOALIGN, HIDE_SYMBOL)
+#define OFFLINE_ASM_ALIGNED_GLOBAL_LABEL(label, align) \
+    OFFLINE_ASM_GLOBAL_LABEL_IMPL(label, OFFLINE_ASM_ALT_ENTRY_DIRECTIVE, OFFLINE_ASM_ALIGN_TRAP(align), HIDE_SYMBOL)
+#define OFFLINE_ASM_GLOBAL_EXPORT_LABEL(label) \
+    OFFLINE_ASM_GLOBAL_LABEL_IMPL(label, OFFLINE_ASM_ALT_ENTRY_DIRECTIVE, OFFLINE_ASM_ALIGN4B, OFFLINE_ASM_EXPORT_SYMBOL)
+#define OFFLINE_ASM_UNALIGNED_GLOBAL_EXPORT_LABEL(label) \
+    OFFLINE_ASM_GLOBAL_LABEL_IMPL(label, OFFLINE_ASM_ALT_ENTRY_DIRECTIVE, OFFLINE_ASM_NOALIGN, OFFLINE_ASM_EXPORT_SYMBOL)
+#else
+#define OFFLINE_ASM_GLOBAL_LABEL(label) \
+    OFFLINE_ASM_GLOBAL_LABEL_IMPL(label, OFFLINE_ASM_NO_ALT_ENTRY_DIRECTIVE, OFFLINE_ASM_ALIGN4B, HIDE_SYMBOL)
+#define OFFLINE_ASM_UNALIGNED_GLOBAL_LABEL(label) \
+    OFFLINE_ASM_GLOBAL_LABEL_IMPL(label, OFFLINE_ASM_NO_ALT_ENTRY_DIRECTIVE, OFFLINE_ASM_NOALIGN, HIDE_SYMBOL)
+#define OFFLINE_ASM_ALIGNED_GLOBAL_LABEL(label, align) \
+    OFFLINE_ASM_GLOBAL_LABEL_IMPL(label, OFFLINE_ASM_NO_ALT_ENTRY_DIRECTIVE, OFFLINE_ASM_ALIGN_TRAP(align), HIDE_SYMBOL)
+#define OFFLINE_ASM_GLOBAL_EXPORT_LABEL(label) \
+    OFFLINE_ASM_GLOBAL_LABEL_IMPL(label, OFFLINE_ASM_NO_ALT_ENTRY_DIRECTIVE, OFFLINE_ASM_ALIGN4B, OFFLINE_ASM_EXPORT_SYMBOL)
+#define OFFLINE_ASM_UNALIGNED_GLOBAL_EXPORT_LABEL(label) \
+    OFFLINE_ASM_GLOBAL_LABEL_IMPL(label, OFFLINE_ASM_NO_ALT_ENTRY_DIRECTIVE, OFFLINE_ASM_NOALIGN, OFFLINE_ASM_EXPORT_SYMBOL)
+#endif // ENABLE(OFFLINE_ASM_ALT_ENTRY)
+
+#if COMPILER(CLANG) && ENABLE(OFFLINE_ASM_ALT_ENTRY)
+#define OFFLINE_ASM_ALT_GLOBAL_LABEL(label) OFFLINE_ASM_GLOBAL_LABEL(label)
+#else
+#define OFFLINE_ASM_ALT_GLOBAL_LABEL(label)
+#endif
+
+#define OFFLINE_ASM_LOCAL_LABEL(label) \
+    LOCAL_LABEL_STRING(label) ":\n" \
+    OFFLINE_ASM_ALT_GLOBAL_LABEL(label)
 
 #if OS(LINUX)
 #define OFFLINE_ASM_OPCODE_DEBUG_LABEL(label)  #label ":\n"
 #else
 #define OFFLINE_ASM_OPCODE_DEBUG_LABEL(label)
 #endif
+
+#include "WasmCallee.h"
 
 // This works around a bug in GDB where, if the compilation unit
 // doesn't have any address range information, its line table won't

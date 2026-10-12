@@ -35,30 +35,36 @@ class AudioTrack;
 
 class AudioTrackList final : public TrackListBase {
 public:
-    static Ref<AudioTrackList> create(WeakPtr<HTMLMediaElement> owner, ScriptExecutionContext* context)
+    static Ref<AudioTrackList> create(ScriptExecutionContext* context)
     {
-        auto list = adoptRef(*new AudioTrackList(owner, context));
+        auto list = adoptRef(*new AudioTrackList(context));
         list->suspendIfNeeded();
         return list;
     }
     virtual ~AudioTrackList();
 
     AudioTrack* getTrackById(const AtomString&) const;
+    AudioTrack* getTrackById(TrackID) const;
 
+    bool isSupportedPropertyIndex(unsigned index) const { return index < m_inbandTracks.size(); }
     AudioTrack* item(unsigned index) const;
     AudioTrack* lastItem() const { return item(length() - 1); }
+    AudioTrack* firstEnabled() const;
     void append(Ref<AudioTrack>&&);
+    void remove(TrackBase&, bool scheduleEvent = true) final;
 
     // EventTarget
-    EventTargetInterface eventTargetInterface() const override;
+    enum EventTargetInterfaceType eventTargetInterface() const override;
 
 private:
-    AudioTrackList(WeakPtr<HTMLMediaElement>, ScriptExecutionContext*);
-
-    const char* activeDOMObjectName() const final;
+    AudioTrackList(ScriptExecutionContext*);
 };
-static_assert(sizeof(AudioTrackList) == sizeof(TrackListBase), "");
+static_assert(sizeof(AudioTrackList) == sizeof(TrackListBase));
 
 } // namespace WebCore
+
+SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::AudioTrackList)
+    static bool isType(const WebCore::TrackListBase& trackList) { return trackList.type() == WebCore::TrackListBase::AudioTrackList; }
+SPECIALIZE_TYPE_TRAITS_END()
 
 #endif // ENABLE(VIDEO)

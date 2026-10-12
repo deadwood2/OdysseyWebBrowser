@@ -38,11 +38,11 @@
 #include <WebCore/DOMWrapperWorld.h>
 #include <WebCore/DocumentLoader.h>
 #include <WebCore/FormState.h>
-#include <WebCore/Frame.h>
+#include <WebCore/LocalFrame.h>
 #include <WebCore/FrameLoadRequest.h>
 #include <WebCore/FrameLoader.h>
 #include <WebCore/FrameLoaderTypes.h>
-#include <WebCore/FrameView.h>
+#include <WebCore/LocalFrameView.h>
 #include <WebCore/HTMLFormElement.h>
 #include <WebCore/HistoryController.h>
 #include <WebCore/HistoryItem.h>
@@ -74,7 +74,7 @@
 #include <wtf/HexNumber.h>
 #include "../../WTF/wtf/morphos/MD5.h"
 
-#define D(x)
+#define D(x) 
 
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #pragma GCC diagnostic ignored "-Wmisleading-indentation"
@@ -94,19 +94,6 @@ WebFrameLoaderClient::~WebFrameLoaderClient()
 {
 	D(dprintf("%s: this %p\n", __PRETTY_FUNCTION__, this));
 	m_frame->invalidate();
-}
-
-std::optional<PageIdentifier> WebFrameLoaderClient::pageID() const
-{
-    if (m_frame->page())
-        return m_frame->page()->pageID();
-
-    return std::nullopt;
-}
-
-std::optional<WebCore::FrameIdentifier> WebFrameLoaderClient::frameID() const
-{
-    return WebCore::FrameIdentifier(m_frame->frameID());
 }
 
 #if ENABLE(RESOURCE_LOAD_STATISTICS)
@@ -165,7 +152,7 @@ void WebFrameLoaderClient::detachedFromParent3()
     notImplemented();
 }
 
-void WebFrameLoaderClient::assignIdentifierToInitialRequest(unsigned long identifier, DocumentLoader* loader, const ResourceRequest& request)
+void WebFrameLoaderClient::assignIdentifierToInitialRequest(WebCore::ResourceLoaderIdentifier identifier, DocumentLoader* loader, const ResourceRequest& request)
 {
     WebPage* webPage = m_frame->page();
     if (!webPage)
@@ -179,16 +166,16 @@ void WebFrameLoaderClient::assignIdentifierToInitialRequest(unsigned long identi
     webPage->addResourceRequest(identifier, request);
 }
 
-void WebFrameLoaderClient::dispatchWillSendRequest(DocumentLoader*, unsigned long identifier, ResourceRequest& request, const ResourceResponse& redirectResponse)
+void WebFrameLoaderClient::dispatchWillSendRequest(DocumentLoader*, WebCore::ResourceLoaderIdentifier identifier, ResourceRequest& request, const ResourceResponse& redirectResponse)
 {
 }
 
-bool WebFrameLoaderClient::shouldUseCredentialStorage(DocumentLoader*, unsigned long identifier)
+bool WebFrameLoaderClient::shouldUseCredentialStorage(DocumentLoader*, WebCore::ResourceLoaderIdentifier identifier)
 {
     return true;
 }
 
-void WebFrameLoaderClient::dispatchDidReceiveAuthenticationChallenge(DocumentLoader*, unsigned long, const AuthenticationChallenge& challenge)
+void WebFrameLoaderClient::dispatchDidReceiveAuthenticationChallenge(DocumentLoader*, WebCore::ResourceLoaderIdentifier identifier, const AuthenticationChallenge& challenge)
 {
     WebPage* webPage = m_frame->page();
     if (webPage && webPage->_fAuthChallenge)
@@ -200,11 +187,13 @@ void WebFrameLoaderClient::dispatchDidReceiveAuthenticationChallenge(DocumentLoa
 	challenge.authenticationClient()->receivedCancellation(challenge);
 }
 
-void WebFrameLoaderClient::dispatchDidReceiveResponse(DocumentLoader* loader, unsigned long identifier, const ResourceResponse& response)
+void WebFrameLoaderClient::dispatchDidReceiveResponse(DocumentLoader* loader, WebCore::ResourceLoaderIdentifier identifier, const ResourceResponse& response)
 {
     WebPage* webPage = m_frame->page();
     if (!webPage)
         return;
+
+    D(dprintf("%s: url %s attach %d sr %d ismoved %d\n", __PRETTY_FUNCTION__, response.url().string().utf8().data(), response.isAttachment(), response.isRedirection(), response.isMovedPermanently()));
 
 	bool hadAuth =loader->request().httpHeaderField(HTTPHeaderName::Authorization).length() > 0;
 
@@ -212,26 +201,29 @@ void WebFrameLoaderClient::dispatchDidReceiveResponse(DocumentLoader* loader, un
 		webPage->_fDidReceiveResponse(response, hadAuth);
 }
 
-void WebFrameLoaderClient::dispatchDidReceiveContentLength(DocumentLoader*, unsigned long identifier, int dataLength)
+void WebFrameLoaderClient::dispatchDidReceiveContentLength(DocumentLoader*, WebCore::ResourceLoaderIdentifier identifier, int dataLength)
 {
 }
 
-void WebFrameLoaderClient::dispatchDidFinishLoading(DocumentLoader*, unsigned long identifier)
+void WebFrameLoaderClient::dispatchDidFinishLoading(DocumentLoader*, WebCore::ResourceLoaderIdentifier identifier)
 {
     notImplemented();
     WebPage* webPage = m_frame->page();
     if (!webPage)
         return;
 
+    D(dprintf("%s: \n", __PRETTY_FUNCTION__));
+
     webPage->removeResourceRequest(identifier);
 }
 
-void WebFrameLoaderClient::dispatchDidFailLoading(DocumentLoader*loader, unsigned long identifier, const ResourceError& error)
+void WebFrameLoaderClient::dispatchDidFailLoading(DocumentLoader*loader, WebCore::ResourceLoaderIdentifier identifier, const ResourceError& error)
 {
     WebPage* webPage = m_frame->page();
     if (!webPage)
         return;
 
+    D(dprintf("%s: \n", __PRETTY_FUNCTION__));
     webPage->removeResourceRequest(identifier);
 }
 
@@ -263,6 +255,7 @@ void WebFrameLoaderClient::dispatchDidChangeProvisionalURL()
 
 void WebFrameLoaderClient::dispatchDidCancelClientRedirect()
 {
+    D(dprintf("%s: \n", __PRETTY_FUNCTION__));
 }
 
 void WebFrameLoaderClient::dispatchWillPerformClientRedirect(const URL& url, double interval, WallTime fireDate, LockBackForwardList lockBackForwardList)
@@ -382,8 +375,8 @@ void WebFrameLoaderClient::dispatchDidStartProvisionalLoad()
 	D(dprintf("%s: frame ID %llu\n", __PRETTY_FUNCTION__, m_frame->frameID()));
 
 #if ENABLE(FULLSCREEN_API)
-    Element* documentElement = m_frame->coreFrame()->document()->documentElement();
-    if (documentElement && documentElement->containsFullScreenElement())
+    auto* document = m_frame->coreFrame()->document();
+    if (document && document->fullscreenManager().fullscreenElement())
 		webPage->exitFullscreen();
 #endif
 }
@@ -413,7 +406,7 @@ void WebFrameLoaderClient::dispatchDidReceiveTitle(const StringWithDirection& ti
 #endif
 }
 
-void WebFrameLoaderClient::dispatchDidCommitLoad(std::optional<HasInsecureContent> hasInsecureContent, std::optional<WebCore::UsedLegacyTLS>)
+void WebFrameLoaderClient::dispatchDidCommitLoad(std::optional<HasInsecureContent> hasInsecureContent, std::optional<WebCore::UsedLegacyTLS>, std::optional<WebCore::WasPrivateRelayed>)
 {
     WebPage* webPage = m_frame->page();
     if (!webPage)
@@ -454,7 +447,7 @@ void WebFrameLoaderClient::dispatchDidCommitLoad(std::optional<HasInsecureConten
 #endif
 }
 
-void WebFrameLoaderClient::dispatchDidFailProvisionalLoad(const ResourceError& error, WillContinueLoading willContinueLoading)
+void WebFrameLoaderClient::dispatchDidFailProvisionalLoad(const ResourceError& error, WillContinueLoading willContinueLoading, WebCore::WillInternallyHandleFailure)
 {
 }
 
@@ -536,7 +529,7 @@ void WebFrameLoaderClient::dispatchDidReachLayoutMilestone(OptionSet<WebCore::La
     webPage->dispatchDidReachLayoutMilestone(milestones);
 #endif
 
-    if (milestones & DidFirstVisuallyNonEmptyLayout) {
+    if (milestones & WebCore::LayoutMilestone::DidFirstVisuallyNonEmptyLayout) {
         if (m_frame->isMainFrame() && !m_didCompletePageTransition && !webPage->corePage()->settings().suppressesIncrementalRendering()) {
             RELEASE_LOG(Layout, "%p - WebFrameLoaderClient::dispatchDidReachLayoutMilestone: dispatching didCompletePageTransition, page = %p", this, webPage);
             webPage->didCompletePageTransition();
@@ -557,18 +550,18 @@ void WebFrameLoaderClient::dispatchDidLayout()
 #endif
 }
 
-Frame* WebFrameLoaderClient::dispatchCreatePage(const NavigationAction& navigationAction, WebCore::NewFrameOpenerPolicy)
+LocalFrame* WebFrameLoaderClient::dispatchCreatePage(const NavigationAction& navigationAction, WebCore::NewFrameOpenerPolicy)
 {
     WebPage* webPage = m_frame->page();
     if (!webPage)
         return nullptr;
 
     // Just call through to the chrome client.
-    Page* newPage = webPage->corePage()->chrome().createWindow(*m_frame->coreFrame(), { }, navigationAction);
+    auto newPage = webPage->corePage()->chrome().createWindow(*m_frame->coreFrame(), { }, navigationAction);
     if (!newPage)
         return nullptr;
 	
-    return &newPage->mainFrame();
+    return downcast<LocalFrame>(&newPage->mainFrame());
 }
 
 void WebFrameLoaderClient::dispatchShow()
@@ -580,62 +573,61 @@ void WebFrameLoaderClient::dispatchShow()
 //    webPage->show();
 }
 
-void WebFrameLoaderClient::dispatchDecidePolicyForResponse(const ResourceResponse& response, const ResourceRequest& request, WebCore::PolicyCheckIdentifier identifier, const String& downloadAttribute, WebCore::BrowsingContextGroupSwitchDecision decision, WebCore::FramePolicyFunction&& function)
+void WebFrameLoaderClient::dispatchDecidePolicyForResponse(const ResourceResponse& response, const ResourceRequest& request, const String& downloadAttribute, WebCore::FramePolicyFunction&& function)
 {
     WebPage* webPage = m_frame->page();
 
-	D(dprintf("%s: '%s' isattach %d\n", __PRETTY_FUNCTION__, request.url().string().utf8().data(), response.isAttachment()));
+	D(dprintf("%s: '%s' isattach %d protocol %s shouldRedirect %d isMoved %d ir %d code %d\n", __PRETTY_FUNCTION__, request.url().string().utf8().data(), response.isAttachment(), request.url().protocol().toString().utf8().data(), response.isRedirection(), response.isMovedPermanently(), response.isRedirection(), response.httpStatusCode()));
 
     if (!webPage) {
     	D(dprintf("%s: ignore!\n", __PRETTY_FUNCTION__));
-        function(PolicyAction::Ignore, identifier);
+        function(WebCore::PolicyAction::Ignore);
         return;
     }
 
-/* ?? not sure this makes any sense?
     if (!request.url().string()) {
-    	D(dprintf("%s: use!\n", __PRETTY_FUNCTION__));
-        function(PolicyAction::Use, identifier);
+        function(WebCore::PolicyAction::Use);
         return;
-    } */
+    }
 
 	// undisplayable mime AND this is a top navigation - meaning the url the user clicked on or typed in
-	if (response.isAttachment() || (!canShowMIMEType(response.mimeType()) && request.isTopSite()))
+	if (response.isAttachment() || (!canShowMIMEType(response.mimeType()) && !response.mimeType().isNull() && request.isTopSite()))
 	{
+    	D(dprintf("%s: ask to download...\n", __PRETTY_FUNCTION__));
 		// should we download this??
 		if (webPage->_fDownloadAsk)
 		{
-			webPage->_fDownloadAsk(response, request, identifier, downloadAttribute, std::move(function));
+			webPage->_fDownloadAsk(response, request, downloadAttribute, std::move(function));
 			return;
 		}
     	D(dprintf("%s: ignore post download\n", __PRETTY_FUNCTION__));
-		function(PolicyAction::Ignore, identifier);
+        function(PolicyAction::Ignore);
+		return;
 	}
 
    	D(dprintf("%s: use!\n", __PRETTY_FUNCTION__));
-	function(PolicyAction::Use, identifier);
+    function(PolicyAction::Use);
 }
 
 void WebFrameLoaderClient::dispatchDecidePolicyForNewWindowAction(const NavigationAction& navigationAction, const ResourceRequest& request,
-    FormState* formState, const String& frameName, WebCore::PolicyCheckIdentifier identifier, FramePolicyFunction&& function)
+    FormState* formState, const String& frameName, std::optional<WebCore::HitTestResult>&&, FramePolicyFunction&& function)
 {
     WebPage* webPage = m_frame->page();
     if (!webPage) {
-        function(PolicyAction::Ignore, identifier);
+        function(PolicyAction::Ignore);
         return;
     }
 
 	if (webPage && webPage->_fShouldNavigateToURL)
 	{
-		if (!webPage->_fShouldNavigateToURL(request.url(), true))
+		if (!webPage->_fShouldNavigateToURL(request.url(), true, true))
 		{
-        	function(PolicyAction::Ignore, identifier);
+            function(PolicyAction::Ignore);
 			return;
 		}
 	}
 
-	notImplemented();
-	function(PolicyAction::Use, identifier);
+    function(PolicyAction::Use);
 }
 
 void WebFrameLoaderClient::applyToDocumentLoader(WebsitePoliciesData&& websitePolicies)
@@ -658,133 +650,62 @@ void WebFrameLoaderClient::applyToDocumentLoader(WebsitePoliciesData&& websitePo
 #endif
 }
 
-void WebFrameLoaderClient::dispatchDecidePolicyForNavigationAction(const NavigationAction& navigationAction, const ResourceRequest& request, const ResourceResponse& redirectResponse,
-    FormState* formState, PolicyDecisionMode policyDecisionMode, WebCore::PolicyCheckIdentifier requestIdentifier, FramePolicyFunction&& function)
+void WebFrameLoaderClient::dispatchDecidePolicyForNavigationAction(const WebCore::NavigationAction& navigationAction, const WebCore::ResourceRequest& request, const WebCore::ResourceResponse& redirectResponse, WebCore::FormState* formState, const String&, std::optional<WebCore::NavigationIdentifier> navigationIdentifier, std::optional<WebCore::HitTestResult>&&, bool, WebCore::SandboxFlags, WebCore::PolicyDecisionMode, WebCore::FramePolicyFunction&& function)
 {
     WebPage* webPage = m_frame->page();
     if (!webPage) {
-        function(PolicyAction::Ignore, requestIdentifier);
+        function(PolicyAction::Ignore);
         return;
     }
 
-       if (webPage && webPage->_fShouldNavigateToURL)
-       {
-               if (!webPage->_fShouldNavigateToURL(request.url(), false))
-               {
-               function(PolicyAction::Ignore, requestIdentifier);
-                       return;
-               }
-       }
+	D(dprintf("%s: %s, is download? %s empty %d protocol %s attach %d canshowmime %d topsite %d isred %d status %d\n", __PRETTY_FUNCTION__, request.url().string().utf8().data(), navigationAction.downloadAttribute().string().utf8().data(), request.isEmpty(), request.url().protocol().toString().utf8().data(), redirectResponse.isAttachment(), canShowMIMEType(redirectResponse.mimeType()), request.isTopSite(), redirectResponse.isRedirection(), redirectResponse.httpStatusCode()));
+
+    if (webPage && webPage->_fShouldNavigateToURL)
+    {
+        if (!webPage->_fShouldNavigateToURL(request.url(), false, request.isTopSite()))
+        {
+            D(dprintf("%s: cancelled by handler\n", __PRETTY_FUNCTION__));
+            function(PolicyAction::Ignore);
+            return;
+        }
+    }
 
     notImplemented();
     LOG(Loading, "WebProcess %i - dispatchDecidePolicyForNavigationAction to request url %s", getCurrentProcessID(), request.url().string().utf8().data());
 
     // Always ignore requests with empty URLs. 
     if (request.isEmpty()) {
-        function(PolicyAction::Ignore, requestIdentifier);
+        function(PolicyAction::Ignore);
         return;
     }
 
-	function(PolicyAction::Use, requestIdentifier);
+	String protocol = request.url().protocol().toString();
 
-#if 0
-    RefPtr<API::Object> userData;
+	if (redirectResponse.isAttachment() || navigationAction.downloadAttribute().length())
+	{
+		// should we download this??
+		if (webPage->_fDownloadAsk)
+		{
+			webPage->_fDownloadAsk(redirectResponse, request, navigationAction.downloadAttribute().string(), std::move(function));
+			return;
+		}
+    	D(dprintf("%s: ignore post download\n", __PRETTY_FUNCTION__));
+        function(PolicyAction::Ignore);
+		return;
+	}
 
-    Ref<InjectedBundleNavigationAction> action = InjectedBundleNavigationAction::create(m_frame, navigationAction, formState);
-
-    // Notify the bundle client.
-    WKBundlePagePolicyAction policy = webPage->injectedBundlePolicyClient().decidePolicyForNavigationAction(webPage, m_frame, action.ptr(), request, userData);
-    if (policy == WKBundlePagePolicyActionUse) {
-        function(PolicyAction::Use, requestIdentifier);
-        return;
-    }
-
-    uint64_t listenerID = m_frame->setUpPolicyListener(requestIdentifier, WTFMove(function), WebFrame::ForNavigationAction::Yes);
-
-    ASSERT(navigationAction.requester());
-    auto requester = navigationAction.requester().value();
-
-    FrameInfoData originatingFrameInfoData;
-    originatingFrameInfoData.isMainFrame = navigationAction.initiatedByMainFrame() == InitiatedByMainFrame::Yes;
-    originatingFrameInfoData.request = ResourceRequest { requester.url() };
-    originatingFrameInfoData.securityOrigin = requester.securityOrigin().data();
-    if (requester.frameID() && WebProcess::singleton().webFrame(requester.frameID()))
-        originatingFrameInfoData.frameID = requester.frameID();
-
-    std::optional<PageIdentifier> originatingPageID;
-    if (requester.pageID() && WebProcess::singleton().webPage(requester.pageID()))
-        originatingPageID = requester.pageID();
-
-    NavigationActionData navigationActionData;
-    navigationActionData.navigationType = action->navigationType();
-    navigationActionData.modifiers = action->modifiers();
-    navigationActionData.mouseButton = action->mouseButton();
-    navigationActionData.syntheticClickType = action->syntheticClickType();
-    navigationActionData.clickLocationInRootViewCoordinates = action->clickLocationInRootViewCoordinates();
-    navigationActionData.userGestureTokenIdentifier = WebProcess::singleton().userGestureTokenIdentifier(navigationAction.userGestureToken());
-    navigationActionData.canHandleRequest = webPage->canHandleRequest(request);
-    navigationActionData.shouldOpenExternalURLsPolicy = navigationAction.shouldOpenExternalURLsPolicy();
-    navigationActionData.downloadAttribute = navigationAction.downloadAttribute();
-    navigationActionData.isRedirect = !redirectResponse.isNull();
-    navigationActionData.treatAsSameOriginNavigation = navigationAction.treatAsSameOriginNavigation();
-    navigationActionData.hasOpenedFrames = navigationAction.hasOpenedFrames();
-    navigationActionData.openedByDOMWithOpener = navigationAction.openedByDOMWithOpener();
-    if (auto& requester = navigationAction.requester())
-        navigationActionData.requesterOrigin = requester->securityOrigin().data();
-    navigationActionData.targetBackForwardItemIdentifier = navigationAction.targetBackForwardItemIdentifier();
-    navigationActionData.sourceBackForwardItemIdentifier = navigationAction.sourceBackForwardItemIdentifier();
-    navigationActionData.lockHistory = navigationAction.lockHistory();
-    navigationActionData.lockBackForwardList = navigationAction.lockBackForwardList();
-    navigationActionData.adClickAttribution = navigationAction.adClickAttribution();
-
-    WebCore::Frame* coreFrame = m_frame->coreFrame();
-    if (!coreFrame)
-        return function(PolicyAction::Ignore, requestIdentifier);
-    WebDocumentLoader* documentLoader = static_cast<WebDocumentLoader*>(coreFrame->loader().policyDocumentLoader());
-    if (!documentLoader) {
-        // FIXME: When we receive a redirect after the navigation policy has been decided for the initial request,
-        // the provisional load's DocumentLoader needs to receive navigation policy decisions. We need a better model for this state.
-        documentLoader = static_cast<WebDocumentLoader*>(coreFrame->loader().provisionalDocumentLoader());
-    }
-    if (!documentLoader)
-        documentLoader = static_cast<WebDocumentLoader*>(coreFrame->loader().documentLoader());
-
-    navigationActionData.clientRedirectSourceForHistory = documentLoader->clientRedirectSourceForHistory();
-
-    // Notify the UIProcess.
-    Ref<WebFrame> protect(m_frame);
-
-    if (policyDecisionMode == PolicyDecisionMode::Synchronous) {
-        uint64_t newNavigationID;
-        WebCore::PolicyCheckIdentifier responseIdentifier;
-        PolicyAction policyAction;
-        DownloadID downloadID;
-        std::optional<WebsitePoliciesData> websitePolicies;
-
-        if (!webPage->sendSync(Messages::WebPageProxy::DecidePolicyForNavigationActionSync(m_frame->frameID(), m_frame->isMainFrame(), SecurityOriginData::fromFrame(coreFrame),
-            requestIdentifier, documentLoader->navigationID(), navigationActionData, originatingFrameInfoData, originatingPageID, navigationAction.resourceRequest(), request,
-            IPC::FormDataReference { request.httpBody() }, redirectResponse, UserData(WebProcess::singleton().transformObjectsToHandles(userData.get()).get())),
-            Messages::WebPageProxy::DecidePolicyForNavigationActionSync::Reply(responseIdentifier, policyAction, newNavigationID, downloadID, websitePolicies))) {
-            m_frame->didReceivePolicyDecision(listenerID, requestIdentifier, PolicyAction::Ignore, 0, { }, { });
-            return;
-        }
-
-        m_frame->didReceivePolicyDecision(listenerID, responseIdentifier, policyAction, 0, downloadID, { });
-        return;
-    }
-
-    ASSERT(policyDecisionMode == PolicyDecisionMode::Asynchronous);
-    if (!webPage->send(Messages::WebPageProxy::DecidePolicyForNavigationActionAsync(m_frame->frameID(), SecurityOriginData::fromFrame(coreFrame),
-        requestIdentifier, documentLoader->navigationID(), navigationActionData, originatingFrameInfoData, originatingPageID, navigationAction.resourceRequest(), request,
-        IPC::FormDataReference { request.httpBody() }, redirectResponse, UserData(WebProcess::singleton().transformObjectsToHandles(userData.get()).get()), listenerID)))
-        m_frame->didReceivePolicyDecision(listenerID, requestIdentifier, PolicyAction::Ignore, 0, { }, { });
-#endif
+    function(PolicyAction::Use);
 }
 
 void WebFrameLoaderClient::cancelPolicyCheck()
 {
 	notImplemented();
 //    m_frame->invalidatePolicyListener();
+}
+
+void WebFrameLoaderClient::broadcastMainFrameURLChangeToOtherProcesses(const URL&)
+{
+// todo!
 }
 
 void WebFrameLoaderClient::dispatchUnableToImplementPolicy(const ResourceError& error)
@@ -840,27 +761,7 @@ D(dprintf("%s: \n", __PRETTY_FUNCTION__));
 		m_didSendFormEvent = true;
 	}
 
-	notImplemented();
-	completionHandler();
-#if 0
-    auto& form = formState.form();
-
-    auto* sourceCoreFrame = formState.sourceDocument().frame();
-    if (!sourceCoreFrame)
-        return completionHandler();
-    auto* sourceFrame = WebFrame::fromCoreFrame(*sourceCoreFrame);
-    if (!sourceFrame)
-        return completionHandler();
-
-    auto& values = formState.textFieldValues();
-
-    RefPtr<API::Object> userData;
-    webPage->injectedBundleFormClient().willSubmitForm(webPage, &form, m_frame, sourceFrame, values, userData);
-
-    uint64_t listenerID = m_frame->setUpWillSubmitFormListener(WTFMove(completionHandler));
-
-    webPage->send(Messages::WebPageProxy::WillSubmitForm(m_frame->frameID(), sourceFrame->frameID(), values, listenerID, UserData(WebProcess::singleton().transformObjectsToHandles(userData.get()).get())));
-#endif
+    completionHandler();
 }
 
 void WebFrameLoaderClient::revertToProvisionalState(DocumentLoader*)
@@ -919,11 +820,10 @@ void WebFrameLoaderClient::setMainFrameDocumentReady(bool ready)
 	}
 }
 
-void WebFrameLoaderClient::startDownload(const ResourceRequest& request, const String& suggestedName)
+void WebFrameLoaderClient::startDownload(const ResourceRequest& request, const String& suggestedName, FromDownloadAttribute)
 {
-D(dprintf("%s: '%s'\n", __PRETTY_FUNCTION__, request.url().string().utf8().data()));
-
-    m_frame->startDownload(request, suggestedName);
+	D(dprintf("%s: '%s'\n", __PRETTY_FUNCTION__, request.url().string().utf8().data()));
+	m_frame->startDownload(request, suggestedName);
 }
 
 void WebFrameLoaderClient::willChangeTitle(DocumentLoader*)
@@ -965,11 +865,11 @@ void WebFrameLoaderClient::didReplaceMultipartContent()
 #endif
 }
 
-void WebFrameLoaderClient::committedLoad(DocumentLoader* loader, const uint8_t* data, int length)
+void WebFrameLoaderClient::committedLoad(DocumentLoader* loader, const WebCore::SharedBuffer& data)
 {
-	notImplemented();
+//	notImplemented();
 
-    loader->commitData(data, length);
+    loader->commitData(data);
 
     // If the document is a stand-alone media document, now is the right time to cancel the WebKit load.
     // FIXME: This code should be shared across all ports. <http://webkit.org/b/48762>.
@@ -1046,7 +946,7 @@ void WebFrameLoaderClient::didDisplayInsecureContent()
 }
 
 
-void WebFrameLoaderClient::didRunInsecureContent(SecurityOrigin&, const URL&)
+void WebFrameLoaderClient::didRunInsecureContent(SecurityOrigin&)
 {
 	D(dprintf("%s: !!!\n", __PRETTY_FUNCTION__));
     WebPage* webPage = m_frame->page();
@@ -1054,18 +954,23 @@ void WebFrameLoaderClient::didRunInsecureContent(SecurityOrigin&, const URL&)
 		webPage->_fDidLoadInsecureContent();
 }
 
-void WebFrameLoaderClient::didDetectXSS(const URL&, bool)
+/* void WebFrameLoaderClient::didDetectXSS(const URL&, bool)
 {
 	D(dprintf("%s: !!!\n", __PRETTY_FUNCTION__));
     WebPage* webPage = m_frame->page();
     if (webPage)
 		webPage->_fDidLoadInsecureContent();
-}
+} */
 
 ResourceError WebFrameLoaderClient::cancelledError(const ResourceRequest& request) const
 {
 	notImplemented();
     return ResourceError();//WebKit::cancelledError(request);
+}
+
+ResourceError WebFrameLoaderClient::httpNavigationWithHTTPSOnlyError(const ResourceRequest&) const
+{
+    return { };
 }
 
 ResourceError WebFrameLoaderClient::blockedError(const ResourceRequest& request) const
@@ -1116,6 +1021,11 @@ ResourceError WebFrameLoaderClient::pluginWillHandleLoadError(const ResourceResp
     return ResourceError();//WebKit::pluginWillHandleLoadError(response);
 }
 
+WebCore::ResourceError WebFrameLoaderClient::httpsUpgradeRedirectLoopError(const WebCore::ResourceRequest&) const
+{
+    return ResourceError();
+}
+
 bool WebFrameLoaderClient::shouldFallBack(const ResourceError& error) const
 {
     static NeverDestroyed<const ResourceError> cancelledError(this->cancelledError(ResourceRequest()));
@@ -1145,10 +1055,12 @@ bool WebFrameLoaderClient::canHandleRequest(const ResourceRequest& request) cons
 
 bool WebFrameLoaderClient::canShowMIMEType(const String& mimeType) const
 {
-    bool canShow = MIMETypeRegistry::isSupportedImageMIMEType(mimeType)
-        || MIMETypeRegistry::isSupportedNonImageMIMEType(mimeType)
-        || MIMETypeRegistry::isSupportedMediaMIMEType(mimeType);
-// dprintf("%s: %s %d\n", __PRETTY_FUNCTION__, mimeType.utf8().data(), canShow);
+    bool canShow = mimeType.isNull()
+        || MIMETypeRegistry::isSupportedImageMIMEType(mimeType)
+        || MIMETypeRegistry::isSupportedNonImageMIMEType(mimeType);
+//        || MIMETypeRegistry::isSupportedMediaMIMEType(mimeType); // player can't play stuff directly atm
+
+    D(dprintf("%s: %s %d\n", __PRETTY_FUNCTION__, mimeType.utf8().data(), canShow));
 
     return canShow;
 }
@@ -1158,13 +1070,14 @@ bool WebFrameLoaderClient::canShowMIMETypeAsHTML(const String& mimeType) const
     return MIMETypeRegistry::isSupportedNonImageMIMEType(mimeType);
 }
 
-bool WebFrameLoaderClient::representationExistsForURLScheme(const String& /*URLScheme*/) const
+bool WebFrameLoaderClient::representationExistsForURLScheme(WTF::StringView /*URLScheme*/) const
 {
+    D(dprintf("%s: \n", __PRETTY_FUNCTION__));
     notImplemented();
     return false;
 }
 
-String WebFrameLoaderClient::generatedMIMETypeForURLScheme(const String& /*URLScheme*/) const
+String WebFrameLoaderClient::generatedMIMETypeForURLScheme(WTF::StringView /*URLScheme*/) const
 {
     notImplemented();
     return String();
@@ -1252,17 +1165,21 @@ String WebFrameLoaderClient::userAgent(const URL& url) const
 
     if (webPage && webPage->_fUserAgentForURL)
     {
-    	WTF::String urlBase = url.truncatedForUseAsBase().string();
-    	WTF::String out = webPage->_fUserAgentForURL(urlBase);
-    	return out;
+        auto protocol = url.protocol();
+        
+        if (protocol == "about"_s || protocol == "blob"_s || protocol == "data"_s)
+        {
+            // return default and don't pass it to the client...
+        }
+        else
+        {
+            WTF::String urlBase = url.truncatedForUseAsBase().string();
+            WTF::String out = webPage->_fUserAgentForURL(urlBase);
+            return out;
+        }
 	}
 
- 	// return String("Mozilla/5.0 (MorphOS; PowerPC 3_14) WebKitty/605.1.15 (KHTML, like Gecko)");
-
-	// Chrome
-	// return String("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.100 Safari/537.36");
-
- 	return String("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.1 Safari/605.1.15");
+ 	return String("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.1 Safari/605.1.15"_s);
 }
 
 String WebFrameLoaderClient::overrideContentSecurityPolicy() const
@@ -1287,7 +1204,7 @@ void WebFrameLoaderClient::transitionToCommittedFromCachedFrame(CachedFrame*)
     m_frameCameFromPageCache = true;
 }
 
-void WebFrameLoaderClient::transitionToCommittedForNewPage()
+void WebFrameLoaderClient::transitionToCommittedForNewPage(InitializingIframe)
 {
     WebPage* webPage = m_frame->page();
 
@@ -1298,13 +1215,19 @@ void WebFrameLoaderClient::transitionToCommittedForNewPage()
     auto psize = webPage->size();
     IntRect fixedVisibleContentRect = webPage->bounds();
 
+    // force rendering tree destruction now... macOS seems to do just that
+    auto* coreFrame = m_frame->coreFrame();
+    if (isMainFrame && coreFrame->view())
+        coreFrame->view()->setParentVisible(false);
+    coreFrame->setView(nullptr);
+
     // const ResourceResponse& response = m_frame->coreFrame()->loader().documentLoader()->response();
     m_frameCameFromPageCache = false;
 
-    ScrollbarMode defaultScrollbarMode = shouldHideScrollbars ? ScrollbarAlwaysOff : ScrollbarAuto;
+    ScrollbarMode defaultScrollbarMode = shouldHideScrollbars ? ScrollbarMode::AlwaysOff : ScrollbarMode::Auto;
 
-    ScrollbarMode horizontalScrollbarMode = webPage->alwaysShowsHorizontalScroller() ? ScrollbarAlwaysOn : defaultScrollbarMode;
-    ScrollbarMode verticalScrollbarMode = webPage->alwaysShowsVerticalScroller() ? ScrollbarAlwaysOn : defaultScrollbarMode;
+    ScrollbarMode horizontalScrollbarMode = webPage->alwaysShowsHorizontalScroller() ? ScrollbarMode::AlwaysOn : defaultScrollbarMode;
+    ScrollbarMode verticalScrollbarMode = webPage->alwaysShowsVerticalScroller() ? ScrollbarMode::AlwaysOn : defaultScrollbarMode;
 
     bool horizontalLock = shouldHideScrollbars || webPage->alwaysShowsHorizontalScroller();
     bool verticalLock = shouldHideScrollbars || webPage->alwaysShowsVerticalScroller();
@@ -1354,7 +1277,7 @@ void WebFrameLoaderClient::convertMainResourceLoadToDownload(DocumentLoader *doc
     m_frame->convertMainResourceLoadToDownload(documentLoader, request, response);
 }
 
-RefPtr<Frame> WebFrameLoaderClient::createFrame(const String& name, HTMLFrameOwnerElement&ownerElement)
+RefPtr<LocalFrame> WebFrameLoaderClient::createFrame(const WTF::AtomString& name, HTMLFrameOwnerElement&ownerElement)
 {
     auto* webPage = m_frame->page();
 
@@ -1379,16 +1302,6 @@ RefPtr<Frame> WebFrameLoaderClient::createFrame(const String& name, HTMLFrameOwn
 #endif
 
     return coreSubframe;
-}
-
-RefPtr<Widget> WebFrameLoaderClient::createPlugin(const IntSize&, HTMLPlugInElement& pluginElement, const URL& url, const Vector<String>& paramNames, const Vector<String>& paramValues, const String& mimeType, bool loadManually)
-{
-    UNUSED_PARAM(pluginElement);
-    return nullptr;
-}
-
-void WebFrameLoaderClient::redirectDataToPlugin(Widget& pluginWidget)
-{
 }
 
 ObjectContentType WebFrameLoaderClient::objectContentType(const URL& url, const String& mimeTypeIn)
@@ -1418,10 +1331,10 @@ ObjectContentType WebFrameLoaderClient::objectContentType(const URL& url, const 
     return ObjectContentType::None;
 }
 
-String WebFrameLoaderClient::overrideMediaType() const
+AtomString WebFrameLoaderClient::overrideMediaType() const
 {
     notImplemented();
-    return String();
+    return WTF::nullAtom();
 }
 
 void WebFrameLoaderClient::dispatchDidClearWindowObjectInWorld(DOMWrapperWorld& world)
@@ -1471,7 +1384,6 @@ notImplemented();
 
 Ref<FrameNetworkingContext> WebFrameLoaderClient::createNetworkingContext()
 {
-    ASSERT(!hasProcessPrivilege(ProcessPrivilege::CanAccessRawCookies));
     return WebFrameNetworkingContext::create(m_frame->coreFrame());
 }
 
@@ -1519,9 +1431,7 @@ String generateFileNameForIcon(const WTF::String &inHost)
     StringBuilder baseNameBuilder;
     for (size_t i = 0; i < MD5::hashSize; i++)
         baseNameBuilder.append(WTF::hex(rawdata[i], WTF::Lowercase));
-        String out("PROGDIR:Cache/FavIcons/");
-    out.append(baseNameBuilder.toString());
-        return out;
+    return makeString("PROGDIR:Cache/FavIcons/"_s, baseNameBuilder.toString());
 }
 
 void WebFrameLoaderClient::getLoadDecisionForIcons(const Vector<std::pair<WebCore::LinkIcon&, uint64_t>>& icons)
@@ -1533,7 +1443,7 @@ void WebFrameLoaderClient::getLoadDecisionForIcons(const Vector<std::pair<WebCor
 	if (webPage && webPage->_fFavIconLoad && !webPage->_fFavIconLoad(documentLoader->url()))
 	{
 		for (auto& icon : icons)
-			documentLoader->didGetLoadDecisionForIcon(false, icon.second, [](SharedBuffer*data){});
+			documentLoader->didGetLoadDecisionForIcon(false, icon.second, [](FragmentedSharedBuffer*data){});
 		return;
 	}
 
@@ -1544,7 +1454,7 @@ void WebFrameLoaderClient::getLoadDecisionForIcons(const Vector<std::pair<WebCor
 			finishedLoadingIcon(buffer.get());
 
 			for (auto& icon : icons)
-				documentLoader->didGetLoadDecisionForIcon(false, icon.second, [](SharedBuffer*data){});
+				documentLoader->didGetLoadDecisionForIcon(false, icon.second, [](FragmentedSharedBuffer*data){});
 			
 			return;
 		}
@@ -1554,27 +1464,33 @@ void WebFrameLoaderClient::getLoadDecisionForIcons(const Vector<std::pair<WebCor
 	{
 		if (icon.first.type == WebCore::LinkIconType::Favicon)
 		{
-			documentLoader->didGetLoadDecisionForIcon(true, icon.second, [this](SharedBuffer*data) {
+			documentLoader->didGetLoadDecisionForIcon(true, icon.second, [this](FragmentedSharedBuffer*data) {
 				finishedLoadingIcon(data);
 			});
 		}
 		else
 		{
-			documentLoader->didGetLoadDecisionForIcon(false, icon.second, [](SharedBuffer*data){});
+			documentLoader->didGetLoadDecisionForIcon(false, icon.second, [](FragmentedSharedBuffer*data){});
 		}
 	}
 }
 
-void WebFrameLoaderClient::finishedLoadingIcon(WebCore::SharedBuffer* data)
+void WebFrameLoaderClient::finishedLoadingIcon(WebCore::FragmentedSharedBuffer* fragmentedData)
 {
+    RefPtr<SharedBuffer> data;
+    if (fragmentedData)
+        data = fragmentedData->makeContiguous();
+    else
+        return;
+
 	auto* documentLoader = m_frame->coreFrame()->loader().documentLoader();
-	if (data != nullptr && data->size() > 0)
+	if (!!data && data->size() > 0)
 	{
 		const String fileName(generateFileNameForIcon(documentLoader->url().host().toString()));
-		WTF::FileSystemImpl::PlatformFileHandle file = WTF::FileSystemImpl::openFile(fileName, WTF::FileSystemImpl::FileOpenMode::Write);
+		WTF::FileSystemImpl::PlatformFileHandle file = WTF::FileSystemImpl::openFile(fileName, WTF::FileSystemImpl::FileOpenMode::Truncate);
 		if (file != WTF::FileSystemImpl::invalidPlatformFileHandle)
 		{
-			if (int(data->size()) != WTF::FileSystemImpl::writeToFile(file, data->data(), data->size()))
+			if (int(data->size()) != WTF::FileSystemImpl::writeToFile(file, data->span()))
 			{
 				WTF::FileSystemImpl::closeFile(file);
 				WTF::FileSystemImpl::deleteFile(fileName);
@@ -1586,16 +1502,12 @@ void WebFrameLoaderClient::finishedLoadingIcon(WebCore::SharedBuffer* data)
 		}
 	}
 
-	if (data && data->size())
+	if (!!data && data->size())
 	{
 		WebPage* webPage = m_frame->page();
 		if (webPage && webPage->_fFavIconLoaded)
-			webPage->_fFavIconLoaded(data, documentLoader->url());
+			webPage->_fFavIconLoaded(WTFMove(data), documentLoader->url());
 	}
-}
-
-void WebFrameLoaderClient::didCreateWindow(DOMWindow& window)
-{
 }
 
 #if ENABLE(APPLICATION_MANIFEST)

@@ -27,7 +27,8 @@
 namespace WebCore {
 
 class HTMLBaseElement final : public HTMLElement {
-    WTF_MAKE_ISO_ALLOCATED(HTMLBaseElement);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(HTMLBaseElement);
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(HTMLBaseElement);
 public:
     static Ref<HTMLBaseElement> create(const QualifiedName&, Document&);
 
@@ -37,9 +38,9 @@ public:
 private:
     HTMLBaseElement(const QualifiedName&, Document&);
 
-    String target() const final;
+    AtomString target() const final;
     bool isURLAttribute(const Attribute&) const final;
-    void parseAttribute(const QualifiedName&, const AtomString&) final;
+    void attributeChanged(const QualifiedName&, const AtomString& oldValue, const AtomString& newValue, AttributeModificationReason) final;
     InsertedIntoAncestorResult insertedIntoAncestor(InsertionType, ContainerNode&) final;
     void removedFromAncestor(RemovalType, ContainerNode&) final;
 };

@@ -74,7 +74,7 @@ MediaPlayerEnums::SupportsType AVStreamDataParserMIMETypeCache::canDecodeType(co
     return MediaPlayerEnums::SupportsType::IsNotSupported;
 }
 
-HashSet<String, ASCIICaseInsensitiveHash>& AVStreamDataParserMIMETypeCache::supportedTypes()
+HashSet<String>& AVStreamDataParserMIMETypeCache::supportedTypes()
 {
     if (isAvailable())
         return MIMETypeCache::supportedTypes();
@@ -101,15 +101,14 @@ bool AVStreamDataParserMIMETypeCache::canDecodeExtendedType(const ContentType& t
     if (!assetCache.isAvailable() || assetCache.supportedTypes().isEmpty())
         return false;
 
-    String replacementType { type.raw() };
-    replacementType.replace(type.containerType(), *assetCache.supportedTypes().begin());
+    String replacementType = makeStringByReplacingAll(type.raw(), type.containerType(), *assetCache.supportedTypes().begin());
     return assetCache.canDecodeType(replacementType) == MediaPlayerEnums::SupportsType::IsSupported;
 #endif
 
     return false;
 }
 
-void AVStreamDataParserMIMETypeCache::initializeCache(HashSet<String, ASCIICaseInsensitiveHash>& cache)
+void AVStreamDataParserMIMETypeCache::initializeCache(HashSet<String>& cache)
 {
 #if ENABLE(VIDEO) && USE(AVFOUNDATION)
     if (!isAvailable())

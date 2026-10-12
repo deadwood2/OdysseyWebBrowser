@@ -28,44 +28,45 @@
 
 #if ENABLE(VIDEO)
 
-#include "HTMLMediaElement.h"
 #include "InbandDataTextTrack.h"
 #include "InbandGenericTextTrack.h"
 #include "InbandTextTrackPrivate.h"
 #include "InbandWebVTTTextTrack.h"
-#include <wtf/IsoMallocInlines.h>
+#include "ScriptExecutionContext.h"
+#include "TextTrackClient.h"
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(InbandTextTrack);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(InbandTextTrack);
 
-Ref<InbandTextTrack> InbandTextTrack::create(Document& document, TextTrackClient& client, InbandTextTrackPrivate& trackPrivate)
+Ref<InbandTextTrack> InbandTextTrack::create(ScriptExecutionContext& context, InbandTextTrackPrivate& trackPrivate)
 {
     switch (trackPrivate.cueFormat()) {
     case InbandTextTrackPrivate::CueFormat::Data:
-        return InbandDataTextTrack::create(document, client, trackPrivate);
+        return InbandDataTextTrack::create(context, trackPrivate);
     case InbandTextTrackPrivate::CueFormat::Generic:
-        return InbandGenericTextTrack::create(document, client, trackPrivate);
+        return InbandGenericTextTrack::create(context, trackPrivate);
     case InbandTextTrackPrivate::CueFormat::WebVTT:
-        return InbandWebVTTTextTrack::create(document, client, trackPrivate);
+        return InbandWebVTTTextTrack::create(context, trackPrivate);
     }
     ASSERT_NOT_REACHED();
-    auto textTrack = InbandDataTextTrack::create(document, client, trackPrivate);
+    auto textTrack = InbandDataTextTrack::create(context, trackPrivate);
     textTrack->suspendIfNeeded();
     return textTrack;
 }
 
-InbandTextTrack::InbandTextTrack(Document& document, TextTrackClient& client, InbandTextTrackPrivate& trackPrivate)
-    : TextTrack(&document, &client, emptyAtom(), trackPrivate.id(), trackPrivate.label(), trackPrivate.language(), InBand)
+InbandTextTrack::InbandTextTrack(ScriptExecutionContext& context, InbandTextTrackPrivate& trackPrivate)
+    : TextTrack(&context, emptyAtom(), trackPrivate.id(), trackPrivate.label(), trackPrivate.language(), InBand)
     , m_private(trackPrivate)
 {
-    m_private->setClient(this);
+    addClientToTrackPrivateBase(*this, trackPrivate);
     updateKindFromPrivate();
 }
 
 InbandTextTrack::~InbandTextTrack()
 {
-    m_private->setClient(nullptr);
+    removeClientFromTrackPrivateBase(Ref { m_private });
 }
 
 void InbandTextTrack::setPrivate(InbandTextTrackPrivate& trackPrivate)
@@ -73,9 +74,9 @@ void InbandTextTrack::setPrivate(InbandTextTrackPrivate& trackPrivate)
     if (m_private.ptr() == &trackPrivate)
         return;
 
-    m_private->setClient(nullptr);
+    removeClientFromTrackPrivateBase(Ref { m_private });
     m_private = trackPrivate;
-    m_private->setClient(this);
+    addClientToTrackPrivateBase(*this, trackPrivate);
 
     setModeInternal(mode());
     updateKindFromPrivate();
@@ -131,7 +132,12 @@ bool InbandTextTrack::isEasyToRead() const
 {
     return m_private->isEasyToRead();
 }
-    
+
+bool InbandTextTrack::isDefault() const
+{
+    return m_private->isDefault();
+}
+
 size_t InbandTextTrack::inbandTrackIndex()
 {
     return m_private->trackIndex();
@@ -142,7 +148,7 @@ AtomString InbandTextTrack::inBandMetadataTrackDispatchType() const
     return m_private->inBandMetadataTrackDispatchType();
 }
 
-void InbandTextTrack::idChanged(const AtomString& id)
+void InbandTextTrack::idChanged(TrackID id)
 {
     setId(id);
 }
@@ -159,10 +165,9 @@ void InbandTextTrack::languageChanged(const AtomString& language)
 
 void InbandTextTrack::willRemove()
 {
-    auto element = makeRefPtr(mediaElement().get());
-    if (!element)
-        return;
-    element->removeTextTrack(*this);
+    m_clients.forEach([&] (auto& client) {
+        client.willRemoveTextTrack(*this);
+    });
 }
 
 void InbandTextTrack::updateKindFromPrivate()
@@ -195,14 +200,6 @@ void InbandTextTrack::updateKindFromPrivate()
 MediaTime InbandTextTrack::startTimeVariance() const
 {
     return m_private->startTimeVariance();
-}
-
-void InbandTextTrack::setMediaElement(WeakPtr<HTMLMediaElement> element)
-{
-    TrackBase::setMediaElement(element);
-#if !RELEASE_LOG_DISABLED
-    m_private->setLogger(logger(), logIdentifier());
-#endif
 }
 
 #if !RELEASE_LOG_DISABLED

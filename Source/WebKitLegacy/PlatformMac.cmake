@@ -1,13 +1,20 @@
 find_library(APPLICATIONSERVICES_LIBRARY ApplicationServices)
 find_library(QUARTZ_LIBRARY Quartz)
+find_library(SECURITYINTERFACE_LIBRARY SecurityInterface)
 add_definitions(-iframework ${QUARTZ_LIBRARY}/Frameworks)
 add_definitions(-iframework ${APPLICATIONSERVICES_LIBRARY}/Versions/Current/Frameworks)
 add_definitions(-DJSC_CLASS_AVAILABLE\\\(...\\\)=)
+add_definitions(-fobjc-weak)
+
+list(APPEND WebKitLegacy_PRIVATE_LIBRARIES
+    ${SECURITYINTERFACE_LIBRARY}
+)
 
 list(APPEND WebKitLegacy_PRIVATE_INCLUDE_DIRECTORIES
     "${PAL_FRAMEWORK_HEADERS_DIR}"
     "${WEBKITLEGACY_DIR}"
     "${WEBKITLEGACY_DIR}/mac"
+    "${WEBKITLEGACY_DIR}/mac/Misc"
     "${WEBKITLEGACY_DIR}/mac/WebView"
     "${WEBKITLEGACY_DIR}/mac/WebCoreSupport"
     "${WebKitLegacy_FRAMEWORK_HEADERS_DIR}"
@@ -42,6 +49,7 @@ list(APPEND WebKitLegacy_SOURCES
     mac/Misc/WebElementDictionary.mm
     mac/Misc/WebIconDatabase.mm
     mac/Misc/WebKitErrors.m
+    mac/Misc/WebKitLogInitialization.mm
     mac/Misc/WebKitLogging.m
     mac/Misc/WebKitNSStringExtras.mm
     mac/Misc/WebKitStatistics.m
@@ -68,29 +76,7 @@ list(APPEND WebKitLegacy_SOURCES
     mac/Panels/WebAuthenticationPanel.m
     mac/Panels/WebPanelAuthenticationHandler.m
 
-    mac/Plugins/WebBaseNetscapePluginView.mm
-    mac/Plugins/WebNetscapePluginEventHandler.mm
-    mac/Plugins/WebNetscapePluginEventHandlerCocoa.mm
-    mac/Plugins/WebNetscapePluginPackage.mm
-    mac/Plugins/WebNetscapePluginStream.mm
-    mac/Plugins/WebNetscapePluginView.mm
     mac/Plugins/WebPluginPackage.mm
-    mac/Plugins/WebPluginRequest.m
-    mac/Plugins/npapi.mm
-
-    mac/Plugins/Hosted/HostedNetscapePluginStream.mm
-    mac/Plugins/Hosted/NetscapePluginHostManager.mm
-    mac/Plugins/Hosted/NetscapePluginHostProxy.mm
-    mac/Plugins/Hosted/NetscapePluginInstanceProxy.mm
-    mac/Plugins/Hosted/ProxyInstance.mm
-    mac/Plugins/Hosted/ProxyRuntimeObject.mm
-    mac/Plugins/Hosted/WebHostedNetscapePluginView.mm
-    mac/Plugins/Hosted/WebKitPluginAgent.defs
-    mac/Plugins/Hosted/WebKitPluginAgentReply.defs
-    mac/Plugins/Hosted/WebKitPluginClient.defs
-    mac/Plugins/Hosted/WebKitPluginHost.defs
-    mac/Plugins/Hosted/WebKitPluginHostTypes.defs
-    mac/Plugins/Hosted/WebTextInputWindowController.m
 
     mac/Storage/WebDatabaseManager.mm
     mac/Storage/WebDatabaseManagerClient.mm
@@ -105,7 +91,6 @@ list(APPEND WebKitLegacy_SOURCES
     mac/WebCoreSupport/WebAlternativeTextClient.mm
     mac/WebCoreSupport/WebChromeClient.mm
     mac/WebCoreSupport/WebContextMenuClient.mm
-    mac/WebCoreSupport/WebDeviceOrientationClient.mm
     mac/WebCoreSupport/WebDragClient.mm
     mac/WebCoreSupport/WebEditorClient.mm
     mac/WebCoreSupport/WebFrameNetworkingContext.mm
@@ -122,7 +107,6 @@ list(APPEND WebKitLegacy_SOURCES
     mac/WebCoreSupport/WebProgressTrackerClient.mm
     mac/WebCoreSupport/WebSecurityOrigin.mm
     mac/WebCoreSupport/WebSelectionServiceController.mm
-    mac/WebCoreSupport/WebSwitchingGPUClient.cpp
     mac/WebCoreSupport/WebValidationMessageClient.mm
     mac/WebCoreSupport/WebVisitedLinkStore.mm
 
@@ -132,7 +116,6 @@ list(APPEND WebKitLegacy_SOURCES
     mac/WebInspector/WebNodeHighlighter.mm
 
     mac/WebView/WebArchive.mm
-    mac/WebView/WebDashboardRegion.mm
     mac/WebView/WebDelegateImplementationCaching.mm
     mac/WebView/WebDeviceOrientation.mm
     mac/WebView/WebDeviceOrientationProviderMock.mm
@@ -398,7 +381,6 @@ set(WebKitLegacy_LEGACY_FORWARDING_HEADERS_FILES
 
     mac/Misc/WebKitStatisticsPrivate.h
     mac/Misc/WebCache.h
-    mac/Misc/NSURLDownloadSPI.h
     mac/Misc/WebStringTruncator.h
     mac/Misc/WebNSFileManagerExtras.h
     mac/Misc/WebNSWindowExtras.h
@@ -438,31 +420,15 @@ set(WebKitLegacy_LEGACY_FORWARDING_HEADERS_FILES
 
     mac/Plugins/WebPluginViewFactoryPrivate.h
     mac/Plugins/WebBasePluginPackage.h
-    mac/Plugins/WebNetscapePluginView.h
-    mac/Plugins/WebNetscapePluginEventHandlerCocoa.h
-    mac/Plugins/WebNetscapePluginStream.h
-    mac/Plugins/WebBaseNetscapePluginView.h
     mac/Plugins/WebPluginController.h
-    mac/Plugins/Hosted/WebTextInputWindowController.h
-    mac/Plugins/Hosted/NetscapePluginHostProxy.h
-    mac/Plugins/Hosted/ProxyRuntimeObject.h
-    mac/Plugins/Hosted/ProxyInstance.h
-    mac/Plugins/Hosted/NetscapePluginHostManager.h
-    mac/Plugins/Hosted/WebKitPluginHostTypes.h
-    mac/Plugins/Hosted/WebHostedNetscapePluginView.h
-    mac/Plugins/Hosted/HostedNetscapePluginStream.h
-    mac/Plugins/Hosted/NetscapePluginInstanceProxy.h
     mac/Plugins/WebPluginContainerCheck.h
     mac/Plugins/WebPluginContainer.h
     mac/Plugins/WebPluginPackagePrivate.h
     mac/Plugins/WebPluginPackage.h
-    mac/Plugins/WebPluginRequest.h
-    mac/Plugins/WebNetscapePluginEventHandler.h
     mac/Plugins/WebPluginContainerPrivate.h
     mac/Plugins/WebJavaPlugIn.h
     mac/Plugins/WebPluginViewFactory.h
     mac/Plugins/WebPluginDatabase.h
-    mac/Plugins/WebNetscapePluginPackage.h
     mac/Plugins/WebPlugin.h
 
     mac/Storage/WebDatabaseManagerPrivate.h
@@ -489,7 +455,6 @@ set(WebKitLegacy_LEGACY_FORWARDING_HEADERS_FILES
     mac/WebCoreSupport/WebPluginInfoProvider.h
     mac/WebCoreSupport/WebEditorClient.h
     mac/WebCoreSupport/CorrectionPanel.h
-    mac/WebCoreSupport/WebSwitchingGPUClient.h
     mac/WebCoreSupport/WebSecurityOriginInternal.h
     mac/WebCoreSupport/WebSelectionServiceController.h
     mac/WebCoreSupport/WebVisitedLinkStore.h
@@ -581,7 +546,6 @@ set(WebKitLegacy_LEGACY_FORWARDING_HEADERS_FILES
     mac/WebView/WebEditingDelegate.h
     mac/WebView/WebHistoryDelegate.h
     mac/WebView/WebWindowAnimation.h
-    mac/WebView/WebDashboardRegion.h
     mac/WebView/WebHTMLView.h
     mac/WebView/WebIndicateLayer.h
     mac/WebView/WebHTMLRepresentation.h
@@ -614,7 +578,6 @@ set(C99_FILES
     mac/Misc/WebNSViewExtras.m
     mac/Misc/WebNSWindowExtras.m
 
-    mac/Plugins/WebPluginRequest.m
     mac/Plugins/WebPluginsPrivate.m
 
     mac/Plugins/Hosted/WebTextInputWindowController.m
@@ -632,9 +595,9 @@ foreach (_file ${WebKitLegacy_SOURCES})
     if (NOT ${_c99_index} EQUAL -1)
         set_source_files_properties(${_file} PROPERTIES COMPILE_FLAGS -std=c99)
     elseif (NOT ${_cpp_index} EQUAL -1)
-        set_source_files_properties(${_file} PROPERTIES COMPILE_FLAGS -std=c++1z)
+        set_source_files_properties(${_file} PROPERTIES COMPILE_FLAGS -std=c++2b)
     else ()
-        set_source_files_properties(${_file} PROPERTIES COMPILE_FLAGS "-ObjC++ -std=c++17")
+        set_source_files_properties(${_file} PROPERTIES COMPILE_FLAGS "-ObjC++ -std=c++2b")
     endif ()
 endforeach ()
 
@@ -646,63 +609,18 @@ foreach (_file ${WebKitLegacy_LEGACY_FORWARDING_HEADERS_FILES})
     endif ()
 endforeach ()
 
-if (NOT EXISTS ${WebKitLegacy_DERIVED_SOURCES_DIR}/WebKitLegacy/WebKitPluginHostTypes.h)
-    file(COPY
-        mac/Plugins/Hosted/WebKitPluginAgent.defs
-        mac/Plugins/Hosted/WebKitPluginAgentReply.defs
-        mac/Plugins/Hosted/WebKitPluginClient.defs
-        mac/Plugins/Hosted/WebKitPluginHost.defs
-        DESTINATION ${WebKitLegacy_DERIVED_SOURCES_DIR})
-    file(MAKE_DIRECTORY ${WebKitLegacy_DERIVED_SOURCES_DIR}/WebKitLegacy)
-    file(COPY
-        mac/Plugins/Hosted/WebKitPluginHostTypes.defs
-        mac/Plugins/Hosted/WebKitPluginHostTypes.h
-        DESTINATION ${WebKitLegacy_DERIVED_SOURCES_DIR}/WebKitLegacy)
-endif ()
-
-add_custom_command(
-    OUTPUT
-        ${WebKitLegacy_DERIVED_SOURCES_DIR}/WebKitPluginAgentReplyServer.c
-        ${WebKitLegacy_DERIVED_SOURCES_DIR}/WebKitPluginAgentReplyUser.c
-        ${WebKitLegacy_DERIVED_SOURCES_DIR}/WebKitPluginAgentServer.c
-        ${WebKitLegacy_DERIVED_SOURCES_DIR}/WebKitPluginAgentUser.c
-        ${WebKitLegacy_DERIVED_SOURCES_DIR}/WebKitPluginHostServer.c
-        ${WebKitLegacy_DERIVED_SOURCES_DIR}/WebKitPluginHostUser.c
-    DEPENDS mac/Plugins/Hosted/WebKitPluginAgent.defs mac/Plugins/Hosted/WebKitPluginHost.defs
-    WORKING_DIRECTORY ${WebKitLegacy_DERIVED_SOURCES_DIR}
-    COMMAND mig -I.. WebKitPluginAgent.defs WebKitPluginAgentReply.defs WebKitPluginHost.defs
-    VERBATIM)
-add_custom_command(
-    OUTPUT
-        ${WebKitLegacy_DERIVED_SOURCES_DIR}/WebKitPluginClientServer.c
-        ${WebKitLegacy_DERIVED_SOURCES_DIR}/WebKitPluginClientUser.c
-    DEPENDS mac/Plugins/Hosted/WebKitPluginClient.defs
-    WORKING_DIRECTORY ${WebKitLegacy_DERIVED_SOURCES_DIR}
-    COMMAND mig -I.. -sheader WebKitPluginClientServer.h WebKitPluginClient.defs
-    VERBATIM)
-list(APPEND WebKitLegacy_SOURCES
-    ${WebKitLegacy_DERIVED_SOURCES_DIR}/WebKitPluginAgentUser.c
-    ${WebKitLegacy_DERIVED_SOURCES_DIR}/WebKitPluginClientServer.c
-    ${WebKitLegacy_DERIVED_SOURCES_DIR}/WebKitPluginHostUser.c
-)
-
 add_custom_command(
     OUTPUT ${WebKitLegacy_DERIVED_SOURCES_DIR}/WebViewPreferencesChangedGenerated.mm ${WebKitLegacy_DERIVED_SOURCES_DIR}/WebPreferencesInternalFeatures.mm ${WebKitLegacy_DERIVED_SOURCES_DIR}/WebPreferencesExperimentalFeatures.mm ${WebKitLegacy_DERIVED_SOURCES_DIR}/WebPreferencesDefinitions.h
     DEPENDS ${WebKit_WEB_PREFERENCES_TEMPLATES} ${WebKit_WEB_PREFERENCES} WTF_CopyPreferences
-    COMMAND ${RUBY_EXECUTABLE} ${WTF_SCRIPTS_DIR}/GeneratePreferences.rb --frontend WebKitLegacy --base ${WTF_SCRIPTS_DIR}/Preferences/WebPreferences.yaml --debug ${WTF_SCRIPTS_DIR}/Preferences/WebPreferencesDebug.yaml --experimental ${WTF_SCRIPTS_DIR}/Preferences/WebPreferencesExperimental.yaml --internal ${WTF_SCRIPTS_DIR}/Preferences/WebPreferencesInternal.yaml --outputDir "${WebKitLegacy_DERIVED_SOURCES_DIR}" --template ${WEBKITLEGACY_DIR}/mac/Scripts/PreferencesTemplates/WebViewPreferencesChangedGenerated.mm.erb --template ${WEBKITLEGACY_DIR}/mac/Scripts/PreferencesTemplates/WebPreferencesInternalFeatures.mm.erb --template ${WEBKITLEGACY_DIR}/mac/Scripts/PreferencesTemplates/WebPreferencesExperimentalFeatures.mm.erb --template ${WEBKITLEGACY_DIR}/mac/Scripts/PreferencesTemplates/WebPreferencesDefinitions.h.erb
-    VERBATIM)
+    COMMAND ${RUBY_EXECUTABLE} ${WTF_SCRIPTS_DIR}/GeneratePreferences.rb --frontend WebKitLegacy --outputDir "${WebKitLegacy_DERIVED_SOURCES_DIR}" --template "$<JOIN:${WebKit_WEB_PREFERENCES_TEMPLATES},;--template;>" ${WebKit_WEB_PREFERENCES}
+    COMMAND_EXPAND_LISTS
+    VERBATIM
+)
 
 list(APPEND WebKitLegacy_SOURCES
     ${WebKitLegacy_DERIVED_SOURCES_DIR}/WebViewPreferencesChangedGenerated.mm
     ${WebKitLegacy_DERIVED_SOURCES_DIR}/WebPreferencesInternalFeatures.mm
     ${WebKitLegacy_DERIVED_SOURCES_DIR}/WebPreferencesExperimentalFeatures.mm
-)
-
-WEBKIT_MAKE_FORWARDING_HEADERS(WebKitLegacy
-    TARGET_NAME WebKitLegacyFrameworkHeaders
-    DESTINATION ${WebKitLegacy_FRAMEWORK_HEADERS_DIR}/WebKitLegacy
-    FILES ${WebKitLegacy_FORWARDING_HEADERS_FILES}
-    FLATTENED
 )
 
 set(WebKitLegacy_OUTPUT_NAME WebKitLegacy)

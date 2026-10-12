@@ -31,9 +31,9 @@ class JSDedicatedWorkerGlobalScope : public JSWorkerGlobalScope {
 public:
     using Base = JSWorkerGlobalScope;
     using DOMWrapped = DedicatedWorkerGlobalScope;
-    static JSDedicatedWorkerGlobalScope* create(JSC::VM& vm, JSC::Structure* structure, Ref<DedicatedWorkerGlobalScope>&& impl, JSC::JSProxy* proxy)
+    static JSDedicatedWorkerGlobalScope* create(JSC::VM& vm, JSC::Structure* structure, Ref<DedicatedWorkerGlobalScope>&& impl, JSC::JSGlobalProxy* proxy)
     {
-        JSDedicatedWorkerGlobalScope* ptr = new (NotNull, JSC::allocateCell<JSDedicatedWorkerGlobalScope>(vm.heap)) JSDedicatedWorkerGlobalScope(vm, structure, WTFMove(impl));
+        JSDedicatedWorkerGlobalScope* ptr = new (NotNull, JSC::allocateCell<JSDedicatedWorkerGlobalScope>(vm)) JSDedicatedWorkerGlobalScope(vm, structure, WTFMove(impl));
         ptr->finishCreation(vm, proxy);
         return ptr;
     }
@@ -47,23 +47,28 @@ public:
     }
 
     static JSC::JSValue getConstructor(JSC::VM&, const JSC::JSGlobalObject*);
-    template<typename, JSC::SubspaceAccess mode> static JSC::IsoSubspace* subspaceFor(JSC::VM& vm)
+    template<typename, JSC::SubspaceAccess mode> static JSC::GCClient::IsoSubspace* subspaceFor(JSC::VM& vm)
     {
         if constexpr (mode == JSC::SubspaceAccess::Concurrently)
             return nullptr;
         return subspaceForImpl(vm);
     }
-    static JSC::IsoSubspace* subspaceForImpl(JSC::VM& vm);
+    static JSC::GCClient::IsoSubspace* subspaceForImpl(JSC::VM& vm);
     static void analyzeHeap(JSCell*, JSC::HeapAnalyzer&);
     DedicatedWorkerGlobalScope& wrapped() const
     {
         return static_cast<DedicatedWorkerGlobalScope&>(Base::wrapped());
     }
+
+    Ref<DedicatedWorkerGlobalScope> protectedWrapped() const;
+
 public:
     static constexpr unsigned StructureFlags = Base::StructureFlags | JSC::HasStaticPropertyTable;
 protected:
     JSDedicatedWorkerGlobalScope(JSC::VM&, JSC::Structure*, Ref<DedicatedWorkerGlobalScope>&&);
-    void finishCreation(JSC::VM&, JSC::JSProxy*);
+#if ASSERT_ENABLED
+    void finishCreation(JSC::VM&, JSC::JSGlobalProxy*);
+#endif
 };
 
 
@@ -72,17 +77,17 @@ public:
     using Base = JSC::JSNonFinalObject;
     static JSDedicatedWorkerGlobalScopePrototype* create(JSC::VM& vm, JSDOMGlobalObject* globalObject, JSC::Structure* structure)
     {
-        JSDedicatedWorkerGlobalScopePrototype* ptr = new (NotNull, JSC::allocateCell<JSDedicatedWorkerGlobalScopePrototype>(vm.heap)) JSDedicatedWorkerGlobalScopePrototype(vm, globalObject, structure);
+        JSDedicatedWorkerGlobalScopePrototype* ptr = new (NotNull, JSC::allocateCell<JSDedicatedWorkerGlobalScopePrototype>(vm)) JSDedicatedWorkerGlobalScopePrototype(vm, globalObject, structure);
         ptr->finishCreation(vm);
         return ptr;
     }
 
     DECLARE_INFO;
     template<typename CellType, JSC::SubspaceAccess>
-    static JSC::IsoSubspace* subspaceFor(JSC::VM& vm)
+    static JSC::GCClient::IsoSubspace* subspaceFor(JSC::VM& vm)
     {
         STATIC_ASSERT_ISO_SUBSPACE_SHARABLE(JSDedicatedWorkerGlobalScopePrototype, Base);
-        return &vm.plainObjectSpace;
+        return &vm.plainObjectSpace();
     }
     static JSC::Structure* createStructure(JSC::VM& vm, JSC::JSGlobalObject* globalObject, JSC::JSValue prototype)
     {
@@ -96,6 +101,8 @@ private:
     }
 
     void finishCreation(JSC::VM&);
+public:
+    static constexpr unsigned StructureFlags = Base::StructureFlags | JSC::HasStaticPropertyTable;
 };
 STATIC_ASSERT_ISO_SUBSPACE_SHARABLE(JSDedicatedWorkerGlobalScopePrototype, JSDedicatedWorkerGlobalScopePrototype::Base);
 

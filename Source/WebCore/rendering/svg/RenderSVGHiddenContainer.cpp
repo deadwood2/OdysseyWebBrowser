@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2007 Eric Seidel <eric@webkit.org>
+ * Copyright (c) 2022 Igalia S.L.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -20,40 +21,29 @@
 #include "config.h"
 #include "RenderSVGHiddenContainer.h"
 
-#include "RenderSVGPath.h"
-#include <wtf/IsoMallocInlines.h>
+#include "RenderLayer.h"
 #include <wtf/StackStats.h>
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(RenderSVGHiddenContainer);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(RenderSVGHiddenContainer);
 
-RenderSVGHiddenContainer::RenderSVGHiddenContainer(SVGElement& element, RenderStyle&& style)
-    : RenderSVGContainer(element, WTFMove(style))
+RenderSVGHiddenContainer::RenderSVGHiddenContainer(Type type, SVGElement& element, RenderStyle&& style, OptionSet<SVGModelObjectFlag> flags)
+    : RenderSVGContainer(type, element, WTFMove(style), flags | SVGModelObjectFlag::IsHiddenContainer)
 {
+    ASSERT(isRenderSVGHiddenContainer());
 }
+
+RenderSVGHiddenContainer::~RenderSVGHiddenContainer() = default;
 
 void RenderSVGHiddenContainer::layout()
 {
     StackStats::LayoutCheckPoint layoutCheckPoint;
     ASSERT(needsLayout());
-    SVGRenderSupport::layoutChildren(*this, selfNeedsLayout());
+
+    layoutChildren();
     clearNeedsLayout();    
-}
-
-void RenderSVGHiddenContainer::paint(PaintInfo&, const LayoutPoint&)
-{
-    // This subtree does not paint.
-}
-
-void RenderSVGHiddenContainer::absoluteQuads(Vector<FloatQuad>&, bool*) const
-{
-    // This subtree does not take up space or paint
-}
-
-bool RenderSVGHiddenContainer::nodeAtFloatPoint(const HitTestRequest&, HitTestResult&, const FloatPoint&, HitTestAction)
-{
-    return false;
 }
 
 }

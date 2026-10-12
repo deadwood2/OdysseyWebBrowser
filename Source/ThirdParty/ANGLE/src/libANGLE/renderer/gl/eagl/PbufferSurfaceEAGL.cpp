@@ -7,17 +7,13 @@
 // PBufferSurfaceEAGL.cpp: an implementation of egl::Surface for PBuffers for the EAGL backend,
 //                      currently implemented using renderbuffers
 
-#import "common/platform.h"
+#include "libANGLE/renderer/gl/eagl/PbufferSurfaceEAGL.h"
 
-#if defined(ANGLE_ENABLE_EAGL)
-
-#    include "libANGLE/renderer/gl/eagl/PbufferSurfaceEAGL.h"
-
-#    include "common/debug.h"
-#    include "libANGLE/renderer/gl/FramebufferGL.h"
-#    include "libANGLE/renderer/gl/FunctionsGL.h"
-#    include "libANGLE/renderer/gl/RendererGL.h"
-#    include "libANGLE/renderer/gl/StateManagerGL.h"
+#include "common/debug.h"
+#include "libANGLE/renderer/gl/FramebufferGL.h"
+#include "libANGLE/renderer/gl/FunctionsGL.h"
+#include "libANGLE/renderer/gl/RendererGL.h"
+#include "libANGLE/renderer/gl/StateManagerGL.h"
 
 namespace rx
 {
@@ -32,19 +28,25 @@ PbufferSurfaceEAGL::PbufferSurfaceEAGL(const egl::SurfaceState &state,
       mFunctions(renderer->getFunctions()),
       mStateManager(renderer->getStateManager()),
       mColorRenderbuffer(0),
-      mDSRenderbuffer(0)
+      mDSRenderbuffer(0),
+      mFramebufferID(0)
 {}
 
 PbufferSurfaceEAGL::~PbufferSurfaceEAGL()
 {
+    if (mFramebufferID != 0)
+    {
+        mStateManager->deleteFramebuffer(mFramebufferID);
+        mFramebufferID = 0;
+    }
     if (mColorRenderbuffer != 0)
     {
-        mFunctions->deleteRenderbuffers(1, &mColorRenderbuffer);
+        mStateManager->deleteRenderbuffer(mColorRenderbuffer);
         mColorRenderbuffer = 0;
     }
     if (mDSRenderbuffer != 0)
     {
-        mFunctions->deleteRenderbuffers(1, &mDSRenderbuffer);
+        mStateManager->deleteRenderbuffer(mDSRenderbuffer);
         mDSRenderbuffer = 0;
     }
 }
@@ -125,23 +127,32 @@ EGLint PbufferSurfaceEAGL::getSwapBehavior() const
     return EGL_BUFFER_PRESERVED;
 }
 
-FramebufferImpl *PbufferSurfaceEAGL::createDefaultFramebuffer(const gl::Context *context,
-                                                              const gl::FramebufferState &state)
+egl::Error PbufferSurfaceEAGL::attachToFramebuffer(const gl::Context *context,
+                                                   gl::Framebuffer *framebuffer)
 {
-    const FunctionsGL *functions = GetFunctionsGL(context);
-    StateManagerGL *stateManager = GetStateManagerGL(context);
+    FramebufferGL *framebufferGL = GetImplAs<FramebufferGL>(framebuffer);
+    ASSERT(framebufferGL->getFramebufferID() == 0);
+    if (mFramebufferID == 0)
+    {
+        GLuint framebufferID = 0;
+        mFunctions->genFramebuffers(1, &framebufferID);
+        mStateManager->bindFramebuffer(GL_FRAMEBUFFER, framebufferID);
+        mFunctions->framebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER,
+                                            mColorRenderbuffer);
+        mFunctions->framebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
+                                            GL_RENDERBUFFER, mDSRenderbuffer);
+    }
+    framebufferGL->setFramebufferID(mFramebufferID);
+    return egl::NoError();
+}
 
-    GLuint framebuffer = 0;
-    functions->genFramebuffers(1, &framebuffer);
-    stateManager->bindFramebuffer(GL_FRAMEBUFFER, framebuffer);
-    functions->framebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER,
-                                       mColorRenderbuffer);
-    functions->framebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER,
-                                       mDSRenderbuffer);
-
-    return new FramebufferGL(state, framebuffer, true, false);
+egl::Error PbufferSurfaceEAGL::detachFromFramebuffer(const gl::Context *context,
+                                                     gl::Framebuffer *framebuffer)
+{
+    FramebufferGL *framebufferGL = GetImplAs<FramebufferGL>(framebuffer);
+    ASSERT(framebufferGL->getFramebufferID() == mFramebufferID);
+    framebufferGL->setFramebufferID(0);
+    return egl::NoError();
 }
 
 }  // namespace rx
-
-#endif  // defined(ANGLE_ENABLE_EAGL)

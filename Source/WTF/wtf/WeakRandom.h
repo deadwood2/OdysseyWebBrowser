@@ -41,7 +41,7 @@ namespace WTF {
 class WeakRandom final {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    WeakRandom(unsigned seed = cryptographicallyRandomNumber())
+    WeakRandom(unsigned seed = cryptographicallyRandomNumber<unsigned>())
     {
         setSeed(seed);
     }
@@ -85,6 +85,11 @@ public:
         }
     }
 
+    uint64_t getUint64()
+    {
+        return advance();
+    }
+
     bool returnTrueWithProbability(double probability)
     {
         ASSERT(0.0 <= probability && probability <= 1.0);
@@ -98,8 +103,8 @@ public:
         return false;
     }
 
-    static unsigned lowOffset() { return OBJECT_OFFSETOF(WeakRandom, m_low); }
-    static unsigned highOffset() { return OBJECT_OFFSETOF(WeakRandom, m_high); }
+    static constexpr unsigned lowOffset() { return OBJECT_OFFSETOF(WeakRandom, m_low); }
+    static constexpr unsigned highOffset() { return OBJECT_OFFSETOF(WeakRandom, m_high); }
 
     static constexpr uint64_t nextState(uint64_t x, uint64_t y)
     {

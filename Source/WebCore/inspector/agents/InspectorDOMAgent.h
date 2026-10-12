@@ -63,17 +63,22 @@ class Element;
 class Event;
 class Exception;
 class FloatQuad;
-class Frame;
 class InspectorHistory;
 #if ENABLE(VIDEO)
 class HTMLMediaElement;
 #endif
 class HitTestResult;
+class LocalFrame;
 class Node;
 class Page;
 class PseudoElement;
+class RenderObject;
 class RevalidateStyleAttributeTask;
 class ShadowRoot;
+
+enum class PlatformEventModifier : uint8_t;
+
+struct Styleable;
 
 class InspectorDOMAgent final : public InspectorAgentBase, public Inspector::DOMBackendDispatcherHandler {
     WTF_MAKE_NONCOPYABLE(InspectorDOMAgent);
@@ -103,7 +108,7 @@ public:
     void willDestroyFrontendAndBackend(Inspector::DisconnectReason);
 
     // DOMBackendDispatcherHandler
-    Inspector::Protocol::ErrorStringOr<Inspector::Protocol::DOM::NodeId> querySelector(Inspector::Protocol::DOM::NodeId, const String& selector);
+    Inspector::Protocol::ErrorStringOr<std::optional<Inspector::Protocol::DOM::NodeId>> querySelector(Inspector::Protocol::DOM::NodeId, const String& selector);
     Inspector::Protocol::ErrorStringOr<Ref<JSON::ArrayOf<Inspector::Protocol::DOM::NodeId>>> querySelectorAll(Inspector::Protocol::DOM::NodeId, const String& selector);
     Inspector::Protocol::ErrorStringOr<Ref<Inspector::Protocol::DOM::Node>> getDocument();
     Inspector::Protocol::ErrorStringOr<void> requestChildNodes(Inspector::Protocol::DOM::NodeId, std::optional<int>&& depth);
@@ -121,7 +126,7 @@ public:
     Inspector::Protocol::ErrorStringOr<Ref<JSON::ArrayOf<Inspector::Protocol::DOM::DataBinding>>> getDataBindingsForNode(Inspector::Protocol::DOM::NodeId);
     Inspector::Protocol::ErrorStringOr<String> getAssociatedDataForNode(Inspector::Protocol::DOM::NodeId);
 #endif
-    Inspector::Protocol::ErrorStringOr<Ref<JSON::ArrayOf<Inspector::Protocol::DOM::EventListener>>> getEventListenersForNode(Inspector::Protocol::DOM::NodeId);
+    Inspector::Protocol::ErrorStringOr<Ref<JSON::ArrayOf<Inspector::Protocol::DOM::EventListener>>> getEventListenersForNode(Inspector::Protocol::DOM::NodeId, std::optional<bool>&& includeAncestors);
     Inspector::Protocol::ErrorStringOr<void> setEventListenerDisabled(Inspector::Protocol::DOM::EventListenerId, bool);
     Inspector::Protocol::ErrorStringOr<void> setBreakpointForEventListener(Inspector::Protocol::DOM::EventListenerId, RefPtr<JSON::Object>&& options);
     Inspector::Protocol::ErrorStringOr<void> removeBreakpointForEventListener(Inspector::Protocol::DOM::EventListenerId);
@@ -132,21 +137,32 @@ public:
     Inspector::Protocol::ErrorStringOr<Ref<Inspector::Protocol::Runtime::RemoteObject>> resolveNode(Inspector::Protocol::DOM::NodeId, const String& objectGroup);
     Inspector::Protocol::ErrorStringOr<Ref<JSON::ArrayOf<String>>> getAttributes(Inspector::Protocol::DOM::NodeId);
 #if PLATFORM(IOS_FAMILY)
-    Inspector::Protocol::ErrorStringOr<void> setInspectModeEnabled(bool, RefPtr<JSON::Object>&& highlightConfig);
+    Inspector::Protocol::ErrorStringOr<void> setInspectModeEnabled(bool, RefPtr<JSON::Object>&& highlightConfig, RefPtr<JSON::Object>&& gridOverlayConfig, RefPtr<JSON::Object>&& flexOverlayConfig);
 #else
-    Inspector::Protocol::ErrorStringOr<void> setInspectModeEnabled(bool, RefPtr<JSON::Object>&& highlightConfig, std::optional<bool>&& showRulers);
+    Inspector::Protocol::ErrorStringOr<void> setInspectModeEnabled(bool, RefPtr<JSON::Object>&& highlightConfig, RefPtr<JSON::Object>&& gridOverlayConfig, RefPtr<JSON::Object>&& flexOverlayConfig, std::optional<bool>&& showRulers);
 #endif
     Inspector::Protocol::ErrorStringOr<Inspector::Protocol::DOM::NodeId> requestNode(const Inspector::Protocol::Runtime::RemoteObjectId&);
     Inspector::Protocol::ErrorStringOr<Inspector::Protocol::DOM::NodeId> pushNodeByPathToFrontend(const String& path);
     Inspector::Protocol::ErrorStringOr<void> hideHighlight();
     Inspector::Protocol::ErrorStringOr<void> highlightRect(int x, int y, int width, int height, RefPtr<JSON::Object>&& color, RefPtr<JSON::Object>&& outlineColor, std::optional<bool>&& usePageCoordinates);
     Inspector::Protocol::ErrorStringOr<void> highlightQuad(Ref<JSON::Array>&& quad, RefPtr<JSON::Object>&& color, RefPtr<JSON::Object>&& outlineColor, std::optional<bool>&& usePageCoordinates);
-    Inspector::Protocol::ErrorStringOr<void> highlightSelector(Ref<JSON::Object>&& highlightConfig, const String& selectorString, const Inspector::Protocol::Network::FrameId&);
-    Inspector::Protocol::ErrorStringOr<void> highlightNode(Ref<JSON::Object>&& highlightConfig, std::optional<Inspector::Protocol::DOM::NodeId>&&, const Inspector::Protocol::Runtime::RemoteObjectId&);
-    Inspector::Protocol::ErrorStringOr<void> highlightNodeList(Ref<JSON::Array>&& nodeIds, Ref<JSON::Object>&& highlightConfig);
+#if PLATFORM(IOS_FAMILY)
+    Inspector::Protocol::ErrorStringOr<void> highlightSelector(const String& selectorString, const Inspector::Protocol::Network::FrameId&, Ref<JSON::Object>&& highlightConfig, RefPtr<JSON::Object>&& gridOverlayConfig, RefPtr<JSON::Object>&& flexOverlayConfig);
+#endif
+    Inspector::Protocol::ErrorStringOr<void> highlightSelector(const String& selectorString, const Inspector::Protocol::Network::FrameId&, Ref<JSON::Object>&& highlightConfig, RefPtr<JSON::Object>&& gridOverlayConfig, RefPtr<JSON::Object>&& flexOverlayConfig, std::optional<bool>&& showRulers);
+#if PLATFORM(IOS_FAMILY)
+    Inspector::Protocol::ErrorStringOr<void> highlightNode(std::optional<Inspector::Protocol::DOM::NodeId>&&, const Inspector::Protocol::Runtime::RemoteObjectId&, Ref<JSON::Object>&& highlightConfig, RefPtr<JSON::Object>&& gridOverlayConfig, RefPtr<JSON::Object>&& flexOverlayConfig);
+#endif
+    Inspector::Protocol::ErrorStringOr<void> highlightNode(std::optional<Inspector::Protocol::DOM::NodeId>&&, const Inspector::Protocol::Runtime::RemoteObjectId&, Ref<JSON::Object>&& highlightConfig, RefPtr<JSON::Object>&& gridOverlayConfig, RefPtr<JSON::Object>&& flexOverlayConfig, std::optional<bool>&& showRulers);
+#if PLATFORM(IOS_FAMILY)
+    Inspector::Protocol::ErrorStringOr<void> highlightNodeList(Ref<JSON::Array>&& nodeIds, Ref<JSON::Object>&& highlightConfig, RefPtr<JSON::Object>&& gridOverlayConfig, RefPtr<JSON::Object>&& flexOverlayConfig);
+#endif
+    Inspector::Protocol::ErrorStringOr<void> highlightNodeList(Ref<JSON::Array>&& nodeIds, Ref<JSON::Object>&& highlightConfig, RefPtr<JSON::Object>&& gridOverlayConfig, RefPtr<JSON::Object>&& flexOverlayConfig, std::optional<bool>&& showRulers);
     Inspector::Protocol::ErrorStringOr<void> highlightFrame(const Inspector::Protocol::Network::FrameId&, RefPtr<JSON::Object>&& color, RefPtr<JSON::Object>&& outlineColor);
-    Inspector::Protocol::ErrorStringOr<void> showGridOverlay(Inspector::Protocol::DOM::NodeId, Ref<JSON::Object>&& gridColor, std::optional<bool>&& showLineNames, std::optional<bool>&& showLineNumbers, std::optional<bool>&& showExtendedGridLines, std::optional<bool>&& showTrackSizes, std::optional<bool>&& showAreaNames);
+    Inspector::Protocol::ErrorStringOr<void> showGridOverlay(Inspector::Protocol::DOM::NodeId, Ref<JSON::Object>&& gridOverlayConfig);
     Inspector::Protocol::ErrorStringOr<void> hideGridOverlay(std::optional<Inspector::Protocol::DOM::NodeId>&&);
+    Inspector::Protocol::ErrorStringOr<void> showFlexOverlay(Inspector::Protocol::DOM::NodeId, Ref<JSON::Object>&& flexOverlayConfig);
+    Inspector::Protocol::ErrorStringOr<void> hideFlexOverlay(std::optional<Inspector::Protocol::DOM::NodeId>&&);
     Inspector::Protocol::ErrorStringOr<Inspector::Protocol::DOM::NodeId> moveTo(Inspector::Protocol::DOM::NodeId nodeId, Inspector::Protocol::DOM::NodeId targetNodeId, std::optional<Inspector::Protocol::DOM::NodeId>&& insertBeforeNodeId);
     Inspector::Protocol::ErrorStringOr<void> undo();
     Inspector::Protocol::ErrorStringOr<void> redo();
@@ -154,6 +170,7 @@ public:
     Inspector::Protocol::ErrorStringOr<void> focus(Inspector::Protocol::DOM::NodeId);
     Inspector::Protocol::ErrorStringOr<void> setInspectedNode(Inspector::Protocol::DOM::NodeId);
     Inspector::Protocol::ErrorStringOr<void> setAllowEditingUserAgentShadowTrees(bool);
+    Inspector::Protocol::ErrorStringOr<Ref<Inspector::Protocol::DOM::MediaStats>> getMediaStats(Inspector::Protocol::DOM::NodeId);
 
     // InspectorInstrumentation
     Inspector::Protocol::DOM::NodeId identifierForNode(Node&);
@@ -171,19 +188,23 @@ public:
     void didChangeCustomElementState(Element&);
     bool handleTouchEvent(Node&);
     void didCommitLoad(Document*);
-    void frameDocumentUpdated(Frame&);
+    void frameDocumentUpdated(LocalFrame&);
     void pseudoElementCreated(PseudoElement&);
     void pseudoElementDestroyed(PseudoElement&);
     void didAddEventListener(EventTarget&);
     void willRemoveEventListener(EventTarget&, const AtomString& eventType, EventListener&, bool capture);
     bool isEventListenerDisabled(EventTarget&, const AtomString& eventType, EventListener&, bool capture);
     void eventDidResetAfterDispatch(const Event&);
+    void flexibleBoxRendererBeganLayout(const RenderObject&);
+    void flexibleBoxRendererWrappedToNextLine(const RenderObject&, size_t lineStartItemIndex);
 
     // Callbacks that don't directly correspond to an instrumentation entry point.
     void setDocument(Document*);
 
     void styleAttributeInvalidated(const Vector<Element*>& elements);
 
+    Inspector::Protocol::DOM::NodeId pushStyleableElementToFrontend(const Styleable&);
+    Ref<Inspector::Protocol::DOM::Styleable> pushStyleablePathToFrontend(Inspector::Protocol::ErrorString, const Styleable&);
     Inspector::Protocol::DOM::NodeId pushNodeToFrontend(Node*);
     Inspector::Protocol::DOM::NodeId pushNodeToFrontend(Inspector::Protocol::ErrorString&, Inspector::Protocol::DOM::NodeId documentNodeId, Node*);
     Inspector::Protocol::DOM::NodeId pushNodePathToFrontend(Node*);
@@ -193,12 +214,13 @@ public:
 
     RefPtr<Inspector::Protocol::Runtime::RemoteObject> resolveNode(Node*, const String& objectGroup);
     bool handleMousePress();
-    void mouseDidMoveOverElement(const HitTestResult&, unsigned modifierFlags);
+    void mouseDidMoveOverElement(const HitTestResult&, OptionSet<PlatformEventModifier>);
     void inspect(Node*);
     void focusNode();
 
     InspectorHistory* history() { return m_history.get(); }
     Vector<Document*> documents();
+    Vector<size_t> flexibleBoxRendererCachedItemsAtStartOfLine(const RenderObject&);
     void reset();
 
     Node* assertNode(Inspector::Protocol::ErrorString&, Inspector::Protocol::DOM::NodeId);
@@ -214,9 +236,10 @@ private:
 #endif
 
     void highlightMousedOverNode();
-    void setSearchingForNode(Inspector::Protocol::ErrorString&, bool enabled, RefPtr<JSON::Object>&& highlightConfig, bool showRulers);
+    void setSearchingForNode(Inspector::Protocol::ErrorString&, bool enabled, RefPtr<JSON::Object>&& highlightConfig, RefPtr<JSON::Object>&& gridOverlayConfig, RefPtr<JSON::Object>&& flexOverlayConfig, bool showRulers);
     std::unique_ptr<InspectorOverlay::Highlight::Config> highlightConfigFromInspectorObject(Inspector::Protocol::ErrorString&, RefPtr<JSON::Object>&& highlightInspectorObject);
-    std::unique_ptr<InspectorOverlay::Grid::Config> gridOverlayConfigFromInspectorObject(Inspector::Protocol::ErrorString&, RefPtr<JSON::Object>&& gridOverlayInspectorObject);
+    std::optional<InspectorOverlay::Grid::Config> gridOverlayConfigFromInspectorObject(Inspector::Protocol::ErrorString&, RefPtr<JSON::Object>&& gridOverlayInspectorObject);
+    std::optional<InspectorOverlay::Flex::Config> flexOverlayConfigFromInspectorObject(Inspector::Protocol::ErrorString&, RefPtr<JSON::Object>&& flexOverlayInspectorObject);
 
     // Node-related methods.
     Inspector::Protocol::DOM::NodeId bind(Node&);
@@ -244,13 +267,15 @@ private:
 
     void destroyedNodesTimerFired();
 
+    void relayoutDocument();
+
     Inspector::InjectedScriptManager& m_injectedScriptManager;
     std::unique_ptr<Inspector::DOMFrontendDispatcher> m_frontendDispatcher;
     RefPtr<Inspector::DOMBackendDispatcher> m_backendDispatcher;
     Page& m_inspectedPage;
     InspectorOverlay* m_overlay { nullptr };
-    WeakHashMap<Node, Inspector::Protocol::DOM::NodeId> m_nodeToId;
-    HashMap<Inspector::Protocol::DOM::NodeId, WeakPtr<Node>> m_idToNode;
+    WeakHashMap<Node, Inspector::Protocol::DOM::NodeId, WeakPtrImplWithEventTargetData> m_nodeToId;
+    HashMap<Inspector::Protocol::DOM::NodeId, WeakPtr<Node, WeakPtrImplWithEventTargetData>> m_idToNode;
     HashSet<Inspector::Protocol::DOM::NodeId> m_childrenRequested;
     Inspector::Protocol::DOM::NodeId m_lastNodeId { 1 };
     RefPtr<Document> m_document;
@@ -261,8 +286,11 @@ private:
     RefPtr<Node> m_mousedOverNode;
     RefPtr<Node> m_inspectedNode;
     std::unique_ptr<InspectorOverlay::Highlight::Config> m_inspectModeHighlightConfig;
+    std::optional<InspectorOverlay::Grid::Config> m_inspectModeGridOverlayConfig;
+    std::optional<InspectorOverlay::Flex::Config> m_inspectModeFlexOverlayConfig;
     std::unique_ptr<InspectorHistory> m_history;
     std::unique_ptr<DOMEditor> m_domEditor;
+    SingleThreadWeakHashMap<RenderObject, Vector<size_t>> m_flexibleBoxRendererCachedItemsAtStartOfLine;
 
     Vector<Inspector::Protocol::DOM::NodeId> m_destroyedDetachedNodeIdentifiers;
     Vector<std::pair<Inspector::Protocol::DOM::NodeId, Inspector::Protocol::DOM::NodeId>> m_destroyedAttachedNodeIdentifiers;
@@ -327,6 +355,7 @@ private:
     Inspector::Protocol::DOM::EventListenerId m_lastEventListenerId { 1 };
 
     bool m_searchingForNode { false };
+    bool m_inspectModeShowRulers { false };
     bool m_suppressAttributeModifiedEvent { false };
     bool m_suppressEventListenerChangedEvent { false };
     bool m_documentRequested { false };

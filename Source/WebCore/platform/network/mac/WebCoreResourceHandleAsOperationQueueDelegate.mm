@@ -30,6 +30,7 @@
 #import "AuthenticationMac.h"
 #import "Logging.h"
 #import "NetworkingContext.h"
+#import "OriginAccessPatterns.h"
 #import "ResourceHandle.h"
 #import "ResourceHandleClient.h"
 #import "ResourceRequest.h"
@@ -143,7 +144,7 @@ static bool scheduledWithCustomRunLoopMode(const std::optional<SchedulePairHashS
 
         ResourceResponse response(redirectResponse.get());
         ResourceRequest redirectRequest = newRequest.get();
-        if ([newRequest.get() HTTPBodyStream]) {
+        if ([newRequest HTTPBodyStream]) {
             ASSERT(m_handle->firstRequest().httpBody());
             redirectRequest.setHTTPBody(m_handle->firstRequest().httpBody());
         }
@@ -151,7 +152,7 @@ static bool scheduledWithCustomRunLoopMode(const std::optional<SchedulePairHashS
             redirectRequest.clearHTTPContentType();
 
         // Check if the redirected url is allowed to access the redirecting url's timing information.
-        if (!m_handle->hasCrossOriginRedirect() && !WebCore::SecurityOrigin::create(redirectRequest.url())->canRequest(redirectResponse.get().URL))
+        if (!m_handle->hasCrossOriginRedirect() && !WebCore::SecurityOrigin::create(redirectRequest.url())->canRequest(redirectResponse.get().URL, OriginAccessPatternsForWebProcess::singleton()))
             m_handle->markAsHavingCrossOriginRedirect();
         m_handle->checkTAO(response);
 
@@ -254,8 +255,8 @@ ALLOW_DEPRECATED_IMPLEMENTATIONS_END
         // Avoid MIME type sniffing if the response comes back as 304 Not Modified.
         int statusCode = [r respondsToSelector:@selector(statusCode)] ? [(id)r statusCode] : 0;
         if (statusCode != 304) {
-            bool isMainResourceLoad = m_handle->firstRequest().requester() == ResourceRequest::Requester::Main;
-            adjustMIMETypeIfNecessary([r _CFURLResponse], isMainResourceLoad);
+            bool isMainResourceLoad = m_handle->firstRequest().requester() == ResourceRequestRequester::Main;
+            adjustMIMETypeIfNecessary([r _CFURLResponse], isMainResourceLoad ? IsMainResourceLoad::Yes : IsMainResourceLoad::No, IsNoSniffSet::No);
         }
 
         if ([m_handle->firstRequest().nsURLRequest(HTTPBodyUpdatePolicy::DoNotUpdateHTTPBody) _propertyForKey:@"ForceHTMLMIMEType"])
@@ -300,7 +301,7 @@ ALLOW_DEPRECATED_IMPLEMENTATIONS_END
         // FIXME: https://bugs.webkit.org/show_bug.cgi?id=19793
         // -1 means we do not provide any data about transfer size to inspector so it would use
         // Content-Length headers or content size to show transfer size.
-        m_handle->client()->didReceiveBuffer(m_handle, SharedBuffer::create(data.get()), -1);
+        m_handle->client()->didReceiveData(m_handle, SharedBuffer::create(data.get()), -1);
     };
 
     [self callFunctionOnMainThread:WTFMove(work)];

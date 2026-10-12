@@ -31,11 +31,13 @@ namespace WebCore {
 class DOMTokenList;
 
 class SVGAElement final : public SVGGraphicsElement, public SVGURIReference {
-    WTF_MAKE_ISO_ALLOCATED(SVGAElement);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(SVGAElement);
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(SVGAElement);
 public:
     static Ref<SVGAElement> create(const QualifiedName&, Document&);
+    ~SVGAElement();
 
-    String target() const final { return m_target->currentValue(); }
+    AtomString target() const final { return AtomString { m_target->currentValue() }; }
     Ref<SVGAnimatedString>& targetAnimated() { return m_target; }
 
     SharedStringHash visitedLinkHash() const;
@@ -46,9 +48,8 @@ private:
     SVGAElement(const QualifiedName&, Document&);
 
     using PropertyRegistry = SVGPropertyOwnerRegistry<SVGAElement, SVGGraphicsElement, SVGURIReference>;
-    const SVGPropertyRegistry& propertyRegistry() const final { return m_propertyRegistry; }
 
-    void parseAttribute(const QualifiedName&, const AtomString&) final;
+    void attributeChanged(const QualifiedName&, const AtomString& oldValue, const AtomString& newValue, AttributeModificationReason) final;
     void svgAttributeChanged(const QualifiedName&) final;
 
     RenderPtr<RenderElement> createElementRenderer(RenderStyle&&, const RenderTreePosition&) final;
@@ -65,9 +66,8 @@ private:
     bool canStartSelection() const final;
     int defaultTabIndex() const final;
 
-    bool willRespondToMouseClickEvents() final;
+    bool willRespondToMouseClickEventsWithEditability(Editability) const final;
 
-    PropertyRegistry m_propertyRegistry { *this };
     Ref<SVGAnimatedString> m_target { SVGAnimatedString::create(this) };
 
     // This is computed only once and must not be affected by subsequent URL changes.

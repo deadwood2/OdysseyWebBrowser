@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,12 +28,15 @@
 
 #if ENABLE(SERVICE_CONTROLS)
 
-#import "DataReference.h"
+#import "APIAttachment.h"
+#import "WKObject.h"
 #import "WebContextMenuProxyMac.h"
 #import "WebPageProxy.h"
+#import "_WKAttachmentInternal.h"
 #import <WebCore/LegacyNSPasteboardTypes.h>
 #import <pal/spi/mac/NSSharingServicePickerSPI.h>
 #import <pal/spi/mac/NSSharingServiceSPI.h>
+#import <wtf/cocoa/SpanCocoa.h>
 #import <wtf/text/WTFString.h>
 
 // FIXME: We probably need to hang on the picker itself until the context menu operation is done, and this object will probably do that.
@@ -70,6 +73,16 @@
     _handleEditingReplacement = handlesEditingReplacement;
 }
 
+- (void)setSourceFrame:(NSRect)sourceFrame
+{
+    _sourceFrame = sourceFrame;
+}
+
+- (void)setAttachmentID:(String)attachmentID
+{
+    _attachmentID = attachmentID;
+}
+
 - (NSArray *)sharingServicePicker:(NSSharingServicePicker *)sharingServicePicker sharingServicesForItems:(NSArray *)items mask:(NSSharingServiceMask)mask proposedSharingServices:(NSArray *)proposedServices
 {
     if (!_filterEditingServices)
@@ -90,6 +103,11 @@
     return self;
 }
 
+- (NSRect)sharingService:(NSSharingService *)sharingService sourceFrameOnScreenForShareItem:(id <NSPasteboardWriting>)item
+{
+    return _sourceFrame;
+}
+
 - (void)sharingService:(NSSharingService *)sharingService willShareItems:(NSArray *)items
 {
     _menuProxy->clearServicesMenu();
@@ -98,7 +116,7 @@
 - (void)sharingService:(NSSharingService *)sharingService didShareItems:(NSArray *)items
 {
     // We only care about what item was shared if we were interested in editor services
-    // (i.e., if we plan on replacing the selection with the returned item)
+    // (i.e., if we plan on replacing the selection or controlled image with the returned item)
     if (!_handleEditingReplacement)
         return;
 
@@ -106,13 +124,13 @@
         return;
 
     Vector<String> types;
-    IPC::DataReference dataReference;
+    std::span<const uint8_t> dataReference;
 
     id item = [items objectAtIndex:0];
 
     if ([item isKindOfClass:[NSAttributedString class]]) {
         NSData *data = [item RTFDFromRange:NSMakeRange(0, [item length]) documentAttributes:@{ }];
-        dataReference = IPC::DataReference(static_cast<const uint8_t*>([data bytes]), [data length]);
+        dataReference = span(data);
 
         types.append(NSPasteboardTypeRTFD);
         types.append(WebCore::legacyRTFDPasteboardType());
@@ -124,8 +142,33 @@
         if (!image)
             return;
 
-        dataReference = IPC::DataReference(static_cast<const uint8_t*>([data bytes]), [data length]);
+        dataReference = span(data);
         types.append(NSPasteboardTypeTIFF);
+    } else if ([item isKindOfClass:[NSItemProvider class]]) {
+        NSItemProvider *itemProvider = (NSItemProvider *)item;
+        
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+        WeakPtr weakPage = _menuProxy->page();
+        NSString *itemUTI = itemProvider.registeredTypeIdentifiers.firstObject;
+        [itemProvider loadDataRepresentationForTypeIdentifier:itemUTI completionHandler:[weakPage, attachmentID = _attachmentID, itemUTI](NSData *data, NSError *error) {
+            RefPtr webPage = weakPage.get();
+            
+            if (!webPage)
+                return;
+            
+            if (error)
+                return;
+            
+            auto apiAttachment = webPage->attachmentForIdentifier(attachmentID);
+            if (!apiAttachment)
+                return;
+            
+            auto attachment = wrapper(apiAttachment);
+            [attachment setData:data newContentType:itemUTI];
+            webPage->didInvalidateDataForAttachment(*apiAttachment.get());
+        }];
+ALLOW_DEPRECATED_DECLARATIONS_END
+        return;
     } else {
         LOG_ERROR("sharingService:didShareItems: - Unknown item type returned\n");
         return;
@@ -138,6 +181,11 @@
 - (NSWindow *)sharingService:(NSSharingService *)sharingService sourceWindowForShareItems:(NSArray *)items sharingContentScope:(NSSharingContentScope *)sharingContentScope
 {
     return _menuProxy->window();
+}
+
+- (void)removeBackground
+{
+    _menuProxy->removeBackgroundFromControlledImage();
 }
 
 @end

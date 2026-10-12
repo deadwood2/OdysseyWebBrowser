@@ -44,6 +44,8 @@ AudioDSPKernelProcessor::AudioDSPKernelProcessor(float sampleRate, unsigned numb
 {
 }
 
+AudioDSPKernelProcessor::~AudioDSPKernelProcessor() = default;
+
 void AudioDSPKernelProcessor::initialize()
 {
     if (isInitialized())
@@ -56,8 +58,9 @@ void AudioDSPKernelProcessor::initialize()
         DisableMallocRestrictionsForCurrentThreadScope disableMallocRestrictions;
 
         // Create processing kernels, one per channel.
-        for (unsigned i = 0; i < numberOfChannels(); ++i)
-            m_kernels.append(createKernel());
+        m_kernels = Vector<std::unique_ptr<AudioDSPKernel>>(numberOfChannels(), [this](size_t) {
+            return createKernel();
+        });
     }
     m_initialized = true;
     m_hasJustReset = true;

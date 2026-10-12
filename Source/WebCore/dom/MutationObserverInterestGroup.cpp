@@ -44,9 +44,9 @@ inline MutationObserverInterestGroup::MutationObserverInterestGroup(HashMap<Ref<
     ASSERT(!m_observers.isEmpty());
 }
 
-std::unique_ptr<MutationObserverInterestGroup> MutationObserverInterestGroup::createIfNeeded(Node& target, MutationObserver::MutationType type, MutationRecordDeliveryOptions oldValueFlag, const QualifiedName* attributeName)
+std::unique_ptr<MutationObserverInterestGroup> MutationObserverInterestGroup::createIfNeeded(Node& target, MutationObserverOptionType type, MutationRecordDeliveryOptions oldValueFlag, const QualifiedName* attributeName)
 {
-    ASSERT((type == MutationObserver::Attributes && attributeName) || !attributeName);
+    ASSERT((type == MutationObserverOptionType::Attributes && attributeName) || !attributeName);
     auto observers = target.registeredMutationObservers(type, attributeName);
     if (observers.isEmpty())
         return nullptr;
@@ -67,9 +67,9 @@ void MutationObserverInterestGroup::enqueueMutationRecord(Ref<MutationRecord>&& 
 {
     RefPtr<MutationRecord> mutationWithNullOldValue;
     for (auto& observerOptionsPair : m_observers) {
-        auto& observer = observerOptionsPair.key.get();
+        Ref observer = observerOptionsPair.key.get();
         if (hasOldValue(observerOptionsPair.value)) {
-            observer.enqueueMutationRecord(mutation.copyRef());
+            observer->enqueueMutationRecord(mutation.copyRef());
             continue;
         }
         if (!mutationWithNullOldValue) {
@@ -78,7 +78,7 @@ void MutationObserverInterestGroup::enqueueMutationRecord(Ref<MutationRecord>&& 
             else
                 mutationWithNullOldValue = MutationRecord::createWithNullOldValue(mutation).ptr();
         }
-        observer.enqueueMutationRecord(*mutationWithNullOldValue);
+        observer->enqueueMutationRecord(*mutationWithNullOldValue);
     }
 }
 

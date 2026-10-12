@@ -23,8 +23,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <wtf/FastMalloc.h>
 #include "StorageAreaSync.h"
+#include <wtf/FastMalloc.h>
 
 #include "StorageAreaImpl.h"
 #include "StorageSyncManager.h"
@@ -275,7 +275,7 @@ void StorageAreaSync::openDatabase(OpenDatabaseParamType openingStrategy)
 
 void StorageAreaSync::migrateItemTableIfNeeded()
 {
-    if (!m_database.tableExists("ItemTable"))
+    if (!m_database.tableExists("ItemTable"_s))
         return;
 
     {
@@ -292,7 +292,7 @@ void StorageAreaSync::migrateItemTableIfNeeded()
         "INSERT INTO ItemTable2 SELECT * from ItemTable"_s,
         "DROP TABLE ItemTable"_s,
         "ALTER TABLE ItemTable2 RENAME TO ItemTable"_s,
-        ASCIILiteral::null(),
+        { },
     };
 
     SQLiteTransaction transaction(m_database, false);

@@ -9,6 +9,9 @@
         "Note that all entry points have their suffixes stripped in this file.",
         "See gen_packed_gl_enums.py for the generator that uses this data."
     ],
+    "glAcquireTextures": {
+        "textures": "const TextureID *"
+    },
     "glActiveShaderProgram": {
         "pipeline": "ProgramPipelineID",
         "program": "ShaderProgramID"
@@ -144,6 +147,13 @@
     },
     "glClearTexSubImage": {
         "texture": "TextureID"
+    },
+    "glClientWaitSync": {
+        "sync": "SyncID"
+    },
+    "glClipControl": {
+        "origin": "ClipOrigin",
+        "depth": "ClipDepthMode"
     },
     "glColorPointer": {
         "type": "VertexAttribType"
@@ -305,6 +315,9 @@
     "glDeleteShader": {
         "shader": "ShaderProgramID"
     },
+    "glDeleteSync": {
+        "sync": "SyncID"
+    },
     "glDeleteTextures": {
         "textures": "const TextureID *"
     },
@@ -356,6 +369,10 @@
         "mode": "PrimitiveMode",
         "type": "DrawElementsType"
     },
+    "glDrawElementsInstancedBaseInstance": {
+        "mode": "PrimitiveMode",
+        "type": "DrawElementsType"
+    },
     "glDrawElementsInstancedBaseVertexBaseInstance": {
         "mode": "PrimitiveMode",
         "type": "DrawElementsType"
@@ -380,8 +397,18 @@
     "glDrawTransformFeedbackStreamInstanced": {
         "id": "TransformFeedbackID"
     },
+    "glEGLImageTargetRenderbufferStorage": {
+        "image": "egl::ImageID"
+    },
     "glEGLImageTargetTexture2D": {
-        "target": "TextureType"
+        "target": "TextureType",
+        "image": "egl::ImageID"
+    },
+    "glEGLImageTargetTexStorage": {
+        "image": "egl::ImageID"
+    },
+    "glEGLImageTargetTextureStorage": {
+        "image": "egl::ImageID"
     },
     "glEnableClientState": {
         "array": "ClientVertexArrayType"
@@ -406,6 +433,15 @@
     },
     "glFlushMappedNamedBufferRange": {
         "buffer": "BufferID"
+    },
+    "glFramebufferFoveationConfig": {
+        "framebuffer": "FramebufferID"
+    },
+    "glFramebufferFoveationParameters": {
+        "framebuffer": "FramebufferID"
+    },
+    "glFramebufferResolveRenderbufferWEBKIT": {
+        "renderbuffer": "RenderbufferID"
     },
     "glFramebufferRenderbuffer": {
         "renderbuffer": "RenderbufferID"
@@ -435,6 +471,9 @@
     },
     "glFramebufferTextureMultiview": {
         "texture": "TextureID"
+    },
+    "glFramebufferTexturePixelLocalStorage": {
+        "backingtexture": "TextureID"
     },
     "glGenBuffers": {
         "buffers": "BufferID *"
@@ -494,13 +533,16 @@
         "program": "ShaderProgramID"
     },
     "glGetActiveUniformBlockiv": {
-        "program": "ShaderProgramID"
+        "program": "ShaderProgramID",
+        "uniformBlockIndex": "UniformBlockIndex"
     },
     "glGetActiveUniformBlockivRobust": {
-        "program": "ShaderProgramID"
+        "program": "ShaderProgramID",
+        "uniformBlockIndex": "UniformBlockIndex"
     },
     "glGetActiveUniformBlockName": {
-        "program": "ShaderProgramID"
+        "program": "ShaderProgramID",
+        "uniformBlockIndex": "UniformBlockIndex"
     },
     "glGetActiveUniformName": {
         "program": "ShaderProgramID"
@@ -530,8 +572,11 @@
     "glGetBufferPointerv": {
         "target": "BufferBinding"
     },
-    "glGetBufferPointervRobust": {
-        "target": "BufferBinding"
+     "glGetBufferPointervRobust": {
+       "target": "BufferBinding"
+    },
+     "glGetCompressedTexImage": {
+       "target": "TextureTarget"
     },
     "glGetCompressedTextureImage": {
         "texture": "TextureID"
@@ -769,6 +814,9 @@
     "glGetSubroutineUniformLocation": {
         "program": "ShaderProgramID"
     },
+    "glGetSynciv": {
+        "sync": "SyncID"
+    },
     "glGetTexEnvfv": {
         "pname": "TextureEnvParameter",
         "target": "TextureEnvTarget"
@@ -967,6 +1015,9 @@
     "glIsProgramPipeline": {
         "pipeline": "ProgramPipelineID"
     },
+    "glIsSync": {
+        "sync": "SyncID"
+    },
     "glIsQuery": {
         "id": "QueryID"
     },
@@ -1009,6 +1060,9 @@
     "glLogicOp": {
         "opcode": "LogicalOperation"
     },
+    "glLogicOpANGLE": {
+        "opcode": "LogicalOperation"
+    },
     "glLoseContext": {
         "current": "GraphicsResetStatus",
         "other": "GraphicsResetStatus"
@@ -1046,6 +1100,9 @@
     "glMultiDrawArrays": {
         "mode": "PrimitiveMode"
     },
+    "glMultiDrawArraysIndirect": {
+        "mode": "PrimitiveMode"
+    },
     "glMultiDrawArraysInstanced": {
         "mode": "PrimitiveMode"
     },
@@ -1057,6 +1114,10 @@
         "type": "DrawElementsType"
     },
     "glMultiDrawElementsBaseVertex": {
+        "mode": "PrimitiveMode",
+        "type": "DrawElementsType"
+    },
+    "glMultiDrawElementsIndirect": {
         "mode": "PrimitiveMode",
         "type": "DrawElementsType"
     },
@@ -1173,6 +1234,12 @@
     },
     "glPointSizePointer": {
         "type": "VertexAttribType"
+    },
+    "glPolygonMode": {
+        "mode": "PolygonMode"
+    },
+    "glPolygonModeNV": {
+        "mode": "PolygonMode"
     },
     "glProgramBinary": {
         "program": "ShaderProgramID"
@@ -1384,11 +1451,15 @@
         "location": "UniformLocation"
     },
     "glProvokingVertex": {
+        "provokeMode": "ProvokingVertexConvention",
         "mode": "ProvokingVertexConvention"
     },
     "glQueryCounter": {
         "id": "QueryID",
         "target": "QueryType"
+    },
+    "glReleaseTextures": {
+        "textures": "const TextureID *"
     },
     "glSamplerParameterf": {
         "sampler": "SamplerID"
@@ -1620,6 +1691,9 @@
         "buffer": "BufferID",
         "texture": "TextureID"
     },
+    "glTextureFoveationParameters": {
+        "texture": "TextureID"
+    },
     "glTextureParameterf": {
         "texture": "TextureID"
     },
@@ -1825,7 +1899,8 @@
         "location": "UniformLocation"
     },
     "glUniformBlockBinding": {
-        "program": "ShaderProgramID"
+        "program": "ShaderProgramID",
+        "uniformBlockIndex": "UniformBlockIndex"
     },
     "glUnmapBuffer": {
         "target": "BufferBinding"
@@ -1892,5 +1967,8 @@
         "buffers": "const BufferID *",
         "semaphore": "SemaphoreID",
         "textures": "const TextureID *"
+    },
+    "glWaitSync": {
+        "sync": "SyncID"
     }
 }

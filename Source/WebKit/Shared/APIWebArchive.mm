@@ -33,6 +33,7 @@
 #import "APIWebArchiveResource.h"
 #import <WebCore/LegacyWebArchive.h>
 #import <wtf/RetainPtr.h>
+#import <wtf/cf/VectorCF.h>
 
 namespace API {
 using namespace WebCore;
@@ -64,30 +65,26 @@ WebArchive::WebArchive(WebArchiveResource* mainResource, RefPtr<API::Array>&& su
 {
     auto coreMainResource = m_cachedMainResource->coreArchiveResource();
 
-    Vector<Ref<ArchiveResource>> coreArchiveResources;
-    coreArchiveResources.reserveInitialCapacity(m_cachedSubresources->size());
-    for (size_t i = 0; i < m_cachedSubresources->size(); ++i) {
-        auto resource = m_cachedSubresources->at<WebArchiveResource>(i);
+    Vector<Ref<ArchiveResource>> coreArchiveResources(m_cachedSubresources->size(), [&](size_t i) {
+        RefPtr resource = m_cachedSubresources->at<WebArchiveResource>(i);
         ASSERT(resource);
         ASSERT(resource->coreArchiveResource());
-        coreArchiveResources.uncheckedAppend(*resource->coreArchiveResource());
-    }
+        return Ref<ArchiveResource> { *resource->coreArchiveResource() };
+    });
 
-    Vector<Ref<LegacyWebArchive>> coreSubframeLegacyWebArchives;
-    coreSubframeLegacyWebArchives.reserveInitialCapacity(m_cachedSubframeArchives->size());
-    for (size_t i = 0; i < m_cachedSubframeArchives->size(); ++i) {
-        auto subframeWebArchive = m_cachedSubframeArchives->at<WebArchive>(i);
+    Vector<Ref<LegacyWebArchive>> coreSubframeLegacyWebArchives(m_cachedSubframeArchives->size(), [&](size_t i) {
+        RefPtr subframeWebArchive = m_cachedSubframeArchives->at<WebArchive>(i);
         ASSERT(subframeWebArchive);
         ASSERT(subframeWebArchive->coreLegacyWebArchive());
-        coreSubframeLegacyWebArchives.uncheckedAppend(*subframeWebArchive->coreLegacyWebArchive());
-    }
+        return Ref<LegacyWebArchive> { *subframeWebArchive->coreLegacyWebArchive() };
+    });
 
     m_legacyWebArchive = LegacyWebArchive::create(*coreMainResource, WTFMove(coreArchiveResources), WTFMove(coreSubframeLegacyWebArchives));
 }
 
 WebArchive::WebArchive(API::Data* data)
 {
-    m_legacyWebArchive = LegacyWebArchive::create(SharedBuffer::create(data->bytes(), data->size()).get());
+    m_legacyWebArchive = LegacyWebArchive::create(SharedBuffer::create(data->span()).get());
 }
 
 WebArchive::WebArchive(RefPtr<LegacyWebArchive>&& legacyWebArchive)
@@ -109,10 +106,9 @@ WebArchiveResource* WebArchive::mainResource()
 API::Array* WebArchive::subresources()
 {
     if (!m_cachedSubresources) {
-        Vector<RefPtr<API::Object>> subresources;
-        subresources.reserveInitialCapacity(m_legacyWebArchive->subresources().size());
-        for (auto& subresource : m_legacyWebArchive->subresources())
-            subresources.uncheckedAppend(WebArchiveResource::create(subresource.ptr()));
+        auto subresources = WTF::map(m_legacyWebArchive->subresources(), [](auto& subresource) -> RefPtr<API::Object> {
+            return WebArchiveResource::create(subresource.ptr());
+        });
         m_cachedSubresources = API::Array::create(WTFMove(subresources));
     }
 
@@ -122,17 +118,16 @@ API::Array* WebArchive::subresources()
 API::Array* WebArchive::subframeArchives()
 {
     if (!m_cachedSubframeArchives) {
-        Vector<RefPtr<API::Object>> subframeWebArchives;
-        subframeWebArchives.reserveInitialCapacity(m_legacyWebArchive->subframeArchives().size());
-        for (auto& subframeArchive : m_legacyWebArchive->subframeArchives())
-            subframeWebArchives.uncheckedAppend(WebArchive::create(static_cast<LegacyWebArchive*>(subframeArchive.ptr())));
+        auto subframeWebArchives = WTF::map(m_legacyWebArchive->subframeArchives(), [](auto& subframeArchive) -> RefPtr<API::Object> {
+            return WebArchive::create(static_cast<LegacyWebArchive*>(subframeArchive.ptr()));
+        });
         m_cachedSubframeArchives = API::Array::create(WTFMove(subframeWebArchives));
     }
 
     return m_cachedSubframeArchives.get();
 }
 
-static void releaseWebArchiveData(unsigned char*, const void* data)
+static void releaseWebArchiveData(uint8_t*, const void* data)
 {
     // Balanced by CFRetain in WebArchive::data().
     CFRelease(data);
@@ -145,7 +140,7 @@ Ref<API::Data> WebArchive::data()
     // Balanced by CFRelease in releaseWebArchiveData.
     CFRetain(rawDataRepresentation.get());
 
-    return API::Data::createWithoutCopying(CFDataGetBytePtr(rawDataRepresentation.get()), CFDataGetLength(rawDataRepresentation.get()), releaseWebArchiveData, rawDataRepresentation.get());
+    return API::Data::createWithoutCopying(span(rawDataRepresentation.get()), releaseWebArchiveData, rawDataRepresentation.get());
 }
 
 LegacyWebArchive* WebArchive::coreLegacyWebArchive()

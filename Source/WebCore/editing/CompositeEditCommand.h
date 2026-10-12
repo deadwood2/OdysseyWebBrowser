@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2005, 2006, 2008 Apple Inc. All rights reserved.
+ * Copyright (C) 2005-2022 Apple Inc. All rights reserved.
+ * Copyright (C) 2013 Google Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -67,9 +68,14 @@ private:
 
 class EditCommandComposition : public UndoStep {
 public:
+    enum class AddToUndoStack : bool {
+        No, Yes
+    };
+
     static Ref<EditCommandComposition> create(Document&, const VisibleSelection& startingSelection, const VisibleSelection& endingSelection, EditAction);
 
     void unapply() override;
+    void unapply(AddToUndoStack);
     void reapply() override;
     EditAction editingAction() const override { return m_editAction; }
     void append(SimpleEditCommand*);
@@ -93,6 +99,7 @@ private:
     String label() const final;
     void didRemoveFromUndoManager() final { }
     bool areRootEditabledElementsConnected();
+    RefPtr<Document> protectedDocument() const { return m_document; }
 
     RefPtr<Document> m_document;
     VisibleSelection m_startingSelection;
@@ -111,16 +118,17 @@ public:
     void apply();
     bool isFirstCommand(EditCommand* command) { return !m_commands.isEmpty() && m_commands.first() == command; }
     EditCommandComposition* composition() const;
+    RefPtr<EditCommandComposition> protectedComposition() const { return composition(); }
     EditCommandComposition& ensureComposition();
 
-    virtual bool isCreateLinkCommand() const;
     virtual bool isTypingCommand() const;
     virtual bool isDictationCommand() const { return false; }
     virtual bool preservesTypingStyle() const;
     virtual bool shouldRetainAutocorrectionIndicator() const;
     virtual void setShouldRetainAutocorrectionIndicator(bool);
     virtual bool shouldStopCaretBlinking() const { return false; }
-    virtual String inputEventTypeName() const;
+    virtual AtomString inputEventTypeName() const;
+    virtual bool isInputMethodComposing() const;
     virtual String inputEventData() const { return { }; }
     virtual bool isBeforeInputEventCancelable() const { return true; }
     virtual bool shouldDispatchInputEvents() const { return true; }
@@ -128,7 +136,7 @@ public:
     virtual RefPtr<DataTransfer> inputEventDataTransfer() const;
 
 protected:
-    explicit CompositeEditCommand(Document&, EditAction = EditAction::Unspecified);
+    explicit CompositeEditCommand(Ref<Document>&&, EditAction = EditAction::Unspecified);
 
     // If willApplyCommand returns false, we won't proceed with applying the command.
     virtual bool willApplyCommand();
@@ -164,12 +172,13 @@ protected:
     void rebalanceWhitespaceAt(const Position&);
     void rebalanceWhitespaceOnTextSubstring(Text&, int startOffset, int endOffset);
     void prepareWhitespaceAtPositionForSplit(Position&);
+    void replaceCollapsibleWhitespaceWithNonBreakingSpaceIfNeeded(const VisiblePosition&);
     RefPtr<Text> textNodeForRebalance(const Position&) const;
     bool shouldRebalanceLeadingWhitespaceFor(const String&) const;
     void removeNodeAttribute(Element&, const QualifiedName& attribute);
     void removeChildrenInRange(Node&, unsigned from, unsigned to);
     virtual void removeNode(Node&, ShouldAssumeContentIsAlwaysEditable = DoNotAssumeContentIsAlwaysEditable);
-    HTMLElement* replaceElementWithSpanPreservingChildrenAndAttributes(HTMLElement&);
+    RefPtr<HTMLElement> replaceElementWithSpanPreservingChildrenAndAttributes(HTMLElement&);
     void removeNodePreservingChildren(Node&, ShouldAssumeContentIsAlwaysEditable = DoNotAssumeContentIsAlwaysEditable);
     void removeNodeAndPruneAncestors(Node&);
     void moveRemainingSiblingsToNewParent(Node*, Node* pastLastNodeToMove, Element& newParent);

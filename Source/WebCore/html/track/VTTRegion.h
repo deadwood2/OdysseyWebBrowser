@@ -36,6 +36,7 @@
 #include "ContextDestructionObserver.h"
 #include "FloatPoint.h"
 #include "TextTrack.h"
+#include "Timer.h"
 
 namespace WebCore {
 
@@ -43,7 +44,7 @@ class HTMLDivElement;
 class VTTCueBox;
 class VTTScanner;
 
-class VTTRegion final : public RefCounted<VTTRegion>, public ContextDestructionObserver {
+class WEBCORE_EXPORT VTTRegion final : public RefCounted<VTTRegion>, public ContextDestructionObserver {
 public:
     static Ref<VTTRegion> create(ScriptExecutionContext& context)
     {
@@ -52,17 +53,14 @@ public:
 
     virtual ~VTTRegion();
 
-    TextTrack* track() const { return m_track; }
-    void setTrack(TextTrack*);
-
     const String& id() const { return m_id; }
     void setId(const String&);
 
     double width() const { return m_width; }
     ExceptionOr<void> setWidth(double);
 
-    int lines() const { return m_lines; }
-    ExceptionOr<void> setLines(int);
+    unsigned lines() const { return m_lines; }
+    void setLines(unsigned);
 
     double regionAnchorX() const { return m_regionAnchor.x(); }
     ExceptionOr<void> setRegionAnchorX(double);
@@ -76,15 +74,14 @@ public:
     double viewportAnchorY() const { return m_viewportAnchor.y(); }
     ExceptionOr<void> setViewportAnchorY(double);
 
-    const AtomString& scroll() const;
-    ExceptionOr<void> setScroll(const AtomString&);
+    enum class ScrollSetting : bool { EmptyString, Up };
+    ScrollSetting scroll() const { return m_scroll; }
+    void setScroll(const ScrollSetting);
 
     void updateParametersFromRegion(const VTTRegion&);
 
     const String& regionSettings() const { return m_settings; }
     void setRegionSettings(const String&);
-
-    bool isScrollingRegion() { return m_scroll; }
 
     HTMLDivElement& getDisplayTree();
     
@@ -118,9 +115,7 @@ private:
 
     void parseSettingValue(RegionSetting, VTTScanner&);
 
-    static const AtomString& textTrackCueContainerShadowPseudoId();
     static const AtomString& textTrackCueContainerScrollingClass();
-    static const AtomString& textTrackRegionShadowPseudoId();
 
     String m_id;
     String m_settings;
@@ -131,18 +126,12 @@ private:
     FloatPoint m_regionAnchor { 0, 100 };
     FloatPoint m_viewportAnchor { 0, 100 };
 
-    bool m_scroll { false };
+    ScrollSetting m_scroll { ScrollSetting::EmptyString };
 
     // The cue container is the container that is scrolled up to obtain the
     // effect of scrolling cues when this is enabled for the regions.
     RefPtr<HTMLDivElement> m_cueContainer;
     RefPtr<HTMLDivElement> m_regionDisplayTree;
-
-    // The member variable track can be a raw pointer as it will never
-    // reference a destroyed TextTrack, as this member variable
-    // is cleared in the TextTrack destructor and it is generally
-    // set/reset within the addRegion and removeRegion methods.
-    TextTrack* m_track { nullptr };
 
     // Keep track of the current numeric value of the css "top" property.
     double m_currentTop { 0 };

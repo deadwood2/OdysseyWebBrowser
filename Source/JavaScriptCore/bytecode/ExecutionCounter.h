@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,9 +25,10 @@
 
 #pragma once
 
-#include "JSGlobalObject.h"
 #include "Options.h"
+#include <wtf/Nonmovable.h>
 #include <wtf/PrintStream.h>
+#include <wtf/TZoneMalloc.h>
 
 namespace JSC {
 
@@ -40,6 +41,7 @@ enum CountingVariant {
 
 double applyMemoryUsageHeuristics(int32_t value, CodeBlock*);
 int32_t applyMemoryUsageHeuristicsAndConvertToInt(int32_t value, CodeBlock*);
+int32_t maximumExecutionCountsBetweenCheckpoints(CountingVariant, CodeBlock*);
 
 inline int32_t formattedTotalExecutionCount(float value)
 {
@@ -53,14 +55,14 @@ inline int32_t formattedTotalExecutionCount(float value)
 
 template<CountingVariant countingVariant>
 class ExecutionCounter {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED(ExecutionCounter);
     WTF_MAKE_NONMOVABLE(ExecutionCounter);
 public:
     ExecutionCounter();
     void forceSlowPathConcurrently(); // If you use this, checkIfThresholdCrossedAndSet() may still return false.
     bool checkIfThresholdCrossedAndSet(CodeBlock*);
     bool hasCrossedThreshold() const { return m_counter >= 0; }
-    void setNewThreshold(int32_t threshold, CodeBlock*);
+    void setNewThreshold(int32_t threshold, CodeBlock* = nullptr);
     void deferIndefinitely();
     double count() const { return static_cast<double>(m_totalCount) + m_counter; }
     void dump(PrintStream&) const;
@@ -72,27 +74,10 @@ public:
         m_totalCount = memoryUsageAdjustedThreshold;
     }
 
-    static int32_t maximumExecutionCountsBetweenCheckpoints()
-    {
-        switch (countingVariant) {
-        case CountingForBaseline:
-            return Options::maximumExecutionCountsBetweenCheckpointsForBaseline();
-        case CountingForUpperTiers:
-            return Options::maximumExecutionCountsBetweenCheckpointsForUpperTiers();
-        default:
-            RELEASE_ASSERT_NOT_REACHED();
-            return 0;
-        }
-    }
-    
     template<typename T>
-    static T clippedThreshold(JSGlobalObject* globalObject, T threshold)
+    static T clippedThreshold(CodeBlock* codeBlock, T threshold)
     {
-        int32_t maxThreshold;
-        if (Options::randomizeExecutionCountsBetweenCheckpoints() && globalObject)
-            maxThreshold = globalObject->weakRandomInteger() % maximumExecutionCountsBetweenCheckpoints();
-        else
-            maxThreshold = maximumExecutionCountsBetweenCheckpoints();
+        int32_t maxThreshold = maximumExecutionCountsBetweenCheckpoints(countingVariant, codeBlock);
         if (threshold > maxThreshold)
             threshold = maxThreshold;
         return threshold;

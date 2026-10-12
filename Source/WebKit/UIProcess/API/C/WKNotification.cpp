@@ -28,6 +28,7 @@
 
 #include "APISecurityOrigin.h"
 #include "WKAPICast.h"
+#include "WKData.h"
 #include "WKString.h"
 #include "WebNotification.h"
 #include <WebCore/NotificationDirection.h>
@@ -85,5 +86,31 @@ WKSecurityOriginRef WKNotificationGetSecurityOrigin(WKNotificationRef notificati
 
 uint64_t WKNotificationGetID(WKNotificationRef notification)
 {
-    return toImpl(notification)->notificationID();
+    return toImpl(notification)->identifier().toUInt64();
+}
+
+WKStringRef WKNotificationCopyDataStoreIdentifier(WKNotificationRef notification)
+{
+    auto identifier = toImpl(notification)->dataStoreIdentifier();
+    return identifier ? toCopiedAPI(identifier->toString()) : nullptr;
+}
+
+WKDataRef WKNotificationCopyCoreIDForTesting(WKNotificationRef notification)
+{
+    auto identifier = toImpl(notification)->coreNotificationID();
+    auto span = identifier.span();
+    return WKDataCreate(span.data(), span.size());
+}
+
+bool WKNotificationGetIsPersistent(WKNotificationRef notification)
+{
+    return toImpl(notification)->isPersistentNotification();
+}
+
+WKNotificationAlert WKNotificationGetAlert(WKNotificationRef notification)
+{
+    auto silent = toImpl(notification)->data().silent;
+    if (silent == std::nullopt)
+        return kWKNotificationAlertDefault;
+    return *silent ? kWKNotificationAlertSilent : kWKNotificationAlertEnabled;
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,12 +30,12 @@
 #if JSC_OBJC_API_ENABLED
 
 #import "APICast.h"
+#import "IntegrityInlines.h"
 #import "JITWorklist.h"
 #import "JSManagedValueInternal.h"
 #import "JSVirtualMachineInternal.h"
 #import "JSVirtualMachinePrivate.h"
 #import "JSWrapperMap.h"
-#import "SigillCrashAnalyzer.h"
 #import "SlotVisitorInlines.h"
 #import <mutex>
 #import <wtf/Lock.h>

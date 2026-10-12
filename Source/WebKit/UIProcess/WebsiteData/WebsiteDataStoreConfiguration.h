@@ -26,57 +26,101 @@
 #pragma once
 
 #include "APIObject.h"
-#include <WebCore/StorageQuotaManager.h>
+#include <wtf/Markable.h>
 #include <wtf/URL.h>
+#include <wtf/UUID.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebKit {
 
+enum class UnifiedOriginStorageLevel : uint8_t;
+
+namespace WebPushD {
+struct WebPushDaemonConnectionConfiguration;
+}
+
 enum class IsPersistent : bool { No, Yes };
-enum class WillCopyPathsFromExistingConfiguration : bool { No, Yes };
 
 class WebsiteDataStoreConfiguration : public API::ObjectImpl<API::Object::Type::WebsiteDataStoreConfiguration> {
 public:
-    static Ref<WebsiteDataStoreConfiguration> create(IsPersistent isPersistent, WillCopyPathsFromExistingConfiguration willCopyPaths = WillCopyPathsFromExistingConfiguration::No) { return adoptRef(*new WebsiteDataStoreConfiguration(isPersistent, willCopyPaths)); }
-    WebsiteDataStoreConfiguration(IsPersistent, WillCopyPathsFromExistingConfiguration = WillCopyPathsFromExistingConfiguration::No);
+    enum class ShouldInitializePaths : bool { No, Yes };
+    static Ref<WebsiteDataStoreConfiguration> create(IsPersistent isPersistent) { return adoptRef(*new WebsiteDataStoreConfiguration(isPersistent, ShouldInitializePaths::Yes)); }
+    WebsiteDataStoreConfiguration(IsPersistent, ShouldInitializePaths = ShouldInitializePaths::Yes);
+    WebsiteDataStoreConfiguration(const String& baseCacheDirectory, const String& baseDataDirectory);
+
+#if PLATFORM(COCOA)
+    static Ref<WebsiteDataStoreConfiguration> create(const WTF::UUID& identifier) { return adoptRef(*new WebsiteDataStoreConfiguration(identifier)); }
+    WebsiteDataStoreConfiguration(const WTF::UUID&);
+#endif
+
+#if !PLATFORM(COCOA)
+    // All cache and data directories are initialized relative to baseCacheDirectory and
+    // baseDataDirectory, respectively, if provided. On Cocoa ports, these are always null.
+    static Ref<WebsiteDataStoreConfiguration> createWithBaseDirectories(const String& baseCacheDirectory, const String& baseDataDirectory) { return adoptRef(*new WebsiteDataStoreConfiguration(baseCacheDirectory, baseDataDirectory)); }
+#endif
 
     Ref<WebsiteDataStoreConfiguration> copy() const;
 
     bool isPersistent() const { return m_isPersistent == IsPersistent::Yes; }
+    std::optional<WTF::UUID> identifier() const { return m_identifier; }
 
     uint64_t perOriginStorageQuota() const { return m_perOriginStorageQuota; }
     void setPerOriginStorageQuota(uint64_t quota) { m_perOriginStorageQuota = quota; }
 
-    const String& applicationCacheDirectory() const { return m_applicationCacheDirectory; }
-    void setApplicationCacheDirectory(String&& directory) { m_applicationCacheDirectory = WTFMove(directory); }
+    std::optional<double> originQuotaRatio() const { return m_originQuotaRatio; }
+    void setOriginQuotaRatio(std::optional<double> ratio) { m_originQuotaRatio = ratio; }
+
+    std::optional<double> totalQuotaRatio() const { return m_totalQuotaRatio; }
+    void setTotalQuotaRatio(std::optional<double> ratio) { m_totalQuotaRatio = ratio; }
+
+    std::optional<uint64_t> standardVolumeCapacity() const { return m_standardVolumeCapacity; }
+    void setStandardVolumeCapacity(std::optional<uint64_t> capacity) { m_standardVolumeCapacity = capacity; }
+
+    std::optional<uint64_t> volumeCapacityOverride() const { return m_volumeCapacityOverride; }
+    void setVolumeCapacityOverride(std::optional<uint64_t> capacity) { m_volumeCapacityOverride = capacity; }
+
+#if ENABLE(DECLARATIVE_WEB_PUSH)
+    bool isDeclarativeWebPushEnabled() const { return m_isDeclarativeWebPushEnabled; }
+    void setIsDeclarativeWebPushEnabled(bool enabled) { m_isDeclarativeWebPushEnabled = enabled; }
+#endif
+
+    const String& applicationCacheDirectory() const { return m_directories.applicationCacheDirectory; }
+    void setApplicationCacheDirectory(String&& directory) { m_directories.applicationCacheDirectory = WTFMove(directory); }
     
-    const String& mediaCacheDirectory() const { return m_mediaCacheDirectory; }
-    void setMediaCacheDirectory(String&& directory) { m_mediaCacheDirectory = WTFMove(directory); }
+    const String& mediaCacheDirectory() const { return m_directories.mediaCacheDirectory; }
+    void setMediaCacheDirectory(String&& directory) { m_directories.mediaCacheDirectory = WTFMove(directory); }
     
-    const String& mediaKeysStorageDirectory() const { return m_mediaKeysStorageDirectory; }
-    void setMediaKeysStorageDirectory(String&& directory) { m_mediaKeysStorageDirectory = WTFMove(directory); }
+    const String& mediaKeysStorageDirectory() const { return m_directories.mediaKeysStorageDirectory; }
+    void setMediaKeysStorageDirectory(String&& directory) { m_directories.mediaKeysStorageDirectory = WTFMove(directory); }
     
-    const String& alternativeServicesDirectory() const { return m_alternativeServicesDirectory; }
-    void setAlternativeServicesDirectory(String&& directory) { m_alternativeServicesDirectory = WTFMove(directory); }
+    const String& alternativeServicesDirectory() const { return m_directories.alternativeServicesDirectory; }
+    void setAlternativeServicesDirectory(String&& directory) { m_directories.alternativeServicesDirectory = WTFMove(directory); }
 
-    const String& javaScriptConfigurationDirectory() const { return m_javaScriptConfigurationDirectory; }
-    void setJavaScriptConfigurationDirectory(String&& directory) { m_javaScriptConfigurationDirectory = WTFMove(directory); }
-    
-    const String& indexedDBDatabaseDirectory() const { return m_indexedDBDatabaseDirectory; }
-    void setIndexedDBDatabaseDirectory(String&& directory) { m_indexedDBDatabaseDirectory = WTFMove(directory); }
+    const String& javaScriptConfigurationDirectory() const { return m_directories.javaScriptConfigurationDirectory; }
+    void setJavaScriptConfigurationDirectory(String&& directory) { m_directories.javaScriptConfigurationDirectory = WTFMove(directory); }
 
-    const String& webSQLDatabaseDirectory() const { return m_webSQLDatabaseDirectory; }
-    void setWebSQLDatabaseDirectory(String&& directory) { m_webSQLDatabaseDirectory = WTFMove(directory); }
+    const String& searchFieldHistoryDirectory() const { return m_directories.searchFieldHistoryDirectory; }
+    void setSearchFieldHistoryDirectory(String&& directory) { m_directories.searchFieldHistoryDirectory = WTFMove(directory); }
 
-    const String& hstsStorageDirectory() const { return m_hstsStorageDirectory; }
-    void setHSTSStorageDirectory(String&& directory) { m_hstsStorageDirectory = WTFMove(directory); }
+    // indexedDBDatabaseDirectory is sort of deprecated. Data is migrated from here to
+    // generalStoragePath unless useCustomStoragePaths is true.
+    const String& indexedDBDatabaseDirectory() const { return m_directories.indexedDBDatabaseDirectory; }
+    void setIndexedDBDatabaseDirectory(String&& directory) { m_directories.indexedDBDatabaseDirectory = WTFMove(directory); }
 
-    const String& localStorageDirectory() const { return m_localStorageDirectory; }
-    void setLocalStorageDirectory(String&& directory) { m_localStorageDirectory = WTFMove(directory); }
+    const String& webSQLDatabaseDirectory() const { return m_directories.webSQLDatabaseDirectory; }
+    void setWebSQLDatabaseDirectory(String&& directory) { m_directories.webSQLDatabaseDirectory = WTFMove(directory); }
 
-#if HAVE(ARKIT_INLINE_PREVIEW)
-    const String& modelElementCacheDirectory() const { return m_modelElementCacheDirectory; }
-    void setModelElementCacheDirectory(String&& directory) { m_modelElementCacheDirectory = WTFMove(directory); }
+    const String& hstsStorageDirectory() const { return m_directories.hstsStorageDirectory; }
+    void setHSTSStorageDirectory(String&& directory) { m_directories.hstsStorageDirectory = WTFMove(directory); }
+
+    // localStorageDirectory is sort of deprecated. Data is migrated from here to
+    // generalStoragePath unless useCustomStoragePaths is true.
+    const String& localStorageDirectory() const { return m_directories.localStorageDirectory; }
+    void setLocalStorageDirectory(String&& directory) { m_directories.localStorageDirectory = WTFMove(directory); }
+
+#if ENABLE(ARKIT_INLINE_PREVIEW)
+    const String& modelElementCacheDirectory() const { return m_directories.modelElementCacheDirectory; }
+    void setModelElementCacheDirectory(String&& directory) { m_directories.modelElementCacheDirectory = WTFMove(directory); }
 #endif
 
     const String& boundInterfaceIdentifier() const { return m_boundInterfaceIdentifier; }
@@ -100,6 +144,12 @@ public:
     bool staleWhileRevalidateEnabled() const { return m_staleWhileRevalidateEnabled; }
     void setStaleWhileRevalidateEnabled(bool enabled) { m_staleWhileRevalidateEnabled = enabled; }
 
+    bool resourceLoadStatisticsDebugModeEnabled() const { return m_trackingPreventionDebugModeEnabled; }
+    void setResourceLoadStatisticsDebugModeEnabled(bool enabled) { m_trackingPreventionDebugModeEnabled = enabled; }
+
+    std::optional<bool> defaultTrackingPreventionEnabledOverride() const { return m_defaultTrackingPreventionEnabledOverride; }
+    void setDefaultTrackingPreventionEnabledOverride(std::optional<bool> enabled) { m_defaultTrackingPreventionEnabledOverride = enabled; }
+
     unsigned testSpeedMultiplier() const { return m_testSpeedMultiplier; }
     void setTestSpeedMultiplier(unsigned multiplier) { m_testSpeedMultiplier = multiplier; }
 
@@ -108,29 +158,35 @@ public:
     void setProxyConfiguration(CFDictionaryRef configuration) { m_proxyConfiguration = configuration; }
 #endif
     
-    const String& deviceIdHashSaltsStorageDirectory() const { return m_deviceIdHashSaltsStorageDirectory; }
-    void setDeviceIdHashSaltsStorageDirectory(String&& directory) { m_deviceIdHashSaltsStorageDirectory = WTFMove(directory); }
+    const String& deviceIdHashSaltsStorageDirectory() const { return m_directories.deviceIdHashSaltsStorageDirectory; }
+    void setDeviceIdHashSaltsStorageDirectory(String&& directory) { m_directories.deviceIdHashSaltsStorageDirectory = WTFMove(directory); }
 
-    const String& cookieStorageFile() const { return m_cookieStorageFile; }
-    void setCookieStorageFile(String&& directory) { m_cookieStorageFile = WTFMove(directory); }
+    const String& cookieStorageFile() const { return m_directories.cookieStorageFile; }
+    void setCookieStorageFile(String&& directory) { m_directories.cookieStorageFile = WTFMove(directory); }
     
-    const String& resourceLoadStatisticsDirectory() const { return m_resourceLoadStatisticsDirectory; }
-    void setResourceLoadStatisticsDirectory(String&& directory) { m_resourceLoadStatisticsDirectory = WTFMove(directory); }
+    const String& resourceLoadStatisticsDirectory() const { return m_directories.resourceLoadStatisticsDirectory; }
+    void setResourceLoadStatisticsDirectory(String&& directory) { m_directories.resourceLoadStatisticsDirectory = WTFMove(directory); }
 
-    const String& privateClickMeasurementStorageDirectory() const { return m_privateClickMeasurementStorageDirectory; }
-    void setPrivateClickMeasurementStorageDirectory(String&& directory) { m_privateClickMeasurementStorageDirectory = WTFMove(directory); }
+    const String& networkCacheDirectory() const { return m_directories.networkCacheDirectory; }
+    void setNetworkCacheDirectory(String&& directory) { m_directories.networkCacheDirectory = WTFMove(directory); }
+    
+    const String& cacheStorageDirectory() const { return m_directories.cacheStorageDirectory; }
+    void setCacheStorageDirectory(String&& directory) { m_directories.cacheStorageDirectory = WTFMove(directory); }
 
-    const String& networkCacheDirectory() const { return m_networkCacheDirectory; }
-    void setNetworkCacheDirectory(String&& directory) { m_networkCacheDirectory = WTFMove(directory); }
+    const String& generalStorageDirectory() const { return m_directories.generalStorageDirectory; }
+    void setGeneralStorageDirectory(String&& directory) { m_directories.generalStorageDirectory = WTFMove(directory); }
+
+    UnifiedOriginStorageLevel unifiedOriginStorageLevel() const { return m_unifiedOriginStorageLevel; }
+    void setUnifiedOriginStorageLevel(UnifiedOriginStorageLevel level) { m_unifiedOriginStorageLevel = level; }
+
+    const String& webPushPartitionString() const { return m_webPushPartitionString; }
+    void setWebPushPartitionString(String&& string) { m_webPushPartitionString = WTFMove(string); }
+
+    const String& applicationCacheFlatFileSubdirectoryName() const { return m_directories.applicationCacheFlatFileSubdirectoryName; }
+    void setApplicationCacheFlatFileSubdirectoryName(String&& directory) { m_directories.applicationCacheFlatFileSubdirectoryName = WTFMove(directory); }
     
-    const String& cacheStorageDirectory() const { return m_cacheStorageDirectory; }
-    void setCacheStorageDirectory(String&& directory) { m_cacheStorageDirectory = WTFMove(directory); }
-    
-    const String& applicationCacheFlatFileSubdirectoryName() const { return m_applicationCacheFlatFileSubdirectoryName; }
-    void setApplicationCacheFlatFileSubdirectoryName(String&& directory) { m_applicationCacheFlatFileSubdirectoryName = WTFMove(directory); }
-    
-    const String& serviceWorkerRegistrationDirectory() const { return m_serviceWorkerRegistrationDirectory; }
-    void setServiceWorkerRegistrationDirectory(String&& directory) { m_serviceWorkerRegistrationDirectory = WTFMove(directory); }
+    const String& serviceWorkerRegistrationDirectory() const { return m_directories.serviceWorkerRegistrationDirectory; }
+    void setServiceWorkerRegistrationDirectory(String&& directory) { m_directories.serviceWorkerRegistrationDirectory = WTFMove(directory); }
     
     bool serviceWorkerProcessTerminationDelayEnabled() const { return m_serviceWorkerProcessTerminationDelayEnabled; }
     void setServiceWorkerProcessTerminationDelayEnabled(bool enabled) { m_serviceWorkerProcessTerminationDelayEnabled = enabled; }
@@ -153,6 +209,8 @@ public:
     bool allLoadsBlockedByDeviceManagementRestrictionsForTesting() const { return m_allLoadsBlockedByDeviceManagementRestrictionsForTesting; }
     void setAllLoadsBlockedByDeviceManagementRestrictionsForTesting(bool blocked) { m_allLoadsBlockedByDeviceManagementRestrictionsForTesting = blocked; }
 
+    WebPushD::WebPushDaemonConnectionConfiguration webPushDaemonConnectionConfiguration() const;
+
     const String& dataConnectionServiceType() const { return m_dataConnectionServiceType; }
     void setDataConnectionServiceType(String&& type) { m_dataConnectionServiceType = WTFMove(type); }
     
@@ -166,7 +224,12 @@ public:
     void setPreventsSystemHTTPProxyAuthentication(bool prevents) { m_preventsSystemHTTPProxyAuthentication = prevents; }
 
     bool requiresSecureHTTPSProxyConnection() const { return m_requiresSecureHTTPSProxyConnection; };
-    void setRequiresSecureHTTPSProxyConnection(bool requires) { m_requiresSecureHTTPSProxyConnection = requires; }
+    void setRequiresSecureHTTPSProxyConnection(bool requiresSecureProxy) { m_requiresSecureHTTPSProxyConnection = requiresSecureProxy; }
+
+    bool shouldRunServiceWorkersOnMainThreadForTesting() const { return m_shouldRunServiceWorkersOnMainThreadForTesting; }
+    void setShouldRunServiceWorkersOnMainThreadForTesting(bool shouldRunOnMainThread) { m_shouldRunServiceWorkersOnMainThreadForTesting = shouldRunOnMainThread; }
+    std::optional<unsigned> overrideServiceWorkerRegistrationCountTestingValue() const { return m_overrideServiceWorkerRegistrationCountTestingValue; }
+    void setOverrideServiceWorkerRegistrationCountTestingValue(unsigned count) { m_overrideServiceWorkerRegistrationCountTestingValue = count; }
 
     const URL& standaloneApplicationURL() const { return m_standaloneApplicationURL; }
     void setStandaloneApplicationURL(URL&& url) { m_standaloneApplicationURL = WTFMove(url); }
@@ -177,36 +240,65 @@ public:
     bool allowsHSTSWithUntrustedRootCertificate() const { return m_allowsHSTSWithUntrustedRootCertificate; }
     void setAllowsHSTSWithUntrustedRootCertificate(bool allows) { m_allowsHSTSWithUntrustedRootCertificate = allows; }
     
+    void setPCMMachServiceName(String&& name) { m_pcmMachServiceName = WTFMove(name); }
+    const String& pcmMachServiceName() const { return m_pcmMachServiceName; }
+
+    void setWebPushMachServiceName(String&& name) { m_webPushMachServiceName = WTFMove(name); }
+    const String& webPushMachServiceName() const { return m_webPushMachServiceName; }
+
+    void setMemoryFootprintNotificationThresholds(Vector<size_t>&& thresholds) { m_memoryFootprintNotificationThresholds = WTFMove(thresholds); }
+    const Vector<size_t>& memoryFootprintNotificationThresholds() { return m_memoryFootprintNotificationThresholds; }
+
+    struct Directories {
+        String applicationCacheFlatFileSubdirectoryName { "Files"_s };
+        String applicationCacheDirectory;
+        String alternativeServicesDirectory;
+        String cacheStorageDirectory;
+        String cookieStorageFile;
+        String deviceIdHashSaltsStorageDirectory;
+        String generalStorageDirectory;
+        String hstsStorageDirectory;
+        String indexedDBDatabaseDirectory;
+        String javaScriptConfigurationDirectory;
+        String localStorageDirectory;
+        String mediaCacheDirectory;
+        String mediaKeysStorageDirectory;
+        String networkCacheDirectory;
+        String resourceLoadStatisticsDirectory;
+        String searchFieldHistoryDirectory;
+        String serviceWorkerRegistrationDirectory;
+        String webSQLDatabaseDirectory;
+#if ENABLE(ARKIT_INLINE_PREVIEW)
+        String modelElementCacheDirectory;
+#endif
+        Directories isolatedCopy() const&;
+        Directories isolatedCopy() &&;
+    };
+    const Directories& directories() const { return m_directories; }
+
 private:
+    static Ref<WebsiteDataStoreConfiguration> create(IsPersistent isPersistent, ShouldInitializePaths shouldInitializePaths) { return adoptRef(*new WebsiteDataStoreConfiguration(isPersistent, shouldInitializePaths)); }
+
+    void initializePaths();
+
     IsPersistent m_isPersistent { IsPersistent::No };
 
-    String m_cacheStorageDirectory;
-    uint64_t m_perOriginStorageQuota { WebCore::StorageQuotaManager::defaultQuota() };
-    String m_networkCacheDirectory;
-    String m_applicationCacheDirectory;
-    String m_applicationCacheFlatFileSubdirectoryName { "Files"_s };
-    String m_mediaCacheDirectory;
-    String m_indexedDBDatabaseDirectory;
-    String m_serviceWorkerRegistrationDirectory;
-    String m_webSQLDatabaseDirectory;
-    String m_hstsStorageDirectory;
-#if HAVE(ARKIT_INLINE_PREVIEW)
-    String m_modelElementCacheDirectory;
-#endif
+    UnifiedOriginStorageLevel m_unifiedOriginStorageLevel;
+    Markable<WTF::UUID> m_identifier;
+    String m_baseCacheDirectory;
+    String m_baseDataDirectory;
+    Directories m_directories;
+    uint64_t m_perOriginStorageQuota;
+    std::optional<double> m_originQuotaRatio;
+    std::optional<double> m_totalQuotaRatio;
+    std::optional<uint64_t> m_standardVolumeCapacity;
+    std::optional<uint64_t> m_volumeCapacityOverride;
 #if USE(GLIB)
     bool m_networkCacheSpeculativeValidationEnabled { true };
 #else
     bool m_networkCacheSpeculativeValidationEnabled { false };
 #endif
     bool m_staleWhileRevalidateEnabled { true };
-    String m_localStorageDirectory;
-    String m_mediaKeysStorageDirectory;
-    String m_alternativeServicesDirectory;
-    String m_deviceIdHashSaltsStorageDirectory;
-    String m_resourceLoadStatisticsDirectory;
-    String m_privateClickMeasurementStorageDirectory;
-    String m_javaScriptConfigurationDirectory;
-    String m_cookieStorageFile;
     String m_sourceApplicationBundleIdentifier;
     String m_sourceApplicationSecondaryIdentifier;
     String m_boundInterfaceIdentifier;
@@ -224,13 +316,24 @@ private:
     bool m_allowsServerPreconnect { true };
     bool m_preventsSystemHTTPProxyAuthentication { false };
     bool m_requiresSecureHTTPSProxyConnection { false };
+    bool m_shouldRunServiceWorkersOnMainThreadForTesting { false };
+    std::optional<unsigned> m_overrideServiceWorkerRegistrationCountTestingValue;
     unsigned m_testSpeedMultiplier { 1 };
     URL m_standaloneApplicationURL;
     bool m_enableInAppBrowserPrivacyForTesting { false };
     bool m_allowsHSTSWithUntrustedRootCertificate { false };
+    bool m_trackingPreventionDebugModeEnabled { false };
+#if ENABLE(DECLARATIVE_WEB_PUSH)
+    bool m_isDeclarativeWebPushEnabled { false };
+#endif
+    String m_pcmMachServiceName;
+    String m_webPushMachServiceName;
+    String m_webPushPartitionString;
 #if PLATFORM(COCOA)
     RetainPtr<CFDictionaryRef> m_proxyConfiguration;
 #endif
+    Vector<size_t> m_memoryFootprintNotificationThresholds;
+    std::optional<bool> m_defaultTrackingPreventionEnabledOverride;
 };
 
 }

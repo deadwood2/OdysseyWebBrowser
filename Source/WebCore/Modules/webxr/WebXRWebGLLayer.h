@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2020 Igalia S.L. All rights reserved.
+ * Copyright (C) 2023 Apple, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,16 +28,16 @@
 
 #if ENABLE(WEBXR)
 
-#include "CanvasBase.h"
+#include "CanvasObserver.h"
 #include "ExceptionOr.h"
 #include "FloatRect.h"
 #include "GraphicsTypesGL.h"
 #include "PlatformXR.h"
 #include "WebXRLayer.h"
-#include <wtf/IsoMalloc.h>
+#include <variant>
 #include <wtf/Ref.h>
 #include <wtf/RefPtr.h>
-#include <wtf/Variant.h>
+#include <wtf/TZoneMalloc.h>
 
 namespace WebCore {
 
@@ -45,9 +46,7 @@ class IntSize;
 class WebGLFramebuffer;
 class WebGLRenderingContext;
 class WebGLRenderingContextBase;
-#if ENABLE(WEBGL2)
 class WebGL2RenderingContext;
-#endif
 class WebXROpaqueFramebuffer;
 class WebXRSession;
 class WebXRView;
@@ -55,14 +54,12 @@ class WebXRViewport;
 struct XRWebGLLayerInit;
 
 class WebXRWebGLLayer : public WebXRLayer, private CanvasObserver {
-    WTF_MAKE_ISO_ALLOCATED(WebXRWebGLLayer);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(WebXRWebGLLayer);
 public:
 
-    using WebXRRenderingContext = WTF::Variant<
-        RefPtr<WebGLRenderingContext>
-#if ENABLE(WEBGL2)
-        , RefPtr<WebGL2RenderingContext>
-#endif
+    using WebXRRenderingContext = std::variant<
+        RefPtr<WebGLRenderingContext>,
+        RefPtr<WebGL2RenderingContext>
     >;
 
     static ExceptionOr<Ref<WebXRWebGLLayer>> create(Ref<WebXRSession>&&, WebXRRenderingContext&&, const XRWebGLLayerInit&);
@@ -79,14 +76,16 @@ public:
 
     static double getNativeFramebufferScaleFactor(const WebXRSession&);
 
-    const WebXRSession& session() { return m_session; }
+    const WebXRSession* session() { return m_session.get(); }
 
     bool isCompositionEnabled() const { return m_isCompositionEnabled; }
 
     HTMLCanvasElement* canvas() const;
 
+    void sessionEnded();
+
     // WebXRLayer
-    void startFrame(const PlatformXR::Device::FrameData&) final;
+    void startFrame(const PlatformXR::FrameData&) final;
     PlatformXR::Device::Layer endFrame() final;
 
 private:
@@ -96,10 +95,10 @@ private:
     static IntSize computeNativeWebGLFramebufferResolution();
     static IntSize computeRecommendedWebGLFramebufferResolution();
 
-    void canvasChanged(CanvasBase&, const std::optional<FloatRect>&) final { };
+    void canvasChanged(CanvasBase&, const FloatRect&) final { };
     void canvasResized(CanvasBase&) final;
     void canvasDestroyed(CanvasBase&) final { };
-    Ref<WebXRSession> m_session;
+    RefPtr<WebXRSession> m_session;
     WebXRRenderingContext m_context;
 
     struct ViewportData {
@@ -113,7 +112,6 @@ private:
     bool m_antialias { false };
     bool m_ignoreDepthValues { false };
     bool m_isCompositionEnabled { true };
-    bool m_viewportsDirty { true };
 };
 
 } // namespace WebCore

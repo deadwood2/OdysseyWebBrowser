@@ -69,9 +69,10 @@ static const HashMap<String, String, ASCIICaseInsensitiveHash> hCommonMediaTypes
 #endif
 });
 
-String MIMETypeRegistry::mimeTypeForExtension(const String& extension)
+String MIMETypeRegistry::mimeTypeForExtension(StringView extension)
 {
-	auto it = hCommonMediaTypes.find(extension);
+    auto ext = extension.toString();
+	auto it = hCommonMediaTypes.find(ext);
 	if (it != hCommonMediaTypes.end())
 	{
 		return it->value;

@@ -28,35 +28,36 @@
 
 #include "WebPage.h"
 #include <WebCore/PlatformDisplay.h>
-
-#if PLATFORM(WAYLAND)
-#include "AcceleratedSurfaceWayland.h"
-#endif
-
-#if PLATFORM(X11)
-#include "AcceleratedSurfaceX11.h"
-#endif
+#include <wtf/TZoneMallocInlines.h>
 
 #if USE(WPE_RENDERER)
 #include "AcceleratedSurfaceLibWPE.h"
 #endif
 
+#if (PLATFORM(GTK) || (PLATFORM(WPE) && ENABLE(WPE_PLATFORM)))
+#include "AcceleratedSurfaceDMABuf.h"
+#endif
+
+#if USE(LIBEPOXY)
+#include <epoxy/gl.h>
+#else
+#include <GLES2/gl2.h>
+#endif
+
 namespace WebKit {
 using namespace WebCore;
 
+WTF_MAKE_TZONE_ALLOCATED_IMPL(AcceleratedSurface);
+
 std::unique_ptr<AcceleratedSurface> AcceleratedSurface::create(WebPage& webPage, Client& client)
 {
-#if PLATFORM(WAYLAND)
-    if (PlatformDisplay::sharedDisplay().type() == PlatformDisplay::Type::Wayland)
-#if USE(WPE_RENDERER)
-        return AcceleratedSurfaceLibWPE::create(webPage, client);
-#else
-        return AcceleratedSurfaceWayland::create(webPage, client);
+#if (PLATFORM(GTK) || (PLATFORM(WPE) && ENABLE(WPE_PLATFORM)))
+#if USE(GBM)
+    if (PlatformDisplay::sharedDisplay().type() == PlatformDisplay::Type::GBM)
+        return AcceleratedSurfaceDMABuf::create(webPage, client);
 #endif
-#endif
-#if PLATFORM(X11)
-    if (PlatformDisplay::sharedDisplay().type() == PlatformDisplay::Type::X11)
-        return AcceleratedSurfaceX11::create(webPage, client);
+    if (PlatformDisplay::sharedDisplay().type() == PlatformDisplay::Type::Surfaceless)
+        return AcceleratedSurfaceDMABuf::create(webPage, client);
 #endif
 #if USE(WPE_RENDERER)
     if (PlatformDisplay::sharedDisplay().type() == PlatformDisplay::Type::WPE)
@@ -70,6 +71,7 @@ AcceleratedSurface::AcceleratedSurface(WebPage& webPage, Client& client)
     : m_webPage(webPage)
     , m_client(client)
     , m_size(webPage.size())
+    , m_isOpaque(!webPage.backgroundColor().has_value() || webPage.backgroundColor()->isOpaque())
 {
     m_size.scale(m_webPage.deviceScaleFactor());
 }
@@ -83,6 +85,26 @@ bool AcceleratedSurface::hostResize(const IntSize& size)
 
     m_size = scaledSize;
     return true;
+}
+
+bool AcceleratedSurface::backgroundColorDidChange()
+{
+    const auto& color = m_webPage.backgroundColor();
+    auto isOpaque = !color.has_value() || color->isOpaque();
+    if (m_isOpaque == isOpaque)
+        return false;
+
+    m_isOpaque = isOpaque;
+    return true;
+}
+
+void AcceleratedSurface::clearIfNeeded()
+{
+    if (m_isOpaque)
+        return;
+
+    glClearColor(0, 0, 0, 0);
+    glClear(GL_COLOR_BUFFER_BIT);
 }
 
 } // namespace WebKit

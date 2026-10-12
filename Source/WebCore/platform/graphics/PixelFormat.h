@@ -25,13 +25,13 @@
 
 #pragma once
 
-#include <wtf/EnumTraits.h>
 #include <wtf/Forward.h>
 
 namespace WebCore {
 
 enum class PixelFormat : uint8_t {
     RGBA8,
+    BGRX8,
     BGRA8,
 #if CPU(BIG_ENDIAN)
     ARGB8 = BGRA8, // BGRA will actually be ARGB on BIG_ENDIAN
@@ -41,19 +41,5 @@ enum class PixelFormat : uint8_t {
 };
 
 WEBCORE_EXPORT TextStream& operator<<(TextStream&, PixelFormat);
-
-}
-
-namespace WTF {
-
-template<> struct EnumTraits<WebCore::PixelFormat> {
-    using values = EnumValues<
-        WebCore::PixelFormat,
-        WebCore::PixelFormat::RGBA8,
-        WebCore::PixelFormat::BGRA8,
-        WebCore::PixelFormat::RGB10,
-        WebCore::PixelFormat::RGB10A8
-    >;
-};
 
 }

@@ -22,9 +22,7 @@ set(MiniBrowser_SOURCES
 set(MiniBrowser_PRIVATE_INCLUDE_DIRECTORIES
     ${CMAKE_BINARY_DIR}
     ${MiniBrowser_DERIVED_SOURCES_DIR}
-    ${WebKit2Gtk_DERIVED_SOURCES_DIR}
-    ${WebKit2Gtk_FRAMEWORK_HEADERS_DIR}
-    ${WebKit2Gtk_FRAMEWORK_HEADERS_DIR}/webkit2gtk-${WEBKITGTK_API_VERSION}
+    ${WebKitGTK_FRAMEWORK_HEADERS_DIR}
     ${CMAKE_SOURCE_DIR}/Source
 )
 
@@ -45,6 +43,11 @@ set(MiniBrowser_DEPENDENCIES
     NetworkProcess
     WebProcess
 )
+
+if (NOT USE_GSTREAMER_FULL)
+  list(APPEND MiniBrowser_PRIVATE_INCLUDE_DIRECTORIES ${GSTREAMER_INCLUDE_DIRS})
+  list(APPEND MiniBrowser_PRIVATE_LIBRARIES ${GSTREAMER_LIBRARIES})
+endif ()
 
 add_custom_command(
     OUTPUT ${MiniBrowser_DERIVED_SOURCES_DIR}/BrowserMarshal.c

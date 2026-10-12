@@ -27,26 +27,23 @@
 #include "config.h"
 #include "IPCSemaphore.h"
 
-#include "SharedMemory.h"
 #include "WebCoreArgumentCoders.h"
+#include <WebCore/SharedMemory.h>
 
 namespace IPC {
 
 Semaphore::Semaphore()
 {
-    m_semaphoreHandle = CreateSemaphoreA(nullptr, 0, 1, nullptr);
+    m_semaphoreHandle = Win32Handle::adopt(::CreateSemaphoreA(nullptr, 0, 1, nullptr));
     RELEASE_ASSERT(m_semaphoreHandle);
 }
 
-Semaphore::Semaphore(HANDLE handle)
-    : m_semaphoreHandle(handle)
+Semaphore::Semaphore(Win32Handle&& handle)
+    : m_semaphoreHandle(WTFMove(handle))
 {
 }
 
-Semaphore::Semaphore(Semaphore&& other)
-    : m_semaphoreHandle(std::exchange(other.m_semaphoreHandle, nullptr))
-{
-}
+Semaphore::Semaphore(Semaphore&& other) = default;
 
 Semaphore::~Semaphore()
 {
@@ -57,7 +54,7 @@ Semaphore& Semaphore::operator=(Semaphore&& other)
 {
     if (this != &other) {
         destroy();
-        m_semaphoreHandle = std::exchange(other.m_semaphoreHandle, nullptr);
+        m_semaphoreHandle = WTFMove(other.m_semaphoreHandle);
     }
 
     return *this;
@@ -65,46 +62,24 @@ Semaphore& Semaphore::operator=(Semaphore&& other)
 
 void Semaphore::signal()
 {
-    ReleaseSemaphore(m_semaphoreHandle, 1, nullptr);
+    ReleaseSemaphore(m_semaphoreHandle.get(), 1, nullptr);
 }
 
 bool Semaphore::wait()
 {
-    return WAIT_OBJECT_0 == WaitForSingleObject(m_semaphoreHandle, INFINITE);
+    return WAIT_OBJECT_0 == WaitForSingleObject(m_semaphoreHandle.get(), INFINITE);
 }
 
 bool Semaphore::waitFor(Timeout timeout)
 {
     Seconds waitTime = timeout.secondsUntilDeadline();
     auto milliseconds = waitTime.millisecondsAs<DWORD>();
-    return WAIT_OBJECT_0 == WaitForSingleObject(m_semaphoreHandle, milliseconds);
-}
-
-void Semaphore::encode(Encoder& encoder) const
-{
-    HANDLE processHandle = GetCurrentProcess();
-
-    HANDLE duplicatedHandle;
-    BOOL success = DuplicateHandle(processHandle, m_semaphoreHandle, processHandle, &duplicatedHandle, 0, false, DUPLICATE_SAME_ACCESS);
-    RELEASE_ASSERT(success);
-
-    WebKit::SharedMemory::Handle::encodeHandle(encoder, duplicatedHandle);
-}
-
-std::optional<Semaphore> Semaphore::decode(Decoder& decoder)
-{
-    auto handle = WebKit::SharedMemory::Handle::decodeHandle(decoder);
-    if (!handle)
-        return std::nullopt;
-    return Semaphore(*handle);
+    return WAIT_OBJECT_0 == WaitForSingleObject(m_semaphoreHandle.get(), milliseconds);
 }
 
 void Semaphore::destroy()
 {
-    if (m_semaphoreHandle) {
-        CloseHandle(m_semaphoreHandle);
-        m_semaphoreHandle = nullptr;
-    }
+    m_semaphoreHandle = { };
 }
 
 } // namespace IPC

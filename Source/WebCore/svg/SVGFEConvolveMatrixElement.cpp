@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2009 Dirk Schulze <krit@webkit.org>
- * Copyright (C) 2018-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2018-2022 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -21,22 +21,23 @@
 #include "config.h"
 #include "SVGFEConvolveMatrixElement.h"
 
-#include "FilterEffect.h"
-#include "FloatPoint.h"
-#include "IntPoint.h"
-#include "IntSize.h"
-#include "SVGFilterBuilder.h"
+#include "CommonAtomStrings.h"
+#include "DocumentInlines.h"
+#include "FEConvolveMatrix.h"
+#include "NodeName.h"
+#include "SVGDocumentExtensions.h"
 #include "SVGNames.h"
 #include "SVGParserUtilities.h"
-#include <wtf/IsoMallocInlines.h>
+#include <wtf/TZoneMallocInlines.h>
+#include <wtf/text/MakeString.h>
 #include <wtf/text/StringToIntegerConversion.h>
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(SVGFEConvolveMatrixElement);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(SVGFEConvolveMatrixElement);
 
 inline SVGFEConvolveMatrixElement::SVGFEConvolveMatrixElement(const QualifiedName& tagName, Document& document)
-    : SVGFilterPrimitiveStandardAttributes(tagName, document)
+    : SVGFilterPrimitiveStandardAttributes(tagName, document, makeUniqueRef<PropertyRegistry>(*this))
 {
     ASSERT(hasTagName(SVGNames::feConvolveMatrixTag));
 
@@ -60,195 +61,211 @@ Ref<SVGFEConvolveMatrixElement> SVGFEConvolveMatrixElement::create(const Qualifi
     return adoptRef(*new SVGFEConvolveMatrixElement(tagName, document));
 }
 
-void SVGFEConvolveMatrixElement::parseAttribute(const QualifiedName& name, const AtomString& value)
+void SVGFEConvolveMatrixElement::attributeChanged(const QualifiedName& name, const AtomString& oldValue, const AtomString& newValue, AttributeModificationReason attributeModificationReason)
 {
-    if (name == SVGNames::inAttr) {
-        m_in1->setBaseValInternal(value);
-        return;
-    }
-
-    if (name == SVGNames::orderAttr) {
-        auto result = parseNumberOptionalNumber(value);
+    switch (name.nodeName()) {
+    case AttributeNames::inAttr:
+        Ref { m_in1 }->setBaseValInternal(newValue);
+        break;
+    case AttributeNames::orderAttr: {
+        auto result = parseNumberOptionalNumber(newValue);
         if (result && result->first >= 1 && result->second >= 1) {
-            m_orderX->setBaseValInternal(result->first);
-            m_orderY->setBaseValInternal(result->second);
+            Ref { m_orderX }->setBaseValInternal(result->first);
+            Ref { m_orderY }->setBaseValInternal(result->second);
         } else
-            document().accessSVGExtensions().reportWarning("feConvolveMatrix: problem parsing order=\"" + value + "\". Filtered element will not be displayed.");
-        return;
+            protectedDocument()->checkedSVGExtensions()->reportWarning(makeString("feConvolveMatrix: problem parsing order=\""_s, newValue, "\". Filtered element will not be displayed."_s));
+        break;
     }
-
-    if (name == SVGNames::edgeModeAttr) {
-        EdgeModeType propertyValue = SVGPropertyTraits<EdgeModeType>::fromString(value);
-        if (propertyValue > 0)
-            m_edgeMode->setBaseValInternal<EdgeModeType>(propertyValue);
+    case AttributeNames::edgeModeAttr: {
+        EdgeModeType propertyValue = SVGPropertyTraits<EdgeModeType>::fromString(newValue);
+        if (propertyValue != EdgeModeType::Unknown)
+            Ref { m_edgeMode }->setBaseValInternal<EdgeModeType>(propertyValue);
         else
-            document().accessSVGExtensions().reportWarning("feConvolveMatrix: problem parsing edgeMode=\"" + value + "\". Filtered element will not be displayed.");
-        return;
+            protectedDocument()->checkedSVGExtensions()->reportWarning(makeString("feConvolveMatrix: problem parsing edgeMode=\""_s, newValue, "\". Filtered element will not be displayed."_s));
+        break;
     }
-
-    if (name == SVGNames::kernelMatrixAttr) {
-        m_kernelMatrix->baseVal()->parse(value);
-        return;
-    }
-
-    if (name == SVGNames::divisorAttr) {
-        float divisor = value.toFloat();
-        if (divisor)
-            m_divisor->setBaseValInternal(divisor);
+    case AttributeNames::kernelMatrixAttr:
+        Ref { m_kernelMatrix }->baseVal()->parse(newValue);
+        break;
+    case AttributeNames::divisorAttr:
+        if (float divisor = newValue.toFloat())
+            Ref { m_divisor }->setBaseValInternal(divisor);
         else
-            document().accessSVGExtensions().reportWarning("feConvolveMatrix: problem parsing divisor=\"" + value + "\". Filtered element will not be displayed.");
-        return;
-    }
-    
-    if (name == SVGNames::biasAttr) {
-        m_bias->setBaseValInternal(value.toFloat());
-        return;
-    }
-
-    if (name == SVGNames::targetXAttr) {
-        m_targetX->setBaseValInternal(parseInteger<unsigned>(value).value_or(0));
-        return;
-    }
-
-    if (name == SVGNames::targetYAttr) {
-        m_targetY->setBaseValInternal(parseInteger<unsigned>(value).value_or(0));
-        return;
-    }
-
-    if (name == SVGNames::kernelUnitLengthAttr) {
-        auto result = parseNumberOptionalNumber(value);
+            protectedDocument()->checkedSVGExtensions()->reportWarning(makeString("feConvolveMatrix: problem parsing divisor=\""_s, newValue, "\". Filtered element will not be displayed."_s));
+        break;
+    case AttributeNames::biasAttr:
+        Ref { m_bias }->setBaseValInternal(newValue.toFloat());
+        break;
+    case AttributeNames::targetXAttr:
+        Ref { m_targetX }->setBaseValInternal(parseInteger<unsigned>(newValue).value_or(0));
+        break;
+    case AttributeNames::targetYAttr:
+        Ref { m_targetY }->setBaseValInternal(parseInteger<unsigned>(newValue).value_or(0));
+        break;
+    case AttributeNames::kernelUnitLengthAttr: {
+        auto result = parseNumberOptionalNumber(newValue);
         if (result && result->first > 0 && result->second > 0) {
-            m_kernelUnitLengthX->setBaseValInternal(result->first);
-            m_kernelUnitLengthY->setBaseValInternal(result->second);
+            Ref { m_kernelUnitLengthX }->setBaseValInternal(result->first);
+            Ref { m_kernelUnitLengthY }->setBaseValInternal(result->second);
         } else
-            document().accessSVGExtensions().reportWarning("feConvolveMatrix: problem parsing kernelUnitLength=\"" + value + "\". Filtered element will not be displayed.");
-        return;
+            protectedDocument()->checkedSVGExtensions()->reportWarning(makeString("feConvolveMatrix: problem parsing kernelUnitLength=\""_s, newValue, "\". Filtered element will not be displayed."_s));
+        break;
     }
-
-    if (name == SVGNames::preserveAlphaAttr) {
-        if (value == "true")
-            m_preserveAlpha->setBaseValInternal(true);
-        else if (value == "false")
-            m_preserveAlpha->setBaseValInternal(false);
+    case AttributeNames::preserveAlphaAttr:
+        if (newValue == trueAtom())
+            Ref { m_preserveAlpha }->setBaseValInternal(true);
+        else if (newValue == falseAtom())
+            Ref { m_preserveAlpha }->setBaseValInternal(false);
         else
-            document().accessSVGExtensions().reportWarning("feConvolveMatrix: problem parsing preserveAlphaAttr=\"" + value  + "\". Filtered element will not be displayed.");
-        return;
+            protectedDocument()->checkedSVGExtensions()->reportWarning(makeString("feConvolveMatrix: problem parsing preserveAlphaAttr=\""_s, newValue, "\". Filtered element will not be displayed."_s));
+        break;
+    default:
+        break;
     }
 
-    SVGFilterPrimitiveStandardAttributes::parseAttribute(name, value);
+    SVGFilterPrimitiveStandardAttributes::attributeChanged(name, oldValue, newValue, attributeModificationReason);
 }
 
-bool SVGFEConvolveMatrixElement::setFilterEffectAttribute(FilterEffect* effect, const QualifiedName& attrName)
+bool SVGFEConvolveMatrixElement::setFilterEffectAttribute(FilterEffect& filterEffect, const QualifiedName& attrName)
 {
-    FEConvolveMatrix* convolveMatrix = static_cast<FEConvolveMatrix*>(effect);
-    if (attrName == SVGNames::edgeModeAttr)
-        return convolveMatrix->setEdgeMode(edgeMode());
-    if (attrName == SVGNames::divisorAttr)
-        return convolveMatrix->setDivisor(divisor());
-    if (attrName == SVGNames::biasAttr)
-        return convolveMatrix->setBias(bias());
-    if (attrName == SVGNames::targetXAttr)
-        return convolveMatrix->setTargetOffset(IntPoint(targetX(), targetY()));
-    if (attrName == SVGNames::targetYAttr)
-        return convolveMatrix->setTargetOffset(IntPoint(targetX(), targetY()));
-    if (attrName == SVGNames::kernelUnitLengthAttr)
-        return convolveMatrix->setKernelUnitLength(FloatPoint(kernelUnitLengthX(), kernelUnitLengthY()));
-    if (attrName == SVGNames::preserveAlphaAttr)
-        return convolveMatrix->setPreserveAlpha(preserveAlpha());
-
+    auto& effect = downcast<FEConvolveMatrix>(filterEffect);
+    switch (attrName.nodeName()) {
+    case AttributeNames::edgeModeAttr:
+        return effect.setEdgeMode(edgeMode());
+    case AttributeNames::divisorAttr:
+        return effect.setDivisor(divisor());
+    case AttributeNames::biasAttr:
+        return effect.setBias(bias());
+    case AttributeNames::targetXAttr:
+    case AttributeNames::targetYAttr:
+        return effect.setTargetOffset(IntPoint(targetX(), targetY()));
+    case AttributeNames::kernelUnitLengthAttr:
+        return effect.setKernelUnitLength(FloatPoint(kernelUnitLengthX(), kernelUnitLengthY()));
+    case AttributeNames::preserveAlphaAttr:
+        return effect.setPreserveAlpha(preserveAlpha());
+    default:
+        break;
+    }
     ASSERT_NOT_REACHED();
     return false;
 }
 
 void SVGFEConvolveMatrixElement::setOrder(float x, float y)
 {
-    m_orderX->setBaseValInternal(x);
-    m_orderY->setBaseValInternal(y);
-    invalidate();
+    Ref { m_orderX }->setBaseValInternal(x);
+    Ref { m_orderY }->setBaseValInternal(y);
+    updateSVGRendererForElementChange();
 }
 
 void SVGFEConvolveMatrixElement::setKernelUnitLength(float x, float y)
 {
-    m_kernelUnitLengthX->setBaseValInternal(x);
-    m_kernelUnitLengthY->setBaseValInternal(y);
-    invalidate();
+    Ref { m_kernelUnitLengthX }->setBaseValInternal(x);
+    Ref { m_kernelUnitLengthY }->setBaseValInternal(y);
+    updateSVGRendererForElementChange();
+}
+
+bool SVGFEConvolveMatrixElement::isValidTargetXOffset() const
+{
+    auto orderXValue = hasAttribute(SVGNames::orderAttr) ? orderX() : 3;
+    auto targetXValue = hasAttribute(SVGNames::targetXAttr) ? targetX() : static_cast<int>(floorf(orderXValue / 2));
+    return targetXValue >= 0 && targetXValue < orderXValue;
+}
+
+bool SVGFEConvolveMatrixElement::isValidTargetYOffset() const
+{
+    auto orderYValue = hasAttribute(SVGNames::orderAttr) ? orderY() : 3;
+    auto targetYValue = hasAttribute(SVGNames::targetYAttr) ? targetY() : static_cast<int>(floorf(orderYValue / 2));
+    return targetYValue >= 0 && targetYValue < orderYValue;
 }
 
 void SVGFEConvolveMatrixElement::svgAttributeChanged(const QualifiedName& attrName)
 {
-    if (attrName == SVGNames::edgeModeAttr || attrName == SVGNames::divisorAttr || attrName == SVGNames::biasAttr || attrName == SVGNames::targetXAttr || attrName == SVGNames::targetYAttr || attrName == SVGNames::kernelUnitLengthAttr || attrName == SVGNames::preserveAlphaAttr) {
+    if ((attrName == SVGNames::targetXAttr || attrName == SVGNames::orderAttr) && !isValidTargetXOffset()) {
+        InstanceInvalidationGuard guard(*this);
+        markFilterEffectForRebuild();
+        return;
+    }
+
+    if ((attrName == SVGNames::targetYAttr || attrName == SVGNames::orderAttr) && !isValidTargetYOffset()) {
+        InstanceInvalidationGuard guard(*this);
+        markFilterEffectForRebuild();
+        return;
+    }
+
+    switch (attrName.nodeName()) {
+    case AttributeNames::inAttr:
+    case AttributeNames::orderAttr:
+    case AttributeNames::kernelMatrixAttr: {
+        InstanceInvalidationGuard guard(*this);
+        updateSVGRendererForElementChange();
+        break;
+    }
+    case AttributeNames::edgeModeAttr:
+    case AttributeNames::divisorAttr:
+    case AttributeNames::biasAttr:
+    case AttributeNames::targetXAttr:
+    case AttributeNames::targetYAttr:
+    case AttributeNames::kernelUnitLengthAttr:
+    case AttributeNames::preserveAlphaAttr: {
         InstanceInvalidationGuard guard(*this);
         primitiveAttributeChanged(attrName);
-        return;
+        break;
     }
-
-    if (attrName == SVGNames::inAttr || attrName == SVGNames::orderAttr || attrName == SVGNames::kernelMatrixAttr) {
-        InstanceInvalidationGuard guard(*this);
-        invalidate();
-        return;
+    default:
+        SVGFilterPrimitiveStandardAttributes::svgAttributeChanged(attrName);
+        break;
     }
-
-    SVGFilterPrimitiveStandardAttributes::svgAttributeChanged(attrName);
 }
 
-RefPtr<FilterEffect> SVGFEConvolveMatrixElement::build(SVGFilterBuilder* filterBuilder, Filter& filter) const
+RefPtr<FilterEffect> SVGFEConvolveMatrixElement::createFilterEffect(const FilterEffectVector&, const GraphicsContext&) const
 {
-    auto input1 = filterBuilder->getEffectById(in1());
-
-    if (!input1)
-        return nullptr;
-
-    int orderXValue = orderX();
-    int orderYValue = orderY();
-    if (!hasAttribute(SVGNames::orderAttr)) {
-        orderXValue = 3;
-        orderYValue = 3;
+    int orderXValue = 3;
+    int orderYValue = 3;
+    if (hasAttribute(SVGNames::orderAttr)) {
+        orderXValue = orderX();
+        orderYValue = orderY();
+        // Spec says order must be > 0. Bail if it is not.
+        if (orderXValue <= 0 || orderYValue <= 0)
+            return nullptr;
     }
-    // Spec says order must be > 0. Bail if it is not.
-    if (orderXValue < 1 || orderYValue < 1)
-        return nullptr;
+
     auto& kernelMatrix = this->kernelMatrix();
-    int kernelMatrixSize = kernelMatrix.items().size();
+    size_t kernelMatrixSize = kernelMatrix.items().size();
     // The spec says this is a requirement, and should bail out if fails
-    if (orderXValue * orderYValue != kernelMatrixSize)
+    if ((size_t)(orderXValue * orderYValue) != kernelMatrixSize)
         return nullptr;
 
-    int targetXValue = targetX();
-    int targetYValue = targetY();
-    if (hasAttribute(SVGNames::targetXAttr) && (targetXValue < 0 || targetXValue >= orderXValue))
+    if (!isValidTargetXOffset() || !isValidTargetYOffset())
         return nullptr;
+
     // The spec says the default value is: targetX = floor ( orderX / 2 ))
-    if (!hasAttribute(SVGNames::targetXAttr))
-        targetXValue = static_cast<int>(floorf(orderXValue / 2));
-    if (hasAttribute(SVGNames::targetYAttr) && (targetYValue < 0 || targetYValue >= orderYValue))
-        return nullptr;
-    // The spec says the default value is: targetY = floor ( orderY / 2 ))
-    if (!hasAttribute(SVGNames::targetYAttr))
-        targetYValue = static_cast<int>(floorf(orderYValue / 2));
+    int targetXValue = hasAttribute(SVGNames::targetXAttr) ? targetX() : static_cast<int>(floorf(orderXValue / 2));
 
-    // Spec says default kernelUnitLength is 1.0, and a specified length cannot be 0.
-    int kernelUnitLengthXValue = kernelUnitLengthX();
-    int kernelUnitLengthYValue = kernelUnitLengthY();
-    if (!hasAttribute(SVGNames::kernelUnitLengthAttr)) {
-        kernelUnitLengthXValue = 1;
-        kernelUnitLengthYValue = 1;
+    // The spec says the default value is: targetY = floor ( orderY / 2 ))
+    int targetYValue = hasAttribute(SVGNames::targetYAttr) ? targetY() : static_cast<int>(floorf(orderYValue / 2));
+
+    // The spec says the default kernelUnitLength is 1.0, and a specified length cannot be 0.
+    int kernelUnitLengthXValue = 1;
+    int kernelUnitLengthYValue = 1;
+    if (hasAttribute(SVGNames::kernelUnitLengthAttr)) {
+        kernelUnitLengthXValue = kernelUnitLengthX();
+        kernelUnitLengthYValue = kernelUnitLengthY();
+        if (kernelUnitLengthXValue <= 0 || kernelUnitLengthYValue <= 0)
+            return nullptr;
     }
-    if (kernelUnitLengthXValue <= 0 || kernelUnitLengthYValue <= 0)
-        return nullptr;
 
     float divisorValue = divisor();
     if (hasAttribute(SVGNames::divisorAttr) && !divisorValue)
         return nullptr;
+
     if (!hasAttribute(SVGNames::divisorAttr)) {
-        for (int i = 0; i < kernelMatrixSize; ++i)
+        for (size_t i = 0; i < kernelMatrixSize; ++i)
             divisorValue += kernelMatrix.items()[i]->value();
         if (!divisorValue)
             divisorValue = 1;
     }
 
-    auto effect = FEConvolveMatrix::create(filter, IntSize(orderXValue, orderYValue), divisorValue, bias(), IntPoint(targetXValue, targetYValue), edgeMode(), FloatPoint(kernelUnitLengthXValue, kernelUnitLengthYValue), preserveAlpha(), kernelMatrix);
-    effect->inputEffects() = { input1 };
-    return effect;
+    return FEConvolveMatrix::create(IntSize(orderXValue, orderYValue), divisorValue, bias(), IntPoint(targetXValue, targetYValue), edgeMode(), FloatPoint(kernelUnitLengthXValue, kernelUnitLengthYValue), preserveAlpha(), kernelMatrix);
 }
 
 } // namespace WebCore

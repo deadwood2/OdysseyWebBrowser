@@ -66,7 +66,7 @@ struct Effects {
     // having other pinned registers that are mutable, then you can use ArgumentReg. Also note that
     // nobody will stop you from making this get out-of-sync with your clobbered register sets in
     // Patchpoint. It's recommended that you err on the side of being conservative.
-    // FIXME: Explore making these be RegisterSets. That's mainly hard because it would be awkward to
+    // FIXME: Explore making these be RegisterSetBuilders. That's mainly hard because it would be awkward to
     // reconcile with StackmapValue's support for clobbered regs.
     // https://bugs.webkit.org/show_bug.cgi?id=163173
     bool readsPinned { false };
@@ -118,8 +118,7 @@ struct Effects {
     // behavior in an observable way.
     bool interferes(const Effects&) const;
     
-    JS_EXPORT_PRIVATE bool operator==(const Effects&) const;
-    JS_EXPORT_PRIVATE bool operator!=(const Effects&) const;
+    friend bool operator==(const Effects&, const Effects&) = default;
 
     JS_EXPORT_PRIVATE void dump(PrintStream& out) const;
 };

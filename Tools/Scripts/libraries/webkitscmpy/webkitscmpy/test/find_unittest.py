@@ -1,4 +1,4 @@
-# Copyright (C) 2020, 2021 Apple Inc. All rights reserved.
+# Copyright (C) 2020-2022 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -39,6 +39,14 @@ class TestFind(testing.PathTestCase):
         os.mkdir(os.path.join(self.path, '.git'))
         os.mkdir(os.path.join(self.path, '.svn'))
 
+    def test_none(self):
+        with OutputCapture() as captured, mocks.local.Git(), mocks.local.Svn(), MockTime:
+            self.assertEqual(1, program.main(
+                args=('find', 'HEAD', '-q'),
+                path=self.path,
+            ))
+        self.assertEqual(captured.stderr.getvalue(), 'No repository provided\n')
+
     def test_basic_git(self):
         with OutputCapture() as captured, mocks.local.Git(self.path), mocks.local.Svn(), MockTime:
             self.assertEqual(0, program.main(
@@ -70,6 +78,29 @@ class TestFind(testing.PathTestCase):
                 path=self.path,
             ))
         self.assertEqual(captured.stdout.getvalue(), '4@trunk | r6 | 6th commit\n')
+
+    def test_basic_github_remote(self):
+        with OutputCapture() as captured, mocks.remote.GitHub():
+            self.assertEqual(0, program.main(
+                args=('-C', 'https://github.example.com/WebKit/WebKit', 'find', 'bae5d1e90999', '-q'),
+                path=self.path,
+            ))
+        self.assertEqual(captured.stdout.getvalue(), '4@main | bae5d1e90999 | 8th commit\n')
+
+    def test_basic_bitbucket_remote(self):
+        with OutputCapture() as captured, mocks.remote.BitBucket():
+            self.assertEqual(0, program.main(
+                args=('-C', 'https://bitbucket.example.com/projects/WEBKIT/repos/webkit', 'find', 'bae5d1e90999', '-q'),
+                path=self.path,
+            ))
+        self.assertEqual(captured.stdout.getvalue(), '4@main | bae5d1e90999 | 8th commit\n')
+
+        with OutputCapture() as captured, mocks.remote.BitBucket():
+            self.assertEqual(0, program.main(
+                args=('-C', 'https://bitbucket.example.com/WEBKIT/webkit', 'find', 'bae5d1e90999', '-q'),
+                path=self.path,
+            ))
+        self.assertEqual(captured.stdout.getvalue(), '4@main | bae5d1e90999 | 8th commit\n')
 
     def test_branch_tilde(self):
         with OutputCapture() as captured, mocks.local.Git(self.path, git_svn=True), mocks.local.Svn(), MockTime:
@@ -148,6 +179,30 @@ Identifier: 3@main
 '''.format(datetime.fromtimestamp(1601663000).strftime('%a %b %d %H:%M:%S %Y')),
         )
 
+    def test_standard_list(self):
+        with OutputCapture() as captured, mocks.local.Git(self.path, git_svn=True), mocks.local.Svn(), MockTime:
+            self.assertEqual(0, program.main(
+                args=('find', '2@main..4@main'),
+                path=self.path,
+            ))
+        self.assertEqual(
+            captured.stdout.getvalue(),
+            '''Title: 8th commit
+Author: Jonathan Bedard <jbedard@apple.com>
+Date: {}
+Revision: 8
+Hash: bae5d1e90999
+Identifier: 4@main
+--------------------
+Title: 4th commit
+Author: Jonathan Bedard <jbedard@apple.com>
+Date: {}
+Revision: 4
+Hash: 1abe25b443e9
+Identifier: 3@main
+'''.format(datetime.fromtimestamp(1601668000).strftime('%a %b %d %H:%M:%S %Y'), datetime.fromtimestamp(1601663000).strftime('%a %b %d %H:%M:%S %Y')),
+        )
+
     def test_verbose(self):
         with OutputCapture() as captured, mocks.local.Git(self.path, git_svn=True), mocks.local.Svn(), MockTime:
             self.assertEqual(0, program.main(
@@ -165,6 +220,39 @@ Identifier: 3@main
     4th commit
     git-svn-id: https://svn.example.org/repository/repository/trunk@4 268f45cc-cd09-0410-ab3c-d52691b4dbfc
 '''.format(datetime.fromtimestamp(1601663000).strftime('%a %b %d %H:%M:%S %Y')),
+        )
+
+    def test_quiet(self):
+        with OutputCapture() as captured, mocks.local.Git(self.path, git_svn=True), mocks.local.Svn(), MockTime:
+            self.assertEqual(0, program.main(
+                args=('find', '3@main', '-q'),
+                path=self.path,
+            ))
+        self.assertEqual(
+            captured.stdout.getvalue(),
+            '3@main | 1abe25b443e9, r4 | 4th commit\n',
+        )
+
+    def test_failed_list(self):
+        with OutputCapture() as captured, mocks.local.Git(self.path, git_svn=True), mocks.local.Svn(), MockTime:
+            self.assertEqual(1, program.main(
+                args=('find', '2@main...4@main', '-q'),
+                path=self.path,
+            ))
+        self.assertEqual(
+            captured.stderr.getvalue(),
+            "'find' sub-command only supports '..' notation\n",
+        )
+
+    def test_quiet_list(self):
+        with OutputCapture() as captured, mocks.local.Git(self.path, git_svn=True), mocks.local.Svn(), MockTime:
+            self.assertEqual(0, program.main(
+                args=('find', '2@main..4@main', '-q'),
+                path=self.path,
+            ))
+        self.assertEqual(
+            captured.stdout.getvalue(),
+            '4@main | bae5d1e90999, r8 | 8th commit\n3@main | 1abe25b443e9, r4 | 4th commit\n',
         )
 
     def test_json(self):
@@ -188,6 +276,40 @@ Identifier: 3@main
                 branch='main',
                 message='4th commit\ngit-svn-id: https://svn.example.org/repository/repository/trunk@4 268f45cc-cd09-0410-ab3c-d52691b4dbfc',
             ))
+
+    def test_json_list(self):
+        self.maxDiff = None
+        with OutputCapture() as captured, mocks.local.Git(self.path, git_svn=True), mocks.local.Svn(), MockTime:
+            self.assertEqual(0, program.main(
+                args=('find', '2@main..4@main', '--json'),
+                path=self.path,
+            ))
+
+        decoded = json.loads(captured.stdout.getvalue())
+        self.assertEqual(
+            decoded, [dict(
+                identifier='4@main',
+                hash='bae5d1e90999d4f916a8a15810ccfa43f37a2fd6',
+                revision=8,
+                author=dict(
+                    name='Jonathan Bedard',
+                    emails=['jbedard@apple.com'],
+                ), timestamp=1601668000,
+                order=0,
+                branch='main',
+                message='8th commit\ngit-svn-id: https://svn.example.org/repository/repository/trunk@8 268f45cc-cd09-0410-ab3c-d52691b4dbfc',
+            ), dict(
+                identifier='3@main',
+                hash='1abe25b443e985f93b90d830e4a7e3731336af4d',
+                revision=4,
+                author=dict(
+                    name='Jonathan Bedard',
+                    emails=['jbedard@apple.com'],
+                ), timestamp=1601663000,
+                order=0,
+                branch='main',
+                message='4th commit\ngit-svn-id: https://svn.example.org/repository/repository/trunk@4 268f45cc-cd09-0410-ab3c-d52691b4dbfc',
+            )])
 
     def test_tag_svn(self):
         with OutputCapture() as captured, mocks.local.Git(), mocks.local.Svn(self.path), MockTime:
@@ -238,6 +360,53 @@ Revision: 4
 Identifier: 3@trunk
 '''.format(datetime.fromtimestamp(1601684700).strftime('%a %b %d %H:%M:%S %Y')),
         )
+
+    def test_scope_single(self):
+        with OutputCapture() as captured, mocks.local.Git(self.path), mocks.local.Svn(), MockTime:
+            self.assertEqual(1, program.main(
+                args=('find', 'HEAD', '--scope', 'some/dir'),
+                path=self.path,
+            ))
+        self.assertEqual(captured.stdout.getvalue(), '')
+        self.assertEqual(captured.stderr.getvalue(), 'Scope argument invalid when only one commit specified\n')
+
+    def test_scope_git(self):
+        with OutputCapture() as captured, mocks.local.Git(self.path), mocks.local.Svn(), MockTime:
+            self.assertEqual(0, program.main(
+                args=('find', '1@main..HEAD', '--scope', 'some/dir', '-q'),
+                path=self.path,
+            ))
+        self.assertEqual(
+            captured.stdout.getvalue(),
+            '5@main | d8bce26fa65c | Patch Series\n3@main | 1abe25b443e9 | 4th commit\n',
+        )
+
+    def test_scope_svn(self):
+        with OutputCapture() as captured, mocks.local.Git(), mocks.local.Svn(self.path), MockTime:
+            self.assertEqual(1, program.main(
+                args=('find', '1@main..HEAD', '--scope', 'some/dir'),
+                path=self.path,
+            ))
+        self.assertEqual(captured.stdout.getvalue(), '')
+        self.assertEqual(captured.stderr.getvalue(), "Can only use the '--scope' argument on a native Git repository\n")
+
+    def test_scope_github_remote(self):
+        with OutputCapture() as captured, mocks.remote.GitHub():
+            self.assertEqual(1, program.main(
+                args=('-C', 'https://github.example.com/WebKit/WebKit', 'find', '1@main..HEAD', '--scope', 'some/dir'),
+                path=self.path,
+            ))
+        self.assertEqual(captured.stdout.getvalue(), '')
+        self.assertEqual(captured.stderr.getvalue(), "Can only use the '--scope' argument on a native Git repository\n")
+
+    def test_scope_bitbucket_remote(self):
+        with OutputCapture() as captured, mocks.remote.BitBucket():
+            self.assertEqual(1, program.main(
+                args=('-C', 'https://bitbucket.example.com/projects/WEBKIT/repos/webkit', 'find', '1@main..HEAD', '--scope', 'some/dir'),
+                path=self.path,
+            ))
+        self.assertEqual(captured.stdout.getvalue(), '')
+        self.assertEqual(captured.stderr.getvalue(), "Can only use the '--scope' argument on a native Git repository\n")
 
 
 class TestInfo(testing.TestCase):

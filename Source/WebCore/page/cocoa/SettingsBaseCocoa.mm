@@ -29,8 +29,8 @@
 #import <wtf/NeverDestroyed.h>
 
 #if PLATFORM(IOS_FAMILY)
-#import "Device.h"
 #import <pal/spi/ios/UIKitSPI.h>
+#import <pal/system/ios/Device.h>
 #endif
 
 #if PLATFORM(IOS_FAMILY)
@@ -43,45 +43,57 @@ namespace WebCore {
 
 void SettingsBase::initializeDefaultFontFamilies()
 {
-    setStandardFontFamily("Songti TC", USCRIPT_TRADITIONAL_HAN);
-    setStandardFontFamily("Songti SC", USCRIPT_SIMPLIFIED_HAN);
-    setStandardFontFamily("Hiragino Mincho ProN", USCRIPT_KATAKANA_OR_HIRAGANA);
-    setStandardFontFamily("AppleMyungjo", USCRIPT_HANGUL);
+    setStandardFontFamily("Songti TC"_s, USCRIPT_TRADITIONAL_HAN);
+    setStandardFontFamily("Songti SC"_s, USCRIPT_SIMPLIFIED_HAN);
+    setStandardFontFamily("Hiragino Mincho ProN"_s, USCRIPT_KATAKANA_OR_HIRAGANA);
+    setStandardFontFamily("AppleMyungjo"_s, USCRIPT_HANGUL);
 
-    setStandardFontFamily("Times", USCRIPT_COMMON);
-    setFixedFontFamily("Courier", USCRIPT_COMMON);
-    setSerifFontFamily("Times", USCRIPT_COMMON);
-    setSansSerifFontFamily("Helvetica", USCRIPT_COMMON);
-}
-
-bool SettingsBase::platformDefaultMediaSourceEnabled()
-{
-    return true;
+    setStandardFontFamily("Times"_s, USCRIPT_COMMON);
+    setFixedFontFamily("Courier"_s, USCRIPT_COMMON);
+    setSerifFontFamily("Times"_s, USCRIPT_COMMON);
+    setSansSerifFontFamily("Helvetica"_s, USCRIPT_COMMON);
 }
 
 #else
 
 void SettingsBase::initializeDefaultFontFamilies()
 {
-    setStandardFontFamily("PingFang TC", USCRIPT_TRADITIONAL_HAN);
-    setStandardFontFamily("PingFang SC", USCRIPT_SIMPLIFIED_HAN);
-    setStandardFontFamily("Hiragino Mincho ProN", USCRIPT_KATAKANA_OR_HIRAGANA);
-    setStandardFontFamily("Apple SD Gothic Neo", USCRIPT_HANGUL);
+    setStandardFontFamily("PingFang TC"_s, USCRIPT_TRADITIONAL_HAN);
+    setStandardFontFamily("PingFang SC"_s, USCRIPT_SIMPLIFIED_HAN);
+    setStandardFontFamily("Hiragino Mincho ProN"_s, USCRIPT_KATAKANA_OR_HIRAGANA);
+    setStandardFontFamily("Apple SD Gothic Neo"_s, USCRIPT_HANGUL);
 
-    setStandardFontFamily("Times", USCRIPT_COMMON);
-    setFixedFontFamily("Courier", USCRIPT_COMMON);
-    setSerifFontFamily("Times", USCRIPT_COMMON);
-    setSansSerifFontFamily("Helvetica", USCRIPT_COMMON);
+    setStandardFontFamily("Times"_s, USCRIPT_COMMON);
+    setFixedFontFamily("Courier"_s, USCRIPT_COMMON);
+    setSerifFontFamily("Times"_s, USCRIPT_COMMON);
+    setSansSerifFontFamily("Helvetica"_s, USCRIPT_COMMON);
 }
+
+#endif
 
 #if ENABLE(MEDIA_SOURCE)
 
 bool SettingsBase::platformDefaultMediaSourceEnabled()
 {
+#if PLATFORM(MAC)
+    return true;
+#else
     return false;
+#endif
 }
 
+uint64_t SettingsBase::defaultMaximumSourceBufferSize()
+{
+#if PLATFORM(IOS_FAMILY)
+    // iOS Devices have lower memory limits, enforced by jetsam rates, and a very limited
+    // ability to swap. Allow SourceBuffers to store up to 105MB each, roughly a third of
+    // the limit on macOS, and approximately equivalent to the limit on Firefox.
+    return 110376422;
 #endif
+    // For other platforms, allow SourceBuffers to store up to 304MB each, enough for approximately five minutes
+    // of 1080p video and stereo audio.
+    return 318767104;
+}
 
 #endif
 

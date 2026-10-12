@@ -30,6 +30,7 @@
 #include "EventListener.h"
 #include "HTMLMediaElementEnums.h"
 #include "PlaybackSessionModel.h"
+#include <wtf/CheckedPtr.h>
 #include <wtf/HashSet.h>
 #include <wtf/RefPtr.h>
 #include <wtf/Vector.h>
@@ -40,21 +41,32 @@ class AudioTrack;
 class HTMLMediaElement;
 class TextTrack;
 
-class PlaybackSessionModelMediaElement final : public PlaybackSessionModel, public EventListener {
+class PlaybackSessionModelMediaElement final
+    : public PlaybackSessionModel
+    , public EventListener
+    , public CanMakeCheckedPtr<PlaybackSessionModelMediaElement> {
+    WTF_MAKE_FAST_ALLOCATED;
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(PlaybackSessionModelMediaElement);
 public:
     static Ref<PlaybackSessionModelMediaElement> create()
     {
         return adoptRef(*new PlaybackSessionModelMediaElement());
     }
     WEBCORE_EXPORT virtual ~PlaybackSessionModelMediaElement();
+
+    // CheckedPtr interface
+    uint32_t ptrCount() const final { return CanMakeCheckedPtr::ptrCount(); }
+    uint32_t ptrCountWithoutThreadCheck() const final { return CanMakeCheckedPtr::ptrCountWithoutThreadCheck(); }
+    void incrementPtrCount() const final { CanMakeCheckedPtr::incrementPtrCount(); }
+    void decrementPtrCount() const final { CanMakeCheckedPtr::decrementPtrCount(); }
+
     WEBCORE_EXPORT void setMediaElement(HTMLMediaElement*);
     HTMLMediaElement* mediaElement() const { return m_mediaElement.get(); }
 
     WEBCORE_EXPORT void mediaEngineChanged();
 
     WEBCORE_EXPORT void handleEvent(WebCore::ScriptExecutionContext&, WebCore::Event&) final;
-    void updateForEventName(const WTF::AtomString&);
-    bool operator==(const EventListener& rhs) const final { return static_cast<const WebCore::EventListener*>(this) == &rhs; }
+    void updateForEventName(const AtomString&);
 
     WEBCORE_EXPORT void addClient(PlaybackSessionModelClient&);
     WEBCORE_EXPORT void removeClient(PlaybackSessionModelClient&);
@@ -73,11 +85,20 @@ public:
     WEBCORE_EXPORT void selectAudioMediaOption(uint64_t index) final;
     WEBCORE_EXPORT void selectLegibleMediaOption(uint64_t index) final;
     WEBCORE_EXPORT void togglePictureInPicture() final;
+    WEBCORE_EXPORT void enterInWindowFullscreen() final;
+    WEBCORE_EXPORT void exitInWindowFullscreen() final;
+    WEBCORE_EXPORT void enterFullscreen() final;
+    WEBCORE_EXPORT void exitFullscreen() final;
     WEBCORE_EXPORT void toggleMuted() final;
     WEBCORE_EXPORT void setMuted(bool) final;
     WEBCORE_EXPORT void setVolume(double) final;
     WEBCORE_EXPORT void setPlayingOnSecondScreen(bool) final;
+#if HAVE(SPATIAL_TRACKING_LABEL)
+    WEBCORE_EXPORT const String& spatialTrackingLabel() const final;
+    WEBCORE_EXPORT void setSpatialTrackingLabel(const String&) final;
+#endif
     WEBCORE_EXPORT void sendRemoteCommand(PlatformMediaSession::RemoteControlCommandType, const PlatformMediaSession::RemoteCommandArgument&) final;
+    void setVideoReceiverEndpoint(const VideoReceiverEndpoint&) final { }
 
     double duration() const final;
     double currentTime() const final;
@@ -94,7 +115,7 @@ public:
     Vector<MediaSelectionOption> audioMediaSelectionOptions() const final;
     uint64_t audioMediaSelectedIndex() const final;
     Vector<MediaSelectionOption> legibleMediaSelectionOptions() const final;
-    uint64_t legibleMediaSelectedIndex() const final;
+    WEBCORE_EXPORT uint64_t legibleMediaSelectedIndex() const final;
     bool externalPlaybackEnabled() const final;
     ExternalPlaybackTargetType externalPlaybackTargetType() const final;
     String externalPlaybackLocalizedDeviceName() const final;
@@ -103,19 +124,28 @@ public:
     double volume() const final;
     bool isPictureInPictureSupported() const final;
     bool isPictureInPictureActive() const final;
+    bool isInWindowFullscreenActive() const final;
+    AudioSessionSoundStageSize soundStageSize() const final { return m_soundStageSize; }
+    void setSoundStageSize(AudioSessionSoundStageSize size) final { m_soundStageSize = size; }
 
 private:
     WEBCORE_EXPORT PlaybackSessionModelMediaElement();
 
     void progressEventTimerFired();
-    static const Vector<WTF::AtomString>& observedEventNames();
-    const WTF::AtomString& eventNameAll();
+    static const Vector<AtomString>& observedEventNames();
+    const AtomString& eventNameAll();
+
+#if !RELEASE_LOG_DISABLED
+    const void* logIdentifier() const final;
+    const Logger* loggerPtr() const final;
+#endif
 
     RefPtr<HTMLMediaElement> m_mediaElement;
     bool m_isListening { false };
-    HashSet<PlaybackSessionModelClient*> m_clients;
+    HashSet<CheckedPtr<PlaybackSessionModelClient>> m_clients;
     Vector<RefPtr<TextTrack>> m_legibleTracksForMenu;
     Vector<RefPtr<AudioTrack>> m_audioTracksForMenu;
+    AudioSessionSoundStageSize m_soundStageSize;
 
     double playbackStartedTime() const;
     void updateMediaSelectionOptions();

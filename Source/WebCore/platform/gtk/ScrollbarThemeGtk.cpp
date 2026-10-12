@@ -27,7 +27,7 @@
 #include "config.h"
 #include "ScrollbarThemeGtk.h"
 
-#if !USE(GTK4)
+#if !USE(GTK4) && USE(CAIRO)
 
 #include "GRefPtrGtk.h"
 #include "GraphicsContextCairo.h"
@@ -58,6 +58,7 @@ ScrollbarThemeGtk::ScrollbarThemeGtk()
     static bool themeMonitorInitialized = false;
     if (!themeMonitorInitialized) {
         g_signal_connect(gtk_settings_get_default(), "notify::gtk-theme-name", G_CALLBACK(themeChangedCallback), nullptr);
+        g_signal_connect(gtk_settings_get_default(), "notify::gtk-overlay-scrolling", G_CALLBACK(themeChangedCallback), nullptr);
         themeMonitorInitialized = true;
         updateThemeProperties();
     }
@@ -141,7 +142,7 @@ static GtkStateFlags scrollbarPartStateFlags(Scrollbar& scrollbar, ScrollbarPart
 
 static RenderThemeScrollbar::Type widgetTypeForScrollbar(Scrollbar& scrollbar, GtkStateFlags scrollbarState)
 {
-    if (scrollbar.orientation() == VerticalScrollbar) {
+    if (scrollbar.orientation() == ScrollbarOrientation::Vertical) {
         if (scrollbar.scrollableArea().shouldPlaceVerticalScrollbarOnLeft())
             return scrollbarState & GTK_STATE_FLAG_PRELIGHT ? RenderThemeScrollbar::Type::VerticalScrollbarLeft : RenderThemeScrollbar::Type::VerticalScrollIndicatorLeft;
         return scrollbarState & GTK_STATE_FLAG_PRELIGHT ? RenderThemeScrollbar::Type::VerticalScrollbarRight : RenderThemeScrollbar::Type::VerticalScrollIndicatorRight;
@@ -177,7 +178,7 @@ IntRect ScrollbarThemeGtk::trackRect(Scrollbar& scrollbar, bool painting)
     if (auto* backwardStepper = scrollbarWidget.stepper(RenderThemeScrollbarGadget::Steppers::Backward)) {
         backwardStepper->setState(scrollbarPartStateFlags(scrollbar, BackButtonStartPart));
         IntSize stepperSize = backwardStepper->preferredSize();
-        if (scrollbar.orientation() == VerticalScrollbar) {
+        if (scrollbar.orientation() == ScrollbarOrientation::Vertical) {
             rect.move(0, stepperSize.height());
             rect.contract(0, stepperSize.height());
         } else {
@@ -188,7 +189,7 @@ IntRect ScrollbarThemeGtk::trackRect(Scrollbar& scrollbar, bool painting)
     if (auto* secondaryForwardStepper = scrollbarWidget.stepper(RenderThemeScrollbarGadget::Steppers::SecondaryForward)) {
         secondaryForwardStepper->setState(scrollbarPartStateFlags(scrollbar, ForwardButtonStartPart));
         IntSize stepperSize = secondaryForwardStepper->preferredSize();
-        if (scrollbar.orientation() == VerticalScrollbar) {
+        if (scrollbar.orientation() == ScrollbarOrientation::Vertical) {
             rect.move(0, stepperSize.height());
             rect.contract(0, stepperSize.height());
         } else {
@@ -198,20 +199,20 @@ IntRect ScrollbarThemeGtk::trackRect(Scrollbar& scrollbar, bool painting)
     }
     if (auto* secondaryBackwardStepper = scrollbarWidget.stepper(RenderThemeScrollbarGadget::Steppers::SecondaryBackward)) {
         secondaryBackwardStepper->setState(scrollbarPartStateFlags(scrollbar, BackButtonEndPart));
-        if (scrollbar.orientation() == VerticalScrollbar)
+        if (scrollbar.orientation() == ScrollbarOrientation::Vertical)
             rect.contract(0, secondaryBackwardStepper->preferredSize().height());
         else
             rect.contract(secondaryBackwardStepper->preferredSize().width(), 0);
     }
     if (auto* forwardStepper = scrollbarWidget.stepper(RenderThemeScrollbarGadget::Steppers::Forward)) {
         forwardStepper->setState(scrollbarPartStateFlags(scrollbar, ForwardButtonEndPart));
-        if (scrollbar.orientation() == VerticalScrollbar)
+        if (scrollbar.orientation() == ScrollbarOrientation::Vertical)
             rect.contract(0, forwardStepper->preferredSize().height());
         else
             rect.contract(forwardStepper->preferredSize().width(), 0);
     }
 
-    if (scrollbar.orientation() == VerticalScrollbar)
+    if (scrollbar.orientation() == ScrollbarOrientation::Vertical)
         return scrollbar.height() < rect.height() ? IntRect() : rect;
 
     return scrollbar.width() < rect.width() ? IntRect() : rect;
@@ -241,7 +242,7 @@ IntRect ScrollbarThemeGtk::backButtonRect(Scrollbar& scrollbar, ScrollbarPart pa
     if (auto* secondaryForwardStepper = scrollbarWidget.stepper(RenderThemeScrollbarGadget::Steppers::SecondaryForward)) {
         secondaryForwardStepper->setState(scrollbarPartStateFlags(scrollbar, ForwardButtonStartPart));
         IntSize preferredSize = secondaryForwardStepper->preferredSize();
-        if (scrollbar.orientation() == VerticalScrollbar) {
+        if (scrollbar.orientation() == ScrollbarOrientation::Vertical) {
             rect.move(0, preferredSize.height());
             rect.contract(0, preferredSize.height());
         } else {
@@ -252,7 +253,7 @@ IntRect ScrollbarThemeGtk::backButtonRect(Scrollbar& scrollbar, ScrollbarPart pa
 
     if (auto* secondaryBackwardStepper = scrollbarWidget.stepper(RenderThemeScrollbarGadget::Steppers::SecondaryBackward)) {
         secondaryBackwardStepper->setState(scrollbarPartStateFlags(scrollbar, BackButtonEndPart));
-        if (scrollbar.orientation() == VerticalScrollbar)
+        if (scrollbar.orientation() == ScrollbarOrientation::Vertical)
             rect.contract(0, secondaryBackwardStepper->preferredSize().height());
         else
             rect.contract(secondaryBackwardStepper->preferredSize().width(), 0);
@@ -262,7 +263,7 @@ IntRect ScrollbarThemeGtk::backButtonRect(Scrollbar& scrollbar, ScrollbarPart pa
     ASSERT(forwardStepper);
     forwardStepper->setState(scrollbarPartStateFlags(scrollbar, ForwardButtonEndPart));
     IntSize preferredSize = forwardStepper->preferredSize();
-    if (scrollbar.orientation() == VerticalScrollbar)
+    if (scrollbar.orientation() == ScrollbarOrientation::Vertical)
         rect.move(0, rect.height() - preferredSize.height());
     else
         rect.move(rect.width() - preferredSize.width(), 0);
@@ -287,7 +288,7 @@ IntRect ScrollbarThemeGtk::forwardButtonRect(Scrollbar& scrollbar, ScrollbarPart
     if (auto* backwardStepper = scrollbarWidget.stepper(RenderThemeScrollbarGadget::Steppers::Backward)) {
         backwardStepper->setState(scrollbarPartStateFlags(scrollbar, BackButtonStartPart));
         IntSize preferredSize = backwardStepper->preferredSize();
-        if (scrollbar.orientation() == VerticalScrollbar) {
+        if (scrollbar.orientation() == ScrollbarOrientation::Vertical) {
             rect.move(0, preferredSize.height());
             rect.contract(0, preferredSize.height());
         } else {
@@ -302,7 +303,7 @@ IntRect ScrollbarThemeGtk::forwardButtonRect(Scrollbar& scrollbar, ScrollbarPart
         if (part == ForwardButtonStartPart)
             return IntRect(rect.location(), preferredSize);
 
-        if (scrollbar.orientation() == VerticalScrollbar) {
+        if (scrollbar.orientation() == ScrollbarOrientation::Vertical) {
             rect.move(0, preferredSize.height());
             rect.contract(0, preferredSize.height());
         } else {
@@ -315,7 +316,7 @@ IntRect ScrollbarThemeGtk::forwardButtonRect(Scrollbar& scrollbar, ScrollbarPart
     ASSERT(forwardStepper);
     forwardStepper->setState(scrollbarPartStateFlags(scrollbar, ForwardButtonEndPart));
     IntSize preferredSize = forwardStepper->preferredSize();
-    if (scrollbar.orientation() == VerticalScrollbar)
+    if (scrollbar.orientation() == ScrollbarOrientation::Vertical)
         rect.move(0, rect.height() - preferredSize.height());
     else
         rect.move(rect.width() - preferredSize.width(), 0);
@@ -379,7 +380,7 @@ bool ScrollbarThemeGtk::paint(Scrollbar& scrollbar, GraphicsContext& graphicsCon
     if (usesOverlayScrollbars()) {
         // When using overlay scrollbars we always claim the size of the scrollbar when hovered, so when
         // drawing the indicator we need to adjust the rectangle to its actual size in indicator mode.
-        if (scrollbar.orientation() == ScrollbarOrientation::VerticalScrollbar) {
+        if (scrollbar.orientation() == ScrollbarOrientation::Vertical) {
             if (rect.width() != preferredSize.width()) {
                 if (!scrollbar.scrollableArea().shouldPlaceVerticalScrollbarOnLeft())
                     contentsRect.move(std::abs(rect.width() - preferredSize.width()), 0);
@@ -404,13 +405,13 @@ bool ScrollbarThemeGtk::paint(Scrollbar& scrollbar, GraphicsContext& graphicsCon
 
     if (backwardStepper) {
         FloatRect buttonRect = contentsRect;
-        if (scrollbar.orientation() == VerticalScrollbar)
+        if (scrollbar.orientation() == ScrollbarOrientation::Vertical)
             buttonRect.setHeight(backwardStepper->preferredSize().height());
         else
             buttonRect.setWidth(backwardStepper->preferredSize().width());
         static_cast<RenderThemeScrollbarGadget&>(scrollbarGadget).renderStepper(graphicsContext.platformContext()->cr(), buttonRect, backwardStepper,
-            scrollbar.orientation() == VerticalScrollbar ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL, RenderThemeScrollbarGadget::Steppers::Backward);
-        if (scrollbar.orientation() == VerticalScrollbar) {
+            scrollbar.orientation() == ScrollbarOrientation::Vertical ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL, RenderThemeScrollbarGadget::Steppers::Backward);
+        if (scrollbar.orientation() == ScrollbarOrientation::Vertical) {
             contentsRect.move(0, buttonRect.height());
             contentsRect.contract(0, buttonRect.height());
         } else {
@@ -420,13 +421,13 @@ bool ScrollbarThemeGtk::paint(Scrollbar& scrollbar, GraphicsContext& graphicsCon
     }
     if (secondaryForwardStepper) {
         FloatRect buttonRect = contentsRect;
-        if (scrollbar.orientation() == VerticalScrollbar)
+        if (scrollbar.orientation() == ScrollbarOrientation::Vertical)
             buttonRect.setHeight(secondaryForwardStepper->preferredSize().height());
         else
             buttonRect.setWidth(secondaryForwardStepper->preferredSize().width());
         static_cast<RenderThemeScrollbarGadget&>(scrollbarGadget).renderStepper(graphicsContext.platformContext()->cr(), buttonRect, secondaryForwardStepper,
-            scrollbar.orientation() == VerticalScrollbar ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL, RenderThemeScrollbarGadget::Steppers::SecondaryForward);
-        if (scrollbar.orientation() == VerticalScrollbar) {
+            scrollbar.orientation() == ScrollbarOrientation::Vertical ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL, RenderThemeScrollbarGadget::Steppers::SecondaryForward);
+        if (scrollbar.orientation() == ScrollbarOrientation::Vertical) {
             contentsRect.move(0, buttonRect.height());
             contentsRect.contract(0, buttonRect.height());
         } else {
@@ -436,7 +437,7 @@ bool ScrollbarThemeGtk::paint(Scrollbar& scrollbar, GraphicsContext& graphicsCon
     }
     if (secondaryBackwardStepper) {
         FloatRect buttonRect = contentsRect;
-        if (scrollbar.orientation() == VerticalScrollbar) {
+        if (scrollbar.orientation() == ScrollbarOrientation::Vertical) {
             buttonRect.setHeight(secondaryBackwardStepper->preferredSize().height());
             buttonRect.move(0, contentsRect.height() - buttonRect.height());
         } else {
@@ -444,15 +445,15 @@ bool ScrollbarThemeGtk::paint(Scrollbar& scrollbar, GraphicsContext& graphicsCon
             buttonRect.move(contentsRect.width() - buttonRect.width(), 0);
         }
         static_cast<RenderThemeScrollbarGadget&>(scrollbarGadget).renderStepper(graphicsContext.platformContext()->cr(), buttonRect, secondaryBackwardStepper,
-            scrollbar.orientation() == VerticalScrollbar ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL, RenderThemeScrollbarGadget::Steppers::SecondaryBackward);
-        if (scrollbar.orientation() == VerticalScrollbar)
+            scrollbar.orientation() == ScrollbarOrientation::Vertical ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL, RenderThemeScrollbarGadget::Steppers::SecondaryBackward);
+        if (scrollbar.orientation() == ScrollbarOrientation::Vertical)
             contentsRect.contract(0, buttonRect.height());
         else
             contentsRect.contract(buttonRect.width(), 0);
     }
     if (forwardStepper) {
         FloatRect buttonRect = contentsRect;
-        if (scrollbar.orientation() == VerticalScrollbar) {
+        if (scrollbar.orientation() == ScrollbarOrientation::Vertical) {
             buttonRect.setHeight(forwardStepper->preferredSize().height());
             buttonRect.move(0, contentsRect.height() - buttonRect.height());
         } else {
@@ -460,8 +461,8 @@ bool ScrollbarThemeGtk::paint(Scrollbar& scrollbar, GraphicsContext& graphicsCon
             buttonRect.move(contentsRect.width() - buttonRect.width(), 0);
         }
         static_cast<RenderThemeScrollbarGadget&>(scrollbarGadget).renderStepper(graphicsContext.platformContext()->cr(), buttonRect, forwardStepper,
-            scrollbar.orientation() == VerticalScrollbar ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL, RenderThemeScrollbarGadget::Steppers::Forward);
-        if (scrollbar.orientation() == VerticalScrollbar)
+            scrollbar.orientation() == ScrollbarOrientation::Vertical ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL, RenderThemeScrollbarGadget::Steppers::Forward);
+        if (scrollbar.orientation() == ScrollbarOrientation::Vertical)
             contentsRect.contract(0, buttonRect.height());
         else
             contentsRect.contract(buttonRect.width(), 0);
@@ -470,7 +471,7 @@ bool ScrollbarThemeGtk::paint(Scrollbar& scrollbar, GraphicsContext& graphicsCon
     trough.render(graphicsContext.platformContext()->cr(), contentsRect, &contentsRect);
 
     if (thumbSize) {
-        if (scrollbar.orientation() == VerticalScrollbar) {
+        if (scrollbar.orientation() == ScrollbarOrientation::Vertical) {
             contentsRect.move(0, thumbPosition(scrollbar));
             contentsRect.setWidth(scrollbarWidget.slider().preferredSize().width());
             contentsRect.setHeight(thumbSize);
@@ -501,13 +502,13 @@ ScrollbarButtonPressAction ScrollbarThemeGtk::handleMousePressEvent(Scrollbar&, 
             "gtk-primary-button-warps-slider",
             &warpSlider, nullptr);
         // The shift key or middle/right button reverses the sense.
-        if (event.shiftKey() || event.button() != LeftButton)
+        if (event.shiftKey() || event.button() != MouseButton::Left)
             warpSlider = !warpSlider;
         return warpSlider ?
             ScrollbarButtonPressAction::CenterOnThumb:
             ScrollbarButtonPressAction::Scroll;
     case ThumbPart:
-        if (event.button() != RightButton)
+        if (event.button() != MouseButton::Right)
             return ScrollbarButtonPressAction::StartDrag;
         break;
     case BackButtonStartPart:
@@ -522,10 +523,13 @@ ScrollbarButtonPressAction ScrollbarThemeGtk::handleMousePressEvent(Scrollbar&, 
     return ScrollbarButtonPressAction::None;
 }
 
-int ScrollbarThemeGtk::scrollbarThickness(ScrollbarControlSize controlSize, ScrollbarExpansionState expansionState)
+int ScrollbarThemeGtk::scrollbarThickness(ScrollbarWidth scrollbarWidth, ScrollbarExpansionState expansionState)
 {
     if (!m_useSystemAppearance)
-        return ScrollbarThemeAdwaita::scrollbarThickness(controlSize, expansionState);
+        return ScrollbarThemeAdwaita::scrollbarThickness(scrollbarWidth, expansionState);
+
+    if (scrollbarWidth == ScrollbarWidth::None)
+        return 0;
 
     auto& scrollbarWidget = static_cast<RenderThemeScrollbar&>(RenderThemeScrollbar::getOrCreate(RenderThemeScrollbar::Type::VerticalScrollbarRight));
     scrollbarWidget.scrollbar().setState(GTK_STATE_FLAG_PRELIGHT);
@@ -543,9 +547,9 @@ int ScrollbarThemeGtk::minimumThumbLength(Scrollbar& scrollbar)
     auto& scrollbarWidget = static_cast<RenderThemeScrollbar&>(RenderThemeScrollbar::getOrCreate(RenderThemeScrollbar::Type::VerticalScrollbarRight));
     scrollbarWidget.scrollbar().setState(GTK_STATE_FLAG_PRELIGHT);
     IntSize minSize = scrollbarWidget.slider().minimumSize();
-    return scrollbar.orientation() == VerticalScrollbar ? minSize.height() : minSize.width();
+    return scrollbar.orientation() == ScrollbarOrientation::Vertical ? minSize.height() : minSize.width();
 }
 
 } // namespace WebCore
 
-#endif // !USE(GTK4)
+#endif // !USE(GTK4) && USE(CAIRO)

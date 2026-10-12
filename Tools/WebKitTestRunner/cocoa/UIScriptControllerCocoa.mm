@@ -26,15 +26,19 @@
 #import "config.h"
 #import "UIScriptControllerCocoa.h"
 
+#import "LayoutTestSpellChecker.h"
 #import "PlatformWebView.h"
 #import "StringFunctions.h"
 #import "TestController.h"
 #import "TestRunnerWKWebView.h"
 #import "UIScriptContext.h"
+#import "WKTextExtractionTestingHelpers.h"
 #import <JavaScriptCore/JavaScriptCore.h>
 #import <WebKit/WKURLCF.h>
 #import <WebKit/WKWebViewPrivate.h>
 #import <WebKit/WKWebViewPrivateForTesting.h>
+#import <WebKit/_WKTargetedElementInfo.h>
+#import <WebKit/_WKTargetedElementRequest.h>
 #import <wtf/BlockPtr.h>
 
 @interface WKWebView (WKWebViewInternal)
@@ -63,14 +67,9 @@ void UIScriptControllerCocoa::setMinimumEffectiveWidth(double effectiveWidth)
     webView()._minimumEffectiveDeviceWidth = effectiveWidth;
 }
 
-void UIScriptControllerCocoa::becomeFirstResponder()
+void UIScriptControllerCocoa::setWebViewEditable(bool editable)
 {
-    [webView() becomeFirstResponder];
-}
-
-void UIScriptControllerCocoa::resignFirstResponder()
-{
-    [webView() resignFirstResponder];
+    webView()._editable = editable;
 }
 
 void UIScriptControllerCocoa::doAsyncTask(JSValueRef callback)
@@ -82,6 +81,16 @@ void UIScriptControllerCocoa::doAsyncTask(JSValueRef callback)
             return;
         m_context->asyncTaskComplete(callbackID);
     });
+}
+
+void UIScriptControllerCocoa::doAfterPresentationUpdate(JSValueRef callback)
+{
+    unsigned callbackID = m_context->prepareForAsyncTask(callback, CallbackTypeNonPersistent);
+    [webView() _doAfterNextPresentationUpdate:makeBlockPtr([this, protectedThis = Ref { *this }, callbackID] {
+        if (!m_context)
+            return;
+        m_context->asyncTaskComplete(callbackID);
+    }).get()];
 }
 
 void UIScriptControllerCocoa::completeTaskAsynchronouslyAfterActivityStateUpdate(unsigned callbackID)
@@ -97,6 +106,11 @@ void UIScriptControllerCocoa::completeTaskAsynchronouslyAfterActivityStateUpdate
             m_context->asyncTaskComplete(callbackID);
         }];
     });
+}
+
+JSRetainPtr<JSStringRef> UIScriptControllerCocoa::scrollingTreeAsText() const
+{
+    return adopt(JSStringCreateWithCFString((CFStringRef)[webView() _scrollingTreeAsText]));
 }
 
 void UIScriptControllerCocoa::removeViewFromWindow(JSValueRef callback)
@@ -136,7 +150,7 @@ void UIScriptControllerCocoa::addViewToWindow(JSValueRef callback)
 
 void UIScriptControllerCocoa::overridePreference(JSStringRef preferenceRef, JSStringRef valueRef)
 {
-    if (toWTFString(preferenceRef) == "WebKitMinimumFontSize")
+    if (toWTFString(preferenceRef) == "WebKitMinimumFontSize"_s)
         webView().configuration.preferences.minimumFontSize = toWTFString(valueRef).toDouble();
 }
 
@@ -163,6 +177,11 @@ JSRetainPtr<JSStringRef> UIScriptControllerCocoa::lastUndoLabel() const
     return adopt(JSStringCreateWithCFString((__bridge CFStringRef)platformUndoManager().undoActionName));
 }
 
+JSRetainPtr<JSStringRef> UIScriptControllerCocoa::caLayerTreeAsText() const
+{
+    return adopt(JSStringCreateWithCFString((CFStringRef)[webView() _caLayerTreeAsText]));
+}
+
 JSRetainPtr<JSStringRef> UIScriptControllerCocoa::firstRedoLabel() const
 {
     return adopt(JSStringCreateWithCFString((__bridge CFStringRef)platformUndoManager().redoActionName));
@@ -176,7 +195,7 @@ NSUndoManager *UIScriptControllerCocoa::platformUndoManager() const
 void UIScriptControllerCocoa::setDidShowContextMenuCallback(JSValueRef callback)
 {
     UIScriptController::setDidShowContextMenuCallback(callback);
-    webView().didShowContextMenuCallback = makeBlockPtr([this, strongThis = makeRef(*this)] {
+    webView().didShowContextMenuCallback = makeBlockPtr([this, protectedThis = Ref { *this }] {
         if (!m_context)
             return;
         m_context->fireCallback(CallbackTypeDidShowContextMenu);
@@ -186,7 +205,7 @@ void UIScriptControllerCocoa::setDidShowContextMenuCallback(JSValueRef callback)
 void UIScriptControllerCocoa::setDidDismissContextMenuCallback(JSValueRef callback)
 {
     UIScriptController::setDidDismissContextMenuCallback(callback);
-    webView().didDismissContextMenuCallback = makeBlockPtr([this, strongThis = makeRef(*this)] {
+    webView().didDismissContextMenuCallback = makeBlockPtr([this, protectedThis = Ref { *this }] {
         if (!m_context)
             return;
         m_context->fireCallback(CallbackTypeDidDismissContextMenu);
@@ -281,6 +300,91 @@ void UIScriptControllerCocoa::dismissContactPickerWithContacts(JSValueRef contac
     JSContext *context = [JSContext contextWithJSGlobalContextRef:m_context->jsContext()];
     JSValue *value = [JSValue valueWithJSValueRef:contacts inContext:context];
     [webView() _dismissContactPickerWithContacts:[value toArray]];
+}
+
+unsigned long UIScriptControllerCocoa::countOfUpdatesWithLayerChanges() const
+{
+    return webView()._countOfUpdatesWithLayerChanges;
+}
+
+#if ENABLE(IMAGE_ANALYSIS)
+
+uint64_t UIScriptControllerCocoa::currentImageAnalysisRequestID() const
+{
+    return TestController::currentImageAnalysisRequestID();
+}
+
+void UIScriptControllerCocoa::installFakeMachineReadableCodeResultsForImageAnalysis()
+{
+    TestController::singleton().installFakeMachineReadableCodeResultsForImageAnalysis();
+}
+
+#endif // ENABLE(IMAGE_ANALYSIS)
+
+void UIScriptControllerCocoa::setSpellCheckerResults(JSValueRef results)
+{
+    [[LayoutTestSpellChecker checker] setResultsFromJSValue:results inContext:m_context->jsContext()];
+}
+
+void UIScriptControllerCocoa::requestTextExtraction(JSValueRef callback, TextExtractionOptions* options)
+{
+    auto extractionRect = CGRectNull;
+    if (options && options->clipToBounds)
+        extractionRect = webView().bounds;
+
+    auto includeRects = options && options->includeRects ? IncludeRects::Yes : IncludeRects::No;
+    unsigned callbackID = m_context->prepareForAsyncTask(callback, CallbackTypeNonPersistent);
+    [webView() _requestTextExtraction:extractionRect completionHandler:^(WKTextExtractionItem *item) {
+        if (!m_context)
+            return;
+
+        auto description = adopt(JSStringCreateWithCFString((__bridge CFStringRef)recursiveDescription(item, includeRects)));
+        m_context->asyncTaskComplete(callbackID, { JSValueMakeString(m_context->jsContext(), description.get()) });
+    }];
+}
+
+void UIScriptControllerCocoa::requestRenderedTextForFrontmostTarget(int x, int y, JSValueRef callback)
+{
+    unsigned callbackID = m_context->prepareForAsyncTask(callback, CallbackTypeNonPersistent);
+    auto request = adoptNS([[_WKTargetedElementRequest alloc] initWithPoint:CGPointMake(x, y)]);
+    [webView() _requestTargetedElementInfo:request.get() completionHandler:^(NSArray<_WKTargetedElementInfo *> *elements) {
+        if (!m_context)
+            return;
+
+        JSRetainPtr result = adopt(JSStringCreateWithCFString((__bridge CFStringRef)(elements.firstObject.renderedText ?: @"")));
+        m_context->asyncTaskComplete(callbackID, { JSValueMakeString(m_context->jsContext(), result.get()) });
+    }];
+}
+
+void UIScriptControllerCocoa::adjustVisibilityForFrontmostTarget(int x, int y, JSValueRef callback)
+{
+    unsigned callbackID = m_context->prepareForAsyncTask(callback, CallbackTypeNonPersistent);
+    auto request = adoptNS([[_WKTargetedElementRequest alloc] initWithPoint:CGPointMake(x, y)]);
+    [webView() _requestTargetedElementInfo:request.get() completionHandler:[callbackID, this](NSArray<_WKTargetedElementInfo *> *elements) {
+        if (!elements.count) {
+            m_context->asyncTaskComplete(callbackID);
+            return;
+        }
+
+        RetainPtr<_WKTargetedElementInfo> frontTarget = elements.firstObject;
+        [webView() _adjustVisibilityForTargetedElements:@[ frontTarget.get() ] completionHandler:[callbackID, frontTarget, this] (BOOL success) {
+            if (!success) {
+                m_context->asyncTaskComplete(callbackID);
+                return;
+            }
+
+            JSRetainPtr firstSelector = adopt(JSStringCreateWithCFString((__bridge CFStringRef)[frontTarget selectors].firstObject));
+            m_context->asyncTaskComplete(callbackID, { JSValueMakeString(m_context->jsContext(), firstSelector.get()) });
+        }];
+    }];
+}
+
+void UIScriptControllerCocoa::resetVisibilityAdjustments(JSValueRef callback)
+{
+    unsigned callbackID = m_context->prepareForAsyncTask(callback, CallbackTypeNonPersistent);
+    [webView() _resetVisibilityAdjustmentsForTargetedElements:nil completionHandler:[callbackID, this](BOOL success) {
+        m_context->asyncTaskComplete(callbackID, { JSValueMakeBoolean(m_context->jsContext(), success) });
+    }];
 }
 
 } // namespace WTR

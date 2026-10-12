@@ -27,6 +27,7 @@
 #include "ResourceHandle.h"
 #include "ResourceHandleInternal.h"
 
+#include "DNS.h"
 #include "Logging.h"
 #include "NetworkingContext.h"
 #include "NotImplemented.h"
@@ -40,6 +41,7 @@
 #include <wtf/NeverDestroyed.h>
 #include <wtf/text/AtomStringHash.h>
 #include <wtf/text/CString.h>
+#include <wtf/text/MakeString.h>
 
 namespace WebCore {
 
@@ -77,26 +79,28 @@ void ResourceHandle::registerBuiltinSynchronousLoader(const AtomString& protocol
     builtinResourceHandleSynchronousLoaderMap().add(protocol, loader);
 }
 
-ResourceHandle::ResourceHandle(NetworkingContext* context, const ResourceRequest& request, ResourceHandleClient* client, bool defersLoading, bool shouldContentSniff, bool shouldContentEncodingSniff, RefPtr<SecurityOrigin>&& sourceOrigin, bool isMainFrameNavigation)
-    : d(makeUnique<ResourceHandleInternal>(this, context, request, client, defersLoading, shouldContentSniff && shouldContentSniffURL(request.url()), shouldContentEncodingSniff, WTFMove(sourceOrigin), isMainFrameNavigation))
+ResourceHandle::ResourceHandle(NetworkingContext* context, const ResourceRequest& request, ResourceHandleClient* client, bool defersLoading, bool shouldContentSniff, ContentEncodingSniffingPolicy contentEncodingSniffingPolicy, RefPtr<SecurityOrigin>&& sourceOrigin, bool isMainFrameNavigation)
+    : d(makeUnique<ResourceHandleInternal>(this, context, request, client, defersLoading, shouldContentSniff && shouldContentSniffURL(request.url()), contentEncodingSniffingPolicy, WTFMove(sourceOrigin), isMainFrameNavigation))
 {
     if (!request.url().isValid()) {
         scheduleFailure(InvalidURLFailure);
         return;
     }
 
-    if (!portAllowed(request.url())) {
+    if (!portAllowed(request.url()) || isIPAddressDisallowed(request.url())) {
         scheduleFailure(BlockedFailure);
         return;
     }
 }
 
-RefPtr<ResourceHandle> ResourceHandle::create(NetworkingContext* context, const ResourceRequest& request, ResourceHandleClient* client, bool defersLoading, bool shouldContentSniff, bool shouldContentEncodingSniff, RefPtr<SecurityOrigin>&& sourceOrigin, bool isMainFrameNavigation)
+RefPtr<ResourceHandle> ResourceHandle::create(NetworkingContext* context, const ResourceRequest& request, ResourceHandleClient* client, bool defersLoading, bool shouldContentSniff, ContentEncodingSniffingPolicy contentEncodingSniffingPolicy, RefPtr<SecurityOrigin>&& sourceOrigin, bool isMainFrameNavigation)
 {
-    if (auto constructor = builtinResourceHandleConstructorMap().get(request.url().protocol().toStringWithoutCopying()))
-        return constructor(request, client);
+    if (auto protocol = request.url().protocol().toExistingAtomString(); !protocol.isNull()) {
+        if (auto constructor = builtinResourceHandleConstructorMap().get(protocol))
+            return constructor(request, client);
+    }
 
-    auto newHandle = adoptRef(*new ResourceHandle(context, request, client, defersLoading, shouldContentSniff, shouldContentEncodingSniff, WTFMove(sourceOrigin), isMainFrameNavigation));
+    auto newHandle = adoptRef(*new ResourceHandle(context, request, client, defersLoading, shouldContentSniff, contentEncodingSniffingPolicy, WTFMove(sourceOrigin), isMainFrameNavigation));
 
     if (newHandle->d->m_scheduledFailureType != NoFailure)
         return newHandle;
@@ -137,9 +141,11 @@ void ResourceHandle::failureTimerFired()
 
 void ResourceHandle::loadResourceSynchronously(NetworkingContext* context, const ResourceRequest& request, StoredCredentialsPolicy storedCredentialsPolicy, SecurityOrigin* sourceOrigin, ResourceError& error, ResourceResponse& response, Vector<uint8_t>& data)
 {
-    if (auto constructor = builtinResourceHandleSynchronousLoaderMap().get(request.url().protocol().toStringWithoutCopying())) {
-        constructor(context, request, storedCredentialsPolicy, error, response, data);
-        return;
+    if (auto protocol = request.url().protocol().toExistingAtomString(); !protocol.isNull()) {
+        if (auto constructor = builtinResourceHandleSynchronousLoaderMap().get(protocol)) {
+            constructor(context, request, storedCredentialsPolicy, error, response, data);
+            return;
+        }
     }
 
     platformLoadResourceSynchronously(context, request, storedCredentialsPolicy, sourceOrigin, error, response, data);
@@ -162,7 +168,7 @@ void ResourceHandle::didReceiveResponse(ResourceResponse&& response, CompletionH
         std::optional<uint16_t> port = url.port();
         if (port && !WTF::isDefaultPortForProtocol(port.value(), url.protocol())) {
             cancel();
-            String message = "Cancelled load from '" + url.stringCenterEllipsizedToLength() + "' because it is using HTTP/0.9.";
+            auto message = makeString("Cancelled load from '"_s, url.stringCenterEllipsizedToLength(), "' because it is using HTTP/0.9."_s);
             d->m_client->didFail(this, { String(), 0, url, message });
             completionHandler();
             return;
@@ -170,13 +176,6 @@ void ResourceHandle::didReceiveResponse(ResourceResponse&& response, CompletionH
     }
     client()->didReceiveResponseAsync(this, WTFMove(response), WTFMove(completionHandler));
 }
-
-#if !USE(SOUP) && !USE(CURL)
-void ResourceHandle::platformContinueSynchronousDidReceiveResponse()
-{
-    // Do nothing.
-}
-#endif
 
 ResourceRequest& ResourceHandle::firstRequest()
 {
@@ -266,9 +265,9 @@ bool ResourceHandle::shouldContentSniff() const
     return d->m_shouldContentSniff;
 }
 
-bool ResourceHandle::shouldContentEncodingSniff() const
+ContentEncodingSniffingPolicy ResourceHandle::contentEncodingSniffingPolicy() const
 {
-    return d->m_shouldContentEncodingSniff;
+    return d->m_contentEncodingSniffingPolicy;
 }
 
 bool ResourceHandle::shouldContentSniffURL(const URL& url)
@@ -278,7 +277,7 @@ bool ResourceHandle::shouldContentSniffURL(const URL& url)
         return true;
 #endif
     // We shouldn't content sniff file URLs as their MIME type should be established via their extension.
-    return !url.protocolIs("file");
+    return !url.protocolIsFile();
 }
 
 void ResourceHandle::forceContentSniffing()
@@ -304,5 +303,71 @@ void ResourceHandle::setDefersLoading(bool defers)
 
     platformSetDefersLoading(defers);
 }
+
+#if USE(SOUP) || (USE(CURL) && !OS(MORPHOS))
+ResourceHandleInternal::~ResourceHandleInternal() = default;
+
+ResourceHandle::~ResourceHandle()
+{
+    ASSERT_NOT_REACHED();
+}
+
+bool ResourceHandle::start()
+{
+    ASSERT_NOT_REACHED();
+    return false;
+}
+
+void ResourceHandle::cancel()
+{
+    ASSERT_NOT_REACHED();
+}
+
+void ResourceHandle::platformSetDefersLoading(bool)
+{
+    ASSERT_NOT_REACHED();
+}
+
+void ResourceHandle::platformLoadResourceSynchronously(NetworkingContext*, const ResourceRequest&, StoredCredentialsPolicy, SecurityOrigin*, ResourceError&, ResourceResponse&, Vector<uint8_t>&)
+{
+    ASSERT_NOT_REACHED();
+}
+
+bool ResourceHandle::shouldUseCredentialStorage()
+{
+    ASSERT_NOT_REACHED();
+    return false;
+}
+
+void ResourceHandle::didReceiveAuthenticationChallenge(const AuthenticationChallenge&)
+{
+    ASSERT_NOT_REACHED();
+}
+
+void ResourceHandle::receivedCredential(const AuthenticationChallenge&, const Credential&)
+{
+    ASSERT_NOT_REACHED();
+}
+
+void ResourceHandle::receivedRequestToContinueWithoutCredential(const AuthenticationChallenge&)
+{
+    ASSERT_NOT_REACHED();
+}
+
+void ResourceHandle::receivedCancellation(const AuthenticationChallenge&)
+{
+    ASSERT_NOT_REACHED();
+}
+
+void ResourceHandle::receivedRequestToPerformDefaultHandling(const AuthenticationChallenge&)
+{
+    ASSERT_NOT_REACHED();
+}
+
+void ResourceHandle::receivedChallengeRejection(const AuthenticationChallenge&)
+{
+    ASSERT_NOT_REACHED();
+}
+#endif
 
 } // namespace WebCore

@@ -26,36 +26,49 @@
 #pragma once
 
 #include "KeyboardEvent.h"
-#include "KeyboardScroll.h"
+#include "KeyboardScroll.h" // FIXME: This is a layering violation.
 #include "RectEdges.h"
-#include "ScrollAnimator.h"
+#include "ScrollableArea.h"
+#include <wtf/CheckedPtr.h>
 
 namespace WebCore {
 
-class KeyboardScrollingAnimator {
-    WTF_MAKE_NONCOPYABLE(KeyboardScrollingAnimator);
-    WTF_MAKE_FAST_ALLOCATED;
-public:
-    KeyboardScrollingAnimator(ScrollAnimator&, ScrollController&);
+class PlatformKeyboardEvent;
 
-    bool beginKeyboardScrollGesture(KeyboardEvent&);
-    void handleKeyUpEvent();
-    void updateKeyboardScrollPosition(MonotonicTime);
+enum class KeyboardScrollingKey : uint8_t {
+    LeftArrow,
+    RightArrow,
+    UpArrow,
+    DownArrow,
+    Space,
+    PageUp,
+    PageDown,
+    Home,
+    End
+};
+
+const std::optional<KeyboardScrollingKey> keyboardScrollingKeyForKeyboardEvent(const KeyboardEvent&);
+const std::optional<ScrollDirection> scrollDirectionForKeyboardEvent(const KeyboardEvent&);
+const std::optional<ScrollGranularity> scrollGranularityForKeyboardEvent(const KeyboardEvent&);
+
+class KeyboardScrollingAnimator final : public CanMakeWeakPtr<KeyboardScrollingAnimator>, public CanMakeCheckedPtr<KeyboardScrollingAnimator> {
+    WTF_MAKE_FAST_ALLOCATED;
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(KeyboardScrollingAnimator);
+    WTF_MAKE_NONCOPYABLE(KeyboardScrollingAnimator);
+public:
+    KeyboardScrollingAnimator(ScrollableArea&);
+
+    WEBCORE_EXPORT bool beginKeyboardScrollGesture(ScrollDirection, ScrollGranularity, bool isKeyRepeat);
+    WEBCORE_EXPORT void handleKeyUpEvent();
+    WEBCORE_EXPORT void stopScrollingImmediately();
 
 private:
-    void stopKeyboardScrollAnimation();
-    RectEdges<bool> scrollableDirectionsFromOffset(FloatPoint) const;
-    std::optional<KeyboardScroll> keyboardScrollForKeyboardEvent(KeyboardEvent&) const;
+    std::optional<KeyboardScroll> makeKeyboardScroll(ScrollDirection, ScrollGranularity) const;
     float scrollDistance(ScrollDirection, ScrollGranularity) const;
+    RectEdges<bool> rubberbandableDirections() const;
 
-    ScrollAnimator& m_scrollAnimator;
-    ScrollController& m_scrollController;
-    std::optional<WebCore::KeyboardScroll> m_currentKeyboardScroll;
+    ScrollableArea& m_scrollableArea;
     bool m_scrollTriggeringKeyIsPressed { false };
-    FloatSize m_velocity;
-    MonotonicTime m_timeAtLastFrame;
-    FloatPoint m_idealPositionForMinimumTravel;
-    FloatPoint m_idealPosition;
 };
 
 } // namespace WebCore

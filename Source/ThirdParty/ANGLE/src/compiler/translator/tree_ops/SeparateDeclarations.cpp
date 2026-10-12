@@ -3,76 +3,130 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
-// The SeparateDeclarations function processes declarations, so that in the end each declaration
-// contains only one declarator.
-// This is useful as an intermediate step when initialization needs to be separated from
-// declaration, or when things need to be unfolded out of the initializer.
-// Example:
-//     int a[1] = int[1](1), b[1] = int[1](2);
-// gets transformed when run through this class into the AST equivalent of:
-//     int a[1] = int[1](1);
-//     int b[1] = int[1](2);
-
 #include "compiler/translator/tree_ops/SeparateDeclarations.h"
 
-#include "compiler/translator/tree_util/IntermTraverse.h"
+#include <unordered_map>
+#include "compiler/translator/SymbolTable.h"
+
+#include "compiler/translator/IntermRebuild.h"
+#include "compiler/translator/util.h"
 
 namespace sh
 {
-
 namespace
 {
 
-class SeparateDeclarationsTraverser : private TIntermTraverser
+class Separator final : private TIntermRebuild
 {
   public:
-    ANGLE_NO_DISCARD static bool apply(TCompiler *compiler, TIntermNode *root);
+    Separator(TCompiler &compiler) : TIntermRebuild(compiler, true, true) {}
+    using TIntermRebuild::rebuildRoot;
 
   private:
-    SeparateDeclarationsTraverser();
-    bool visitDeclaration(Visit, TIntermDeclaration *node) override;
-};
-
-bool SeparateDeclarationsTraverser::apply(TCompiler *compiler, TIntermNode *root)
-{
-    SeparateDeclarationsTraverser separateDecl;
-    root->traverse(&separateDecl);
-    return separateDecl.updateTree(compiler, root);
-}
-
-SeparateDeclarationsTraverser::SeparateDeclarationsTraverser()
-    : TIntermTraverser(true, false, false)
-{}
-
-bool SeparateDeclarationsTraverser::visitDeclaration(Visit, TIntermDeclaration *node)
-{
-    TIntermSequence *sequence = node->getSequence();
-    if (sequence->size() > 1)
+    void recordModifiedStructVariables(TIntermDeclaration &node)
     {
-        TIntermBlock *parentBlock = getParentNode()->getAsBlock();
-        ASSERT(parentBlock != nullptr);
-
-        TIntermSequence replacementDeclarations;
-        for (size_t ii = 0; ii < sequence->size(); ++ii)
+        ASSERT(!mNewStructure);  // No nested struct declarations.
+        TIntermSequence &sequence = *node.getSequence();
+        if (sequence.size() <= 1)
         {
-            TIntermDeclaration *replacementDeclaration = new TIntermDeclaration();
-
-            replacementDeclaration->appendDeclarator(sequence->at(ii)->getAsTyped());
-            replacementDeclaration->setLine(sequence->at(ii)->getLine());
-            replacementDeclarations.push_back(replacementDeclaration);
+            return;
         }
+        TIntermTyped *declarator    = sequence.at(0)->getAsTyped();
+        const TType &declaratorType = declarator->getType();
+        const TStructure *structure = declaratorType.getStruct();
+        // Rewrite variable declarations that specify structs AND multiple variables at the same
+        // time. Only one variable can specify the struct and rest must be rewritten with new
+        // type.
+        if (!structure || !declaratorType.isStructSpecifier())
+        {
+            return;
+        }
+        // Struct specifier changes for all variables except the first one.
+        uint32_t index = 1;
+        if (structure->symbolType() == SymbolType::Empty)
+        {
 
-        mMultiReplacements.push_back(
-            NodeReplaceWithMultipleEntry(parentBlock, node, replacementDeclarations));
+            TStructure *newStructure =
+                new TStructure(&mSymbolTable, kEmptyImmutableString, &structure->fields(),
+                               SymbolType::AngleInternal);
+            newStructure->setAtGlobalScope(structure->atGlobalScope());
+            structure     = newStructure;
+            mNewStructure = newStructure;
+            // Adding name causes the struct type to change, so all variables need rewriting.
+            index = 0;
+        }
+        for (; index < sequence.size(); ++index)
+        {
+            Declaration decl              = ViewDeclaration(node, index);
+            const TVariable &var          = decl.symbol.variable();
+            const TType &varType          = var.getType();
+            const bool newTypeIsSpecifier = index == 0;
+            TType *newType                = new TType(structure, newTypeIsSpecifier);
+            newType->setQualifier(varType.getQualifier());
+            newType->makeArrays(varType.getArraySizes());
+            TVariable *newVar = new TVariable(&mSymbolTable, var.name(), newType, var.symbolType());
+            mStructVariables.insert(std::make_pair(&var, newVar));
+        }
     }
-    return false;
-}
+
+    PreResult visitDeclarationPre(TIntermDeclaration &node) override
+    {
+        recordModifiedStructVariables(node);
+        return node;
+    }
+
+    PostResult visitDeclarationPost(TIntermDeclaration &node) override
+    {
+        TIntermSequence &sequence = *node.getSequence();
+        if (sequence.size() <= 1)
+        {
+            return node;
+        }
+        std::vector<TIntermNode *> replacements;
+        uint32_t index = 0;
+        if (mNewStructure)
+        {
+            TType *namedType = new TType(mNewStructure, true);
+            namedType->setQualifier(EvqGlobal);
+            TIntermDeclaration *replacement = new TIntermDeclaration;
+            replacement->appendDeclarator(sequence.at(0)->getAsTyped());
+            replacement->setLine(node.getLine());
+            replacements.push_back(replacement);
+            mNewStructure = nullptr;
+            index         = 1;
+        }
+        for (; index < sequence.size(); ++index)
+        {
+            TIntermDeclaration *replacement = new TIntermDeclaration;
+            TIntermTyped *declarator        = sequence.at(index)->getAsTyped();
+            replacement->appendDeclarator(declarator);
+            replacement->setLine(declarator->getLine());
+            replacements.push_back(replacement);
+        }
+        return PostResult::Multi(std::move(replacements));
+    }
+
+    PreResult visitSymbolPre(TIntermSymbol &symbolNode) override
+    {
+        auto it = mStructVariables.find(&symbolNode.variable());
+        if (it == mStructVariables.end())
+        {
+            return symbolNode;
+        }
+        return *new TIntermSymbol(it->second);
+    }
+
+    const TStructure *mNewStructure = nullptr;
+    // Old struct variable to new struct variable mapping.
+    std::unordered_map<const TVariable *, TVariable *> mStructVariables;
+};
 
 }  // namespace
 
-bool SeparateDeclarations(TCompiler *compiler, TIntermNode *root)
+bool SeparateDeclarations(TCompiler &compiler, TIntermBlock &root)
 {
-    return SeparateDeclarationsTraverser::apply(compiler, root);
+    Separator separator(compiler);
+    return separator.rebuildRoot(root);
 }
 
 }  // namespace sh

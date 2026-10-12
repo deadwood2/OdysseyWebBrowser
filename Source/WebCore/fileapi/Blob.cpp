@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2010 Google Inc. All rights reserved.
+ * Copyright (C) 2012-2024 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -41,34 +42,72 @@
 #include "ReadableStream.h"
 #include "ReadableStreamSource.h"
 #include "ScriptExecutionContext.h"
+#include "SecurityOrigin.h"
 #include "SharedBuffer.h"
 #include "ThreadableBlobRegistry.h"
-#include <wtf/IsoMallocInlines.h>
+#include "WebCoreOpaqueRoot.h"
+#include <wtf/Lock.h>
+#include <wtf/MainThread.h>
 #include <wtf/NeverDestroyed.h>
+#include <wtf/TZoneMallocInlines.h>
 #include <wtf/ThreadSafeRefCounted.h>
 #include <wtf/text/CString.h>
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(Blob);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(Blob);
 
 class BlobURLRegistry final : public URLRegistry {
 public:
-    void registerURL(ScriptExecutionContext&, const URL&, URLRegistrable&) final;
-    void unregisterURL(const URL&) final;
+    void registerURL(const ScriptExecutionContext&, const URL&, URLRegistrable&) final;
+    void unregisterURL(const URL&, const SecurityOriginData&) final;
+    void unregisterURLsForContext(const ScriptExecutionContext&) final;
 
     static URLRegistry& registry();
+
+    Lock m_urlsPerContextLock;
+    HashMap<ScriptExecutionContextIdentifier, HashSet<URL>> m_urlsPerContext WTF_GUARDED_BY_LOCK(m_urlsPerContextLock);
 };
 
-void BlobURLRegistry::registerURL(ScriptExecutionContext& context, const URL& publicURL, URLRegistrable& blob)
+void BlobURLRegistry::registerURL(const ScriptExecutionContext& context, const URL& publicURL, URLRegistrable& blob)
 {
     ASSERT(&blob.registry() == this);
-    ThreadableBlobRegistry::registerBlobURL(context.securityOrigin(), context.policyContainer(), publicURL, static_cast<Blob&>(blob).url());
+    {
+        Locker locker { m_urlsPerContextLock };
+        m_urlsPerContext.add(context.identifier(), HashSet<URL>()).iterator->value.add(publicURL.isolatedCopy());
+    }
+    ThreadableBlobRegistry::registerBlobURL(context.securityOrigin(), context.policyContainer(), publicURL, static_cast<Blob&>(blob).url(), context.topOrigin().data());
 }
 
-void BlobURLRegistry::unregisterURL(const URL& url)
+void BlobURLRegistry::unregisterURL(const URL& url, const SecurityOriginData& topOrigin)
 {
-    ThreadableBlobRegistry::unregisterBlobURL(url);
+    bool isURLRegistered = false;
+    {
+        Locker locker { m_urlsPerContextLock };
+        for (auto& [contextIdentifier, urls] : m_urlsPerContext) {
+            if (!urls.remove(url))
+                continue;
+            if (urls.isEmpty())
+                m_urlsPerContext.remove(contextIdentifier);
+            isURLRegistered = true;
+            break;
+        }
+    }
+    if (!isURLRegistered)
+        return;
+
+    ThreadableBlobRegistry::unregisterBlobURL(url, topOrigin);
+}
+
+void BlobURLRegistry::unregisterURLsForContext(const ScriptExecutionContext& context)
+{
+    HashSet<URL> urlsForContext;
+    {
+        Locker locker { m_urlsPerContextLock };
+        urlsForContext = m_urlsPerContext.take(context.identifier());
+    }
+    for (auto& url : urlsForContext)
+        ThreadableBlobRegistry::unregisterBlobURL(url, context.topOrigin().data());
 }
 
 URLRegistry& BlobURLRegistry::registry()
@@ -89,7 +128,24 @@ Blob::Blob(ScriptExecutionContext* context)
     , m_size(0)
     , m_internalURL(BlobURL::createInternalURL())
 {
-    ThreadableBlobRegistry::registerBlobURL(m_internalURL, { }, { });
+    ThreadableBlobRegistry::registerInternalBlobURL(m_internalURL, { }, { });
+}
+
+static size_t computeMemoryCost(const Vector<BlobPartVariant>& blobPartVariants)
+{
+    size_t memoryCost = 0;
+    for (auto& blobPartVariant : blobPartVariants) {
+        WTF::switchOn(blobPartVariant, [&](const RefPtr<Blob>& blob) {
+            memoryCost += blob->memoryCost();
+        }, [&](const RefPtr<JSC::ArrayBufferView>& view) {
+            memoryCost += view->byteLength();
+        }, [&](const RefPtr<JSC::ArrayBuffer>& array) {
+            memoryCost += array->byteLength();
+        }, [&](const String& string) {
+            memoryCost += string.sizeInBytes();
+        });
+    }
+    return memoryCost;
 }
 
 static Vector<BlobPart> buildBlobData(Vector<BlobPartVariant>&& blobPartVariants, const BlobPropertyBag& propertyBag)
@@ -108,59 +164,73 @@ static Vector<BlobPart> buildBlobData(Vector<BlobPartVariant>&& blobPartVariants
 Blob::Blob(ScriptExecutionContext& context, Vector<BlobPartVariant>&& blobPartVariants, const BlobPropertyBag& propertyBag)
     : ActiveDOMObject(&context)
     , m_type(normalizedContentType(propertyBag.type))
+    , m_memoryCost(computeMemoryCost(blobPartVariants))
     , m_internalURL(BlobURL::createInternalURL())
 {
-    ThreadableBlobRegistry::registerBlobURL(m_internalURL, buildBlobData(WTFMove(blobPartVariants), propertyBag), m_type);
+    ThreadableBlobRegistry::registerInternalBlobURL(m_internalURL, buildBlobData(WTFMove(blobPartVariants), propertyBag), m_type);
 }
 
 Blob::Blob(ScriptExecutionContext* context, Vector<uint8_t>&& data, const String& contentType)
     : ActiveDOMObject(context)
     , m_type(contentType)
     , m_size(data.size())
+    , m_memoryCost(data.size())
     , m_internalURL(BlobURL::createInternalURL())
 {
-    ThreadableBlobRegistry::registerBlobURL(m_internalURL, { BlobPart(WTFMove(data)) }, contentType);
+    ThreadableBlobRegistry::registerInternalBlobURL(m_internalURL, { BlobPart(WTFMove(data)) }, contentType);
 }
 
 Blob::Blob(ReferencingExistingBlobConstructor, ScriptExecutionContext* context, const Blob& blob)
     : ActiveDOMObject(context)
     , m_type(blob.type())
     , m_size(blob.size())
+    , m_memoryCost(blob.memoryCost())
     , m_internalURL(BlobURL::createInternalURL())
 {
-    ThreadableBlobRegistry::registerBlobURL(m_internalURL, { BlobPart(blob.url()) } , m_type);
+    ThreadableBlobRegistry::registerInternalBlobURL(m_internalURL, { BlobPart(blob.url()) } , m_type);
 }
 
-Blob::Blob(DeserializationContructor, ScriptExecutionContext* context, const URL& srcURL, const String& type, std::optional<unsigned long long> size, const String& fileBackedPath)
+Blob::Blob(DeserializationContructor, ScriptExecutionContext* context, const URL& srcURL, const String& type, std::optional<unsigned long long> size, unsigned long long memoryCost, const String& fileBackedPath)
     : ActiveDOMObject(context)
     , m_type(normalizedContentType(type))
     , m_size(size)
+    , m_memoryCost(memoryCost)
     , m_internalURL(BlobURL::createInternalURL())
 {
     if (fileBackedPath.isEmpty())
-        ThreadableBlobRegistry::registerBlobURL(nullptr, { }, m_internalURL, srcURL);
+        ThreadableBlobRegistry::registerBlobURL(nullptr, { }, m_internalURL, srcURL, std::nullopt);
     else
-        ThreadableBlobRegistry::registerBlobURLOptionallyFileBacked(m_internalURL, srcURL, fileBackedPath, m_type);
+        ThreadableBlobRegistry::registerInternalBlobURLOptionallyFileBacked(m_internalURL, srcURL, fileBackedPath, m_type);
 }
 
-Blob::Blob(ScriptExecutionContext* context, const URL& srcURL, long long start, long long end, const String& type)
+Blob::Blob(ScriptExecutionContext* context, const URL& srcURL, long long start, long long end, unsigned long long memoryCost, const String& type)
     : ActiveDOMObject(context)
     , m_type(normalizedContentType(type))
+    , m_memoryCost(memoryCost)
     , m_internalURL(BlobURL::createInternalURL())
     // m_size is not necessarily equal to end - start so we do not initialize it here.
 {
-    ThreadableBlobRegistry::registerBlobURLForSlice(m_internalURL, srcURL, start, end, m_type);
+    ThreadableBlobRegistry::registerInternalBlobURLForSlice(m_internalURL, srcURL, start, end, m_type);
 }
 
 Blob::~Blob()
 {
+    ThreadableBlobRegistry::unregisterBlobURL(m_internalURL, std::nullopt);
     while (!m_blobLoaders.isEmpty())
         (*m_blobLoaders.begin())->cancel();
 }
 
-Ref<Blob> Blob::slice(ScriptExecutionContext& context, long long start, long long end, const String& contentType) const
+Ref<Blob> Blob::slice(long long start, long long end, const String& contentType) const
 {
-    auto blob = adoptRef(*new Blob(&context, m_internalURL, start, end, contentType));
+    unsigned long long sliceMemoryCost = 0;
+    if (auto totalMemoryCost = memoryCost()) {
+        unsigned long long positiveStart = start > 0 ? std::min<unsigned long long>(start, totalMemoryCost) : totalMemoryCost - std::min<unsigned long long>(-start, totalMemoryCost);
+        unsigned long long positiveEnd = end > 0 ? std::min<unsigned long long>(end, totalMemoryCost) : totalMemoryCost - std::min<unsigned long long>(-end, totalMemoryCost);
+        if (positiveStart < positiveEnd)
+            sliceMemoryCost = positiveEnd - positiveStart;
+        ASSERT(sliceMemoryCost <= totalMemoryCost);
+    }
+    auto blob = adoptRef(*new Blob(scriptExecutionContext(), m_internalURL, start, end, sliceMemoryCost, contentType));
     blob->suspendIfNeeded();
     return blob;
 }
@@ -195,22 +265,22 @@ String Blob::normalizedContentType(const String& contentType)
     return contentType.convertToASCIILowercase();
 }
 
-void Blob::loadBlob(ScriptExecutionContext& context, FileReaderLoader::ReadType readType, CompletionHandler<void(BlobLoader&)>&& completionHandler)
+void Blob::loadBlob(FileReaderLoader::ReadType readType, CompletionHandler<void(BlobLoader&)>&& completionHandler)
 {
     auto blobLoader = makeUnique<BlobLoader>([this, pendingActivity = makePendingActivity(*this), completionHandler = WTFMove(completionHandler)](BlobLoader& blobLoader) mutable {
         completionHandler(blobLoader);
         m_blobLoaders.take(&blobLoader);
     });
 
-    blobLoader->start(*this, &context, readType);
+    blobLoader->start(*this, scriptExecutionContext(), readType);
 
     if (blobLoader->isLoading())
         m_blobLoaders.add(WTFMove(blobLoader));
 }
 
-void Blob::text(ScriptExecutionContext& context, Ref<DeferredPromise>&& promise)
+void Blob::text(Ref<DeferredPromise>&& promise)
 {
-    loadBlob(context, FileReaderLoader::ReadAsText, [promise = WTFMove(promise)](BlobLoader& blobLoader) mutable {
+    loadBlob(FileReaderLoader::ReadAsText, [promise = WTFMove(promise)](BlobLoader& blobLoader) mutable {
         if (auto optionalErrorCode = blobLoader.errorCode()) {
             promise->reject(Exception { *optionalErrorCode });
             return;
@@ -219,28 +289,42 @@ void Blob::text(ScriptExecutionContext& context, Ref<DeferredPromise>&& promise)
     });
 }
 
-void Blob::arrayBuffer(ScriptExecutionContext& context, Ref<DeferredPromise>&& promise)
+static ExceptionOr<Ref<JSC::ArrayBuffer>> arrayBufferFromBlobLoader(BlobLoader& blobLoader)
 {
-    loadBlob(context, FileReaderLoader::ReadAsArrayBuffer, [promise = WTFMove(promise)](BlobLoader& blobLoader) mutable {
-        if (auto optionalErrorCode = blobLoader.errorCode()) {
-            promise->reject(Exception { *optionalErrorCode });
-            return;
-        }
-        auto arrayBuffer = blobLoader.arrayBufferResult();
-        if (!arrayBuffer) {
-            promise->reject(Exception { InvalidStateError });
-            return;
-        }
-        promise->resolve<IDLArrayBuffer>(*arrayBuffer);
+    if (auto optionalErrorCode = blobLoader.errorCode())
+        return Exception { *optionalErrorCode };
+    RefPtr arrayBuffer = blobLoader.arrayBufferResult();
+    if (!arrayBuffer)
+        return Exception { ExceptionCode::InvalidStateError };
+    return arrayBuffer.releaseNonNull();
+}
+
+void Blob::arrayBuffer(DOMPromiseDeferred<IDLArrayBuffer>&& promise)
+{
+    loadBlob(FileReaderLoader::ReadAsArrayBuffer, [promise = WTFMove(promise)](BlobLoader& blobLoader) mutable {
+        promise.settle(arrayBufferFromBlobLoader(blobLoader));
     });
 }
 
-ExceptionOr<Ref<ReadableStream>> Blob::stream(ScriptExecutionContext& scriptExecutionContext)
+void Blob::bytes(Ref<DeferredPromise>&& promise)
 {
-    class BlobStreamSource : public FileReaderLoaderClient, public ReadableStreamSource {
+    loadBlob(FileReaderLoader::ReadAsArrayBuffer, [promise = WTFMove(promise)](BlobLoader& blobLoader) mutable {
+        auto arrayBuffer = arrayBufferFromBlobLoader(blobLoader);
+        if (arrayBuffer.hasException()) {
+            promise->reject(arrayBuffer.releaseException());
+            return;
+        }
+        Ref view = Uint8Array::create(arrayBuffer.releaseReturnValue());
+        promise->resolve<IDLUint8Array>(WTFMove(view));
+    });
+}
+
+ExceptionOr<Ref<ReadableStream>> Blob::stream()
+{
+    class BlobStreamSource : public FileReaderLoaderClient, public RefCountedReadableStreamSource {
     public:
         BlobStreamSource(ScriptExecutionContext& scriptExecutionContext, Blob& blob)
-            : m_loader(makeUniqueRef<FileReaderLoader>(FileReaderLoader::ReadType::ReadAsArrayBuffer, this))
+            : m_loader(makeUniqueRef<FileReaderLoader>(FileReaderLoader::ReadType::ReadAsBinaryChunks, this))
         {
             m_loader->start(&scriptExecutionContext, blob);
         }
@@ -251,57 +335,104 @@ ExceptionOr<Ref<ReadableStream>> Blob::stream(ScriptExecutionContext& scriptExec
         void setInactive() final { }
         void doStart() final
         {
-            m_isStarted = true;
-            if (m_exception)
-                controller().error(*m_exception);
+            ASSERT(m_streamState == StreamState::NotStarted);
+            m_streamState = StreamState::Waiting;
+
+            closeStreamIfNeeded();
         }
 
-        void doPull() final { }
+        void doPull() final
+        {
+            if (closeStreamIfNeeded())
+                return;
+
+            if (m_queue.isEmpty()) {
+                m_streamState = StreamState::Waiting;
+                return;
+            }
+
+            if (!tryEnqueuing(m_queue.takeFirst().get()))
+                return;
+
+            pullFinished();
+        }
+
         void doCancel() final
         {
+            m_loaderState = LoaderState::Cancelled;
             m_loader->cancel();
+            m_queue.clear();
         }
 
         // FileReaderLoaderClient
         void didStartLoading() final { }
-        void didReceiveData() final
+        void didReceiveData() final { }
+        void didReceiveBinaryChunk(const SharedBuffer& buffer) final
         {
-            auto result = m_loader->arrayBufferResult();
-            if (!result)
+            if (m_streamState != StreamState::Waiting) {
+                m_queue.append(buffer.asFragmentedSharedBuffer());
+                return;
+            }
+
+            m_streamState = StreamState::Started;
+            if (!tryEnqueuing(buffer))
                 return;
 
-            if (m_loader->isCompleted() && !m_bytesRead)
-                controller().enqueue(WTFMove(result));
-            else {
-                auto bytesLoaded = m_loader->bytesLoaded();
-                controller().enqueue(result->slice(m_bytesRead, bytesLoaded));
-                m_bytesRead = bytesLoaded;
-            }
+            pullFinished();
         }
+
         void didFinishLoading() final
         {
-            controller().close();
+            m_loaderState = LoaderState::Completed;
+            closeStreamIfNeeded();
         }
+
         void didFail(ExceptionCode code) final
         {
-            Exception exception { code };
-            if (!m_isStarted) {
-                m_exception = WTFMove(exception);
-                return;
+            ASSERT(!m_exception);
+            m_exception = Exception { code };
+
+            m_loaderState = LoaderState::Completed;
+            closeStreamIfNeeded();
+        }
+
+        bool closeStreamIfNeeded()
+        {
+            if (m_loaderState != LoaderState::Completed || m_streamState == StreamState::NotStarted || !m_queue.isEmpty())
+                return false;
+
+            if (m_exception) {
+                controller().error(*m_exception);
+                return true;
             }
-            controller().error(exception);
+
+            controller().close();
+            return true;
+        }
+
+        bool tryEnqueuing(const FragmentedSharedBuffer& buffer)
+        {
+            bool didSucceed = controller().enqueue(buffer.tryCreateArrayBuffer());
+            if (!didSucceed)
+                didFail(ExceptionCode::OutOfMemoryError);
+
+            return didSucceed;
         }
 
         UniqueRef<FileReaderLoader> m_loader;
-        size_t m_bytesRead { 0 };
-        bool m_isStarted { false };
+        Deque<Ref<FragmentedSharedBuffer>> m_queue;
         std::optional<Exception> m_exception;
+        enum class StreamState : uint8_t { NotStarted, Started, Waiting };
+        StreamState m_streamState { StreamState::NotStarted };
+        enum class LoaderState : uint8_t { Started, Completed, Cancelled };
+        LoaderState m_loaderState { LoaderState::Started };
     };
 
-    auto* globalObject = scriptExecutionContext.globalObject();
+    auto* context = scriptExecutionContext();
+    auto* globalObject = context ? context->globalObject() : nullptr;
     if (!globalObject)
-        return Exception { InvalidStateError };
-    return ReadableStream::create(*globalObject, adoptRef(*new BlobStreamSource(scriptExecutionContext, *this)));
+        return Exception { ExceptionCode::InvalidStateError };
+    return ReadableStream::create(*JSC::jsCast<JSDOMGlobalObject*>(globalObject), adoptRef(*new BlobStreamSource(*context, *this)));
 }
 
 #if ASSERT_ENABLED
@@ -338,14 +469,14 @@ URLRegistry& Blob::registry() const
     return BlobURLRegistry::registry();
 }
 
-const char* Blob::activeDOMObjectName() const
+URLKeepingBlobAlive Blob::handle() const
 {
-    return "Blob";
+    return { m_internalURL };
 }
 
-BlobURLHandle Blob::handle() const
+WebCoreOpaqueRoot root(Blob* blob)
 {
-    return BlobURLHandle { m_internalURL };
+    return WebCoreOpaqueRoot { blob };
 }
 
 } // namespace WebCore

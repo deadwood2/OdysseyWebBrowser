@@ -19,7 +19,7 @@ const GLint kWidth  = 64;
 const GLint kHeight = 64;
 
 // test drawing with GL_MULTISAMPLE_EXT enabled/disabled.
-class EXTMultisampleCompatibilityTest : public ANGLETest
+class EXTMultisampleCompatibilityTest : public ANGLETest<>
 {
 
   protected:
@@ -172,8 +172,8 @@ TEST_P(EXTMultisampleCompatibilityTest, DrawAndResolve)
     if (!isApplicable())
         return;
 
-    // http://anglebug.com/5270
-    ANGLE_SKIP_TEST_IF(IsOSX() && IsIntelUHD630Mobile() && IsDesktopOpenGL());
+    // http://anglebug.com/40644773
+    ANGLE_SKIP_TEST_IF(IsMac() && IsIntelUHD630Mobile() && IsDesktopOpenGL());
 
     static const float kBlue[]  = {0.0f, 0.0f, 1.0f, 1.0f};
     static const float kGreen[] = {0.0f, 1.0f, 0.0f, 1.0f};
@@ -279,7 +279,7 @@ TEST_P(EXTMultisampleCompatibilityTest, DrawAlphaOneAndResolve)
 
 ANGLE_INSTANTIATE_TEST_ES2_AND_ES3(EXTMultisampleCompatibilityTest);
 
-class MultisampleCompatibilityTest : public ANGLETest
+class MultisampleCompatibilityTest : public ANGLETest<>
 {
 
   protected:
@@ -383,7 +383,7 @@ TEST_P(MultisampleCompatibilityTest, DrawCoverageAndResolve)
         prepareForDraw(samples);
         glEnable(GL_SAMPLE_COVERAGE);
         glSampleCoverage(1.0, false);
-        drawQuad(drawRed.get(), essl1_shaders::PositionAttrib(), 0.5f);
+        drawQuad(drawRed, essl1_shaders::PositionAttrib(), 0.5f);
 
         prepareForVerify();
         GLsizei pixelCount = kWidth * kHeight;

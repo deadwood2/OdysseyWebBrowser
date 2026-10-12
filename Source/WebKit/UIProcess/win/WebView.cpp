@@ -37,21 +37,22 @@
 #include "WebContextMenuProxyWin.h"
 #include "WebEditCommandProxy.h"
 #include "WebEventFactory.h"
+#include "WebKitDLL.h"
 #include "WebPageGroup.h"
 #include "WebPageProxy.h"
 #include "WebProcessPool.h"
 #include <Commctrl.h>
 #include <WebCore/BitmapInfo.h>
+#include <WebCore/CairoUtilities.h>
 #include <WebCore/Cursor.h>
 #include <WebCore/Editor.h>
 #include <WebCore/FloatRect.h>
+#include <WebCore/GDIUtilities.h>
 #include <WebCore/HWndDC.h>
 #include <WebCore/IntRect.h>
 #include <WebCore/NotImplemented.h>
 #include <WebCore/Region.h>
-#include <WebCore/WebCoreInstanceHandle.h>
 #include <WebCore/WindowMessageBroadcaster.h>
-#include <WebCore/WindowsTouch.h>
 #include <wtf/FileSystem.h>
 #include <wtf/SoftLinking.h>
 #include <wtf/text/StringBuffer.h>
@@ -65,15 +66,11 @@
 #if USE(CAIRO)
 #include <cairo-win32.h>
 #include <cairo.h>
-#endif 
-
-#if USE(DIRECT2D)
-#include <WebCore/Direct2DUtilities.h>
-#include <d3d11_1.h>
-#include <directxcolors.h> 
-#include <dxgi.h>
 #endif
 
+#if USE(GRAPHICS_LAYER_WC)
+#include "DrawingAreaProxyWC.h"
+#endif
 
 namespace WebKit {
 using namespace WebCore;
@@ -224,7 +221,7 @@ bool WebView::registerWebViewWindowClass()
 }
 
 WebView::WebView(RECT rect, const API::PageConfiguration& configuration, HWND parentWindow)
-    : m_pageClient(makeUnique<PageClientImpl>(*this))
+    : m_pageClient(makeUniqueWithoutRefCountedCheck<PageClientImpl>(*this))
 {
     registerWebViewWindowClass();
 
@@ -237,22 +234,17 @@ WebView::WebView(RECT rect, const API::PageConfiguration& configuration, HWND pa
     ASSERT(m_isVisible == static_cast<bool>(::GetWindowLong(m_window, GWL_STYLE) & WS_VISIBLE));
 
     auto pageConfiguration = configuration.copy();
-    WebProcessPool* processPool = pageConfiguration->processPool();
-    m_page = processPool->createWebPage(*m_pageClient, WTFMove(pageConfiguration));
-    m_page->initializeWebPage();
+    pageConfiguration->preferences().setAllowTestOnlyIPC(pageConfiguration->allowTestOnlyIPC());
+    WebProcessPool& processPool = pageConfiguration->processPool();
+    m_page = processPool.createWebPage(*m_pageClient, WTFMove(pageConfiguration));
 
-    IntSize windowSize(rect.right - rect.left, rect.bottom - rect.top);
-#if USE(DIRECT2D)
-    Direct2D::createDeviceAndContext(m_d3dDevice, m_immediateContext);
-    m_page->setDevice(m_d3dDevice.get());
-    setupSwapChain(windowSize);
-#endif
+    auto& openerInfo = m_page->configuration().openerInfo();
+    m_page->initializeWebPage(openerInfo ? openerInfo->site : Site(aboutBlankURL()));
 
-    if (m_page->drawingArea())
-        m_page->drawingArea()->setSize(windowSize);
+    m_page->setIntrinsicDeviceScaleFactor(deviceScaleFactorForWindow(m_window));
 
 #if ENABLE(REMOTE_INSPECTOR)
-    m_page->setURLSchemeHandlerForScheme(RemoteInspectorProtocolHandler::create(*m_page), "inspector");
+    m_page->setURLSchemeHandlerForScheme(RemoteInspectorProtocolHandler::create(*m_page), "inspector"_s);
 #endif
 
     // FIXME: Initializing the tooltip window here matches WebKit win, but seems like something
@@ -343,7 +335,7 @@ void WebView::windowAncestryDidChange()
 
 LRESULT WebView::onMouseEvent(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam, bool& handled)
 {
-    NativeWebMouseEvent mouseEvent = NativeWebMouseEvent(hWnd, message, wParam, lParam, m_wasActivatedByMouseEvent);
+    NativeWebMouseEvent mouseEvent = NativeWebMouseEvent(hWnd, message, wParam, lParam, m_wasActivatedByMouseEvent, m_page->deviceScaleFactor());
     setWasActivatedByMouseEvent(false);
 
     switch (message) {
@@ -380,7 +372,7 @@ LRESULT WebView::onMouseEvent(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPa
 
 LRESULT WebView::onWheelEvent(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam, bool& handled)
 {
-    NativeWebWheelEvent wheelEvent(hWnd, message, wParam, lParam);
+    NativeWebWheelEvent wheelEvent(hWnd, message, wParam, lParam, m_page->deviceScaleFactor());
     if (wheelEvent.controlKey()) {
         // We do not want WebKit to handle Control + Wheel, this should be handled by the client application
         // to zoom the page.
@@ -388,7 +380,7 @@ LRESULT WebView::onWheelEvent(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPa
         return 0;
     }
 
-    m_page->handleWheelEvent(wheelEvent);
+    m_page->handleNativeWheelEvent(wheelEvent);
 
     handled = true;
     return 0;
@@ -400,20 +392,20 @@ LRESULT WebView::onHorizontalScroll(HWND hWnd, UINT message, WPARAM wParam, LPAR
     ScrollGranularity granularity;
     switch (LOWORD(wParam)) {
     case SB_LINELEFT:
-        granularity = ScrollByLine;
-        direction = ScrollLeft;
+        granularity = ScrollGranularity::Line;
+        direction = ScrollDirection::ScrollLeft;
         break;
     case SB_LINERIGHT:
-        granularity = ScrollByLine;
-        direction = ScrollRight;
+        granularity = ScrollGranularity::Line;
+        direction = ScrollDirection::ScrollRight;
         break;
     case SB_PAGELEFT:
-        granularity = ScrollByDocument;
-        direction = ScrollLeft;
+        granularity = ScrollGranularity::Document;
+        direction = ScrollDirection::ScrollLeft;
         break;
     case SB_PAGERIGHT:
-        granularity = ScrollByDocument;
-        direction = ScrollRight;
+        granularity = ScrollGranularity::Document;
+        direction = ScrollDirection::ScrollRight;
         break;
     default:
         handled = false;
@@ -432,20 +424,20 @@ LRESULT WebView::onVerticalScroll(HWND hWnd, UINT message, WPARAM wParam, LPARAM
     ScrollGranularity granularity;
     switch (LOWORD(wParam)) {
     case SB_LINEDOWN:
-        granularity = ScrollByLine;
-        direction = ScrollDown;
+        granularity = ScrollGranularity::Line;
+        direction = ScrollDirection::ScrollDown;
         break;
     case SB_LINEUP:
-        granularity = ScrollByLine;
-        direction = ScrollUp;
+        granularity = ScrollGranularity::Line;
+        direction = ScrollDirection::ScrollUp;
         break;
     case SB_PAGEDOWN:
-        granularity = ScrollByDocument;
-        direction = ScrollDown;
+        granularity = ScrollGranularity::Document;
+        direction = ScrollDirection::ScrollDown;
         break;
     case SB_PAGEUP:
-        granularity = ScrollByDocument;
-        direction = ScrollUp;
+        granularity = ScrollGranularity::Document;
+        direction = ScrollDirection::ScrollUp;
         break;
     default:
         handled = false;
@@ -477,13 +469,16 @@ LRESULT WebView::onKeyEvent(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPara
     return 0;
 }
 
-static void drawPageBackground(HDC dc, const WebPageProxy* page, const RECT& rect)
+static void drawPageBackground(HDC dc, const WebPageProxy* page, const IntRect& rect)
 {
     auto& backgroundColor = page->backgroundColor();
     if (!backgroundColor || backgroundColor.value().isVisible())
         return;
 
-    ::FillRect(dc, &rect, reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1));
+    auto scaledRect = rect;
+    scaledRect.scale(page->deviceScaleFactor());
+    RECT viewRect = scaledRect;
+    ::FillRect(dc, &viewRect, reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1));
 }
 
 void WebView::paint(HDC hdc, const IntRect& dirtyRect)
@@ -491,31 +486,38 @@ void WebView::paint(HDC hdc, const IntRect& dirtyRect)
     if (dirtyRect.isEmpty())
         return;
     m_page->endPrinting();
-    if (auto* drawingArea = static_cast<DrawingAreaProxyCoordinatedGraphics*>(m_page->drawingArea())) {
-        // FIXME: We should port WebKit1's rect coalescing logic here.
-        Region unpaintedRegion;
+    if (m_page->drawingArea()) {
+        auto painter = [&](auto drawingArea) {
+            // FIXME: We should port WebKit1's rect coalescing logic here.
+            Region unpaintedRegion;
 #if USE(CAIRO)
-        cairo_surface_t* surface = cairo_win32_surface_create(hdc);
-        cairo_t* context = cairo_create(surface);
+            cairo_surface_t* surface = cairo_win32_surface_create(hdc);
+            auto deviceScaleFactor = m_page->deviceScaleFactor();
+            cairo_surface_set_device_scale(surface, deviceScaleFactor, deviceScaleFactor);
+            cairo_t* context = cairo_create(surface);
 
-        drawingArea->paint(context, dirtyRect, unpaintedRegion);
-
-        cairo_destroy(context);
-        cairo_surface_destroy(surface);
-#else
-        COMPtr<ID3D11Texture2D> backBuffer; 
-        HRESULT hr = m_swapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&backBuffer)); 
-        if (SUCCEEDED(hr)) {
-            BackingStore::DXConnections context { m_immediateContext.get(), backBuffer.get() };
             drawingArea->paint(context, dirtyRect, unpaintedRegion);
-        }
-
-        m_swapChain->Present(0, 0); 
+    
+            cairo_destroy(context);
+            cairo_surface_destroy(surface);
 #endif
-
-        auto unpaintedRects = unpaintedRegion.rects();
-        for (auto& rect : unpaintedRects)
-            drawPageBackground(hdc, m_page.get(), rect);
+    
+            auto unpaintedRects = unpaintedRegion.rects();
+            for (auto& rect : unpaintedRects)
+                drawPageBackground(hdc, m_page.get(), rect);
+        };
+        switch (m_page->drawingArea()->type()) {
+#if USE(GRAPHICS_LAYER_WC)
+        case DrawingAreaType::WC:
+            painter(static_cast<DrawingAreaProxyWC*>(m_page->drawingArea()));
+            break;
+#endif
+        case DrawingAreaType::CoordinatedGraphics:
+            painter(static_cast<DrawingAreaProxyCoordinatedGraphics*>(m_page->drawingArea()));
+            break;
+        default:
+            ASSERT_NOT_REACHED();
+        }
     } else
         drawPageBackground(hdc, m_page.get(), dirtyRect);
 }
@@ -527,7 +529,9 @@ LRESULT WebView::onPaintEvent(HWND hWnd, UINT message, WPARAM, LPARAM, bool& han
 
     PAINTSTRUCT paintStruct;
     HDC hdc = ::BeginPaint(m_window, &paintStruct);
-    paint(hdc, paintStruct.rcPaint);
+    FloatRect dirtyRect(paintStruct.rcPaint);
+    dirtyRect.scale(1 / m_page->deviceScaleFactor());
+    paint(hdc, enclosingIntRect(dirtyRect));
 
     ::EndPaint(m_window, &paintStruct);
 
@@ -549,31 +553,17 @@ LRESULT WebView::onPrintClientEvent(HWND hWnd, UINT, WPARAM wParam, LPARAM, bool
 
 LRESULT WebView::onSizeEvent(HWND hwnd, UINT, WPARAM, LPARAM lParam, bool& handled)
 {
-    int width = LOWORD(lParam);
-    int height = HIWORD(lParam);
-
-    IntSize windowSize(width, height);
+    if (m_page)
+        m_page->setIntrinsicDeviceScaleFactor(deviceScaleFactorForWindow(hwnd));
+    // If there are no m_page, use intrinsic device scale factor.
+    float deviceScaleFactor = m_page ? m_page->deviceScaleFactor() : deviceScaleFactorForWindow(hwnd);
+    m_viewSize = expandedIntSize(FloatSize(LOWORD(lParam), HIWORD(lParam)) / deviceScaleFactor);
 
     if (m_page && m_page->drawingArea()) {
         // FIXME specify correctly layerPosition.
-        m_page->drawingArea()->setSize(windowSize, m_nextResizeScrollOffset);
+        m_page->drawingArea()->setSize(m_viewSize, m_nextResizeScrollOffset);
         m_nextResizeScrollOffset = IntSize();
     }
-
-#if USE(DIRECT2D)
-    if (m_swapChain) {
-        m_immediateContext->OMSetRenderTargets(0, nullptr, nullptr);
-
-        m_renderTargetView = nullptr;
-
-        // Preserve the existing buffer count (pass zero for count) and format (by passing DXGI_FORMAT_UNKNOWN).
-        // Automatically choose the width and height to match the client rect for the backing window (pass zeros for width/height).
-        HRESULT hr = m_swapChain->ResizeBuffers(0, 0, 0, DXGI_FORMAT_UNKNOWN, DXGI_SWAP_CHAIN_FLAG_GDI_COMPATIBLE);
-        RELEASE_ASSERT(SUCCEEDED(hr));
-
-        configureBackingStore(windowSize);
-    }
-#endif
 
     handled = true;
     return 0;
@@ -661,7 +651,7 @@ LRESULT WebView::onMenuCommand(HWND hWnd, UINT message, WPARAM wParam, LPARAM lP
     ContextMenuAction action = static_cast<ContextMenuAction>(menuItemInfo.wID);
     bool enabled = !(menuItemInfo.fState & MFS_DISABLED);
     bool checked = menuItemInfo.fState & MFS_CHECKED;
-    WebContextMenuItemData item(ContextMenuItemType::ActionType, action, title, enabled, checked);
+    WebContextMenuItemData item(ContextMenuItemType::Action, action, WTFMove(title), enabled, checked);
     m_page->contextMenuItemSelected(item);
 
     handled = true;
@@ -772,7 +762,7 @@ bool WebView::shouldInitializeTrackPointHack()
         L"Software\\Synaptics\\SynTPEnh\\UltraNavPS2"
     };
 
-    for (size_t i = 0; i < WTF_ARRAY_LENGTH(trackPointKeys); ++i) {
+    for (size_t i = 0; i < std::size(trackPointKeys); ++i) {
         HKEY trackPointKey;
         int readKeyResult = ::RegOpenKeyExW(HKEY_CURRENT_USER, trackPointKeys[i], 0, KEY_READ, &trackPointKey);
         ::RegCloseKey(trackPointKey);
@@ -874,21 +864,16 @@ void WebView::setScrollOffsetOnNextResize(const IntSize& scrollOffset)
 {
     // The next time we get a WM_SIZE message, scroll by the specified amount in onSizeEvent().
     m_nextResizeScrollOffset = scrollOffset;
+    m_nextResizeScrollOffset.scale(1 / m_page->deviceScaleFactor());
 }
 
 void WebView::setViewNeedsDisplay(const WebCore::Region& region)
 {
-    const RECT r = region.bounds();
-    ::InvalidateRect(m_window, &r, true);
+    auto rect = region.bounds();
+    rect.scale(m_page->deviceScaleFactor());
+    const RECT viewRect(rect);
+    ::InvalidateRect(m_window, &viewRect, true);
 }
-
-#if ENABLE(INPUT_TYPE_COLOR)
-PassRefPtr<WebColorChooserProxy> WebView::createColorChooserProxy(WebPageProxy*, const WebCore::Color&, const WebCore::IntRect&)
-{
-    notImplemented();
-    return 0;
-}
-#endif
 
 void WebView::didCommitLoadForMainFrame(bool useCustomRepresentation)
 {
@@ -961,50 +946,14 @@ void WebView::setToolTip(const String& toolTip)
     ::SendMessage(m_toolTipWindow, TTM_ACTIVATE, !toolTip.isEmpty(), 0);
 }
 
-#if USE(DIRECT2D)
-void WebView::setupSwapChain(const WebCore::IntSize& size)
+void WebView::setUsesOffscreenRendering(bool enabled)
 {
-    if (!m_d3dDevice)
-        return;
-
-    m_swapChain = Direct2D::swapChainOfSizeForWindowAndDevice(size, m_window, m_d3dDevice);
-    RELEASE_ASSERT(m_swapChain);
-
-    auto factory = Direct2D::factoryForDXGIDevice(Direct2D::toDXGIDevice(m_d3dDevice));
-
-    factory->MakeWindowAssociation(m_window, 0);
-    configureBackingStore(size);
+    m_usesOffscreenRendering = enabled;
 }
 
-void WebView::configureBackingStore(const WebCore::IntSize& size)
+bool WebView::usesOffscreenRendering() const
 {
-    ASSERT(m_swapChain);
-    ASSERT(m_d3dDevice);
-    ASSERT(m_immediateContext);
-
-    // Create a render target view 
-    COMPtr<ID3D11Texture2D> backBuffer; 
-    HRESULT hr = m_swapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&backBuffer)); 
-    RELEASE_ASSERT(SUCCEEDED(hr));
-
-    hr = m_d3dDevice->CreateRenderTargetView(backBuffer.get(), nullptr, &m_renderTargetView); 
-    RELEASE_ASSERT(SUCCEEDED(hr));
-
-    auto* renderTargetView = m_renderTargetView.get();
-    m_immediateContext->OMSetRenderTargets(1, &renderTargetView, nullptr);
-
-    // Setup the viewport 
-    D3D11_VIEWPORT viewport;
-    viewport.Width = (FLOAT)size.width();
-    viewport.Height = (FLOAT)size.height();
-    viewport.MinDepth = 0.0f;
-    viewport.MaxDepth = 1.0f;
-    viewport.TopLeftX = 0;
-    viewport.TopLeftY = 0;
-    m_immediateContext->RSSetViewports(1, &viewport);
-
-    m_immediateContext->ClearRenderTargetView(m_renderTargetView.get(), DirectX::Colors::MidnightBlue); 
+    return m_usesOffscreenRendering;
 }
-#endif
 
 } // namespace WebKit

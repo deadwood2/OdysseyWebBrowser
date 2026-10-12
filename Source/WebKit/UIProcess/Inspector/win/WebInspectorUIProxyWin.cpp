@@ -32,7 +32,9 @@
 #include "APIPageConfiguration.h"
 #include "InspectorResourceURLSchemeHandler.h"
 #include "PageClientImpl.h"
+#include "WKAPICast.h"
 #include "WebFramePolicyListenerProxy.h"
+#include "WebKitDLL.h"
 #include "WebPageGroup.h"
 #include "WebPageProxy.h"
 #include "WebPreferences.h"
@@ -43,13 +45,10 @@
 #include <WebCore/InspectorFrontendClientLocal.h>
 #include <WebCore/NotImplemented.h>
 #include <WebCore/WebCoreBundleWin.h>
-#include <WebCore/WebCoreInstanceHandle.h>
 #include <WebCore/WindowMessageBroadcaster.h>
 #include <WebKit/WKPage.h>
-
-#if USE(CF)
-#include <wtf/cf/CFURLExtras.h>
-#endif
+#include <wtf/FileSystem.h>
+#include <wtf/text/MakeString.h>
 
 namespace WebKit {
 
@@ -74,6 +73,63 @@ static InspectedWindowInfo getInspectedWindowInfo(HWND inspectedWindow, HWND par
     RECT parentRect;
     ::GetClientRect(parentWindow, &parentRect);
     return { rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top, parentRect.right - parentRect.left, parentRect.bottom - parentRect.top };
+}
+
+static String systemErrorMessage(DWORD errorCode)
+{
+    if (!errorCode)
+        return emptyString();
+
+    wchar_t* messageBuffer = nullptr;
+    size_t size = FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+        nullptr, errorCode, MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL), reinterpret_cast<LPWSTR>(&messageBuffer), 0, nullptr);
+    String message(messageBuffer, size);
+    LocalFree(messageBuffer);
+
+    return message;
+}
+
+void WebInspectorUIProxy::showSavePanelForSingleFile(HWND parentWindow, Vector<WebCore::InspectorFrontendClient::SaveData>&& saveDatas)
+{
+    // Remove custom URI schemes such as "web-inspector://" and also remove the leading "/".
+    URL url { saveDatas[0].url };
+    auto filePath = url.path().substring(1).toString().wideCharacters();
+    filePath.grow(MAX_PATH);
+
+    OPENFILENAME ofn { };
+    ofn.lStructSize = sizeof(OPENFILENAME);
+    ofn.hwndOwner = parentWindow;
+    ofn.lpstrFile = filePath.data();
+    ofn.nMaxFile = MAX_PATH;
+    ofn.Flags = OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT;
+
+    if (GetSaveFileName(&ofn)) {
+        auto fd = FileSystem::openFile(filePath.data(), FileSystem::FileOpenMode::ReadWrite);
+        if (!FileSystem::isHandleValid(fd))
+            return;
+
+        auto content = saveDatas[0].content.utf8();
+        auto contentSize = content.length();
+        auto bytesWritten = FileSystem::writeToFile(fd, content.span());
+        if (bytesWritten == -1 || bytesWritten != contentSize) {
+            auto message = systemErrorMessage(GetLastError());
+            if (message.isEmpty())
+                message = makeString("Error: writeToFile returns "_s, bytesWritten, ", contentLength = "_s, content.length());
+            MessageBox(parentWindow, message.wideCharacters().data(), L"Export HAR", MB_OK | MB_ICONEXCLAMATION);
+        }
+        FileSystem::closeFile(fd);
+    } else {
+        auto errorCode = CommDlgExtendedError();
+        if (errorCode) {
+            String message;
+            // FNERR_INVALIDFILENAME is treated specially because this is a common error.
+            if (errorCode == FNERR_INVALIDFILENAME)
+                message = "Error: A file name is invalid."_s;
+            else
+                message = makeString("Error: "_s, errorCode);
+            MessageBox(parentWindow, message.wideCharacters().data(), L"Export HAR", MB_OK | MB_ICONEXCLAMATION);
+        }
+    }
 }
 
 void WebInspectorUIProxy::windowReceivedMessage(HWND hwnd, UINT msg, WPARAM, LPARAM lParam)
@@ -129,6 +185,11 @@ LRESULT CALLBACK WebInspectorUIProxy::wndProc(HWND hwnd, UINT msg, WPARAM wParam
     case WM_CLOSE:
         inspector->close();
         return 0;
+    case WM_DPICHANGED: {
+        RECT& rect = *reinterpret_cast<RECT*>(lParam);
+        SetWindowPos(hwnd, nullptr, rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top, SWP_NOZORDER | SWP_NOACTIVATE);
+        return 0;
+    }
     default:
         break;
     }
@@ -149,7 +210,7 @@ bool WebInspectorUIProxy::registerWindowClass()
     wcex.lpfnWndProc = wndProc;
     wcex.cbClsExtra = 0;
     wcex.cbWndExtra = 0;
-    wcex.hInstance = WebCore::instanceHandle();
+    wcex.hInstance = instanceHandle();
     wcex.hIcon = 0;
     wcex.hCursor = LoadCursor(0, IDC_ARROW);
     wcex.hbrBackground = 0;
@@ -197,14 +258,14 @@ WebPageProxy* WebInspectorUIProxy::platformCreateFrontendPage()
 {
     ASSERT(inspectedPage());
 
-    auto preferences = WebPreferences::create(String(), "WebKit2.", "WebKit2.");
+    auto preferences = WebPreferences::create(String(), "WebKit2."_s, "WebKit2."_s);
 #if ENABLE(DEVELOPER_MODE)
     // Allow developers to inspect the Web Inspector in debug builds without changing settings.
     preferences->setDeveloperExtrasEnabled(true);
     preferences->setLogsPageMessagesToSystemConsoleEnabled(true);
 #endif
     preferences->setJavaScriptRuntimeFlags({ });
-    auto pageGroup = WebPageGroup::create(WebKit::defaultInspectorPageGroupIdentifierForPage(inspectedPage()));
+    auto pageGroup = WebPageGroup::create(WebKit::defaultInspectorPageGroupIdentifierForPage(inspectedPage().get()));
     auto pageConfiguration = API::PageConfiguration::create();
     pageConfiguration->setProcessPool(&WebKit::defaultInspectorProcessPool(inspectionLevel()));
     pageConfiguration->setPreferences(preferences.ptr());
@@ -238,12 +299,12 @@ WebPageProxy* WebInspectorUIProxy::platformCreateFrontendPage()
 
     RECT r = { 0, 0, static_cast<LONG>(initialWindowWidth), static_cast<LONG>(initialWindowHeight) };
     auto page = inspectedPage();
-    m_inspectedViewWindow = page->viewWidget();
+    m_inspectedViewWindow = reinterpret_cast<HWND>(page->viewWidget());
     m_inspectedViewParentWindow = ::GetParent(m_inspectedViewWindow);
     auto view = WebView::create(r, pageConfiguration, m_inspectedViewParentWindow);
     m_inspectorView = &view.leakRef();
     auto inspectorPage = m_inspectorView->page();
-    m_inspectorViewWindow = inspectorPage->viewWidget();
+    m_inspectorViewWindow = reinterpret_cast<HWND>(inspectorPage->viewWidget());
     WKPageSetPageNavigationClient(toAPI(inspectorPage), &navigationClient.base);
 
     inspectorPage->setURLSchemeHandlerForScheme(InspectorResourceURLSchemeHandler::create(), "inspector-resource"_s);
@@ -285,25 +346,12 @@ DebuggableInfoData WebInspectorUIProxy::infoForLocalDebuggable()
     return DebuggableInfoData::empty();
 }
 
-unsigned WebInspectorUIProxy::platformInspectedWindowHeight()
-{
-    RECT rect;
-    ::GetClientRect(m_inspectedViewWindow, &rect);
-    return rect.bottom - rect.top;
-}
-
-unsigned WebInspectorUIProxy::platformInspectedWindowWidth()
-{
-    RECT rect;
-    ::GetClientRect(m_inspectedViewWindow, &rect);
-    return rect.right - rect.left;
-}
-
 void WebInspectorUIProxy::platformAttach()
 {
     static const unsigned defaultAttachedSize = 300;
     static const unsigned minimumAttachedWidth = 750;
     static const unsigned minimumAttachedHeight = 250;
+    auto deviceScaleFactor = inspectorPage()->deviceScaleFactor();
 
     if (m_inspectorDetachWindow && ::GetParent(m_inspectorViewWindow) == m_inspectorDetachWindow) {
         ::SetParent(m_inspectorViewWindow, m_inspectedViewParentWindow);
@@ -312,11 +360,16 @@ void WebInspectorUIProxy::platformAttach()
 
     WebCore::WindowMessageBroadcaster::addListener(m_inspectedViewWindow, this);
 
+    RECT inspectedWindowRect;
+    ::GetClientRect(m_inspectedViewWindow, &inspectedWindowRect);
+
     if (m_attachmentSide == AttachmentSide::Bottom) {
-        unsigned maximumAttachedHeight = platformInspectedWindowHeight() * 3 / 4;
+        unsigned inspectedWindowHeight = (inspectedWindowRect.bottom - inspectedWindowRect.top) / deviceScaleFactor;
+        unsigned maximumAttachedHeight = inspectedWindowHeight * 3 / 4;
         platformSetAttachedWindowHeight(std::max(minimumAttachedHeight, std::min(defaultAttachedSize, maximumAttachedHeight)));
     } else {
-        unsigned maximumAttachedWidth = platformInspectedWindowWidth() * 3 / 4;
+        unsigned inspectedWindowWidth = (inspectedWindowRect.right - inspectedWindowRect.left) / deviceScaleFactor;
+        unsigned maximumAttachedWidth = inspectedWindowWidth * 3 / 4;
         platformSetAttachedWindowWidth(std::max(minimumAttachedWidth, std::min(defaultAttachedSize, maximumAttachedWidth)));
     }
     ::ShowWindow(m_inspectorViewWindow, SW_SHOW);
@@ -331,7 +384,7 @@ void WebInspectorUIProxy::platformDetach()
         registerWindowClass();
         m_inspectorDetachWindow = ::CreateWindowEx(0, WebInspectorUIProxyClassName, 0, WS_OVERLAPPEDWINDOW,
             CW_USEDEFAULT, CW_USEDEFAULT, initialWindowWidth, initialWindowHeight,
-            0, 0, WebCore::instanceHandle(), 0);
+            0, 0, instanceHandle(), 0);
         ::SetProp(m_inspectorDetachWindow, WebInspectorUIProxyPointerProp, reinterpret_cast<HANDLE>(this));
     }
 
@@ -350,6 +403,8 @@ void WebInspectorUIProxy::platformDetach()
 
 void WebInspectorUIProxy::platformSetAttachedWindowHeight(unsigned height)
 {
+    auto deviceScaleFactor = inspectorPage()->deviceScaleFactor();
+    height *= deviceScaleFactor;
     auto windowInfo = getInspectedWindowInfo(m_inspectedViewWindow, m_inspectedViewParentWindow);
     ::SetWindowPos(m_inspectorViewWindow, 0, windowInfo.left, windowInfo.parentHeight - height, windowInfo.parentWidth - windowInfo.left, height, SWP_NOZORDER);
     ::SetWindowPos(m_inspectedViewWindow, 0, windowInfo.left, windowInfo.top, windowInfo.parentWidth - windowInfo.left, windowInfo.parentHeight - windowInfo.top, SWP_NOZORDER);
@@ -357,6 +412,8 @@ void WebInspectorUIProxy::platformSetAttachedWindowHeight(unsigned height)
 
 void WebInspectorUIProxy::platformSetAttachedWindowWidth(unsigned width)
 {
+    auto deviceScaleFactor = inspectorPage()->deviceScaleFactor();
+    width *= deviceScaleFactor;
     auto windowInfo = getInspectedWindowInfo(m_inspectedViewWindow, m_inspectedViewParentWindow);
     ::SetWindowPos(m_inspectorViewWindow, 0, windowInfo.parentWidth - width, windowInfo.top, width, windowInfo.parentHeight - windowInfo.top, SWP_NOZORDER);
     ::SetWindowPos(m_inspectedViewWindow, 0, windowInfo.left, windowInfo.top, windowInfo.parentWidth - windowInfo.left, windowInfo.parentHeight - windowInfo.top, SWP_NOZORDER);
@@ -398,6 +455,11 @@ void WebInspectorUIProxy::platformSetForcedAppearance(WebCore::InspectorFrontend
     notImplemented();
 }
 
+void WebInspectorUIProxy::platformRevealFileExternally(const String&)
+{
+    notImplemented();
+}
+
 void WebInspectorUIProxy::platformInspectedURLChanged(const String& /* url */)
 {
     notImplemented();
@@ -408,14 +470,24 @@ void WebInspectorUIProxy::platformShowCertificate(const WebCore::CertificateInfo
     notImplemented();
 }
 
-void WebInspectorUIProxy::platformSave(const String&, const String&, bool, bool)
+void WebInspectorUIProxy::platformSave(Vector<WebCore::InspectorFrontendClient::SaveData>&& saveDatas, bool /* forceSaveAs */)
 {
-    notImplemented();
+    // Currently, file saving is only possible with SaveMode::SingleFile.
+    // This is determined in WebInspectorUI::canSave().
+    ASSERT(saveDatas.size() == 1);
+    WebInspectorUIProxy::showSavePanelForSingleFile(m_inspectedViewWindow, WTFMove(saveDatas));
 }
 
-void WebInspectorUIProxy::platformAppend(const String&, const String&)
+void WebInspectorUIProxy::platformLoad(const String&, CompletionHandler<void(const String&)>&& completionHandler)
 {
     notImplemented();
+    completionHandler(nullString());
+}
+
+void WebInspectorUIProxy::platformPickColorFromScreen(CompletionHandler<void(const std::optional<WebCore::Color>&)>&& completionHandler)
+{
+    notImplemented();
+    completionHandler({ });
 }
 
 void WebInspectorUIProxy::platformAttachAvailabilityChanged(bool /* available */)

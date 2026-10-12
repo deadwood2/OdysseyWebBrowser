@@ -31,22 +31,38 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+@protocol WKFullScreenViewControllerDelegate
+- (void)requestExitFullScreen;
+- (void)showUI;
+- (void)hideUI;
+@end
+
 @interface WKFullScreenViewController : UIViewController
-@property (retain, nonatomic) id target;
-@property (assign, nonatomic) SEL exitFullScreenAction;
+@property (nonatomic, weak) id <WKFullScreenViewControllerDelegate> delegate;
 @property (copy, nonatomic) NSString *location;
 @property (assign, nonatomic) BOOL prefersStatusBarHidden;
 @property (assign, nonatomic) BOOL prefersHomeIndicatorAutoHidden;
 @property (assign, nonatomic, getter=isPlaying) BOOL playing;
 @property (assign, nonatomic, getter=isPictureInPictureActive) BOOL pictureInPictureActive;
+@property (assign, nonatomic, getter=isinWindowFullscreenActive) BOOL inWindowFullscreenActive;
 @property (assign, nonatomic, getter=isAnimating) BOOL animating;
 
 - (id)initWithWebView:(WKWebView *)webView;
 - (void)invalidate;
 - (void)showUI;
 - (void)hideUI;
+- (void)showBanner;
+- (void)hideBanner;
 - (void)videoControlsManagerDidChange;
 - (void)setAnimatingViewAlpha:(CGFloat)alpha;
+- (void)setSupportedOrientations:(UIInterfaceOrientationMask)supportedOrientations;
+- (void)resetSupportedOrientations;
+#if ENABLE(VIDEO_USES_ELEMENT_FULLSCREEN)
+- (void)hideCustomControls:(BOOL)hidden;
+#endif
+#if ENABLE(LINEAR_MEDIA_PLAYER)
+- (void)configureEnvironmentPickerButtonView;
+#endif
 @end
 
 NS_ASSUME_NONNULL_END

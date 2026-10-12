@@ -34,6 +34,7 @@ WHICH GENERATES THE GLSL ES preprocessor expression parser.
 #endif
 #if defined(__clang__)
 #pragma clang diagnostic ignored "-Wunreachable-code"
+#pragma clang diagnostic ignored "-Wunused-but-set-variable"
 #endif
 
 #include "ExpressionParser.h"
@@ -83,8 +84,8 @@ struct Context
 }  // namespace
 %}
 
-%pure-parser
-%name-prefix "pp"
+%define api.pure
+%define api.prefix {pp}
 %parse-param {Context *context}
 %lex-param {Context *context}
 

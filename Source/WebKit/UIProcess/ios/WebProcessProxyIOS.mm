@@ -28,11 +28,15 @@
 
 #if PLATFORM(IOS_FAMILY)
 
+#import "APIUIClient.h"
 #import "AccessibilitySupportSPI.h"
 #import "WKFullKeyboardAccessWatcher.h"
 #import "WKMouseDeviceObserver.h"
 #import "WKStylusDeviceObserver.h"
+#import "WebPageProxy.h"
 #import "WebProcessMessages.h"
+#import "WebProcessPool.h"
+#import <pal/system/cocoa/SleepDisablerCocoa.h>
 
 namespace WebKit {
 
@@ -44,6 +48,29 @@ void WebProcessProxy::platformInitialize()
 #if HAVE(STYLUS_DEVICE_OBSERVATION)
     [[WKStylusDeviceObserver sharedInstance] start];
 #endif
+
+    static bool didSetScreenWakeLockHandler = false;
+    if (!didSetScreenWakeLockHandler) {
+        didSetScreenWakeLockHandler = true;
+        PAL::SleepDisablerCocoa::setScreenWakeLockHandler([](bool shouldKeepScreenAwake) {
+            RefPtr<WebPageProxy> visiblePage;
+            for (auto&& page : globalPageMap().values()) {
+                if (!visiblePage)
+                    visiblePage = page.ptr();
+                else if (page->isViewVisible()) {
+                    visiblePage = page.ptr();
+                    break;
+                }
+            }
+            if (!visiblePage) {
+                ASSERT_NOT_REACHED();
+                return false;
+            }
+            return visiblePage->uiClient().setShouldKeepScreenAwake(shouldKeepScreenAwake);
+        });
+    }
+
+    throttler().setAllowsActivities(!m_processPool->processesShouldSuspend());
 }
 
 void WebProcessProxy::platformDestroy()

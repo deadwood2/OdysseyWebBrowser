@@ -36,6 +36,15 @@
 #include <wtf/TypeCasts.h>
 
 namespace WebCore {
+class MediaElementSession;
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebCore::MediaElementSession> : std::true_type { };
+}
+
+namespace WebCore {
 
 enum class MediaSessionMainContentPurpose { MediaControls, Autoplay };
 enum class MediaPlaybackState { Playing, Paused };
@@ -51,7 +60,7 @@ class Document;
 class HTMLMediaElement;
 class MediaMetadata;
 class MediaSession;
-class MediaSessionObserver;
+class MediaElementSessionObserver;
 class SourceBuffer;
 
 struct MediaPositionState;
@@ -70,6 +79,7 @@ public:
     void clientWillBeginAutoplaying() final;
     bool clientWillBeginPlayback() final;
     bool clientWillPausePlayback() final;
+    void clientCharacteristicsChanged(bool) final;
 
     void visibilityChanged();
     void isVisibleInViewportChanged();
@@ -94,7 +104,7 @@ public:
 
     bool isPlayingToWirelessPlaybackTarget() const override;
 
-    void mediaStateDidChange(MediaProducer::MediaStateFlags);
+    void mediaStateDidChange(MediaProducerMediaStateFlags);
 #endif
 
     bool requiresFullscreenForVideoPlayback() const;
@@ -139,18 +149,14 @@ public:
     WEBCORE_EXPORT void removeBehaviorRestriction(BehaviorRestrictions);
     bool hasBehaviorRestriction(BehaviorRestrictions restriction) const { return restriction & m_restrictions; }
 
-#if ENABLE(MEDIA_SOURCE)
-    size_t maximumMediaSourceBufferSize(const SourceBuffer&) const;
-#endif
-
     HTMLMediaElement& element() const { return m_element; }
 
     bool wantsToObserveViewportVisibilityForMediaControls() const;
     bool wantsToObserveViewportVisibilityForAutoplay() const;
 
-    enum class PlaybackControlsPurpose { ControlsManager, NowPlaying, MediaSession };
     bool canShowControlsManager(PlaybackControlsPurpose) const;
     bool isLargeEnoughForMainContent(MediaSessionMainContentPurpose) const;
+    bool isLongEnoughForMainContent() const final;
     bool isMainContentForPurposesOfAutoplayEvents() const;
     MonotonicTime mostRecentUserInteractionTime() const;
 
@@ -163,14 +169,14 @@ public:
             || type == MediaType::VideoAudio;
     }
 
-    std::optional<NowPlayingInfo> nowPlayingInfo() const final;
+    std::optional<NowPlayingInfo> computeNowPlayingInfo() const;
 
     WEBCORE_EXPORT void updateMediaUsageIfChanged() final;
     std::optional<MediaUsageInfo> mediaUsageInfo() const { return m_mediaUsageInfo; }
 
 #if !RELEASE_LOG_DISABLED
-    const void* logIdentifier() const final { return m_logIdentifier; }
-    const char* logClassName() const final { return "MediaElementSession"; }
+    String description() const final;
+    ASCIILiteral logClassName() const final { return "MediaElementSession"_s; }
 #endif
 
 #if ENABLE(MEDIA_SESSION)
@@ -182,6 +188,8 @@ public:
     void actionHandlersChanged();
 
     MediaSession* mediaSession() const;
+
+    bool hasNowPlayingInfo() const;
 
 private:
 
@@ -242,7 +250,7 @@ private:
     
 #if ENABLE(MEDIA_SESSION)
     bool m_isScrubbing { false };
-    std::unique_ptr<MediaSessionObserver> m_observer;
+    std::unique_ptr<MediaElementSessionObserver> m_observer;
 #endif
 };
 

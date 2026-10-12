@@ -28,13 +28,16 @@
 #include "DateInstance.h"
 #include "Error.h"
 #include "IntegrityInlines.h"
+#include "IntlDateTimeFormat.h"
 #include "JSCBuiltins.h"
 #include "JSCInlines.h"
 #include "JSDateMath.h"
 #include "JSGlobalObject.h"
 #include "JSObject.h"
 #include "JSString.h"
+#include "TemporalInstant.h"
 #include <wtf/Assertions.h>
+#include <wtf/text/MakeString.h>
 
 namespace JSC {
 
@@ -46,6 +49,7 @@ static JSC_DECLARE_HOST_FUNCTION(dateProtoFuncGetMilliSeconds);
 static JSC_DECLARE_HOST_FUNCTION(dateProtoFuncGetMinutes);
 static JSC_DECLARE_HOST_FUNCTION(dateProtoFuncGetMonth);
 static JSC_DECLARE_HOST_FUNCTION(dateProtoFuncGetSeconds);
+static JSC_DECLARE_HOST_FUNCTION(dateProtoFuncGetTime);
 static JSC_DECLARE_HOST_FUNCTION(dateProtoFuncGetTimezoneOffset);
 static JSC_DECLARE_HOST_FUNCTION(dateProtoFuncGetUTCDate);
 static JSC_DECLARE_HOST_FUNCTION(dateProtoFuncGetUTCDay);
@@ -79,6 +83,10 @@ static JSC_DECLARE_HOST_FUNCTION(dateProtoFuncToTimeString);
 static JSC_DECLARE_HOST_FUNCTION(dateProtoFuncToUTCString);
 static JSC_DECLARE_HOST_FUNCTION(dateProtoFuncToISOString);
 static JSC_DECLARE_HOST_FUNCTION(dateProtoFuncToJSON);
+static JSC_DECLARE_HOST_FUNCTION(dateProtoFuncToTemporalInstant);
+static JSC_DECLARE_HOST_FUNCTION(dateProtoFuncToLocaleString);
+static JSC_DECLARE_HOST_FUNCTION(dateProtoFuncToLocaleDateString);
+static JSC_DECLARE_HOST_FUNCTION(dateProtoFuncToLocaleTimeString);
 
 }
 
@@ -93,117 +101,114 @@ static EncodedJSValue formateDateInstance(JSGlobalObject* globalObject, CallFram
     auto& cache = vm.dateCache;
 
     JSValue thisValue = callFrame->thisValue();
-    auto* thisDateObj = jsDynamicCast<DateInstance*>(vm, thisValue);
+    auto* thisDateObj = jsDynamicCast<DateInstance*>(thisValue);
     if (UNLIKELY(!thisDateObj))
         return throwVMTypeError(globalObject, scope);
 
-    Integrity::auditStructureID(vm, thisDateObj->structureID());
+    Integrity::auditStructureID(thisDateObj->structureID());
     const GregorianDateTime* gregorianDateTime = asUTCVariant
         ? thisDateObj->gregorianDateTimeUTC(cache)
         : thisDateObj->gregorianDateTime(cache);
     if (!gregorianDateTime)
         return JSValue::encode(jsNontrivialString(vm, String("Invalid Date"_s)));
 
-    return JSValue::encode(jsNontrivialString(vm, formatDateTime(*gregorianDateTime, format, asUTCVariant)));
+    return JSValue::encode(jsNontrivialString(vm, formatDateTime(*gregorianDateTime, format, asUTCVariant, cache)));
+}
+
+
+static void applyToNumberToOtherwiseIgnoredArguments(JSGlobalObject* globalObject, CallFrame* callFrame, unsigned maxArgs)
+{
+    VM& vm = globalObject->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    unsigned numArgs = std::min<unsigned>(callFrame->argumentCount(), maxArgs);
+    for (unsigned index = 0; index < numArgs; ++index) {
+        callFrame->uncheckedArgument(index).toNumber(globalObject);
+        RETURN_IF_EXCEPTION(scope, void());
+    }
 }
 
 // Converts a list of arguments sent to a Date member function into milliseconds, updating
 // ms (representing milliseconds) and t (representing the rest of the date structure) appropriately.
 //
 // Format of member function: f([hour,] [min,] [sec,] [ms])
-static bool fillStructuresUsingTimeArgs(JSGlobalObject* globalObject, CallFrame* callFrame, int maxArgs, double* ms, GregorianDateTime* t)
+static bool fillStructuresUsingTimeArgs(JSGlobalObject* globalObject, CallFrame* callFrame, unsigned maxArgs, double* ms, GregorianDateTime* t)
 {
     VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
 
     double milliseconds = 0;
-    bool ok = true;
-    int idx = 0;
-    int numArgs = callFrame->argumentCount();
-    
-    // JS allows extra trailing arguments -- ignore them
-    if (numArgs > maxArgs)
-        numArgs = maxArgs;
+    unsigned idx = 0;
+    unsigned numArgs = std::min<unsigned>(callFrame->argumentCount(), maxArgs);
 
     // hours
     if (maxArgs >= 4 && idx < numArgs) {
         t->setHour(0);
         double hours = callFrame->uncheckedArgument(idx++).toIntegerPreserveNaN(globalObject);
         RETURN_IF_EXCEPTION(scope, false);
-        ok = std::isfinite(hours);
         milliseconds += hours * msPerHour;
     }
 
     // minutes
-    if (maxArgs >= 3 && idx < numArgs && ok) {
+    if (maxArgs >= 3 && idx < numArgs) {
         t->setMinute(0);
         double minutes = callFrame->uncheckedArgument(idx++).toIntegerPreserveNaN(globalObject);
         RETURN_IF_EXCEPTION(scope, false);
-        ok = std::isfinite(minutes);
         milliseconds += minutes * msPerMinute;
     }
-    
+
     // seconds
-    if (maxArgs >= 2 && idx < numArgs && ok) {
+    if (maxArgs >= 2 && idx < numArgs) {
         t->setSecond(0);
         double seconds = callFrame->uncheckedArgument(idx++).toIntegerPreserveNaN(globalObject);
         RETURN_IF_EXCEPTION(scope, false);
-        ok = std::isfinite(seconds);
         milliseconds += seconds * msPerSecond;
     }
-    
-    if (!ok)
-        return false;
-        
+
     // milliseconds
     if (idx < numArgs) {
         double millis = callFrame->uncheckedArgument(idx).toIntegerPreserveNaN(globalObject);
         RETURN_IF_EXCEPTION(scope, false);
-        ok = std::isfinite(millis);
         milliseconds += millis;
     } else
         milliseconds += *ms;
-    
+
     *ms = milliseconds;
-    return ok;
+    return std::isfinite(milliseconds);
 }
 
 // Converts a list of arguments sent to a Date member function into years, months, and milliseconds, updating
 // ms (representing milliseconds) and t (representing the rest of the date structure) appropriately.
 //
 // Format of member function: f([years,] [months,] [days])
-static bool fillStructuresUsingDateArgs(JSGlobalObject* globalObject, CallFrame* callFrame, int maxArgs, double *ms, GregorianDateTime *t)
+static bool fillStructuresUsingDateArgs(JSGlobalObject* globalObject, CallFrame* callFrame, unsigned maxArgs, double *ms, GregorianDateTime *t)
 {
     VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
 
-    int idx = 0;
     bool ok = true;
-    int numArgs = callFrame->argumentCount();
-  
-    // JS allows extra trailing arguments -- ignore them
-    if (numArgs > maxArgs)
-        numArgs = maxArgs;
+    unsigned idx = 0;
+    unsigned numArgs = std::min<unsigned>(callFrame->argumentCount(), maxArgs);
   
     // years
     if (maxArgs >= 3 && idx < numArgs) {
         double years = callFrame->uncheckedArgument(idx++).toIntegerPreserveNaN(globalObject);
         RETURN_IF_EXCEPTION(scope, false);
-        ok = std::isfinite(years);
+        ok = ok && std::isfinite(years);
         t->setYear(toInt32(years));
     }
     // months
-    if (maxArgs >= 2 && idx < numArgs && ok) {
+    if (maxArgs >= 2 && idx < numArgs) {
         double months = callFrame->uncheckedArgument(idx++).toIntegerPreserveNaN(globalObject);
         RETURN_IF_EXCEPTION(scope, false);
-        ok = std::isfinite(months);
+        ok = ok && std::isfinite(months);
         t->setMonth(toInt32(months));
     }
     // days
-    if (idx < numArgs && ok) {
+    if (idx < numArgs) {
         double days = callFrame->uncheckedArgument(idx++).toIntegerPreserveNaN(globalObject);
         RETURN_IF_EXCEPTION(scope, false);
-        ok = std::isfinite(days);
+        ok = ok && std::isfinite(days);
         t->setMonthDay(0);
         *ms += days * msPerDay;
     }
@@ -211,7 +216,7 @@ static bool fillStructuresUsingDateArgs(JSGlobalObject* globalObject, CallFrame*
     return ok;
 }
 
-const ClassInfo DatePrototype::s_info = {"Object", &Base::s_info, &datePrototypeTable, nullptr, CREATE_METHOD_TABLE(DatePrototype)};
+const ClassInfo DatePrototype::s_info = { "Object"_s, &Base::s_info, &datePrototypeTable, nullptr, CREATE_METHOD_TABLE(DatePrototype) };
 
 /* Source for DatePrototype.lut.h
 @begin datePrototypeTable
@@ -219,9 +224,9 @@ const ClassInfo DatePrototype::s_info = {"Object", &Base::s_info, &datePrototype
   toISOString           dateProtoFuncToISOString             DontEnum|Function       0
   toDateString          dateProtoFuncToDateString            DontEnum|Function       0
   toTimeString          dateProtoFuncToTimeString            DontEnum|Function       0
-  toLocaleString        JSBuiltin                            DontEnum|Function       0
-  toLocaleDateString    JSBuiltin                            DontEnum|Function       0
-  toLocaleTimeString    JSBuiltin                            DontEnum|Function       0
+  toLocaleString        dateProtoFuncToLocaleString          DontEnum|Function       0
+  toLocaleDateString    dateProtoFuncToLocaleDateString      DontEnum|Function       0
+  toLocaleTimeString    dateProtoFuncToLocaleTimeString      DontEnum|Function       0
   valueOf               dateProtoFuncGetTime                 DontEnum|Function       0  DatePrototypeGetTimeIntrinsic
   getTime               dateProtoFuncGetTime                 DontEnum|Function       0  DatePrototypeGetTimeIntrinsic
   getFullYear           dateProtoFuncGetFullYear             DontEnum|Function       0  DatePrototypeGetFullYearIntrinsic
@@ -242,7 +247,7 @@ const ClassInfo DatePrototype::s_info = {"Object", &Base::s_info, &datePrototype
   getUTCMilliseconds    dateProtoFuncGetUTCMilliseconds      DontEnum|Function       0  DatePrototypeGetUTCMillisecondsIntrinsic
   getTimezoneOffset     dateProtoFuncGetTimezoneOffset       DontEnum|Function       0  DatePrototypeGetTimezoneOffsetIntrinsic
   getYear               dateProtoFuncGetYear                 DontEnum|Function       0  DatePrototypeGetYearIntrinsic
-  setTime               dateProtoFuncSetTime                 DontEnum|Function       1
+  setTime               dateProtoFuncSetTime                 DontEnum|Function       1  DatePrototypeSetTimeIntrinsic
   setMilliseconds       dateProtoFuncSetMilliSeconds         DontEnum|Function       1
   setUTCMilliseconds    dateProtoFuncSetUTCMilliseconds      DontEnum|Function       1
   setSeconds            dateProtoFuncSetSeconds              DontEnum|Function       2
@@ -272,16 +277,21 @@ DatePrototype::DatePrototype(VM& vm, Structure* structure)
 void DatePrototype::finishCreation(VM& vm, JSGlobalObject* globalObject)
 {
     Base::finishCreation(vm);
-    ASSERT(inherits(vm, info()));
+    ASSERT(inherits(info()));
 
     Identifier toUTCStringName = Identifier::fromString(vm, "toUTCString"_s);
-    JSFunction* toUTCStringFunction = JSFunction::create(vm, globalObject, 0, toUTCStringName.string(), dateProtoFuncToUTCString);
+    JSFunction* toUTCStringFunction = JSFunction::create(vm, globalObject, 0, toUTCStringName.string(), dateProtoFuncToUTCString, ImplementationVisibility::Public);
     putDirectWithoutTransition(vm, toUTCStringName, toUTCStringFunction, static_cast<unsigned>(PropertyAttribute::DontEnum));
     putDirectWithoutTransition(vm, Identifier::fromString(vm, "toGMTString"_s), toUTCStringFunction, static_cast<unsigned>(PropertyAttribute::DontEnum));
 
-    JSFunction* toPrimitiveFunction = JSFunction::create(vm, globalObject, 1, "[Symbol.toPrimitive]"_s, dateProtoFuncToPrimitiveSymbol, NoIntrinsic);
+    JSFunction* toPrimitiveFunction = JSFunction::create(vm, globalObject, 1, "[Symbol.toPrimitive]"_s, dateProtoFuncToPrimitiveSymbol, ImplementationVisibility::Public);
     putDirectWithoutTransition(vm, vm.propertyNames->toPrimitiveSymbol, toPrimitiveFunction, PropertyAttribute::DontEnum | PropertyAttribute::ReadOnly);
 
+    if (Options::useTemporal()) {
+        Identifier toTemporalInstantName = Identifier::fromString(vm, "toTemporalInstant"_s);
+        JSFunction* toTemporalInstantFunction = JSFunction::create(vm, globalObject, 0, toTemporalInstantName.string(), dateProtoFuncToTemporalInstant, ImplementationVisibility::Public);
+        putDirectWithoutTransition(vm, toTemporalInstantName, toTemporalInstantFunction, static_cast<unsigned>(PropertyAttribute::DontEnum));
+    }
     // The constructor will be added later, after DateConstructor has been built.
 }
 
@@ -304,36 +314,41 @@ JSC_DEFINE_HOST_FUNCTION(dateProtoFuncToISOString, (JSGlobalObject* globalObject
     VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
     JSValue thisValue = callFrame->thisValue();
-    auto* thisDateObj = jsDynamicCast<DateInstance*>(vm, thisValue);
+    auto* thisDateObj = jsDynamicCast<DateInstance*>(thisValue);
     if (UNLIKELY(!thisDateObj))
         return throwVMTypeError(globalObject, scope);
 
-    Integrity::auditStructureID(vm, thisDateObj->structureID());
+    Integrity::auditStructureID(thisDateObj->structureID());
     if (!std::isfinite(thisDateObj->internalNumber()))
         return throwVMError(globalObject, scope, createRangeError(globalObject, "Invalid Date"_s));
 
     const GregorianDateTime* gregorianDateTime = thisDateObj->gregorianDateTimeUTC(vm.dateCache);
     if (!gregorianDateTime)
         return JSValue::encode(jsNontrivialString(vm, String("Invalid Date"_s)));
-    // Maximum amount of space we need in buffer: 7 (max. digits in year) + 2 * 5 (2 characters each for month, day, hour, minute, second) + 4 (. + 3 digits for milliseconds)
-    // 6 for formatting and one for null termination = 28. We add one extra character to allow us to force null termination.
-    char buffer[28];
+
+    // https://tc39.es/ecma262/#sec-date-time-string-format
+
     // If the year is outside the bounds of 0 and 9999 inclusive we want to use the extended year format (ES 15.9.1.15.1).
     int ms = static_cast<int>(fmod(thisDateObj->internalNumber(), msPerSecond));
     if (ms < 0)
         ms += msPerSecond;
 
-    int charactersWritten;
-    if (gregorianDateTime->year() > 9999 || gregorianDateTime->year() < 0)
-        charactersWritten = snprintf(buffer, sizeof(buffer), "%+07d-%02d-%02dT%02d:%02d:%02d.%03dZ", gregorianDateTime->year(), gregorianDateTime->month() + 1, gregorianDateTime->monthDay(), gregorianDateTime->hour(), gregorianDateTime->minute(), gregorianDateTime->second(), ms);
-    else
-        charactersWritten = snprintf(buffer, sizeof(buffer), "%04d-%02d-%02dT%02d:%02d:%02d.%03dZ", gregorianDateTime->year(), gregorianDateTime->month() + 1, gregorianDateTime->monthDay(), gregorianDateTime->hour(), gregorianDateTime->minute(), gregorianDateTime->second(), ms);
+    int year = gregorianDateTime->year();
+    int month = gregorianDateTime->month() + 1;
+    int day = gregorianDateTime->monthDay();
+    int hour = gregorianDateTime->hour();
+    int minute = gregorianDateTime->minute();
+    int second = gregorianDateTime->second();
 
-    ASSERT(charactersWritten > 0 && static_cast<unsigned>(charactersWritten) < sizeof(buffer));
-    if (static_cast<unsigned>(charactersWritten) >= sizeof(buffer))
-        return JSValue::encode(jsEmptyString(vm));
+    String prefix;
+    auto yearDigits = 4;
+    if (year < 0 || year > 9999) {
+        prefix = year < 0 ? "-"_s : "+"_s;
+        yearDigits = 6;
+        year = std::abs(year);
+    }
 
-    return JSValue::encode(jsNontrivialString(vm, String(buffer, charactersWritten)));
+    return JSValue::encode(jsNontrivialString(vm, makeString(prefix, pad('0', yearDigits, year), '-', pad('0', 2, month), '-', pad('0', 2, day), 'T', pad('0', 2, hour), ':', pad('0', 2, minute), ':', pad('0', 2, second), '.', pad('0', 3, ms), 'Z')));
 }
 
 JSC_DEFINE_HOST_FUNCTION(dateProtoFuncToDateString, (JSGlobalObject* globalObject, CallFrame* callFrame))
@@ -354,12 +369,12 @@ JSC_DEFINE_HOST_FUNCTION(dateProtoFuncToPrimitiveSymbol, (JSGlobalObject* global
     auto scope = DECLARE_THROW_SCOPE(vm);
     JSValue thisValue = callFrame->thisValue().toThis(globalObject, ECMAMode::strict());
     if (!thisValue.isObject())
-        return throwVMTypeError(globalObject, scope, "Date.prototype[Symbol.toPrimitive] expected |this| to be an object.");
+        return throwVMTypeError(globalObject, scope, "Date.prototype[Symbol.toPrimitive] expected |this| to be an object."_s);
     JSObject* thisObject = jsCast<JSObject*>(thisValue);
-    Integrity::auditStructureID(vm, thisObject->structureID());
+    Integrity::auditStructureID(thisObject->structureID());
 
     if (!callFrame->argumentCount())
-        return throwVMTypeError(globalObject, scope, "Date.prototype[Symbol.toPrimitive] expected a first argument.");
+        return throwVMTypeError(globalObject, scope, "Date.prototype[Symbol.toPrimitive] expected a first argument."_s);
 
     JSValue hintValue = callFrame->uncheckedArgument(0);
     PreferredPrimitiveType type = toPreferredPrimitiveType(globalObject, hintValue);
@@ -376,7 +391,7 @@ JSC_DEFINE_HOST_FUNCTION(dateProtoFuncGetTime, (JSGlobalObject* globalObject, Ca
     VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
     JSValue thisValue = callFrame->thisValue();
-    auto* thisDateObj = jsDynamicCast<DateInstance*>(vm, thisValue);
+    auto* thisDateObj = jsDynamicCast<DateInstance*>(thisValue);
     if (UNLIKELY(!thisDateObj))
         return throwVMTypeError(globalObject, scope);
 
@@ -388,7 +403,7 @@ JSC_DEFINE_HOST_FUNCTION(dateProtoFuncGetFullYear, (JSGlobalObject* globalObject
     VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
     JSValue thisValue = callFrame->thisValue();
-    auto* thisDateObj = jsDynamicCast<DateInstance*>(vm, thisValue);
+    auto* thisDateObj = jsDynamicCast<DateInstance*>(thisValue);
     if (UNLIKELY(!thisDateObj))
         return throwVMTypeError(globalObject, scope);
 
@@ -403,7 +418,7 @@ JSC_DEFINE_HOST_FUNCTION(dateProtoFuncGetUTCFullYear, (JSGlobalObject* globalObj
     VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
     JSValue thisValue = callFrame->thisValue();
-    auto* thisDateObj = jsDynamicCast<DateInstance*>(vm, thisValue);
+    auto* thisDateObj = jsDynamicCast<DateInstance*>(thisValue);
     if (UNLIKELY(!thisDateObj))
         return throwVMTypeError(globalObject, scope);
 
@@ -418,7 +433,7 @@ JSC_DEFINE_HOST_FUNCTION(dateProtoFuncGetMonth, (JSGlobalObject* globalObject, C
     VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
     JSValue thisValue = callFrame->thisValue();
-    auto* thisDateObj = jsDynamicCast<DateInstance*>(vm, thisValue);
+    auto* thisDateObj = jsDynamicCast<DateInstance*>(thisValue);
     if (UNLIKELY(!thisDateObj))
         return throwVMTypeError(globalObject, scope);
 
@@ -433,7 +448,7 @@ JSC_DEFINE_HOST_FUNCTION(dateProtoFuncGetUTCMonth, (JSGlobalObject* globalObject
     VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
     JSValue thisValue = callFrame->thisValue();
-    auto* thisDateObj = jsDynamicCast<DateInstance*>(vm, thisValue);
+    auto* thisDateObj = jsDynamicCast<DateInstance*>(thisValue);
     if (UNLIKELY(!thisDateObj))
         return throwVMTypeError(globalObject, scope);
 
@@ -448,7 +463,7 @@ JSC_DEFINE_HOST_FUNCTION(dateProtoFuncGetDate, (JSGlobalObject* globalObject, Ca
     VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
     JSValue thisValue = callFrame->thisValue();
-    auto* thisDateObj = jsDynamicCast<DateInstance*>(vm, thisValue);
+    auto* thisDateObj = jsDynamicCast<DateInstance*>(thisValue);
     if (UNLIKELY(!thisDateObj))
         return throwVMTypeError(globalObject, scope);
 
@@ -463,7 +478,7 @@ JSC_DEFINE_HOST_FUNCTION(dateProtoFuncGetUTCDate, (JSGlobalObject* globalObject,
     VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
     JSValue thisValue = callFrame->thisValue();
-    auto* thisDateObj = jsDynamicCast<DateInstance*>(vm, thisValue);
+    auto* thisDateObj = jsDynamicCast<DateInstance*>(thisValue);
     if (UNLIKELY(!thisDateObj))
         return throwVMTypeError(globalObject, scope);
 
@@ -478,7 +493,7 @@ JSC_DEFINE_HOST_FUNCTION(dateProtoFuncGetDay, (JSGlobalObject* globalObject, Cal
     VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
     JSValue thisValue = callFrame->thisValue();
-    auto* thisDateObj = jsDynamicCast<DateInstance*>(vm, thisValue);
+    auto* thisDateObj = jsDynamicCast<DateInstance*>(thisValue);
     if (UNLIKELY(!thisDateObj))
         return throwVMTypeError(globalObject, scope);
 
@@ -493,7 +508,7 @@ JSC_DEFINE_HOST_FUNCTION(dateProtoFuncGetUTCDay, (JSGlobalObject* globalObject, 
     VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
     JSValue thisValue = callFrame->thisValue();
-    auto* thisDateObj = jsDynamicCast<DateInstance*>(vm, thisValue);
+    auto* thisDateObj = jsDynamicCast<DateInstance*>(thisValue);
     if (UNLIKELY(!thisDateObj))
         return throwVMTypeError(globalObject, scope);
 
@@ -508,7 +523,7 @@ JSC_DEFINE_HOST_FUNCTION(dateProtoFuncGetHours, (JSGlobalObject* globalObject, C
     VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
     JSValue thisValue = callFrame->thisValue();
-    auto* thisDateObj = jsDynamicCast<DateInstance*>(vm, thisValue);
+    auto* thisDateObj = jsDynamicCast<DateInstance*>(thisValue);
     if (UNLIKELY(!thisDateObj))
         return throwVMTypeError(globalObject, scope);
 
@@ -523,7 +538,7 @@ JSC_DEFINE_HOST_FUNCTION(dateProtoFuncGetUTCHours, (JSGlobalObject* globalObject
     VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
     JSValue thisValue = callFrame->thisValue();
-    auto* thisDateObj = jsDynamicCast<DateInstance*>(vm, thisValue);
+    auto* thisDateObj = jsDynamicCast<DateInstance*>(thisValue);
     if (UNLIKELY(!thisDateObj))
         return throwVMTypeError(globalObject, scope);
 
@@ -538,7 +553,7 @@ JSC_DEFINE_HOST_FUNCTION(dateProtoFuncGetMinutes, (JSGlobalObject* globalObject,
     VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
     JSValue thisValue = callFrame->thisValue();
-    auto* thisDateObj = jsDynamicCast<DateInstance*>(vm, thisValue);
+    auto* thisDateObj = jsDynamicCast<DateInstance*>(thisValue);
     if (UNLIKELY(!thisDateObj))
         return throwVMTypeError(globalObject, scope);
 
@@ -553,7 +568,7 @@ JSC_DEFINE_HOST_FUNCTION(dateProtoFuncGetUTCMinutes, (JSGlobalObject* globalObje
     VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
     JSValue thisValue = callFrame->thisValue();
-    auto* thisDateObj = jsDynamicCast<DateInstance*>(vm, thisValue);
+    auto* thisDateObj = jsDynamicCast<DateInstance*>(thisValue);
     if (UNLIKELY(!thisDateObj))
         return throwVMTypeError(globalObject, scope);
 
@@ -568,7 +583,7 @@ JSC_DEFINE_HOST_FUNCTION(dateProtoFuncGetSeconds, (JSGlobalObject* globalObject,
     VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
     JSValue thisValue = callFrame->thisValue();
-    auto* thisDateObj = jsDynamicCast<DateInstance*>(vm, thisValue);
+    auto* thisDateObj = jsDynamicCast<DateInstance*>(thisValue);
     if (UNLIKELY(!thisDateObj))
         return throwVMTypeError(globalObject, scope);
 
@@ -583,7 +598,7 @@ JSC_DEFINE_HOST_FUNCTION(dateProtoFuncGetUTCSeconds, (JSGlobalObject* globalObje
     VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
     JSValue thisValue = callFrame->thisValue();
-    auto* thisDateObj = jsDynamicCast<DateInstance*>(vm, thisValue);
+    auto* thisDateObj = jsDynamicCast<DateInstance*>(thisValue);
     if (UNLIKELY(!thisDateObj))
         return throwVMTypeError(globalObject, scope);
 
@@ -598,7 +613,7 @@ JSC_DEFINE_HOST_FUNCTION(dateProtoFuncGetMilliSeconds, (JSGlobalObject* globalOb
     VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
     JSValue thisValue = callFrame->thisValue();
-    auto* thisDateObj = jsDynamicCast<DateInstance*>(vm, thisValue);
+    auto* thisDateObj = jsDynamicCast<DateInstance*>(thisValue);
     if (UNLIKELY(!thisDateObj))
         return throwVMTypeError(globalObject, scope);
 
@@ -617,7 +632,7 @@ JSC_DEFINE_HOST_FUNCTION(dateProtoFuncGetUTCMilliseconds, (JSGlobalObject* globa
     VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
     JSValue thisValue = callFrame->thisValue();
-    auto* thisDateObj = jsDynamicCast<DateInstance*>(vm, thisValue);
+    auto* thisDateObj = jsDynamicCast<DateInstance*>(thisValue);
     if (UNLIKELY(!thisDateObj))
         return throwVMTypeError(globalObject, scope);
 
@@ -636,7 +651,7 @@ JSC_DEFINE_HOST_FUNCTION(dateProtoFuncGetTimezoneOffset, (JSGlobalObject* global
     VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
     JSValue thisValue = callFrame->thisValue();
-    auto* thisDateObj = jsDynamicCast<DateInstance*>(vm, thisValue);
+    auto* thisDateObj = jsDynamicCast<DateInstance*>(thisValue);
     if (UNLIKELY(!thisDateObj))
         return throwVMTypeError(globalObject, scope);
 
@@ -651,7 +666,7 @@ JSC_DEFINE_HOST_FUNCTION(dateProtoFuncSetTime, (JSGlobalObject* globalObject, Ca
     VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
     JSValue thisValue = callFrame->thisValue();
-    auto* thisDateObj = jsDynamicCast<DateInstance*>(vm, thisValue);
+    auto* thisDateObj = jsDynamicCast<DateInstance*>(thisValue);
     if (UNLIKELY(!thisDateObj))
         return throwVMTypeError(globalObject, scope);
 
@@ -661,20 +676,22 @@ JSC_DEFINE_HOST_FUNCTION(dateProtoFuncSetTime, (JSGlobalObject* globalObject, Ca
     return JSValue::encode(jsNumber(milli));
 }
 
-static EncodedJSValue setNewValueFromTimeArgs(JSGlobalObject* globalObject, CallFrame* callFrame, int numArgsToUse, WTF::TimeType inputTimeType)
+static EncodedJSValue setNewValueFromTimeArgs(JSGlobalObject* globalObject, CallFrame* callFrame, unsigned numArgsToUse, WTF::TimeType inputTimeType)
 {
     VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
     auto& cache = vm.dateCache;
 
     JSValue thisValue = callFrame->thisValue();
-    auto* thisDateObj = jsDynamicCast<DateInstance*>(vm, thisValue);
+    auto* thisDateObj = jsDynamicCast<DateInstance*>(thisValue);
     if (UNLIKELY(!thisDateObj))
         return throwVMTypeError(globalObject, scope);
 
     double milli = thisDateObj->internalNumber();
 
     if (!callFrame->argumentCount() || std::isnan(milli)) {
+        applyToNumberToOtherwiseIgnoredArguments(globalObject, callFrame, numArgsToUse);
+        RETURN_IF_EXCEPTION(scope, { });
         thisDateObj->setInternalNumber(PNaN);
         return JSValue::encode(jsNaN());
     }
@@ -685,12 +702,15 @@ static EncodedJSValue setNewValueFromTimeArgs(JSGlobalObject* globalObject, Call
     const GregorianDateTime* other = inputTimeType == WTF::UTCTime
         ? thisDateObj->gregorianDateTimeUTC(cache)
         : thisDateObj->gregorianDateTime(cache);
-    if (!other)
+    if (!other) {
+        applyToNumberToOtherwiseIgnoredArguments(globalObject, callFrame, numArgsToUse);
+        RETURN_IF_EXCEPTION(scope, { });
         return JSValue::encode(jsNaN());
+    }
 
     GregorianDateTime gregorianDateTime(*other);
     bool success = fillStructuresUsingTimeArgs(globalObject, callFrame, numArgsToUse, &ms, &gregorianDateTime);
-    RETURN_IF_EXCEPTION(scope, encodedJSValue());
+    RETURN_IF_EXCEPTION(scope, { });
     if (!success) {
         thisDateObj->setInternalNumber(PNaN);
         return JSValue::encode(jsNaN());
@@ -702,18 +722,20 @@ static EncodedJSValue setNewValueFromTimeArgs(JSGlobalObject* globalObject, Call
     return JSValue::encode(jsNumber(result));
 }
 
-static EncodedJSValue setNewValueFromDateArgs(JSGlobalObject* globalObject, CallFrame* callFrame, int numArgsToUse, WTF::TimeType inputTimeType)
+static EncodedJSValue setNewValueFromDateArgs(JSGlobalObject* globalObject, CallFrame* callFrame, unsigned numArgsToUse, WTF::TimeType inputTimeType)
 {
     VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
     auto& cache = vm.dateCache;
 
     JSValue thisValue = callFrame->thisValue();
-    auto* thisDateObj = jsDynamicCast<DateInstance*>(vm, thisValue);
+    auto* thisDateObj = jsDynamicCast<DateInstance*>(thisValue);
     if (UNLIKELY(!thisDateObj))
         return throwVMTypeError(globalObject, scope);
 
     if (!callFrame->argumentCount()) {
+        applyToNumberToOtherwiseIgnoredArguments(globalObject, callFrame, numArgsToUse);
+        RETURN_IF_EXCEPTION(scope, { });
         thisDateObj->setInternalNumber(PNaN);
         return JSValue::encode(jsNaN());
     }
@@ -729,13 +751,16 @@ static EncodedJSValue setNewValueFromDateArgs(JSGlobalObject* globalObject, Call
         const GregorianDateTime* other = inputTimeType == WTF::UTCTime
             ? thisDateObj->gregorianDateTimeUTC(cache)
             : thisDateObj->gregorianDateTime(cache);
-        if (!other)
+        if (!other) {
+            applyToNumberToOtherwiseIgnoredArguments(globalObject, callFrame, numArgsToUse);
+            RETURN_IF_EXCEPTION(scope, { });
             return JSValue::encode(jsNaN());
+        }
         gregorianDateTime = *other;
     }
     
     bool success = fillStructuresUsingDateArgs(globalObject, callFrame, numArgsToUse, &ms, &gregorianDateTime);
-    RETURN_IF_EXCEPTION(scope, encodedJSValue());
+    RETURN_IF_EXCEPTION(scope, { });
     if (!success) {
         thisDateObj->setInternalNumber(PNaN);
         return JSValue::encode(jsNaN());
@@ -824,7 +849,7 @@ JSC_DEFINE_HOST_FUNCTION(dateProtoFuncSetYear, (JSGlobalObject* globalObject, Ca
     auto& cache = vm.dateCache;
 
     JSValue thisValue = callFrame->thisValue();
-    auto* thisDateObj = jsDynamicCast<DateInstance*>(vm, thisValue);
+    auto* thisDateObj = jsDynamicCast<DateInstance*>(thisValue);
     if (UNLIKELY(!thisDateObj))
         return throwVMTypeError(globalObject, scope);
 
@@ -867,7 +892,7 @@ JSC_DEFINE_HOST_FUNCTION(dateProtoFuncGetYear, (JSGlobalObject* globalObject, Ca
     VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
     JSValue thisValue = callFrame->thisValue();
-    auto* thisDateObj = jsDynamicCast<DateInstance*>(vm, thisValue);
+    auto* thisDateObj = jsDynamicCast<DateInstance*>(thisValue);
     if (UNLIKELY(!thisDateObj))
         return throwVMTypeError(globalObject, scope);
 
@@ -895,13 +920,89 @@ JSC_DEFINE_HOST_FUNCTION(dateProtoFuncToJSON, (JSGlobalObject* globalObject, Cal
     JSValue toISOValue = object->get(globalObject, vm.propertyNames->toISOString);
     RETURN_IF_EXCEPTION(scope, encodedJSValue());
 
-    auto callData = getCallData(vm, toISOValue);
+    auto callData = JSC::getCallData(toISOValue);
     if (callData.type == CallData::Type::None)
         return throwVMTypeError(globalObject, scope, "toISOString is not a function"_s);
 
     JSValue result = call(globalObject, asObject(toISOValue), callData, object, *vm.emptyList);
     RETURN_IF_EXCEPTION(scope, encodedJSValue());
     return JSValue::encode(result);
+}
+
+JSC_DEFINE_HOST_FUNCTION(dateProtoFuncToTemporalInstant, (JSGlobalObject* globalObject, CallFrame* callFrame))
+{
+    VM& vm = globalObject->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+    JSValue thisValue = callFrame->thisValue();
+    auto* thisDateObj = jsDynamicCast<DateInstance*>(thisValue);
+    if (UNLIKELY(!thisDateObj))
+        return throwVMTypeError(globalObject, scope);
+
+    double epochMilliseconds = thisDateObj->internalNumber();
+    if (!isInteger(epochMilliseconds))
+        return throwVMError(globalObject, scope, createRangeError(globalObject, "Invalid integer number of Epoch Millseconds"_s));
+
+    ASSERT(epochMilliseconds >= std::numeric_limits<int64_t>::min() && epochMilliseconds <= static_cast<double>(std::numeric_limits<int64_t>::max()));
+    ISO8601::ExactTime exactTime = ISO8601::ExactTime::fromEpochMilliseconds(epochMilliseconds);
+    return JSValue::encode(TemporalInstant::create(vm, globalObject->instantStructure(), exactTime));
+}
+
+// https://tc39.es/ecma402/#sup-date.prototype.tolocalestring
+JSC_DEFINE_HOST_FUNCTION(dateProtoFuncToLocaleString, (JSGlobalObject* globalObject, CallFrame* callFrame))
+{
+    VM& vm = globalObject->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+    JSValue thisValue = callFrame->thisValue();
+    auto* thisDateObj = jsDynamicCast<DateInstance*>(thisValue);
+    if (UNLIKELY(!thisDateObj))
+        return throwVMTypeError(globalObject, scope);
+
+    double milli = thisDateObj->internalNumber();
+    if (std::isnan(milli))
+        return JSValue::encode(jsNontrivialString(vm, String("Invalid Date"_s)));
+
+    auto* dateTimeFormat = IntlDateTimeFormat::create(vm, globalObject->dateTimeFormatStructure());
+    dateTimeFormat->initializeDateTimeFormat(globalObject, callFrame->argument(0), callFrame->argument(1), IntlDateTimeFormat::RequiredComponent::Any, IntlDateTimeFormat::Defaults::All);
+    RETURN_IF_EXCEPTION(scope, { });
+    RELEASE_AND_RETURN(scope, JSValue::encode(dateTimeFormat->format(globalObject, milli)));
+}
+
+JSC_DEFINE_HOST_FUNCTION(dateProtoFuncToLocaleDateString, (JSGlobalObject* globalObject, CallFrame* callFrame))
+{
+    VM& vm = globalObject->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+    JSValue thisValue = callFrame->thisValue();
+    auto* thisDateObj = jsDynamicCast<DateInstance*>(thisValue);
+    if (UNLIKELY(!thisDateObj))
+        return throwVMTypeError(globalObject, scope);
+
+    double milli = thisDateObj->internalNumber();
+    if (std::isnan(milli))
+        return JSValue::encode(jsNontrivialString(vm, String("Invalid Date"_s)));
+
+    auto* dateTimeFormat = IntlDateTimeFormat::create(vm, globalObject->dateTimeFormatStructure());
+    dateTimeFormat->initializeDateTimeFormat(globalObject, callFrame->argument(0), callFrame->argument(1), IntlDateTimeFormat::RequiredComponent::Date, IntlDateTimeFormat::Defaults::Date);
+    RETURN_IF_EXCEPTION(scope, { });
+    RELEASE_AND_RETURN(scope, JSValue::encode(dateTimeFormat->format(globalObject, milli)));
+}
+
+JSC_DEFINE_HOST_FUNCTION(dateProtoFuncToLocaleTimeString, (JSGlobalObject* globalObject, CallFrame* callFrame))
+{
+    VM& vm = globalObject->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+    JSValue thisValue = callFrame->thisValue();
+    auto* thisDateObj = jsDynamicCast<DateInstance*>(thisValue);
+    if (UNLIKELY(!thisDateObj))
+        return throwVMTypeError(globalObject, scope);
+
+    double milli = thisDateObj->internalNumber();
+    if (std::isnan(milli))
+        return JSValue::encode(jsNontrivialString(vm, String("Invalid Date"_s)));
+
+    auto* dateTimeFormat = IntlDateTimeFormat::create(vm, globalObject->dateTimeFormatStructure());
+    dateTimeFormat->initializeDateTimeFormat(globalObject, callFrame->argument(0), callFrame->argument(1), IntlDateTimeFormat::RequiredComponent::Time, IntlDateTimeFormat::Defaults::Time);
+    RETURN_IF_EXCEPTION(scope, { });
+    RELEASE_AND_RETURN(scope, JSValue::encode(dateTimeFormat->format(globalObject, milli)));
 }
 
 } // namespace JSC

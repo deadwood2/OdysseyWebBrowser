@@ -26,10 +26,11 @@
 #pragma once
 
 #include "DocumentFragment.h"
-#include "Frame.h"
+#include "LocalFrame.h"
 #include "Pasteboard.h"
 #include "SimpleRange.h"
 #include "markup.h"
+#include <wtf/WeakRef.h>
 
 namespace WebCore {
 
@@ -37,42 +38,50 @@ class ArchiveResource;
 
 class FrameWebContentReader : public PasteboardWebContentReader {
 public:
-    Frame& frame;
-
-    FrameWebContentReader(Frame& frame)
-        : frame(frame)
+    FrameWebContentReader(LocalFrame& frame)
+        : m_frame(frame)
     {
     }
+
+    LocalFrame& frame() const { return m_frame.get(); }
+    Ref<LocalFrame> protectedFrame() const { return m_frame.get(); }
 
 protected:
     bool shouldSanitize() const;
     MSOListQuirks msoListQuirksForMarkup() const;
+
+private:
+    WeakRef<LocalFrame> m_frame;
 };
 
 class WebContentReader final : public FrameWebContentReader {
 public:
-    const SimpleRange context;
-    const bool allowPlainText;
+#if PLATFORM(COCOA)
+    static constexpr auto placeholderAttachmentFilenamePrefix = "webkit-attachment-"_s;
+#endif
 
-    RefPtr<DocumentFragment> fragment;
-    bool madeFragmentFromPlainText;
-
-    WebContentReader(Frame& frame, const SimpleRange& context, bool allowPlainText)
+    WebContentReader(LocalFrame& frame, const SimpleRange& context, bool allowPlainText)
         : FrameWebContentReader(frame)
-        , context(context)
-        , allowPlainText(allowPlainText)
-        , madeFragmentFromPlainText(false)
+        , m_context(context)
+#if PLATFORM(COCOA) || PLATFORM(GTK)
+        , m_allowPlainText(allowPlainText)
+#endif
     {
+        UNUSED_PARAM(allowPlainText);
     }
 
     void addFragment(Ref<DocumentFragment>&&);
+    RefPtr<DocumentFragment> takeFragment() { return std::exchange(m_fragment, nullptr); }
+    RefPtr<DocumentFragment> protectedFragment() const { return m_fragment; }
+
+    bool madeFragmentFromPlainText() const { return m_madeFragmentFromPlainText; }
 
 private:
 #if PLATFORM(COCOA) || PLATFORM(GTK)
     bool readFilePath(const String&, PresentationSize preferredPresentationSize = { }, const String& contentType = { }) override;
     bool readFilePaths(const Vector<String>&) override;
     bool readHTML(const String&) override;
-    bool readImage(Ref<SharedBuffer>&&, const String& type, PresentationSize preferredPresentationSize = { }) override;
+    bool readImage(Ref<FragmentedSharedBuffer>&&, const String& type, PresentationSize preferredPresentationSize = { }) override;
     bool readURL(const URL&, const String& title) override;
     bool readPlainText(const String&) override;
 #endif
@@ -81,25 +90,33 @@ private:
     bool readWebArchive(SharedBuffer&) override;
     bool readRTFD(SharedBuffer&) override;
     bool readRTF(SharedBuffer&) override;
-    bool readDataBuffer(SharedBuffer&, const String& type, const String& name, PresentationSize preferredPresentationSize = { }) override;
+    bool readDataBuffer(SharedBuffer&, const String& type, const AtomString& name, PresentationSize preferredPresentationSize = { }) override;
 #endif
+
+    const SimpleRange m_context;
+#if PLATFORM(COCOA) || PLATFORM(GTK)
+    const bool m_allowPlainText;
+#endif
+
+    RefPtr<DocumentFragment> m_fragment;
+    bool m_madeFragmentFromPlainText { false };
 };
 
 class WebContentMarkupReader final : public FrameWebContentReader {
 public:
-    String markup;
-
-    explicit WebContentMarkupReader(Frame& frame)
+    explicit WebContentMarkupReader(LocalFrame& frame)
         : FrameWebContentReader(frame)
     {
     }
+
+    String takeMarkup() { return std::exchange(m_markup, { }); }
 
 private:
 #if PLATFORM(COCOA) || PLATFORM(GTK)
     bool readFilePath(const String&, PresentationSize = { }, const String& = { }) override { return false; }
     bool readFilePaths(const Vector<String>&) override { return false; }
     bool readHTML(const String&) override;
-    bool readImage(Ref<SharedBuffer>&&, const String&, PresentationSize = { }) override { return false; }
+    bool readImage(Ref<FragmentedSharedBuffer>&&, const String&, PresentationSize = { }) override { return false; }
     bool readURL(const URL&, const String&) override { return false; }
     bool readPlainText(const String&) override { return false; }
 #endif
@@ -108,8 +125,10 @@ private:
     bool readWebArchive(SharedBuffer&) override;
     bool readRTFD(SharedBuffer&) override;
     bool readRTF(SharedBuffer&) override;
-    bool readDataBuffer(SharedBuffer&, const String&, const String&, PresentationSize = { }) override { return false; }
+    bool readDataBuffer(SharedBuffer&, const String&, const AtomString&, PresentationSize = { }) override { return false; }
 #endif
+
+    String m_markup;
 };
 
 #if PLATFORM(COCOA) && defined(__OBJC__)
@@ -118,7 +137,13 @@ struct FragmentAndResources {
     Vector<Ref<ArchiveResource>> resources;
 };
 
-RefPtr<DocumentFragment> createFragmentAndAddResources(Frame&, NSAttributedString *);
+enum class FragmentCreationOptions : uint8_t {
+    IgnoreResources = 1 << 0,
+    NoInterchangeNewlines = 1 << 1,
+    SanitizeMarkup = 1 << 2
+};
+
+WEBCORE_EXPORT RefPtr<DocumentFragment> createFragment(LocalFrame&, NSAttributedString *, OptionSet<FragmentCreationOptions> = { });
 #endif
 
 }

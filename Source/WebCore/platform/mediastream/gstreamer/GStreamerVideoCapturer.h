@@ -26,29 +26,44 @@
 
 #include "GStreamerCapturer.h"
 
-#include <gst/video/video.h>
-
 namespace WebCore {
 
+class VideoFrameGStreamer;
+
 class GStreamerVideoCapturer final : public GStreamerCapturer {
+    friend class GStreamerVideoCaptureSource;
+    friend class MockRealtimeVideoSourceGStreamer;
 public:
-    GStreamerVideoCapturer(GStreamerCaptureDevice);
-    GStreamerVideoCapturer(const char* source_factory, CaptureDevice::DeviceType);
+    GStreamerVideoCapturer(GStreamerCaptureDevice&&);
+    GStreamerVideoCapturer(const char* sourceFactory, CaptureDevice::DeviceType);
+    ~GStreamerVideoCapturer() = default;
 
     GstElement* createSource() final;
     GstElement* createConverter() final;
     const char* name() final { return "Video"; }
 
-    bool setSize(int width, int height);
-    bool setFrameRate(double);
-    GstVideoInfo getBestFormat();
+    using NodeAndFD = std::pair<uint32_t, int>;
 
-    void setPipewireFD(int fd) { m_fd = fd; }
-    std::optional<int> pipewireFD() const { return m_fd; }
+    using SinkVideoFrameCallback = Function<void(Ref<VideoFrameGStreamer>&&)>;
+    void setSinkVideoFrameCallback(SinkVideoFrameCallback&&);
 
 private:
-    std::optional<int> m_fd;
+    bool setSize(const IntSize&);
+    const IntSize& size() const { return m_size; }
+    bool setFrameRate(double);
+    void reconfigure();
+
+    GstVideoInfo getBestFormat();
+
+    void setPipewireNodeAndFD(const NodeAndFD& nodeAndFd) { m_nodeAndFd = nodeAndFd; }
+    bool isCapturingDisplay() const { return m_nodeAndFd.has_value(); }
+
+    std::optional<NodeAndFD> m_nodeAndFd;
+    GRefPtr<GstElement> m_videoSrcMIMETypeFilter;
+    std::pair<unsigned long, SinkVideoFrameCallback> m_sinkVideoFrameCallback;
+    IntSize m_size;
 };
 
 } // namespace WebCore
+
 #endif // ENABLE(MEDIA_STREAM) && USE(GSTREAMER)

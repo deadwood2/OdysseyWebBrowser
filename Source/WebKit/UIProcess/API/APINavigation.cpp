@@ -26,12 +26,14 @@
 #include "config.h"
 #include "APINavigation.h"
 
+#include "ProvisionalFrameProxy.h"
 #include "WebBackForwardListItem.h"
-#include "WebNavigationState.h"
+#include <WebCore/RegistrableDomain.h>
 #include <WebCore/ResourceRequest.h>
 #include <WebCore/ResourceResponse.h>
 #include <wtf/DebugUtilities.h>
 #include <wtf/HexNumber.h>
+#include <wtf/text/MakeString.h>
 
 namespace API {
 using namespace WebCore;
@@ -45,49 +47,53 @@ SubstituteData::SubstituteData(Vector<uint8_t>&& content, const ResourceResponse
 }
 
 
-Navigation::Navigation(WebNavigationState& state)
-    : m_navigationID(state.generateNavigationID())
+Navigation::Navigation(WebCore::ProcessIdentifier processID)
+    : m_navigationID(WebCore::NavigationIdentifier::generate())
+    , m_processID(processID)
     , m_clientNavigationActivity(navigationActivityTimeout)
 {
 }
 
-Navigation::Navigation(WebNavigationState& state, WebBackForwardListItem* currentAndTargetItem)
-    : m_navigationID(state.generateNavigationID())
-    , m_reloadItem(currentAndTargetItem)
+Navigation::Navigation(WebCore::ProcessIdentifier processID, RefPtr<WebBackForwardListItem>&& currentAndTargetItem)
+    : m_navigationID(WebCore::NavigationIdentifier::generate())
+    , m_processID(processID)
+    , m_reloadItem(WTFMove(currentAndTargetItem))
     , m_clientNavigationActivity(navigationActivityTimeout)
 {
 }
 
-Navigation::Navigation(WebNavigationState& state, WebCore::ResourceRequest&& request, WebBackForwardListItem* fromItem)
-    : m_navigationID(state.generateNavigationID())
+Navigation::Navigation(WebCore::ProcessIdentifier processID, WebCore::ResourceRequest&& request, RefPtr<WebBackForwardListItem>&& fromItem)
+    : m_navigationID(WebCore::NavigationIdentifier::generate())
+    , m_processID(processID)
     , m_originalRequest(WTFMove(request))
     , m_currentRequest(m_originalRequest)
-    , m_fromItem(fromItem)
+    , m_redirectChain { m_originalRequest.url() }
+    , m_fromItem(WTFMove(fromItem))
     , m_clientNavigationActivity(navigationActivityTimeout)
 {
-    m_redirectChain.append(m_originalRequest.url());
 }
 
-Navigation::Navigation(WebNavigationState& state, WebBackForwardListItem& targetItem, WebBackForwardListItem* fromItem, FrameLoadType backForwardFrameLoadType)
-    : m_navigationID(state.generateNavigationID())
-    , m_originalRequest(targetItem.url())
+Navigation::Navigation(WebCore::ProcessIdentifier processID, Ref<WebBackForwardListItem>&& targetItem, RefPtr<WebBackForwardListItem>&& fromItem, FrameLoadType backForwardFrameLoadType)
+    : m_navigationID(WebCore::NavigationIdentifier::generate())
+    , m_processID(processID)
+    , m_originalRequest(targetItem->url())
     , m_currentRequest(m_originalRequest)
-    , m_targetItem(&targetItem)
-    , m_fromItem(fromItem)
+    , m_targetItem(WTFMove(targetItem))
+    , m_fromItem(WTFMove(fromItem))
     , m_backForwardFrameLoadType(backForwardFrameLoadType)
     , m_clientNavigationActivity(navigationActivityTimeout)
 {
 }
 
-Navigation::Navigation(WebKit::WebNavigationState& state, std::unique_ptr<SubstituteData>&& substituteData)
-    : Navigation(state)
+Navigation::Navigation(WebCore::ProcessIdentifier processID, std::unique_ptr<SubstituteData>&& substituteData)
+    : Navigation(processID)
 {
     ASSERT(substituteData);
     m_substituteData = WTFMove(substituteData);
 }
 
-Navigation::Navigation(WebKit::WebNavigationState& state, WebCore::ResourceRequest&& simulatedRequest, std::unique_ptr<SubstituteData>&& substituteData, WebKit::WebBackForwardListItem* fromItem)
-    : Navigation(state, WTFMove(simulatedRequest), fromItem)
+Navigation::Navigation(WebCore::ProcessIdentifier processID, WebCore::ResourceRequest&& simulatedRequest, std::unique_ptr<SubstituteData>&& substituteData, RefPtr<WebKit::WebBackForwardListItem>&& fromItem)
+    : Navigation(processID, WTFMove(simulatedRequest), WTFMove(fromItem))
 {
     ASSERT(substituteData);
     m_substituteData = WTFMove(substituteData);
@@ -109,11 +115,17 @@ void Navigation::appendRedirectionURL(const WTF::URL& url)
         m_redirectChain.append(url);
 }
 
+bool Navigation::currentRequestIsCrossSiteRedirect() const
+{
+    return currentRequestIsRedirect()
+        && RegistrableDomain(m_lastNavigationAction.redirectResponse.url()) != RegistrableDomain(m_currentRequest.url());
+}
+
 #if !LOG_DISABLED
 
-const char* Navigation::loggingString() const
+WTF::String Navigation::loggingString() const
 {
-    return debugString("Most recent URL: ", m_currentRequest.url().string(), " Back/forward list item URL: '", m_targetItem ? m_targetItem->url() : WTF::String { }, "' (0x", hex(reinterpret_cast<uintptr_t>(m_targetItem.get())), ')');
+    return makeString("Most recent URL: "_s, m_currentRequest.url().string(), " Back/forward list item URL: '"_s, m_targetItem ? m_targetItem->url() : WTF::String { }, "' (0x"_s, hex(reinterpret_cast<uintptr_t>(m_targetItem.get())), ')');
 }
 
 #endif

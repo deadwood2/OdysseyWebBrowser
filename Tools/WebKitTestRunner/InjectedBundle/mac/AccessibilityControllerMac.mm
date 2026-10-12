@@ -31,19 +31,47 @@
 #import "config.h"
 #import "AccessibilityController.h"
 
-#import "AccessibilityCommonMac.h"
+#import "AccessibilityCommonCocoa.h"
 #import "AccessibilityNotificationHandler.h"
 #import "InjectedBundle.h"
 #import "InjectedBundlePage.h"
 #import "JSBasics.h"
 #import <JavaScriptCore/JSStringRefCF.h>
 #import <WebKit/WKBundle.h>
+#import <WebKit/WKBundleFramePrivate.h>
 #import <WebKit/WKBundlePage.h>
 #import <WebKit/WKBundlePagePrivate.h>
 
+#import <pal/spi/mac/HIServicesSPI.h>
+
+#if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
+#import <pal/spi/cocoa/AccessibilitySupportSPI.h>
+#endif
+
 namespace WTR {
 
-bool AccessibilityController::addNotificationListener(JSValueRef functionCallback)
+void AccessibilityController::platformInitialize()
+{
+    // Override the client identifier to be kAXClientTypeWebKitTesting which is treated the same as the VoiceOver identifier in isolated tree mode.
+    // This also allows to enable some APIs during testing only for unit test purposes, not for other clients consumption.
+    _AXSetClientIdentificationOverride((AXClientType)kAXClientTypeWebKitTesting);
+}
+
+RefPtr<AccessibilityUIElement> AccessibilityController::focusedElement(JSContextRef context)
+{
+    if (!WKAccessibilityRootObject(WKBundleFrameForJavaScriptContext(context)))
+        return nullptr;
+
+    RetainPtr<PlatformUIElement> focus;
+    executeOnAXThreadAndWait([&focus] () {
+        focus = static_cast<PlatformUIElement>(WKAccessibilityFocusedUIElement());
+    });
+    if (focus)
+        return AccessibilityUIElement::create(focus.get());
+    return nullptr;
+}
+
+bool AccessibilityController::addNotificationListener(JSContextRef context, JSValueRef functionCallback)
 {
     if (!functionCallback)
         return false;
@@ -51,7 +79,7 @@ bool AccessibilityController::addNotificationListener(JSValueRef functionCallbac
     if (m_globalNotificationHandler)
         return false;
 
-    m_globalNotificationHandler = adoptNS([[AccessibilityNotificationHandler alloc] init]);
+    m_globalNotificationHandler = adoptNS([[AccessibilityNotificationHandler alloc] initWithContext:context]);
     [m_globalNotificationHandler.get() setCallback:functionCallback];
     [m_globalNotificationHandler.get() startObserving];
 
@@ -77,7 +105,7 @@ void AccessibilityController::resetToConsistentState()
 static id findAccessibleObjectById(id obj, NSString *idAttribute)
 {
     BEGIN_AX_OBJC_EXCEPTIONS
-    id objIdAttribute = [obj accessibilityAttributeValue:@"AXDRTElementIdAttribute"];
+    id objIdAttribute = [obj accessibilityAttributeValue:@"AXDOMIdentifier"];
     if ([objIdAttribute isKindOfClass:[NSString class]] && [objIdAttribute isEqualToString:idAttribute])
         return obj;
     END_AX_OBJC_EXCEPTIONS
@@ -92,7 +120,7 @@ static id findAccessibleObjectById(id obj, NSString *idAttribute)
     }
     END_AX_OBJC_EXCEPTIONS
 
-    return nullptr;
+    return nil;
 }
 
 void AccessibilityController::injectAccessibilityPreference(JSStringRef domain, JSStringRef key, JSStringRef value)
@@ -104,14 +132,14 @@ void AccessibilityController::injectAccessibilityPreference(JSStringRef domain, 
     WKAccessibilityTestingInjectPreference(page, toWK(domain).get(), toWK(key).get(), toWK(encodedString).get());
 }
 
-RefPtr<AccessibilityUIElement> AccessibilityController::accessibleElementById(JSStringRef idAttribute)
+RefPtr<AccessibilityUIElement> AccessibilityController::accessibleElementById(JSContextRef context, JSStringRef idAttribute)
 {
-    auto page = InjectedBundle::singleton().page()->page();
-    PlatformUIElement root = static_cast<PlatformUIElement>(WKAccessibilityRootObject(page));
+    PlatformUIElement root = static_cast<PlatformUIElement>(WKAccessibilityRootObject(WKBundleFrameForJavaScriptContext(context)));
 
+    NSString *attributeName = [NSString stringWithJSStringRef:idAttribute];
     RetainPtr<id> result;
-    executeOnAXThreadAndWait([&root, &idAttribute, &result] {
-        result = findAccessibleObjectById(root, [NSString stringWithJSStringRef:idAttribute]);
+    executeOnAXThreadAndWait([&root, &attributeName, &result] {
+        result = findAccessibleObjectById(root, attributeName);
     });
 
     if (result)
@@ -122,6 +150,22 @@ RefPtr<AccessibilityUIElement> AccessibilityController::accessibleElementById(JS
 JSRetainPtr<JSStringRef> AccessibilityController::platformName()
 {
     return WTR::createJSString("mac");
+}
+
+#if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
+void AccessibilityController::updateIsolatedTreeMode()
+{
+    _AXSSetIsolatedTreeMode(m_accessibilityIsolatedTreeMode ? AXSIsolatedTreeModeSecondaryThread : AXSIsolatedTreeModeOff);
+}
+#endif
+
+void AccessibilityController::overrideClient(JSStringRef clientType)
+{
+    NSString *clientString = [NSString stringWithJSStringRef:clientType];
+    if ([clientString caseInsensitiveCompare:@"voiceover"] == NSOrderedSame)
+        _AXSetClientIdentificationOverride(kAXClientTypeVoiceOver);
+    else
+        _AXSetClientIdentificationOverride(kAXClientTypeNoActiveRequestFound);
 }
 
 // AXThread implementation

@@ -24,6 +24,7 @@
  */
 
 #include "config.h"
+#include "CairoUtilities.h"
 #include "ImageBackingStore.h"
 
 #include <cairo.h>
@@ -32,21 +33,19 @@ namespace WebCore {
 
 PlatformImagePtr ImageBackingStore::image() const
 {
-    if (m_pixels && m_pixelsPtr)
-    {
-        m_pixels->ref();
-        RefPtr<cairo_surface_t> surface = adoptRef(cairo_image_surface_create_for_data(
-            reinterpret_cast<unsigned char*>(const_cast<uint32_t*>(m_pixelsPtr)),
-            CAIRO_FORMAT_ARGB32, size().width(), size().height(), size().width() * sizeof(uint32_t)));
-        static cairo_user_data_key_t s_surfaceDataKey;
-        if (surface)
-        {
-            cairo_surface_set_user_data(surface.get(), &s_surfaceDataKey, m_pixels.get(), [](void* data) {  static_cast<SharedBuffer::DataSegment*>(data)->deref(); });
-        }
-        return surface;
-    }
+    if (!m_pixels || !m_pixelsPtr)
+        return nullptr;
+    m_pixels->ref();
+    RefPtr<cairo_surface_t> surface = adoptRef(cairo_image_surface_create_for_data(
+        reinterpret_cast<unsigned char*>(const_cast<uint32_t*>(m_pixelsPtr)),
+        CAIRO_FORMAT_ARGB32, size().width(), size().height(), size().width() * sizeof(uint32_t)));
+    static cairo_user_data_key_t s_surfaceDataKey;
+    cairo_surface_set_user_data(surface.get(), &s_surfaceDataKey, m_pixels.get(), [](void* data) {
+        static_cast<DataSegment*>(data)->deref();
+    });
 
-    return nullptr;
+    attachSurfaceUniqueID(surface.get());
+    return surface;
 }
 
 } // namespace WebCore

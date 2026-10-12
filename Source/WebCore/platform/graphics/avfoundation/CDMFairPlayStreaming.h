@@ -30,6 +30,8 @@
 #include "CDMFactory.h"
 #include "CDMPrivate.h"
 
+OBJC_CLASS AVContentKeyRequest;
+
 namespace WebCore {
 
 struct FourCC;
@@ -41,7 +43,7 @@ public:
 
     virtual ~CDMFactoryFairPlayStreaming();
 
-    std::unique_ptr<CDMPrivate> createCDM(const String&) override;
+    std::unique_ptr<CDMPrivate> createCDM(const String&, const CDMPrivateClient&) override;
     bool supportsKeySystem(const String&) override;
 
 private:
@@ -52,11 +54,14 @@ private:
 class CDMPrivateFairPlayStreaming final : public CDMPrivate {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    CDMPrivateFairPlayStreaming();
+    CDMPrivateFairPlayStreaming(const CDMPrivateClient&);
     virtual ~CDMPrivateFairPlayStreaming();
 
 #if !RELEASE_LOG_DISABLED
-    void setLogger(WTF::Logger&, const void* logIdentifier) final;
+    void setLogIdentifier(const void* logIdentifier) final { m_logIdentifier = logIdentifier; }
+    const Logger& logger() const { return m_logger; };
+    const void* logIdentifier() const { return m_logIdentifier; }
+    ASCIILiteral logClassName() const { return "CDMPrivateFairPlayStreaming"_s; }
 #endif
 
     Vector<AtomString> supportedInitDataTypes() const override;
@@ -83,16 +88,23 @@ public:
     static std::optional<Vector<Ref<SharedBuffer>>> extractKeyIDsSkd(const SharedBuffer&);
     static RefPtr<SharedBuffer> sanitizeSkd(const SharedBuffer&);
 
+#if HAVE(FAIRPLAYSTREAMING_MTPS_INITDATA)
+    static const AtomString& mptsName();
+    static std::optional<Vector<Ref<SharedBuffer>>> extractKeyIDsMpts(const SharedBuffer&);
+    static RefPtr<SharedBuffer> sanitizeMpts(const SharedBuffer&);
+    static const Vector<Ref<SharedBuffer>>& mptsKeyIDs();
+#endif
+
     static const Vector<FourCC>& validFairPlayStreamingSchemes();
+
+#if HAVE(AVCONTENTKEYSESSION)
+    static Vector<Ref<SharedBuffer>> keyIDsForRequest(AVContentKeyRequest *);
+#endif
 
 private:
 #if !RELEASE_LOG_DISABLED
-    WTF::Logger* loggerPtr() const { return m_logger.get(); };
-    const void* logIdentifier() const { return m_logIdentifier; }
-    const char* logClassName() const { return "CDMPrivateFairPlayStreaming"; }
-
-    RefPtr<WTF::Logger> m_logger;
-    const void* m_logIdentifier;
+    Ref<const Logger> m_logger;
+    const void* m_logIdentifier { nullptr };
 #endif
 };
 

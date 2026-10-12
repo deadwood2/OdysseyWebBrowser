@@ -26,19 +26,23 @@
 #include "config.h"
 #include "NetworkSocketChannel.h"
 
+#include "MessageSenderInlines.h"
 #include "NetworkConnectionToWebProcess.h"
 #include "NetworkProcess.h"
 #include "NetworkSession.h"
 #include "WebCoreArgumentCoders.h"
 #include "WebSocketChannelMessages.h"
 #include "WebSocketTask.h"
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebKit {
 using namespace WebCore;
 
-std::unique_ptr<NetworkSocketChannel> NetworkSocketChannel::create(NetworkConnectionToWebProcess& connection, PAL::SessionID sessionID, const ResourceRequest& request, const String& protocol, WebSocketIdentifier identifier, WebPageProxyIdentifier webPageProxyID)
+WTF_MAKE_TZONE_ALLOCATED_IMPL(NetworkSocketChannel);
+
+std::unique_ptr<NetworkSocketChannel> NetworkSocketChannel::create(NetworkConnectionToWebProcess& connection, PAL::SessionID sessionID, const ResourceRequest& request, const String& protocol, WebSocketIdentifier identifier, WebPageProxyIdentifier webPageProxyID, std::optional<FrameIdentifier> frameID, std::optional<PageIdentifier> pageID, const WebCore::ClientOrigin& clientOrigin, bool hadMainFrameMainResourcePrivateRelayed, bool allowPrivacyProxy, OptionSet<AdvancedPrivacyProtections> advancedPrivacyProtections, ShouldRelaxThirdPartyCookieBlocking shouldRelaxThirdPartyCookieBlocking, WebCore::StoredCredentialsPolicy storedCredentialsPolicy)
 {
-    auto result = makeUnique<NetworkSocketChannel>(connection, connection.networkProcess().networkSession(sessionID), request, protocol, identifier, webPageProxyID);
+    auto result = makeUnique<NetworkSocketChannel>(connection, connection.protectedNetworkProcess()->networkSession(sessionID), request, protocol, identifier, webPageProxyID, frameID, pageID, clientOrigin, hadMainFrameMainResourcePrivateRelayed, allowPrivacyProxy, advancedPrivacyProtections, shouldRelaxThirdPartyCookieBlocking, storedCredentialsPolicy);
     if (!result->m_socket) {
         result->didClose(0, "Cannot create a web socket task"_s);
         return nullptr;
@@ -46,19 +50,21 @@ std::unique_ptr<NetworkSocketChannel> NetworkSocketChannel::create(NetworkConnec
     return result;
 }
 
-NetworkSocketChannel::NetworkSocketChannel(NetworkConnectionToWebProcess& connection, NetworkSession* session, const ResourceRequest& request, const String& protocol, WebSocketIdentifier identifier, WebPageProxyIdentifier webPageProxyID)
+NetworkSocketChannel::NetworkSocketChannel(NetworkConnectionToWebProcess& connection, NetworkSession* session, const ResourceRequest& request, const String& protocol, WebSocketIdentifier identifier, WebPageProxyIdentifier webPageProxyID, std::optional<FrameIdentifier> frameID, std::optional<PageIdentifier> pageID, const WebCore::ClientOrigin& clientOrigin, bool hadMainFrameMainResourcePrivateRelayed, bool allowPrivacyProxy, OptionSet<AdvancedPrivacyProtections> advancedPrivacyProtections, ShouldRelaxThirdPartyCookieBlocking shouldRelaxThirdPartyCookieBlocking, WebCore::StoredCredentialsPolicy storedCredentialsPolicy)
     : m_connectionToWebProcess(connection)
     , m_identifier(identifier)
-    , m_session(makeWeakPtr(session))
+    , m_session(session)
     , m_errorTimer(*this, &NetworkSocketChannel::sendDelayedError)
     , m_webPageProxyID(webPageProxyID)
 {
     if (!m_session)
         return;
 
-    m_socket = m_session->createWebSocketTask(webPageProxyID, *this, request, protocol);
+    m_socket = m_session->createWebSocketTask(webPageProxyID, frameID, pageID, *this, request, protocol, clientOrigin, hadMainFrameMainResourcePrivateRelayed, allowPrivacyProxy, advancedPrivacyProtections, shouldRelaxThirdPartyCookieBlocking, storedCredentialsPolicy);
     if (m_socket) {
+#if PLATFORM(COCOA)
         m_session->addWebSocketTask(webPageProxyID, *m_socket);
+#endif
         m_socket->resume();
     }
 }
@@ -66,18 +72,25 @@ NetworkSocketChannel::NetworkSocketChannel(NetworkConnectionToWebProcess& connec
 NetworkSocketChannel::~NetworkSocketChannel()
 {
     if (m_socket) {
-        if (m_session && m_socket->sessionSet())
-            m_session->removeWebSocketTask(*m_socket->sessionSet(), *m_socket);
+#if PLATFORM(COCOA)
+        if (RefPtr sessionSet = m_session ? m_socket->sessionSet() : nullptr)
+            m_session->removeWebSocketTask(*sessionSet, *m_socket);
+#endif
         m_socket->cancel();
     }
 }
 
-void NetworkSocketChannel::sendString(const IPC::DataReference& message, CompletionHandler<void()>&& callback)
+Ref<NetworkConnectionToWebProcess> NetworkSocketChannel::protectedConnectionToWebProcess()
+{
+    return m_connectionToWebProcess.get();
+}
+
+void NetworkSocketChannel::sendString(std::span<const uint8_t> message, CompletionHandler<void()>&& callback)
 {
     m_socket->sendString(message, WTFMove(callback));
 }
 
-void NetworkSocketChannel::sendData(const IPC::DataReference& data, CompletionHandler<void()>&& callback)
+void NetworkSocketChannel::sendData(std::span<const uint8_t> data, CompletionHandler<void()>&& callback)
 {
     m_socket->sendData(data, WTFMove(callback));
 }
@@ -90,7 +103,7 @@ void NetworkSocketChannel::finishClosingIfPossible()
     }
     ASSERT(m_state == State::Closing);
     m_state = State::Closed;
-    m_connectionToWebProcess.removeSocketChannel(m_identifier);
+    protectedConnectionToWebProcess()->removeSocketChannel(m_identifier);
 }
 
 void NetworkSocketChannel::close(int32_t code, const String& reason)
@@ -109,9 +122,9 @@ void NetworkSocketChannel::didReceiveText(const String& text)
     send(Messages::WebSocketChannel::DidReceiveText { text });
 }
 
-void NetworkSocketChannel::didReceiveBinaryData(const uint8_t* data, size_t length)
+void NetworkSocketChannel::didReceiveBinaryData(std::span<const uint8_t> data)
 {
-    send(Messages::WebSocketChannel::DidReceiveBinaryData { { data, length } });
+    send(Messages::WebSocketChannel::DidReceiveBinaryData { data });
 }
 
 void NetworkSocketChannel::didClose(unsigned short code, const String& reason)
@@ -124,9 +137,9 @@ void NetworkSocketChannel::didClose(unsigned short code, const String& reason)
     finishClosingIfPossible();
 }
 
-void NetworkSocketChannel::didReceiveMessageError(const String& errorMessage)
+void NetworkSocketChannel::didReceiveMessageError(String&& errorMessage)
 {
-    m_errorMessage = errorMessage;
+    m_errorMessage = WTFMove(errorMessage);
     m_errorTimer.startOneShot(NetworkProcess::randomClosedPortDelay());
 }
 
@@ -152,10 +165,10 @@ void NetworkSocketChannel::didReceiveHandshakeResponse(ResourceResponse&& respon
 
 IPC::Connection* NetworkSocketChannel::messageSenderConnection() const
 {
-    return &m_connectionToWebProcess.connection();
+    return &m_connectionToWebProcess->connection();
 }
 
-NetworkSession* NetworkSocketChannel::session()
+NetworkSession* NetworkSocketChannel::session() const
 {
     return m_session.get();
 }

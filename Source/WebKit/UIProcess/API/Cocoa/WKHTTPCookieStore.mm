@@ -34,6 +34,7 @@
 #import <wtf/BlockPtr.h>
 #import <wtf/HashMap.h>
 #import <wtf/RetainPtr.h>
+#import <wtf/TZoneMallocInlines.h>
 #import <wtf/URL.h>
 #import <wtf/WeakObjCPtr.h>
 #import <wtf/cocoa/VectorCocoa.h>
@@ -45,8 +46,8 @@ static NSArray<NSHTTPCookie *> *coreCookiesToNSCookies(const Vector<WebCore::Coo
     }).autorelease();
 }
 
-class WKHTTPCookieStoreObserver : public API::HTTPCookieStore::Observer {
-    WTF_MAKE_FAST_ALLOCATED;
+class WKHTTPCookieStoreObserver : public API::HTTPCookieStoreObserver {
+    WTF_MAKE_TZONE_ALLOCATED_INLINE(WKHTTPCookieStoreObserver);
 public:
     explicit WKHTTPCookieStoreObserver(id<WKHTTPCookieStoreObserver> observer)
         : m_observer(observer)
@@ -56,7 +57,8 @@ public:
 private:
     void cookiesDidChange(API::HTTPCookieStore& cookieStore) final
     {
-        [m_observer cookiesDidChangeInCookieStore:wrapper(cookieStore)];
+        if ([m_observer respondsToSelector:@selector(cookiesDidChangeInCookieStore:)])
+            [m_observer cookiesDidChangeInCookieStore:wrapper(cookieStore)];
     }
 
     WeakObjCPtr<id<WKHTTPCookieStoreObserver>> m_observer;
@@ -65,6 +67,8 @@ private:
 @implementation WKHTTPCookieStore {
     HashMap<CFTypeRef, std::unique_ptr<WKHTTPCookieStoreObserver>> _observers;
 }
+
+WK_OBJECT_DISABLE_DISABLE_KVC_IVAR_ACCESS;
 
 - (void)dealloc
 {
@@ -123,6 +127,45 @@ private:
         return;
 
     _cookieStore->unregisterObserver(*result);
+}
+
+static WebCore::HTTPCookieAcceptPolicy toHTTPCookieAcceptPolicy(WKCookiePolicy wkCookiePolicy)
+{
+    switch (wkCookiePolicy) {
+    case WKCookiePolicyAllow:
+        return WebCore::HTTPCookieAcceptPolicy::OnlyFromMainDocumentDomain;
+    case WKCookiePolicyDisallow:
+        return WebCore::HTTPCookieAcceptPolicy::Never;
+    }
+    ASSERT_NOT_REACHED();
+}
+
+static WKCookiePolicy toWKCookiePolicy(WebCore::HTTPCookieAcceptPolicy policy)
+{
+    switch (policy) {
+    case WebCore::HTTPCookieAcceptPolicy::OnlyFromMainDocumentDomain:
+        return WKCookiePolicyAllow;
+    case WebCore::HTTPCookieAcceptPolicy::Never:
+        return WKCookiePolicyDisallow;
+    case WebCore::HTTPCookieAcceptPolicy::AlwaysAccept:
+    case WebCore::HTTPCookieAcceptPolicy::ExclusivelyFromMainDocumentDomain:
+        return WKCookiePolicyAllow;
+    }
+}
+
+- (void)setCookiePolicy:(WKCookiePolicy)policy completionHandler:(void (^)(void))completionHandler
+{
+    _cookieStore->setHTTPCookieAcceptPolicy(toHTTPCookieAcceptPolicy(policy), [completionHandler = makeBlockPtr(completionHandler)] {
+        if (completionHandler)
+            completionHandler.get()();
+    });
+}
+
+- (void)getCookiePolicy:(void (^)(WKCookiePolicy))completionHandler
+{
+    _cookieStore->getHTTPCookieAcceptPolicy([completionHandler = makeBlockPtr(completionHandler)] (WebCore::HTTPCookieAcceptPolicy policy) {
+        completionHandler(toWKCookiePolicy(policy));
+    });
 }
 
 #pragma mark WKObject protocol implementation

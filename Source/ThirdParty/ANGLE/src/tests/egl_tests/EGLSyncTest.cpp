@@ -10,11 +10,12 @@
 
 #include "test_utils/ANGLETest.h"
 #include "test_utils/angle_test_configs.h"
+#include "test_utils/gl_raii.h"
 #include "util/EGLWindow.h"
 
 using namespace angle;
 
-class EGLSyncTest : public ANGLETest
+class EGLSyncTest : public ANGLETest<>
 {
   protected:
     bool hasFenceSyncExtension() const
@@ -214,17 +215,13 @@ TEST_P(EGLSyncTest, BasicOperations)
 
     glFlush();
 
-    EGLint value           = 0;
-    unsigned int loopCount = 0;
+    glClear(GL_COLOR_BUFFER_BIT);
 
-    // Use 'loopCount' to make sure the test doesn't get stuck in an infinite loop
-    while (value != EGL_SIGNALED_KHR && loopCount <= 1000000)
-    {
-        loopCount++;
-        EXPECT_EGL_TRUE(eglGetSyncAttribKHR(display, sync, EGL_SYNC_STATUS_KHR, &value));
-    }
-
-    ASSERT_EQ(value, EGL_SIGNALED_KHR);
+    // Don't wait forever to make sure the test terminates
+    constexpr GLuint64 kTimeout = 1'000'000'000;  // 1 second
+    EGLint value                = 0;
+    ASSERT_EQ(EGL_CONDITION_SATISFIED_KHR,
+              eglClientWaitSyncKHR(display, sync, EGL_SYNC_FLUSH_COMMANDS_BIT_KHR, kTimeout));
 
     for (size_t i = 0; i < 20; i++)
     {
@@ -239,6 +236,93 @@ TEST_P(EGLSyncTest, BasicOperations)
     EXPECT_EGL_TRUE(eglDestroySyncKHR(display, sync));
 }
 
+// Test that eglClientWaitSync* APIs work.
+TEST_P(EGLSyncTest, EglClientWaitSync)
+{
+    ANGLE_SKIP_TEST_IF(!hasFenceSyncExtension());
+
+    EGLDisplay display = getEGLWindow()->getDisplay();
+    ANGLE_GL_PROGRAM(greenProgram, essl1_shaders::vs::Simple(), essl1_shaders::fs::Green());
+
+    // Test eglClientWaitSyncKHR
+    for (size_t i = 0; i < 5; i++)
+    {
+        glClearColor(1.0f, 0.0f, 1.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        drawQuad(greenProgram, std::string(essl1_shaders::PositionAttrib()), 0.0f);
+        ASSERT_GL_NO_ERROR();
+
+        // Don't wait forever to make sure the test terminates
+        constexpr GLuint64 kTimeout = 1'000'000'000;  // 1 second
+        EGLSyncKHR clientWaitSync   = eglCreateSyncKHR(display, EGL_SYNC_FENCE_KHR, nullptr);
+        EXPECT_NE(clientWaitSync, EGL_NO_SYNC_KHR);
+
+        ASSERT_EQ(EGL_CONDITION_SATISFIED_KHR,
+                  eglClientWaitSyncKHR(display, clientWaitSync, EGL_SYNC_FLUSH_COMMANDS_BIT_KHR,
+                                       kTimeout));
+
+        EXPECT_EGL_TRUE(eglDestroySyncKHR(display, clientWaitSync));
+        ASSERT_EGL_SUCCESS();
+    }
+
+    // Test eglClientWaitSync
+    for (size_t i = 0; i < 5; i++)
+    {
+        glClearColor(1.0f, 0.0f, 1.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        drawQuad(greenProgram, std::string(essl1_shaders::PositionAttrib()), 0.0f);
+        ASSERT_GL_NO_ERROR();
+
+        // Don't wait forever to make sure the test terminates
+        constexpr GLuint64 kTimeout = 1'000'000'000;  // 1 second
+        EGLSyncKHR clientWaitSync   = eglCreateSync(display, EGL_SYNC_FENCE, nullptr);
+        EXPECT_NE(clientWaitSync, EGL_NO_SYNC);
+
+        ASSERT_EQ(
+            EGL_CONDITION_SATISFIED,
+            eglClientWaitSync(display, clientWaitSync, EGL_SYNC_FLUSH_COMMANDS_BIT, kTimeout));
+
+        EXPECT_EGL_TRUE(eglDestroySync(display, clientWaitSync));
+        ASSERT_EGL_SUCCESS();
+    }
+}
+
+// Test eglWaitClient api
+TEST_P(EGLSyncTest, WaitClient)
+{
+    // Clear to red color
+    glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
+
+    glClear(GL_COLOR_BUFFER_BIT);
+    EXPECT_EGL_TRUE(eglWaitClient());
+    EXPECT_PIXEL_COLOR_EQ(getWindowWidth() / 2, getWindowHeight() / 2, GLColor::red);
+
+    EGLDisplay display = getEGLWindow()->getDisplay();
+    EGLContext context = getEGLWindow()->getContext();
+    EGLSurface surface = getEGLWindow()->getSurface();
+    eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    EXPECT_EGL_TRUE(eglWaitClient());
+    eglMakeCurrent(display, surface, surface, context);
+}
+
+// Test eglWaitGL api
+TEST_P(EGLSyncTest, WaitGL)
+{
+    // Clear to red color
+    glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
+
+    glClear(GL_COLOR_BUFFER_BIT);
+    EXPECT_EGL_TRUE(eglWaitGL());
+    EXPECT_PIXEL_COLOR_EQ(getWindowWidth() / 2, getWindowHeight() / 2, GLColor::red);
+
+    EGLDisplay display = getEGLWindow()->getDisplay();
+    EGLContext context = getEGLWindow()->getContext();
+    EGLSurface surface = getEGLWindow()->getSurface();
+    eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    EXPECT_EGL_TRUE(eglWaitGL());
+    eglMakeCurrent(display, surface, surface, context);
+}
+
 // Test eglWaitNative api
 TEST_P(EGLSyncTest, WaitNative)
 {
@@ -248,6 +332,13 @@ TEST_P(EGLSyncTest, WaitNative)
     glClear(GL_COLOR_BUFFER_BIT);
     EXPECT_EGL_TRUE(eglWaitNative(EGL_CORE_NATIVE_ENGINE));
     EXPECT_PIXEL_COLOR_EQ(getWindowWidth() / 2, getWindowHeight() / 2, GLColor::red);
+
+    EGLDisplay display = getEGLWindow()->getDisplay();
+    EGLContext context = getEGLWindow()->getContext();
+    EGLSurface surface = getEGLWindow()->getSurface();
+    eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    EXPECT_EGL_TRUE(eglWaitNative(EGL_CORE_NATIVE_ENGINE));
+    eglMakeCurrent(display, surface, surface, context);
 }
 
 // Verify eglDupNativeFence for EGL_ANDROID_native_fence_sync
@@ -299,7 +390,7 @@ TEST_P(EGLSyncTest, AndroidNativeFence_ClientWait)
     // Wait for draw to complete
     EXPECT_EQ(EGL_CONDITION_SATISFIED,
               eglClientWaitSyncKHR(display, syncWithGeneratedFD, EGL_SYNC_FLUSH_COMMANDS_BIT_KHR,
-                                   1000000000));
+                                   1'000'000'000));
     EXPECT_EGL_TRUE(eglGetSyncAttribKHR(display, syncWithGeneratedFD, EGL_SYNC_STATUS_KHR, &value));
     EXPECT_EQ(value, EGL_SIGNALED_KHR);
 
@@ -339,7 +430,7 @@ TEST_P(EGLSyncTest, AndroidNativeFence_WaitSync)
     {
         EXPECT_EGL_TRUE(eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT));
 
-        EGLContext context2 = getEGLWindow()->createContext(EGL_NO_CONTEXT);
+        EGLContext context2 = getEGLWindow()->createContext(EGL_NO_CONTEXT, nullptr);
         EXPECT_EGL_TRUE(eglMakeCurrent(display, surface, surface, context2));
 
         // We can eglWaitSync on this - import FD from first sync.
@@ -423,7 +514,7 @@ TEST_P(EGLSyncTest, AndroidNativeFence_withFences)
     {
         EXPECT_EGL_TRUE(eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT));
 
-        EGLContext context2 = getEGLWindow()->createContext(EGL_NO_CONTEXT);
+        EGLContext context2 = getEGLWindow()->createContext(EGL_NO_CONTEXT, nullptr);
         EXPECT_EGL_TRUE(eglMakeCurrent(display, surface, surface, context2));
 
         // check that Fence and Android fences work together
@@ -479,14 +570,154 @@ TEST_P(EGLSyncTest, AndroidNativeFence_withFences)
     EXPECT_EGL_TRUE(eglDestroySyncKHR(display, syncWithGeneratedFD));
 }
 
-ANGLE_INSTANTIATE_TEST(EGLSyncTest,
-                       ES2_D3D9(),
-                       ES2_D3D11(),
-                       ES2_METAL(),
-                       ES3_D3D11(),
-                       ES2_OPENGL(),
-                       ES3_OPENGL(),
-                       ES2_OPENGLES(),
-                       ES3_OPENGLES(),
-                       ES2_VULKAN(),
-                       ES3_VULKAN());
+// Verify that VkSemaphore is not destroyed before used for waiting
+TEST_P(EGLSyncTest, AndroidNativeFence_VkSemaphoreDestroyBug)
+{
+    ANGLE_SKIP_TEST_IF(!IsVulkan());
+    ANGLE_SKIP_TEST_IF(!hasFenceSyncExtension());
+    ANGLE_SKIP_TEST_IF(!hasWaitSyncExtension() || !hasGLSyncExtension());
+    ANGLE_SKIP_TEST_IF(!hasAndroidNativeFenceSyncExtension());
+
+    EGLDisplay display = getEGLWindow()->getDisplay();
+
+    glFinish();  // Ensure no pending commands
+
+    EGLSyncKHR syncWithGeneratedFD =
+        eglCreateSyncKHR(display, EGL_SYNC_NATIVE_FENCE_ANDROID, nullptr);
+    EXPECT_NE(syncWithGeneratedFD, EGL_NO_SYNC_KHR);
+    EXPECT_EGL_TRUE(eglWaitSyncKHR(display, syncWithGeneratedFD, 0));
+    EXPECT_EGL_TRUE(eglDestroySyncKHR(display, syncWithGeneratedFD));
+    glFinish();  // May destroy VkSemaphore if bug is present.
+
+    // Create work to do
+    glClearColor(0.0f, 1.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glFinish();  // Will submit destroyed Semaphores.
+}
+
+// Verify that no VVL errors are generated when External Fence Handle is used to track submissions
+TEST_P(EGLSyncTest, AndroidNativeFence_ExternalFenceWaitVVLBug)
+{
+    ANGLE_SKIP_TEST_IF(!IsVulkan());
+    ANGLE_SKIP_TEST_IF(!hasFenceSyncExtension() || !hasGLSyncExtension());
+    ANGLE_SKIP_TEST_IF(!hasAndroidNativeFenceSyncExtension());
+
+    EGLint value       = 0;
+    EGLDisplay display = getEGLWindow()->getDisplay();
+
+    // Create work to do
+    ANGLE_GL_PROGRAM(program, essl1_shaders::vs::Simple(), essl1_shaders::fs::Red());
+    drawQuad(program, essl1_shaders::PositionAttrib(), 0.0f);
+    ASSERT_GL_NO_ERROR();
+
+    // We can ClientWait on this
+    EGLSyncKHR syncWithGeneratedFD =
+        eglCreateSyncKHR(display, EGL_SYNC_NATIVE_FENCE_ANDROID, nullptr);
+    EXPECT_NE(syncWithGeneratedFD, EGL_NO_SYNC_KHR);
+
+    // Wait for draw to complete
+    EXPECT_EQ(EGL_CONDITION_SATISFIED,
+              eglClientWaitSyncKHR(display, syncWithGeneratedFD, EGL_SYNC_FLUSH_COMMANDS_BIT_KHR,
+                                   1'000'000'000));
+    EXPECT_EGL_TRUE(eglGetSyncAttribKHR(display, syncWithGeneratedFD, EGL_SYNC_STATUS_KHR, &value));
+    EXPECT_EQ(value, EGL_SIGNALED_KHR);
+
+    // Clean up created objects.
+    EXPECT_EGL_TRUE(eglDestroySyncKHR(display, syncWithGeneratedFD));
+
+    // Finish to cleanup internal garbage in the backend.
+    glFinish();
+}
+
+// Test functionality of EGL_ANGLE_global_fence_sync.
+TEST_P(EGLSyncTest, GlobalFenceSync)
+{
+    EGLDisplay display = getEGLWindow()->getDisplay();
+
+    ANGLE_SKIP_TEST_IF(!hasFenceSyncExtension());
+    ANGLE_SKIP_TEST_IF(!IsEGLDisplayExtensionEnabled(display, "EGL_ANGLE_global_fence_sync"));
+
+    // Create a second context
+    EGLContext context1     = eglGetCurrentContext();
+    EGLSurface drawSurface1 = eglGetCurrentSurface(EGL_DRAW);
+    EGLSurface readSurface1 = eglGetCurrentSurface(EGL_READ);
+    EGLConfig config        = getEGLWindow()->getConfig();
+
+    const EGLint contextAttribs[] = {
+        EGL_CONTEXT_CLIENT_VERSION, getEGLWindow()->getClientMajorVersion(),
+        EGL_CONTEXT_MINOR_VERSION_KHR, getEGLWindow()->getClientMinorVersion(), EGL_NONE};
+
+    EGLContext context2 = eglCreateContext(display, config, context1, contextAttribs);
+    ASSERT_NE(EGL_NO_CONTEXT, context2);
+
+    const EGLint pbufferAttribs[] = {EGL_WIDTH, getWindowWidth(), EGL_HEIGHT, getWindowHeight(),
+                                     EGL_NONE};
+    EGLSurface drawSurface2       = eglCreatePbufferSurface(display, config, pbufferAttribs);
+    ASSERT_NE(EGL_NO_SURFACE, drawSurface2);
+
+    // Do an expensive draw in context 2
+    eglMakeCurrent(display, drawSurface2, drawSurface2, context2);
+
+    constexpr char kCostlyVS[] = R"(attribute highp vec4 position;
+varying highp vec4 testPos;
+void main(void)
+{
+    testPos     = position;
+    gl_Position = position;
+})";
+
+    constexpr char kCostlyFS[] = R"(precision highp float;
+varying highp vec4 testPos;
+void main(void)
+{
+    vec4 test = testPos;
+    for (int i = 0; i < 500; i++)
+    {
+        test = sqrt(test);
+    }
+    gl_FragColor = test;
+})";
+
+    ANGLE_GL_PROGRAM(expensiveProgram, kCostlyVS, kCostlyFS);
+    drawQuad(expensiveProgram, "position", 0.0f);
+
+    // Signal a fence sync for testing
+    EGLSyncKHR sync2 = eglCreateSyncKHR(display, EGL_SYNC_FENCE_KHR, nullptr);
+
+    // Switch to context 1, and create a global fence sync
+    eglMakeCurrent(display, drawSurface1, readSurface1, context1);
+
+    EGLSyncKHR sync1 = eglCreateSyncKHR(display, EGL_SYNC_GLOBAL_FENCE_ANGLE, nullptr);
+
+    // Wait for the global fence sync to finish.
+    constexpr GLuint64 kTimeout = 1'000'000'000;  // 1 second
+    ASSERT_EQ(EGL_CONDITION_SATISFIED_KHR, eglClientWaitSyncKHR(display, sync1, 0, kTimeout));
+
+    // If the global fence sync is signaled, then the signal from context2 must also be signaled.
+    // Note that if sync1 was an EGL_SYNC_FENCE_KHR, this would not necessarily be true.
+    EGLint value = 0;
+    EXPECT_EGL_TRUE(eglGetSyncAttribKHR(display, sync2, EGL_SYNC_STATUS_KHR, &value));
+    EXPECT_EQ(value, EGL_SIGNALED_KHR);
+
+    EXPECT_EQ(EGL_CONDITION_SATISFIED_KHR, eglClientWaitSyncKHR(display, sync2, 0, 0));
+
+    EXPECT_EGL_TRUE(eglDestroySyncKHR(display, sync1));
+    EXPECT_EGL_TRUE(eglDestroySyncKHR(display, sync2));
+
+    EXPECT_EGL_TRUE(eglDestroySurface(display, drawSurface2));
+    EXPECT_EGL_TRUE(eglDestroyContext(display, context2));
+}
+
+// Test that leaked fences are cleaned up in a safe way. Regression test for sync objects using tail
+// calls for destruction.
+TEST_P(EGLSyncTest, DISABLED_LeakSyncToDisplayDestruction)
+{
+    ANGLE_SKIP_TEST_IF(!hasFenceSyncExtension());
+
+    EGLDisplay display = getEGLWindow()->getDisplay();
+
+    EGLSyncKHR sync = eglCreateSyncKHR(display, EGL_SYNC_FENCE_KHR, nullptr);
+    EXPECT_NE(sync, EGL_NO_SYNC_KHR);
+}
+
+ANGLE_INSTANTIATE_TEST_ES2_AND_ES3(EGLSyncTest);

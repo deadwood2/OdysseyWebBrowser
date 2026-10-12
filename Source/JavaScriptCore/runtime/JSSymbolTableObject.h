@@ -46,7 +46,7 @@ public:
     JS_EXPORT_PRIVATE static bool deleteProperty(JSCell*, JSGlobalObject*, PropertyName, DeletePropertySlot&);
     JS_EXPORT_PRIVATE static void getOwnSpecialPropertyNames(JSObject*, JSGlobalObject*, PropertyNameArray&, DontEnumPropertiesMode);
     
-    static ptrdiff_t offsetOfSymbolTable() { return OBJECT_OFFSETOF(JSSymbolTableObject, m_symbolTable); }
+    static constexpr ptrdiff_t offsetOfSymbolTable() { return OBJECT_OFFSETOF(JSSymbolTableObject, m_symbolTable); }
 
     DECLARE_EXPORT_INFO;
 
@@ -58,9 +58,10 @@ protected:
     
     JSSymbolTableObject(VM& vm, Structure* structure, JSScope* scope, SymbolTable* symbolTable)
         : Base(vm, structure, scope)
+        , m_symbolTable(symbolTable, WriteBarrierEarlyInit)
     {
         ASSERT(symbolTable);
-        setSymbolTable(vm, symbolTable);
+        symbolTable->notifyCreation(vm, this, "Allocated a scope");
     }
     
     void setSymbolTable(VM& vm, SymbolTable* symbolTable)
@@ -151,7 +152,7 @@ inline bool symbolTablePut(SymbolTableObjectType* object, JSGlobalObject* global
         SymbolTable& symbolTable = *object->symbolTable();
         // FIXME: This is very suspicious. We shouldn't need a GC-safe lock here.
         // https://bugs.webkit.org/show_bug.cgi?id=134601
-        GCSafeConcurrentJSLocker locker(symbolTable.m_lock, vm.heap);
+        GCSafeConcurrentJSLocker locker(symbolTable.m_lock, vm);
         SymbolTable::Map::iterator iter = symbolTable.find(locker, propertyName.uid());
         if (iter == symbolTable.end(locker))
             return false;

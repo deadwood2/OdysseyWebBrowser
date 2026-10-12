@@ -47,10 +47,10 @@ public:
         return adoptRef(*new VideoTrackPrivateMediaSourceAVFObjC(track));
     }
 
+    virtual ~VideoTrackPrivateMediaSourceAVFObjC();
+
     void setAssetTrack(AVAssetTrack*);
     AVAssetTrack* assetTrack() const;
-
-    int trackID() { return m_trackID; }
 
     FloatSize naturalSize() const;
 
@@ -60,7 +60,6 @@ private:
     void resetPropertiesFromTrack();
 
     std::unique_ptr<AVTrackPrivateAVFObjCImpl> m_impl;
-    int m_trackID;
 };
 
 }

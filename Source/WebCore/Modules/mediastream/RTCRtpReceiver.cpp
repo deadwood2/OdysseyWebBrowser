@@ -37,22 +37,22 @@
 #include "Logging.h"
 #include "PeerConnectionBackend.h"
 #include "RTCRtpCapabilities.h"
-#include <wtf/IsoMallocInlines.h>
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
 
 #if !RELEASE_LOG_DISABLED
-#define LOGIDENTIFIER_RECEIVER WTF::Logger::LogSiteIdentifier(logClassName(), __func__, m_connection->logIdentifier())
+#define LOGIDENTIFIER_RECEIVER Logger::LogSiteIdentifier(logClassName(), __func__, m_connection->logIdentifier())
 #else
 #define LOGIDENTIFIER_RECEIVER
 #endif
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(RTCRtpReceiver);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(RTCRtpReceiver);
 
 RTCRtpReceiver::RTCRtpReceiver(PeerConnectionBackend& connection, Ref<MediaStreamTrack>&& track, std::unique_ptr<RTCRtpReceiverBackend>&& backend)
     : m_track(WTFMove(track))
     , m_backend(WTFMove(backend))
-    , m_connection(makeWeakPtr(&connection))
+    , m_connection(connection)
 #if !RELEASE_LOG_DISABLED
     , m_logger(connection.logger())
     , m_logIdentifier(connection.logIdentifier())
@@ -81,7 +81,7 @@ void RTCRtpReceiver::stop()
 void RTCRtpReceiver::getStats(Ref<DeferredPromise>&& promise)
 {
     if (!m_connection) {
-        promise->reject(InvalidStateError);
+        promise->reject(ExceptionCode::InvalidStateError);
         return;
     }
     m_connection->getStats(*this, WTFMove(promise));
@@ -107,7 +107,7 @@ ExceptionOr<void> RTCRtpReceiver::setTransform(std::unique_ptr<RTCRtpTransform>&
     }
 
     if (transform->isAttached())
-        return Exception { InvalidStateError, "transform is already in use"_s };
+        return Exception { ExceptionCode::InvalidStateError, "transform is already in use"_s };
 
     transform->attachToReceiver(*this, m_transform.get());
     m_transform = WTFMove(transform);

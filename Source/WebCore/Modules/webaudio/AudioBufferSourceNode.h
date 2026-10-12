@@ -39,9 +39,8 @@ struct AudioBufferSourceOptions;
 // It generally will be used for short sounds which require a high degree of scheduling flexibility (can playback in rhythmically perfect ways).
 
 class AudioBufferSourceNode final : public AudioScheduledSourceNode {
-    WTF_MAKE_ISO_ALLOCATED(AudioBufferSourceNode);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(AudioBufferSourceNode);
 public:
-    static Ref<AudioBufferSourceNode> create(BaseAudioContext&, float sampleRate);
     static ExceptionOr<Ref<AudioBufferSourceNode>> create(BaseAudioContext&, AudioBufferSourceOptions&& = { });
 
     virtual ~AudioBufferSourceNode();
@@ -51,6 +50,9 @@ public:
 
     // setBufferForBindings() is called on the main thread. This is the buffer we use for playback.
     ExceptionOr<void> setBufferForBindings(RefPtr<AudioBuffer>&&);
+
+    AudioBuffer* buffer() WTF_REQUIRES_LOCK(m_processLock) { return m_buffer.get(); }
+    Lock& processLock() WTF_RETURNS_LOCK(m_processLock) { return m_processLock; }
 
     // This function does not lock before accessing the buffer and should therefore only be called on the main thread.
     AudioBuffer* bufferForBindings() WTF_IGNORES_THREAD_SAFETY_ANALYSIS { ASSERT(isMainThread()); return m_buffer.get(); }
@@ -78,14 +80,15 @@ public:
     // If we are no longer playing, propogate silence ahead to downstream nodes.
     bool propagatesSilence() const final;
 
-    const char* activeDOMObjectName() const override { return "AudioBufferSourceNode"; }
-
-protected:
-    explicit AudioBufferSourceNode(BaseAudioContext&);
-
 private:
+    AudioBufferSourceNode(BaseAudioContext&);
+
+    void acquireBufferContent() WTF_REQUIRES_LOCK(m_processLock);
+
     double tailTime() const final { return 0; }
     double latencyTime() const final { return 0; }
+
+    float noiseInjectionMultiplier() const final;
 
     ExceptionOr<void> startPlaying(double when, double grainOffset, std::optional<double> grainDuration);
     void adjustGrainParameters() WTF_REQUIRES_LOCK(m_processLock);

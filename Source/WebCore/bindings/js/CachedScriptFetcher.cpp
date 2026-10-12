@@ -31,6 +31,7 @@
 #include "ContentSecurityPolicy.h"
 #include "CrossOriginAccessControl.h"
 #include "Document.h"
+#include "DocumentInlines.h"
 #include "Settings.h"
 #include "WorkerOrWorkletGlobalScope.h"
 
@@ -52,21 +53,23 @@ CachedResourceHandle<CachedScript> CachedScriptFetcher::requestScriptWithCache(D
         return nullptr;
 
     ASSERT(document.contentSecurityPolicy());
-    bool hasKnownNonce = document.contentSecurityPolicy()->allowScriptWithNonce(m_nonce, m_isInUserAgentShadowTree);
+    bool hasKnownNonce = document.checkedContentSecurityPolicy()->allowScriptWithNonce(m_nonce, m_isInUserAgentShadowTree);
     ResourceLoaderOptions options = CachedResourceLoader::defaultCachedResourceOptions();
     options.contentSecurityPolicyImposition = hasKnownNonce ? ContentSecurityPolicyImposition::SkipPolicyCheck : ContentSecurityPolicyImposition::DoPolicyCheck;
     options.sameOriginDataURLFlag = SameOriginDataURLFlag::Set;
     options.integrity = WTFMove(integrity);
     options.referrerPolicy = m_referrerPolicy;
+    options.fetchPriorityHint = m_fetchPriorityHint;
+    options.nonce = m_nonce;
 
     auto request = createPotentialAccessControlRequest(sourceURL, WTFMove(options), document, crossOriginMode);
     request.upgradeInsecureRequestIfNeeded(document);
     request.setCharset(m_charset);
     request.setPriority(WTFMove(resourceLoadPriority));
-    if (!m_initiatorName.isNull())
-        request.setInitiator(m_initiatorName);
+    if (!m_initiatorType.isNull())
+        request.setInitiatorType(m_initiatorType);
 
-    return document.cachedResourceLoader().requestScript(WTFMove(request)).value_or(nullptr);
+    return document.protectedCachedResourceLoader()->requestScript(WTFMove(request)).value_or(nullptr);
 }
 
 }

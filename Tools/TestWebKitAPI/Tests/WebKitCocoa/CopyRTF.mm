@@ -31,6 +31,8 @@
 #import "PlatformUtilities.h"
 #import "Test.h"
 #import "TestWKWebView.h"
+#import <WebKit/WKPreferencesPrivate.h>
+#import <WebKit/WKPreferencesRefPrivate.h>
 #import <wtf/RetainPtr.h>
 
 #if PLATFORM(IOS_FAMILY)
@@ -61,6 +63,9 @@ static RetainPtr<NSAttributedString> copyAttributedStringFromHTML(NSString *html
 {
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 400, 400)]);
 
+    auto preferences = (__bridge WKPreferencesRef)[[webView configuration] preferences];
+    WKPreferencesSetWriteRichTextDataWhenCopyingOrDragging(preferences, true);
+
     if (forceDarkMode)
         [webView forceDarkMode];
 
@@ -89,7 +94,7 @@ static void checkColor(PlatformColor *color, CGFloat red, CGFloat green, CGFloat
     [color getRed:&observedRed green:&observedGreen blue:&observedBlue alpha:&observedAlpha];
 
     EXPECT_EQ(red, observedRed);
-    EXPECT_EQ(green, observedRed);
+    EXPECT_EQ(green, observedGreen);
     EXPECT_EQ(blue, observedBlue);
     EXPECT_EQ(alpha, observedAlpha);
 }
@@ -162,5 +167,24 @@ TEST(CopyRTF, StripsDataDetectorsLinks)
 }
 
 #endif // ENABLE(DATA_DETECTION)
+
+TEST(CopyRTF, StripsUserSelectNone)
+{
+    auto attributedString = copyAttributedStringFromHTML(@"hello <span style='-webkit-user-select: none; user-select: none;'>world "
+        "<span style='-webkit-user-select: initial; user-select: initial;'>WebKit </span></span>"
+        "<div style='-webkit-user-select: none; user-select: none;'>some<br>user-select-none<br>content</div><span inert>foo </span>bar", false);
+
+    EXPECT_WK_STREQ([attributedString string].UTF8String, "hello WebKit bar");
+}
+
+TEST(CopyRTF, StripsUserSelectNoneQuirks)
+{
+    auto attributedString = copyAttributedStringFromHTML(@"<meta name='confluence-request-time' content='1689029750234'>"
+        "hello <span style='-webkit-user-select: none; user-select: none;'>world "
+        "<span style='-webkit-user-select: initial; user-select: initial;'>WebKit </span></span>"
+        "<div style='-webkit-user-select: none; user-select: none;'>some<br>user-select-none<br>content</div><span inert>foo </span>bar", false);
+
+    EXPECT_WK_STREQ([attributedString string].UTF8String, "hello world WebKit\nsome\nuser-select-none\ncontent\nfoo bar");
+}
 
 #endif // PLATFORM(COCOA)

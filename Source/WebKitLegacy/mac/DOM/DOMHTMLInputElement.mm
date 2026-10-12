@@ -33,6 +33,7 @@
 #import "DOMInternal.h"
 #import "DOMPrivate.h"
 #import "ExceptionHandlers.h"
+#import <WebCore/ElementInlines.h>
 
 #if TARGET_OS_IPHONE
 #if __has_include(<UIKit/UITextAutofillSuggestion.h>)
@@ -60,7 +61,6 @@
 #import <WebCore/HTMLNames.h>
 #import <WebCore/HitTestResult.h>
 #import <WebCore/JSExecState.h>
-#import <WebCore/NameNodeList.h>
 #import <WebCore/NodeList.h>
 #import <WebCore/RenderElement.h>
 #import <WebCore/ThreadCheck.h>
@@ -659,13 +659,13 @@
 - (void)setRangeText:(NSString *)replacement
 {
     WebCore::JSMainThreadNullState state;
-    raiseOnDOMError(IMPL->setRangeText(replacement));
+    raiseOnDOMError(IMPL->setRangeText(String { replacement }));
 }
 
 - (void)setRangeText:(NSString *)replacement start:(unsigned)start end:(unsigned)end selectionMode:(NSString *)selectionMode
 {
     WebCore::JSMainThreadNullState state;
-    raiseOnDOMError(IMPL->setRangeText(replacement, start, end, selectionMode));
+    raiseOnDOMError(IMPL->setRangeText(String { replacement }, start, end, selectionMode));
 }
 
 - (void)setSelectionRange:(int)start end:(int)end

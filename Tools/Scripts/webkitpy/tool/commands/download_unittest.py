@@ -29,14 +29,13 @@
 
 import unittest
 
+from webkitcorepy import OutputCapture, mocks
+
+from webkitpy.common.checkout.checkout_mock import MockCheckout
 from webkitpy.thirdparty.mock import Mock
 from webkitpy.tool.commands.commandtest import CommandsTest
 from webkitpy.tool.commands.download import *
 from webkitpy.tool.mocktool import MockOptions, MockTool
-from webkitpy.common.checkout.checkout_mock import MockCheckout
-
-from webkitcorepy import OutputCapture
-from webkitcorepy import mocks
 
 
 class AbstractRevertPrepCommandTest(unittest.TestCase):
@@ -64,16 +63,21 @@ class AbstractRevertPrepCommandTest(unittest.TestCase):
         command._commit_info = lambda revision: mock_commit_info
 
         state = command._prepare_state(None, ["124 123 125", "Reason"], None)
-        self.assertEqual(123, state["revision"])
-        self.assertEqual([123, 124, 125], state["revision_list"])
+        self.assertEqual('r123', state["revision"])
+        self.assertEqual(['r123', 'r124', 'r125'], state["revision_list"])
 
-        self.assertRaises(ScriptError, command._prepare_state, options=None, args=["125 r122  123", "Reason"], tool=None)
-        self.assertRaises(ScriptError, command._prepare_state, options=None, args=["125 foo 123", "Reason"], tool=None)
+        state = command._prepare_state(None, ["125 r122 123", "Reason"], None)
+        self.assertEqual('r122', state["revision"])
+        self.assertEqual(['r122', 'r123', 'r125'], state["revision_list"])
+
+        state = command._prepare_state(None, ["125 1234@main 123", "Reason"], None)
+        self.assertEqual('r123', state["revision"])
+        self.assertEqual(['r123', 'r125', '1234@main'], state["revision_list"])
 
         command._commit_info = lambda revision: None
         state = command._prepare_state(None, ["124 123 125", "Reason"], None)
-        self.assertEqual(123, state["revision"])
-        self.assertEqual([123, 124, 125], state["revision_list"])
+        self.assertEqual('r123', state["revision"])
+        self.assertEqual(['r123', 'r124', 'r125'], state["revision_list"])
 
 
 class DownloadCommandsTest(CommandsTest):
@@ -106,10 +110,6 @@ class DownloadCommandsTest(CommandsTest):
             )),
         })
 
-    def test_build(self):
-        expected_logs = "Updating working directory\nBuilding WebKit\n"
-        self.assert_execute_outputs(Build(), [], options=self._default_options(), expected_logs=expected_logs)
-
     def test_apply_attachment(self):
         options = self._default_options()
         options.update = True
@@ -128,19 +128,6 @@ class DownloadCommandsTest(CommandsTest):
         expected_logs = "Updating working directory\n2 reviewed patches found on bug 50000.\nProcessing 2 patches from 1 bug.\nProcessing patch 10000 from bug 50000.\nProcessing patch 10001 from bug 50000.\n"
         self.assert_execute_outputs(ApplyFromBug(), [50000], options=options, expected_logs=expected_logs)
 
-    def test_apply_watch_list(self):
-        expected_logs = """Processing 1 patch from 1 bug.
-Updating working directory
-MOCK run_and_throw_if_fail: ['mock-update-webkit'], cwd=/mock-checkout
-Processing patch 10000 from bug 50000.
-MockWatchList: determine_cc_and_messages
-No bug was updated because no id was given.
-Result of watchlist: cc "abarth@webkit.org, eric@webkit.org, levin@chromium.org" messages "Message1.
-
-Message2."
-"""
-        self.assert_execute_outputs(ApplyWatchList(), [10000], options=self._default_options(), expected_logs=expected_logs, tool=MockTool(log_executive=True))
-
     def test_land(self):
         expected_logs = """Building WebKit
 Committed r49824: <https://commits.webkit.org/r49824>
@@ -150,29 +137,10 @@ Adding comment and closing bug 50000
             mock_tool = MockTool()
             mock_tool.scm().create_patch = Mock(return_value="Patch1\nMockPatch\n")
             mock_tool.checkout().modified_changelogs = Mock(return_value=[])
-            self.assert_execute_outputs(Land(), [50000], options=self._default_options(), expected_logs=expected_logs, tool=mock_tool)
+            self.assert_execute_outputs(LandUnsafe(), [50000], options=self._default_options(), expected_logs=expected_logs, tool=mock_tool)
             # Make sure we're not calling expensive calls too often.
             self.assertEqual(mock_tool.scm().create_patch.call_count, 0)
             self.assertEqual(mock_tool.checkout().modified_changelogs.call_count, 1)
-
-    def test_land_cowhand(self):
-        expected_logs = """MOCK run_and_throw_if_fail: ['mock-prepare-ChangeLog', '--email=MOCK email', '--merge-base=None', 'MockFile1'], cwd=/mock-checkout
-MOCK run_and_throw_if_fail: ['mock-check-webkit-style', '--git-commit', 'MOCK git commit', '--diff-files', 'MockFile1', '--filter', '-changelog'], cwd=/mock-checkout
-MOCK run_command: ['ruby', '-I', '/mock-checkout/Websites/bugs.webkit.org/PrettyPatch', '/mock-checkout/Websites/bugs.webkit.org/PrettyPatch/prettify.rb'], cwd=None, input=Patch1
-MOCK: user.open_url: file://...
-Was that diff correct?
-Building WebKit
-MOCK run_and_throw_if_fail: ['mock-build-webkit', 'ARCHS=MOCK ARCH'], cwd=/mock-checkout, env={'MOCK_ENVIRON_COPY': '1', 'TERM': 'dumb'}
-Committed r49824: <https://commits.webkit.org/r49824>
-Committed r49824 (5@main): <https://commits.webkit.org/5@main>
-No bug id provided.
-"""
-        with self.mock_svn_remote():
-            mock_tool = MockTool(log_executive=True)
-            self.assert_execute_outputs(LandCowhand(), [50000], options=self._default_options(), expected_logs=expected_logs, tool=mock_tool)
-
-            expected_logs = "land-cowboy is deprecated, use land-cowhand instead.\n" + expected_logs
-            self.assert_execute_outputs(LandCowboy(), [50000], options=self._default_options(), expected_logs=expected_logs, tool=mock_tool)
 
     def test_land_red_builders(self):
         expected_logs = """Building WebKit
@@ -182,7 +150,7 @@ Adding comment and closing bug 50000
         with self.mock_svn_remote():
             mock_tool = MockTool()
             mock_tool.buildbot.light_tree_on_fire()
-            self.assert_execute_outputs(Land(), [50000], options=self._default_options(), expected_logs=expected_logs, tool=mock_tool)
+            self.assert_execute_outputs(LandUnsafe(), [50000], options=self._default_options(), expected_logs=expected_logs, tool=mock_tool)
 
     def test_check_style(self):
         expected_logs = """Processing 1 patch from 1 bug.
@@ -192,10 +160,6 @@ Processing patch 10000 from bug 50000.
 MOCK run_and_throw_if_fail: ['mock-check-webkit-style', '--git-commit', 'MOCK git commit', '--diff-files', 'MockFile1'], cwd=/mock-checkout
 """
         self.assert_execute_outputs(CheckStyle(), [10000], options=self._default_options(), expected_logs=expected_logs, tool=MockTool(log_executive=True))
-
-    def test_build_attachment(self):
-        expected_logs = "Processing 1 patch from 1 bug.\nUpdating working directory\nProcessing patch 10000 from bug 50000.\nBuilding WebKit\n"
-        self.assert_execute_outputs(BuildAttachment(), [10000], options=self._default_options(), expected_logs=expected_logs)
 
     def test_land_attachment(self):
         # FIXME: This expected result is imperfect, notice how it's seeing the same patch as still there after it thought it would have cleared the flags.
@@ -227,24 +191,6 @@ Not closing bug 50000 as attachment 10000 has review=+.  Assuming there are more
         with self.mock_svn_remote():
             self.assert_execute_outputs(LandFromBug(), [50000], options=self._default_options(), expected_logs=expected_logs)
 
-    def test_land_from_url(self):
-        # FIXME: This expected result is imperfect, notice how it's seeing the same patch as still there after it thought it would have cleared the flags.
-        expected_logs = """2 patches found on bug 50000.
-Processing 2 patches from 1 bug.
-Updating working directory
-Processing patch 10000 from bug 50000.
-Building WebKit
-Committed r49824: <https://commits.webkit.org/r49824>
-Not closing bug 50000 as attachment 10000 has review=+.  Assuming there are more patches to land from this bug.
-Updating working directory
-Processing patch 10001 from bug 50000.
-Building WebKit
-Committed r49824: <https://commits.webkit.org/r49824>
-Not closing bug 50000 as attachment 10000 has review=+.  Assuming there are more patches to land from this bug.
-"""
-        with self.mock_svn_remote():
-            self.assert_execute_outputs(LandFromURL(), ["https://bugs.webkit.org/show_bug.cgi?id=50000"], options=self._default_options(), expected_logs=expected_logs)
-
     def test_land_no_comment(self):
         expected_logs = """Building WebKit
 Committed r49824: <https://commits.webkit.org/r49824>
@@ -253,7 +199,7 @@ Not updating bug 50000
         with self.mock_svn_remote():
             options = self._default_options()
             options.comment_bug = False
-            self.assert_execute_outputs(Land(), [50000], options=options, expected_logs=expected_logs)
+            self.assert_execute_outputs(LandUnsafe(), [50000], options=options, expected_logs=expected_logs)
 
     def test_land_no_close(self):
         expected_logs = """Building WebKit
@@ -268,7 +214,7 @@ Committed r49824 (5@main): <https://commits.webkit.org/5@main>
         with self.mock_svn_remote():
             options = self._default_options()
             options.close_bug = False
-            self.assert_execute_outputs(Land(), [50000], options=options, expected_logs=expected_logs)
+            self.assert_execute_outputs(LandUnsafe(), [50000], options=options, expected_logs=expected_logs)
 
     def test_land_no_comment_no_close(self):
         expected_logs = """Building WebKit
@@ -279,14 +225,7 @@ Not updating bug 50000
             options = self._default_options()
             options.comment_bug = False
             options.close_bug = False
-            self.assert_execute_outputs(Land(), [50000], options=options, expected_logs=expected_logs)
-
-    def test_prepare_revert(self):
-        expected_logs = "Preparing revert for bug 50000.\nUpdating working directory\n"
-        self.assert_execute_outputs(PrepareRevert(), [852, "Reason"], options=self._default_options(), expected_logs=expected_logs)
-
-        expected_logs = "prepare-rollout is deprecated, use prepare-revert instead.\n" + expected_logs
-        self.assert_execute_outputs(PrepareRollout(), [852, "Reason"], options=self._default_options(), expected_logs=expected_logs)
+            self.assert_execute_outputs(LandUnsafe(), [50000], options=options, expected_logs=expected_logs)
 
     def test_create_revert(self):
         expected_logs = """Preparing revert for bug 50000.
@@ -310,9 +249,6 @@ where ATTACHMENT_ID is the ID of this attachment.
 -- End comment --
 """
         self.assert_execute_outputs(CreateRevert(), [852, "Reason"], options=self._default_options(), expected_logs=expected_logs)
-
-        expected_logs = "create-rollout is deprecated, use create-revert instead.\n" + expected_logs
-        self.assert_execute_outputs(CreateRollout(), [852, "Reason"], options=self._default_options(), expected_logs=expected_logs)
 
     def test_create_revert_multiple_revision(self):
         expected_logs = """Preparing revert for bug 50000.
@@ -426,15 +362,12 @@ Building WebKit
 Committed r49824: <https://commits.webkit.org/r49824>
 MOCK reopen_bug 50000 with comment 'Reverted r852 for reason:
 
-Reason
+Reason Description
 
 Committed r49824 (5@main): <https://commits.webkit.org/5@main>'
 """
         with self.mock_svn_remote():
             self.assert_execute_outputs(Revert(), [852, "Reason", "Description"], options=self._default_options(), expected_logs=expected_logs)
-
-            expected_logs = "rollout is deprecated, use revert instead.\n" + expected_logs
-            self.assert_execute_outputs(Rollout(), [852, "Reason", "Description"], options=self._default_options(), expected_logs=expected_logs)
 
     def test_revert_two_revisions(self):
         expected_logs = """Preparing revert for bug 50000.
@@ -446,12 +379,12 @@ Building WebKit
 Committed r49824: <https://commits.webkit.org/r49824>
 MOCK reopen_bug 50000 with comment 'Reverted r852 and r963 for reason:
 
-Reason
+Reason Description
 
 Committed r49824 (5@main): <https://commits.webkit.org/5@main>'
 MOCK reopen_bug 50005 with comment 'Reverted r852 and r963 for reason:
 
-Reason
+Reason Description
 
 Committed r49824 (5@main): <https://commits.webkit.org/5@main>'
 """
@@ -467,19 +400,19 @@ MOCK: user.open_url: file://...
 Was that diff correct?
 Building WebKit
 Committed r49824: <https://commits.webkit.org/r49824>
-MOCK reopen_bug 50000 with comment 'Reverted r852, r963 and r3001 for reason:
+MOCK reopen_bug 50000 with comment 'Reverted r852, r963, and r3001 for reason:
 
-Reason
-
-Committed r49824 (5@main): <https://commits.webkit.org/5@main>'
-MOCK reopen_bug 50005 with comment 'Reverted r852, r963 and r3001 for reason:
-
-Reason
+Reason Description
 
 Committed r49824 (5@main): <https://commits.webkit.org/5@main>'
-MOCK reopen_bug 50004 with comment 'Reverted r852, r963 and r3001 for reason:
+MOCK reopen_bug 50005 with comment 'Reverted r852, r963, and r3001 for reason:
 
-Reason
+Reason Description
+
+Committed r49824 (5@main): <https://commits.webkit.org/5@main>'
+MOCK reopen_bug 50004 with comment 'Reverted r852, r963, and r3001 for reason:
+
+Reason Description
 
 Committed r49824 (5@main): <https://commits.webkit.org/5@main>'
 """
@@ -495,14 +428,14 @@ MOCK: user.open_url: file://...
 Was that diff correct?
 Building WebKit
 Committed r49824: <https://commits.webkit.org/r49824>
-MOCK reopen_bug 50000 with comment 'Reverted r852, r963 and r999 for reason:
+MOCK reopen_bug 50000 with comment 'Reverted r852, r963, and r999 for reason:
 
-Reason
+Reason Description
 
 Committed r49824 (5@main): <https://commits.webkit.org/5@main>'
-MOCK reopen_bug 50005 with comment 'Reverted r852, r963 and r999 for reason:
+MOCK reopen_bug 50005 with comment 'Reverted r852, r963, and r999 for reason:
 
-Reason
+Reason Description
 
 Committed r49824 (5@main): <https://commits.webkit.org/5@main>'
 """

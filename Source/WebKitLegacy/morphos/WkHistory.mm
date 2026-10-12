@@ -16,11 +16,9 @@
 	{
 		auto uurl = item->url().string().utf8();
 		auto uoriginal = item->originalURL().string().utf8();
-		auto utitle = item->title().utf8();
 
 		_url = [[OBURL URLWithString:[OBString stringWithUTF8String:uurl.data()]] retain];
 		_initialURL = [[OBURL URLWithString:[OBString stringWithUTF8String:uoriginal.data()]] retain];
-		_title = [[OBString stringWithUTF8String:utitle.data()] retain];
 		_item = item;
 	}
 	
@@ -36,7 +34,6 @@
 {
 	[_url release];
 	[_initialURL release];
-	[_title release];
 	[super dealloc];
 }
 
@@ -48,11 +45,6 @@
 - (OBURL *)initialURL
 {
 	return _initialURL;
-}
-
-- (OBString *)title
-{
-	return _title;
 }
 
 - (WebCore::HistoryItem &)item

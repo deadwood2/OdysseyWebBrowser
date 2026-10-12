@@ -17,6 +17,7 @@
 #include "libANGLE/renderer/metal/DisplayMtl.h"
 #include "libANGLE/renderer/metal/FrameBufferMtl.h"
 #include "libANGLE/renderer/metal/mtl_format_utils.h"
+#include "libANGLE/renderer/metal/mtl_utils.h"
 
 // Compiler can turn on programmatical frame capture in release build by defining
 // ANGLE_METAL_FRAME_CAPTURE flag.
@@ -41,16 +42,18 @@ struct IOSurfaceFormatInfo
 };
 
 // clang-format off
-// NOTE(hqle): Support R16_UINT once GLES3 is complete.
-constexpr std::array<IOSurfaceFormatInfo, 8> kIOSurfaceFormats = {{
-    {GL_RED,      GL_UNSIGNED_BYTE,               1, angle::FormatID::R8_UNORM},
-    {GL_RED,      GL_UNSIGNED_SHORT,              2, angle::FormatID::R16_UNORM},
-    {GL_RG,       GL_UNSIGNED_BYTE,               2, angle::FormatID::R8G8_UNORM},
-    {GL_RG,       GL_UNSIGNED_SHORT,              4, angle::FormatID::R16G16_UNORM},
-    {GL_RGB,      GL_UNSIGNED_BYTE,               4, angle::FormatID::B8G8R8A8_UNORM},
-    {GL_BGRA_EXT, GL_UNSIGNED_BYTE,               4, angle::FormatID::B8G8R8A8_UNORM},
-    {GL_RGBA,     GL_HALF_FLOAT,                  8, angle::FormatID::R16G16B16A16_FLOAT},
-    {GL_RGB10_A2, GL_UNSIGNED_INT_2_10_10_10_REV, 4, angle::FormatID::B10G10R10A2_UNORM},
+// GL_RGB is a special case. The native angle::FormatID would be either R8G8B8A8_UNORM
+// or B8G8R8A8_UNORM based on the IOSurface's pixel format.
+constexpr std::array<IOSurfaceFormatInfo, 9> kIOSurfaceFormats = {{
+    {GL_RED,         GL_UNSIGNED_BYTE,                  1, angle::FormatID::R8_UNORM},
+    {GL_RED,         GL_UNSIGNED_SHORT,                 2, angle::FormatID::R16_UNORM},
+    {GL_RG,          GL_UNSIGNED_BYTE,                  2, angle::FormatID::R8G8_UNORM},
+    {GL_RG,          GL_UNSIGNED_SHORT,                 4, angle::FormatID::R16G16_UNORM},
+    {GL_RGB,         GL_UNSIGNED_BYTE,                  4, angle::FormatID::NONE},
+    {GL_RGBA,        GL_UNSIGNED_BYTE,                  4, angle::FormatID::R8G8B8A8_UNORM},
+    {GL_BGRA_EXT,    GL_UNSIGNED_BYTE,                  4, angle::FormatID::B8G8R8A8_UNORM},
+    {GL_RGBA,        GL_HALF_FLOAT,                     8, angle::FormatID::R16G16B16A16_FLOAT},
+    {GL_RGB10_A2,    GL_UNSIGNED_INT_2_10_10_10_REV,    4, angle::FormatID::B10G10R10A2_UNORM},
 }};
 // clang-format on
 
@@ -65,167 +68,6 @@ int FindIOSurfaceFormatIndex(GLenum internalFormat, GLenum type)
         }
     }
     return -1;
-}
-
-ANGLE_MTL_UNUSED
-bool IsFrameCaptureEnabled()
-{
-#if !ANGLE_METAL_FRAME_CAPTURE_ENABLED
-    return false;
-#else
-    // We only support frame capture programmatically if the ANGLE_METAL_FRAME_CAPTURE
-    // environment flag is set. Otherwise, it will slow down the rendering. This allows user to
-    // finely control whether they want to capture the frame for particular application or not.
-    auto var                  = std::getenv("ANGLE_METAL_FRAME_CAPTURE");
-    static const bool enabled = var ? (strcmp(var, "1") == 0) : false;
-
-    return enabled;
-#endif
-}
-
-ANGLE_MTL_UNUSED
-std::string GetMetalCaptureFile()
-{
-#if !ANGLE_METAL_FRAME_CAPTURE_ENABLED
-    return "";
-#else
-    auto var                   = std::getenv("ANGLE_METAL_FRAME_CAPTURE_FILE");
-    const std::string filePath = var ? var : "";
-
-    return filePath;
-#endif
-}
-
-ANGLE_MTL_UNUSED
-size_t MaxAllowedFrameCapture()
-{
-#if !ANGLE_METAL_FRAME_CAPTURE_ENABLED
-    return 0;
-#else
-    auto var                      = std::getenv("ANGLE_METAL_FRAME_CAPTURE_MAX");
-    static const size_t maxFrames = var ? std::atoi(var) : 100;
-
-    return maxFrames;
-#endif
-}
-
-ANGLE_MTL_UNUSED
-size_t MinAllowedFrameCapture()
-{
-#if !ANGLE_METAL_FRAME_CAPTURE_ENABLED
-    return 0;
-#else
-    auto var                     = std::getenv("ANGLE_METAL_FRAME_CAPTURE_MIN");
-    static const size_t minFrame = var ? std::atoi(var) : 0;
-
-    return minFrame;
-#endif
-}
-
-ANGLE_MTL_UNUSED
-bool FrameCaptureDeviceScope()
-{
-#if !ANGLE_METAL_FRAME_CAPTURE_ENABLED
-    return false;
-#else
-    auto var                      = std::getenv("ANGLE_METAL_FRAME_CAPTURE_SCOPE");
-    static const bool scopeDevice = var ? (strcmp(var, "device") == 0) : false;
-
-    return scopeDevice;
-#endif
-}
-
-ANGLE_MTL_UNUSED
-std::atomic<size_t> gFrameCaptured(0);
-
-ANGLE_MTL_UNUSED
-void StartFrameCapture(id<MTLDevice> metalDevice, id<MTLCommandQueue> metalCmdQueue)
-{
-#if ANGLE_METAL_FRAME_CAPTURE_ENABLED
-    if (!IsFrameCaptureEnabled())
-    {
-        return;
-    }
-
-    if (gFrameCaptured >= MaxAllowedFrameCapture())
-    {
-        return;
-    }
-
-    MTLCaptureManager *captureManager = [MTLCaptureManager sharedCaptureManager];
-    if (captureManager.isCapturing)
-    {
-        return;
-    }
-
-    gFrameCaptured++;
-
-    if (gFrameCaptured < MinAllowedFrameCapture())
-    {
-        return;
-    }
-
-#    ifdef __MAC_10_15
-    if (ANGLE_APPLE_AVAILABLE_XCI(10.15, 13.0, 13))
-    {
-        auto captureDescriptor                = mtl::adoptObjCObj([[MTLCaptureDescriptor alloc] init]);
-        captureDescriptor.get().captureObject = metalDevice;
-        const std::string filePath            = GetMetalCaptureFile();
-        if (filePath != "")
-        {
-            const std::string numberedPath =
-                filePath + std::to_string(gFrameCaptured - 1) + ".gputrace";
-            captureDescriptor.get().destination = MTLCaptureDestinationGPUTraceDocument;
-            captureDescriptor.get().outputURL =
-                [NSURL fileURLWithPath:[NSString stringWithUTF8String:numberedPath.c_str()]
-                           isDirectory:false];
-        }
-        else
-        {
-            // This will pause execution only if application is being debugged inside Xcode
-            captureDescriptor.get().destination = MTLCaptureDestinationDeveloperTools;
-        }
-
-        NSError *error;
-        if (![captureManager startCaptureWithDescriptor:captureDescriptor.get() error:&error])
-        {
-            NSLog(@"Failed to start capture, error %@", error);
-        }
-    }
-    else
-#    endif  // __MAC_10_15
-        if (ANGLE_APPLE_AVAILABLE_XCI(10.15, 13.0, 13))
-    {
-        auto captureDescriptor                = mtl::adoptObjCObj([[MTLCaptureDescriptor alloc] init]);
-        captureDescriptor.get().captureObject = metalDevice;
-
-        NSError *error;
-        if (![captureManager startCaptureWithDescriptor:captureDescriptor.get() error:&error])
-        {
-            NSLog(@"Failed to start capture, error %@", error);
-        }
-    }
-#endif  // ANGLE_METAL_FRAME_CAPTURE_ENABLED
-}
-
-void StartFrameCapture(ContextMtl *context)
-{
-    StartFrameCapture(context->getMetalDevice(), context->cmdQueue().get());
-}
-
-void StopFrameCapture()
-{
-#if ANGLE_METAL_FRAME_CAPTURE_ENABLED
-    if (!IsFrameCaptureEnabled())
-    {
-        return;
-    }
-    MTLCaptureManager *captureManager = [MTLCaptureManager sharedCaptureManager];
-    if (captureManager.isCapturing)
-    {
-        [captureManager stopCapture];
-    }
-#endif
 }
 
 }  // anonymous namespace
@@ -247,8 +89,26 @@ IOSurfaceSurfaceMtl::IOSurfaceSurfaceMtl(DisplayMtl *display,
         FindIOSurfaceFormatIndex(static_cast<GLenum>(internalFormat), static_cast<GLenum>(type));
     ASSERT(mIOSurfaceFormatIdx >= 0);
 
-    mColorFormat =
-        display->getPixelFormat(kIOSurfaceFormats[mIOSurfaceFormatIdx].nativeAngleFormatId);
+    angle::FormatID actualAngleFormatId =
+        kIOSurfaceFormats[mIOSurfaceFormatIdx].nativeAngleFormatId;
+    if (actualAngleFormatId == angle::FormatID::NONE)
+    {
+        // The actual angle::Format depends on the IOSurface's format.
+        ASSERT(internalFormat == GL_RGB);
+        switch (IOSurfaceGetPixelFormat(mIOSurface))
+        {
+            case 'BGRA':
+                actualAngleFormatId = angle::FormatID::B8G8R8A8_UNORM;
+                break;
+            case 'RGBA':
+                actualAngleFormatId = angle::FormatID::R8G8B8A8_UNORM;
+                break;
+            default:
+                UNREACHABLE();
+        }
+    }
+
+    mColorFormat = display->getPixelFormat(actualAngleFormatId);
 }
 IOSurfaceSurfaceMtl::~IOSurfaceSurfaceMtl()
 {
@@ -310,12 +170,18 @@ angle::Result IOSurfaceSurfaceMtl::ensureColorTextureCreated(const gl::Context *
 
         texDesc.usage = MTLTextureUsageShaderRead | MTLTextureUsageRenderTarget;
 
-        id<MTLTexture> texture =
-            [contextMtl->getMetalDevice() newTextureWithDescriptor:texDesc
-                                                         iosurface:mIOSurface
-                                                             plane:mIOSurfacePlane];
+        mColorTexture =
+            mtl::Texture::MakeFromMetal(contextMtl->getMetalDevice().newTextureWithDescriptor(
+                texDesc, mIOSurface, mIOSurfacePlane));
 
-        mColorTexture = mtl::Texture::MakeFromMetal([texture ANGLE_MTL_AUTORELEASE]);
+        if (mColorTexture)
+        {
+            size_t resourceSize = EstimateTextureSizeInBytes(
+                mColorFormat, mColorTexture->widthAt0(), mColorTexture->heightAt0(),
+                mColorTexture->depthAt0(), mColorTexture->samples(), mColorTexture->mipmapLevels());
+
+            mColorTexture->setEstimatedByteSize(resourceSize);
+        }
     }
 
     mColorRenderTarget.set(mColorTexture, mtl::kZeroNativeMipLevel, 0, mColorFormat);
@@ -373,12 +239,16 @@ bool IOSurfaceSurfaceMtl::ValidateAttributes(EGLClientBuffer buffer,
         return false;
     }
 
-    // Check that the format matches this IOSurface plane
+    // FIXME: Check that the format matches this IOSurface plane for pixel formats that we know of.
+    // We could map IOSurfaceGetPixelFormat to expected type plane and format type.
+    // However, the caller might supply us non-public pixel format, which makes exhaustive checks
+    // problematic.
     if (IOSurfaceGetBytesPerElementOfPlane(ioSurface, plane) !=
         kIOSurfaceFormats[formatIndex].componentBytes)
     {
-        return false;
+        WARN() << "IOSurface bytes per elements does not match the pbuffer internal format.";
     }
 
     return true;
-}}
+}
+}  // namespace rx

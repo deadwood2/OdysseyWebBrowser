@@ -26,9 +26,19 @@
 
 #pragma once
 
-#include "SuspendableTimer.h"
+#include "EventLoop.h"
 #include <wtf/Forward.h>
 #include <wtf/Vector.h>
+#include <wtf/WeakPtr.h>
+
+namespace WebCore {
+class XMLHttpRequestProgressEventThrottle;
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebCore::XMLHttpRequestProgressEventThrottle> : std::true_type { };
+}
 
 namespace WebCore {
 
@@ -42,7 +52,7 @@ enum ProgressEventAction {
 
 // This implements the XHR2 progress event dispatching: "dispatch a progress event called progress
 // about every 50ms or for every byte received, whichever is least frequent".
-class XMLHttpRequestProgressEventThrottle {
+class XMLHttpRequestProgressEventThrottle : public CanMakeWeakPtr<XMLHttpRequestProgressEventThrottle> {
 public:
     explicit XMLHttpRequestProgressEventThrottle(XMLHttpRequest&);
     virtual ~XMLHttpRequestProgressEventThrottle();
@@ -50,6 +60,7 @@ public:
     void updateProgress(bool isAsync, bool lengthComputable, unsigned long long loaded, unsigned long long total);
     void dispatchReadyStateChangeEvent(Event&, ProgressEventAction = DoNotFlushProgressEvent);
     void dispatchProgressEvent(const AtomString&);
+    void dispatchErrorProgressEvent(const AtomString&);
 
     void suspend();
     void resume();
@@ -67,7 +78,7 @@ private:
     unsigned long long m_loaded { 0 };
     unsigned long long m_total { 0 };
 
-    SuspendableTimer m_dispatchThrottledProgressEventTimer;
+    EventLoopTimerHandle m_dispatchThrottledProgressEventTimer;
 
     bool m_hasPendingThrottledProgressEvent { false };
     bool m_lengthComputable { false };

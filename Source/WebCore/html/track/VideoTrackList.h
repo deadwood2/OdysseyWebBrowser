@@ -35,31 +35,36 @@ class VideoTrack;
 
 class VideoTrackList final : public TrackListBase {
 public:
-    static Ref<VideoTrackList> create(WeakPtr<HTMLMediaElement> owner, ScriptExecutionContext* context)
+    static Ref<VideoTrackList> create(ScriptExecutionContext* context)
     {
-        auto list = adoptRef(*new VideoTrackList(owner, context));
+        auto list = adoptRef(*new VideoTrackList(context));
         list->suspendIfNeeded();
         return list;
     }
     virtual ~VideoTrackList();
 
     VideoTrack* getTrackById(const AtomString&) const;
+    VideoTrack* getTrackById(TrackID) const;
     int selectedIndex() const;
 
+    bool isSupportedPropertyIndex(unsigned index) const { return index < m_inbandTracks.size(); }
     VideoTrack* item(unsigned) const;
     VideoTrack* lastItem() const { return item(length() - 1); }
+    VideoTrack* selectedItem() const;
     void append(Ref<VideoTrack>&&);
 
     // EventTarget
-    EventTargetInterface eventTargetInterface() const override;
+    enum EventTargetInterfaceType eventTargetInterface() const override;
 
 private:
-    VideoTrackList(WeakPtr<HTMLMediaElement>, ScriptExecutionContext*);
-
-    const char* activeDOMObjectName() const final;
+    VideoTrackList(ScriptExecutionContext*);
 };
-static_assert(sizeof(VideoTrackList) == sizeof(TrackListBase), "");
+static_assert(sizeof(VideoTrackList) == sizeof(TrackListBase));
 
 } // namespace WebCore
+
+SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::VideoTrackList)
+    static bool isType(const WebCore::TrackListBase& trackList) { return trackList.type() == WebCore::TrackListBase::VideoTrackList; }
+SPECIALIZE_TYPE_TRAITS_END()
 
 #endif // ENABLE(VIDEO)

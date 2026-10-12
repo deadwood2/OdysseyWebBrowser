@@ -38,6 +38,13 @@
 
 namespace WebCore {
 
+Ref<FileSystemDirectoryEntry> FileSystemDirectoryEntry::create(ScriptExecutionContext& context, DOMFileSystem& filesystem, const String& virtualPath)
+{
+    auto result = adoptRef(*new FileSystemDirectoryEntry(context, filesystem, virtualPath));
+    result->suspendIfNeeded();
+    return result;
+}
+
 FileSystemDirectoryEntry::FileSystemDirectoryEntry(ScriptExecutionContext& context, DOMFileSystem& filesystem, const String& virtualPath)
     : FileSystemEntry(context, filesystem, virtualPath)
 {
@@ -54,7 +61,7 @@ void FileSystemDirectoryEntry::getEntry(ScriptExecutionContext& context, const S
         return;
 
     filesystem().getEntry(context, *this, path, flags, [this, pendingActivity = makePendingActivity(*this), matches = WTFMove(matches), successCallback = WTFMove(successCallback), errorCallback = WTFMove(errorCallback)](auto&& result) mutable {
-        auto* document = this->document();
+        RefPtr document = this->document();
         if (result.hasException()) {
             if (errorCallback && document) {
                 document->eventLoop().queueTask(TaskSource::Networking, [errorCallback = WTFMove(errorCallback), exception = result.releaseException(), pendingActivity = WTFMove(pendingActivity)]() mutable {
@@ -67,7 +74,7 @@ void FileSystemDirectoryEntry::getEntry(ScriptExecutionContext& context, const S
         if (!matches(entry)) {
             if (errorCallback && document) {
                 document->eventLoop().queueTask(TaskSource::Networking, [errorCallback = WTFMove(errorCallback), pendingActivity = WTFMove(pendingActivity)]() mutable {
-                    errorCallback->handleEvent(DOMException::create(Exception { TypeMismatchError, "Entry at given path does not match expected type"_s }));
+                    errorCallback->handleEvent(DOMException::create(Exception { ExceptionCode::TypeMismatchError, "Entry at given path does not match expected type"_s }));
                 });
             }
             return;

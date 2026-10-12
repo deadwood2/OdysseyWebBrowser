@@ -40,6 +40,8 @@
 #include <libraries/charsets.h>
 #include <libraries/clipboard.h>
 
+#define D(x) 
+
 namespace WebCore {
 
 enum ClipboardDataType {
@@ -53,7 +55,8 @@ enum ClipboardDataType {
 
 std::unique_ptr<Pasteboard> Pasteboard::createForCopyAndPaste(std::unique_ptr<PasteboardContext>&& context)
 {
-    return std::make_unique<Pasteboard>(WTFMove(context), "CLIPBOARD");
+    D(dprintf("%s:\n", __PRETTY_FUNCTION__));
+    return std::make_unique<Pasteboard>(WTFMove(context), "CLIPBOARD"_s);
 }
 
 Pasteboard::Pasteboard(std::unique_ptr<PasteboardContext>&& context, const String& name)
@@ -85,7 +88,8 @@ Pasteboard::Pasteboard(std::unique_ptr<PasteboardContext>&& context)
 
 bool Pasteboard::hasData()
 {
-     notImplemented();
+    if (m_selectionData)
+        return m_selectionData->hasText() || m_selectionData->hasMarkup() || m_selectionData->hasURIList() || m_selectionData->hasImage() || m_selectionData->hasCustomData();
     return false;
 }
 
@@ -113,16 +117,23 @@ Vector<String> Pasteboard::typesForLegacyUnsafeBindings()
 
 String Pasteboard::readOrigin()
 {
+    if (m_selectionData) {
+        if (auto* buffer = m_selectionData->customData())
+            return PasteboardCustomData::fromSharedBuffer(*buffer).origin();
+
+        return { };
+    }
+    
     return { };
 }
 
 static ClipboardDataType selectionDataTypeFromHTMLClipboardType(const String& type)
 {
-    if (type == "text/plain")
+    if (type == "text/plain"_s)
         return ClipboardDataTypeText;
-    if (type == "text/html")
+    if (type == "text/html"_s)
         return ClipboardDataTypeMarkup;
-    if (type == "Files" || type == "text/uri-list")
+    if (type == "Files"_s || type == "text/uri-list"_s)
         return ClipboardDataTypeURIList;
     return ClipboardDataTypeUnknown;
 }
@@ -131,7 +142,7 @@ String Pasteboard::readString(const String& type)
 {
 	String out;
 
-	if (type == "text/plain" || type == "text/plain;charset=utf-8")
+	if (type == "text/plain"_s || type == "text/plain;charset=utf-8"_s)
 	{
 		const char *clipcontents;
 
@@ -149,7 +160,7 @@ String Pasteboard::readString(const String& type)
 			CloseLibrary(ClipboardBase);
 		}
 	}
-	else if (type == "text/html")
+	else if (type == "text/html"_s)
 	{
 		const char *clipcontents;
 
@@ -173,12 +184,20 @@ String Pasteboard::readString(const String& type)
 
 String Pasteboard::readStringInCustomData(const String&type)
 {
-    notImplemented();
+    D(dprintf("%s:\n", __PRETTY_FUNCTION__));
+    if (m_selectionData) {
+        if (auto* buffer = m_selectionData->customData())
+            return PasteboardCustomData::fromSharedBuffer(*buffer).readStringInCustomData(type);
+
+        return { };
+    }
+
     return { };
 }
 
 void Pasteboard::writeString(const String& type, const String& text)
 {
+    D(dprintf("%s:\n", __PRETTY_FUNCTION__));
 	auto ctype = selectionDataTypeFromHTMLClipboardType(type);
 	
 	if (ctype == ClipboardDataTypeText || ctype == ClipboardDataTypeUnknown)
@@ -244,17 +263,20 @@ void Pasteboard::read(PasteboardFileReader&, std::optional<size_t>)
 
 void Pasteboard::write(const PasteboardURL& url)
 {
+    D(dprintf("%s:\n", __PRETTY_FUNCTION__));
      writePlainText(url.url.string(), CanSmartReplace);
 }
 
 void Pasteboard::writeTrustworthyWebURLsPboardType(const PasteboardURL&)
 {
+    D(dprintf("%s:\n", __PRETTY_FUNCTION__));
     notImplemented();
 }
 
 void Pasteboard::write(const PasteboardImage& image)
 {
-    auto nativeImage = image.image->nativeImageForCurrentFrame();
+    D(dprintf("%s:\n", __PRETTY_FUNCTION__));
+    auto nativeImage = image.image->currentNativeImage();
     if (!nativeImage)
         return;
 
@@ -281,7 +303,7 @@ void Pasteboard::write(const PasteboardImage& image)
 			
 			if (copiedData)
 			{
-				Thread::create("Clipboard Writer", [copiedData, width, height] {
+				Thread::create("Clipboard Writer"_s, [copiedData, width, height] {
 					struct Library *ClipboardBase;
 					if ((ClipboardBase = OpenLibrary("clipboard.library", 53)))
 					{
@@ -315,6 +337,7 @@ void Pasteboard::write(const PasteboardImage& image)
 
 void Pasteboard::write(const PasteboardWebContent& content)
 {
+    D(dprintf("%s:\n", __PRETTY_FUNCTION__));
     if (!content.text.isEmpty())
     {
 	     writePlainText(content.text, CanSmartReplace);
@@ -323,8 +346,13 @@ void Pasteboard::write(const PasteboardWebContent& content)
 	if (!content.markup.isEmpty())
 	{
 		// will go into Unit1
-		writeString("text/html", content.markup);
+		writeString("text/html"_s, content.markup);
 	}
+}
+
+void Pasteboard::write(const PasteboardBuffer&)
+{
+    D(dprintf("%s:\n", __PRETTY_FUNCTION__));
 }
 
 Pasteboard::FileContentState Pasteboard::fileContentState()
@@ -341,21 +369,36 @@ bool Pasteboard::canSmartReplace()
 
 void Pasteboard::writeMarkup(const String&)
 {
+    D(dprintf("%s:\n", __PRETTY_FUNCTION__));
      notImplemented();
 }
 
 void Pasteboard::writePlainText(const String& text, SmartReplaceOption)
 {
-    writeString("text/plain;charset=utf-8", text);
+    D(dprintf("%s:\n", __PRETTY_FUNCTION__));
+    writeString("text/plain;charset=utf-8"_s, text);
 }
 
-void Pasteboard::writeCustomData(const Vector<PasteboardCustomData>&)
+void Pasteboard::writeCustomData(const Vector<PasteboardCustomData>& data)
 {
-     notImplemented();
+    D(dprintf("%s:\n", __PRETTY_FUNCTION__));
+    if (m_selectionData) {
+        D(dprintf("%s: has selectiondata\n", __PRETTY_FUNCTION__));
+        if (!data.isEmpty()) {
+            const auto& customData = data[0];
+            customData.forEachPlatformString([this] (auto& type, auto& string) {
+                writeString(type, string);
+            });
+            if (customData.hasSameOriginCustomData() || !customData.origin().isEmpty())
+                m_selectionData->setCustomData(customData.createSharedBuffer());
+        }
+        return;
+    }
 }
 
 void Pasteboard::write(const Color&)
 {
+    D(dprintf("%s:\n", __PRETTY_FUNCTION__));
      notImplemented();
 }
 

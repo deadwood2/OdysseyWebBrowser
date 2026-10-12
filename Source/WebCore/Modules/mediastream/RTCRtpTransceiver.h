@@ -48,10 +48,10 @@ class RTCPeerConnection;
 struct RTCRtpCodecCapability;
 
 class RTCRtpTransceiver final : public RefCounted<RTCRtpTransceiver>, public ScriptWrappable {
-    WTF_MAKE_ISO_ALLOCATED(RTCRtpTransceiver);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(RTCRtpTransceiver);
 public:
     static Ref<RTCRtpTransceiver> create(Ref<RTCRtpSender>&& sender, Ref<RTCRtpReceiver>&& receiver, std::unique_ptr<RTCRtpTransceiverBackend>&& backend) { return adoptRef(*new RTCRtpTransceiver(WTFMove(sender), WTFMove(receiver), WTFMove(backend))); }
-    virtual ~RTCRtpTransceiver() = default;
+    virtual ~RTCRtpTransceiver();
 
     bool hasSendingDirection() const;
     void enableSendingDirection();
@@ -72,10 +72,14 @@ public:
     RTCRtpTransceiverBackend* backend() { return m_backend.get(); }
     void setConnection(RTCPeerConnection&);
 
+    std::optional<RTCRtpTransceiverDirection> firedDirection() const { return m_firedDirection; }
+    void setFiredDirection(std::optional<RTCRtpTransceiverDirection> firedDirection) { m_firedDirection = firedDirection; }
+
 private:
     RTCRtpTransceiver(Ref<RTCRtpSender>&&, Ref<RTCRtpReceiver>&&, std::unique_ptr<RTCRtpTransceiverBackend>&&);
 
     RTCRtpTransceiverDirection m_direction;
+    std::optional<RTCRtpTransceiverDirection> m_firedDirection;
 
     Ref<RTCRtpSender> m_sender;
     Ref<RTCRtpReceiver> m_receiver;
@@ -83,7 +87,7 @@ private:
     bool m_stopped { false };
 
     std::unique_ptr<RTCRtpTransceiverBackend> m_backend;
-    WeakPtr<RTCPeerConnection> m_connection;
+    WeakPtr<RTCPeerConnection, WeakPtrImplWithEventTargetData> m_connection;
 };
 
 class RtpTransceiverSet {

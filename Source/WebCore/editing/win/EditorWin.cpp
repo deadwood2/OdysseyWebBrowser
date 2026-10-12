@@ -28,8 +28,9 @@
 
 #include "ClipboardUtilitiesWin.h"
 #include "DocumentFragment.h"
-#include "Frame.h"
+#include "FrameDestructionObserverInlines.h"
 #include "FrameSelection.h"
+#include "LocalFrame.h"
 #include "Pasteboard.h"
 #include "Range.h"
 #include "windows.h"
@@ -43,7 +44,7 @@ void Editor::pasteWithPasteboard(Pasteboard* pasteboard, OptionSet<PasteOption> 
         return;
 
     bool chosePlainText;
-    auto fragment = pasteboard->documentFragment(*m_document.frame(), *range, options.contains(PasteOption::AllowPlainText), chosePlainText);
+    auto fragment = pasteboard->documentFragment(*document().frame(), *range, options.contains(PasteOption::AllowPlainText), chosePlainText);
 
     if (fragment && options.contains(PasteOption::AsQuotation))
         quoteFragmentForPasting(*fragment);
@@ -52,8 +53,16 @@ void Editor::pasteWithPasteboard(Pasteboard* pasteboard, OptionSet<PasteOption> 
         pasteAsFragment(fragment.releaseNonNull(), canSmartReplaceWithPasteboard(*pasteboard), chosePlainText, options.contains(PasteOption::IgnoreMailBlockquote) ? MailBlockquoteHandling::IgnoreBlockquote : MailBlockquoteHandling::RespectBlockquote);
 }
 
+void Editor::platformCopyFont()
+{
+}
+
+void Editor::platformPasteFont()
+{
+}
+
 template <typename PlatformDragData>
-static RefPtr<DocumentFragment> createFragmentFromPlatformData(PlatformDragData& platformDragData, Frame& frame)
+static RefPtr<DocumentFragment> createFragmentFromPlatformData(PlatformDragData& platformDragData, LocalFrame& frame)
 {
     if (containsFilenames(&platformDragData)) {
         if (auto fragment = fragmentFromFilenames(frame.document(), &platformDragData))
@@ -70,9 +79,9 @@ static RefPtr<DocumentFragment> createFragmentFromPlatformData(PlatformDragData&
 RefPtr<DocumentFragment> Editor::webContentFromPasteboard(Pasteboard& pasteboard, const SimpleRange&, bool /*allowPlainText*/, bool& /*chosePlainText*/)
 {
     if (COMPtr<IDataObject> platformDragData = pasteboard.dataObject())
-        return createFragmentFromPlatformData(*platformDragData, *m_document.frame());
+        return createFragmentFromPlatformData(*platformDragData, *document().frame());
 
-    return createFragmentFromPlatformData(pasteboard.dragDataMap(), *m_document.frame());
+    return createFragmentFromPlatformData(pasteboard.dragDataMap(), *document().frame());
 }
 
 } // namespace WebCore

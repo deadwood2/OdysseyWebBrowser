@@ -26,14 +26,16 @@
 #include "config.h"
 #include "LibWebRTCNetwork.h"
 
-#include "DataReference.h"
 #include "LibWebRTCNetworkMessages.h"
 #include "Logging.h"
 #include "NetworkConnectionToWebProcessMessages.h"
 #include <WebCore/SharedBuffer.h>
 #include <wtf/MainThread.h>
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebKit {
+
+WTF_MAKE_TZONE_ALLOCATED_IMPL(LibWebRTCNetwork);
 
 LibWebRTCNetwork::~LibWebRTCNetwork()
 {
@@ -63,14 +65,14 @@ void LibWebRTCNetwork::setConnection(RefPtr<IPC::Connection>&& connection)
 {
 #if USE(LIBWEBRTC)
     if (m_connection)
-        m_connection->removeThreadMessageReceiver(Messages::LibWebRTCNetwork::messageReceiverName());
+        m_connection->removeMessageReceiver(Messages::LibWebRTCNetwork::messageReceiverName());
 #endif
     m_connection = WTFMove(connection);
 #if USE(LIBWEBRTC)
     if (m_isActive)
         setSocketFactoryConnection();
     if (m_connection)
-        m_connection->addThreadMessageReceiver(Messages::LibWebRTCNetwork::messageReceiverName(), this);
+        m_connection->addMessageReceiver(*this, *this, Messages::LibWebRTCNetwork::messageReceiverName());
 #endif
 }
 
@@ -94,7 +96,7 @@ void LibWebRTCNetwork::setSocketFactoryConnection()
 }
 #endif
 
-void LibWebRTCNetwork::dispatchToThread(Function<void()>&& callback)
+void LibWebRTCNetwork::dispatch(Function<void()>&& callback)
 {
     if (!m_isActive) {
         RELEASE_LOG_ERROR(WebRTC, "Received WebRTCSocket message while libWebRTCNetwork is not active");
@@ -113,17 +115,17 @@ void LibWebRTCNetwork::signalAddressReady(WebCore::LibWebRTCSocketIdentifier ide
 {
     ASSERT(!WTF::isMainRunLoop());
     if (auto* socket = m_socketFactory.socket(identifier))
-        socket->signalAddressReady(address.value);
+        socket->signalAddressReady(address.rtcAddress());
 }
 
-void LibWebRTCNetwork::signalReadPacket(WebCore::LibWebRTCSocketIdentifier identifier, const IPC::DataReference& data, const RTCNetwork::IPAddress& address, uint16_t port, int64_t timestamp)
+void LibWebRTCNetwork::signalReadPacket(WebCore::LibWebRTCSocketIdentifier identifier, std::span<const uint8_t> data, const RTCNetwork::IPAddress& address, uint16_t port, int64_t timestamp)
 {
     ASSERT(!WTF::isMainRunLoop());
     if (auto* socket = m_socketFactory.socket(identifier))
-        socket->signalReadPacket(data.data(), data.size(), rtc::SocketAddress(address.value, port), timestamp);
+        socket->signalReadPacket(data, rtc::SocketAddress(address.rtcAddress(), port), timestamp);
 }
 
-void LibWebRTCNetwork::signalSentPacket(WebCore::LibWebRTCSocketIdentifier identifier, int rtcPacketID, int64_t sendTimeMs)
+void LibWebRTCNetwork::signalSentPacket(WebCore::LibWebRTCSocketIdentifier identifier, int64_t rtcPacketID, int64_t sendTimeMs)
 {
     ASSERT(!WTF::isMainRunLoop());
     if (auto* socket = m_socketFactory.socket(identifier))
@@ -144,12 +146,13 @@ void LibWebRTCNetwork::signalClose(WebCore::LibWebRTCSocketIdentifier identifier
         socket->signalClose(error);
 }
 
-void LibWebRTCNetwork::signalNewConnection(WebCore::LibWebRTCSocketIdentifier identifier, WebCore::LibWebRTCSocketIdentifier newSocketIdentifier, const RTCNetwork::SocketAddress& remoteAddress)
+void LibWebRTCNetwork::signalUsedInterface(WebCore::LibWebRTCSocketIdentifier identifier, String&& interfaceName)
 {
     ASSERT(!WTF::isMainRunLoop());
     if (auto* socket = m_socketFactory.socket(identifier))
-        socket->signalNewConnection(m_socketFactory.createNewConnectionSocket(*socket, newSocketIdentifier, remoteAddress.value));
+        socket->signalUsedInterface(WTFMove(interfaceName));
 }
+
 #endif
 
 } // namespace WebKit

@@ -52,10 +52,14 @@ const int kDefaultTileSize = 512;
 
 class TileController final : public TiledBacking {
     WTF_MAKE_NONCOPYABLE(TileController); WTF_MAKE_FAST_ALLOCATED;
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(TileController);
+
     friend class TileCoverageMap;
     friend class TileGrid;
 public:
-    WEBCORE_EXPORT explicit TileController(PlatformCALayer*);
+    enum class AllowScrollPerformanceLogging { Yes, No };
+    
+    WEBCORE_EXPORT explicit TileController(PlatformCALayer*, AllowScrollPerformanceLogging = AllowScrollPerformanceLogging::Yes);
     WEBCORE_EXPORT ~TileController();
     
     WEBCORE_EXPORT static String tileGridContainerLayerName();
@@ -75,9 +79,6 @@ public:
     bool wantsDeepColorBackingStore() const { return m_wantsDeepColorBackingStore; }
     WEBCORE_EXPORT void setWantsDeepColorBackingStore(bool);
 
-    bool supportsSubpixelAntialiasedText() const { return m_supportsSubpixelAntialiasedText; }
-    WEBCORE_EXPORT void setSupportsSubpixelAntialiasedText(bool);
-
     WEBCORE_EXPORT void setTilesOpaque(bool);
     bool tilesAreOpaque() const { return m_tilesAreOpaque; }
 
@@ -94,7 +95,7 @@ public:
     void setTileSizeUpdateDelayDisabledForTesting(bool) final;
 
     unsigned blankPixelCount() const;
-    static unsigned blankPixelCountForTiles(const PlatformLayerList&, const FloatRect&, const IntPoint&);
+    WEBCORE_EXPORT static unsigned blankPixelCountForTiles(const PlatformLayerList&, const FloatRect&, const IntPoint&);
 
 #if PLATFORM(IOS_FAMILY)
     unsigned numberOfUnparentedTiles() const;
@@ -111,6 +112,7 @@ public:
     void didEndLiveResize() final;
 
     IntSize tileSize() const final;
+    FloatRect rectForTile(TileIndex) const final;
     IntRect bounds() const final;
     IntRect boundsWithoutMargin() const final;
     bool hasMargins() const final;
@@ -154,6 +156,12 @@ private:
     float topContentInset() const { return m_topContentInset; }
 
     // TiledBacking member functions.
+    PlatformLayerIdentifier layerIdentifier() const final;
+    void setClient(TiledBackingClient*) final;
+
+    TileGridIdentifier primaryGridIdentifier() const final;
+    std::optional<TileGridIdentifier> secondaryGridIdentifier() const final;
+
     void setVisibleRect(const FloatRect&) final;
     void setLayoutViewportRect(std::optional<FloatRect>) final;
     void setCoverageRect(const FloatRect&) final;
@@ -161,13 +169,12 @@ private:
     void setTiledScrollingIndicatorPosition(const FloatPoint&) final;
     void setTopContentInset(float) final;
     void setVelocity(const VelocityData&) final;
-    void setScrollability(Scrollability) final;
+    void setScrollability(OptionSet<Scrollability>) final;
     void prepopulateRect(const FloatRect&) final;
     void setIsInWindow(bool) final;
     bool isInWindow() const final { return m_isInWindow; }
     void setTileCoverage(TileCoverage) final;
     void revalidateTiles() final;
-    void forceRepaint() final;
     IntRect tileGridExtent() const final;
     void setScrollingPerformanceTestingEnabled(bool flag) final { m_scrollingPerformanceTestingEnabled = flag; }
     double retainedTileBackingStoreMemory() const final;
@@ -180,6 +187,7 @@ private:
     void setMarginSize(int) final;
     void setZoomedOutContentsScale(float) final;
     float zoomedOutContentsScale() const final;
+    float tilingScaleFactor() const final;
 
     void updateMargins();
     void clearZoomedOutTileGrid();
@@ -190,6 +198,10 @@ private:
 
     void notePendingTileSizeChange();
     void tileSizeChangeTimerFired();
+
+    void willRepaintTile(TileGrid&, TileIndex, const FloatRect& tileClip, const FloatRect& paintDirtyRect);
+    void willRemoveTile(TileGrid&, TileIndex);
+    void willRepaintAllTiles(TileGrid&);
 
 #if !PLATFORM(IOS_FAMILY)
     FloatRect adjustTileCoverageForDesktopPageScrolling(const FloatRect& coverageRect, const FloatSize& newSize, const FloatRect& previousVisibleRect, const FloatRect& visibleRect) const;
@@ -202,6 +214,8 @@ private:
     PlatformCALayerClient* owningGraphicsLayer() const { return m_tileCacheLayer->owner(); }
 
     PlatformCALayer* m_tileCacheLayer;
+
+    WeakPtr<TiledBackingClient> m_client;
 
     float m_zoomedOutContentsScale { 0 };
     float m_deviceScaleFactor;
@@ -227,7 +241,7 @@ private:
 
     int m_marginSize { kDefaultTileSize };
 
-    Scrollability m_scrollability { HorizontallyScrollable | VerticallyScrollable };
+    OptionSet<Scrollability> m_scrollability { Scrollability::HorizontallyScrollable, Scrollability::VerticallyScrollable };
 
     // m_marginTop and m_marginBottom are the height in pixels of the top and bottom margin tiles. The width
     // of those tiles will be equivalent to the width of the other tiles in the grid. m_marginRight and
@@ -239,13 +253,14 @@ private:
     bool m_scrollingPerformanceTestingEnabled { false };
     bool m_acceleratesDrawing { false };
     bool m_wantsDeepColorBackingStore { false };
-    bool m_supportsSubpixelAntialiasedText { false };
     bool m_tilesAreOpaque { false };
     bool m_hasTilesWithTemporaryScaleFactor { false }; // Used to make low-res tiles when zooming.
     bool m_inLiveResize { false };
     bool m_tileSizeLocked { false };
     bool m_haveExternalVelocityData { false };
     bool m_isTileSizeUpdateDelayDisabledForTesting { false };
+    
+    AllowScrollPerformanceLogging m_shouldAllowScrollPerformanceLogging { AllowScrollPerformanceLogging::Yes };
 
     Color m_tileDebugBorderColor;
     float m_tileDebugBorderWidth { 0 };

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -32,75 +32,88 @@
 #import "MockRealtimeVideoSourceMac.h"
 
 #if ENABLE(MEDIA_STREAM)
+
 #import "GraphicsContextCG.h"
 #import "ImageBuffer.h"
 #import "ImageTransferSessionVT.h"
 #import "MediaConstraints.h"
-#import "MediaSampleAVFObjC.h"
 #import "MockRealtimeMediaSourceCenter.h"
 #import "NotImplemented.h"
 #import "PlatformLayer.h"
 #import "RealtimeMediaSourceSettings.h"
-#import "RealtimeVideoSource.h"
 #import "RealtimeVideoUtilities.h"
+#import "VideoFrame.h"
 #import <QuartzCore/CALayer.h>
 #import <QuartzCore/CATransaction.h>
 #import <objc/runtime.h>
+#import <wtf/MediaTime.h>
 
 #import "CoreVideoSoftLink.h"
 #import <pal/cf/CoreMediaSoftLink.h>
 
 namespace WebCore {
 
-CaptureSourceOrError MockRealtimeVideoSource::create(String&& deviceID, String&& name, String&& hashSalt, const MediaConstraints* constraints)
+CaptureSourceOrError MockRealtimeVideoSource::create(String&& deviceID, AtomString&& name, MediaDeviceHashSalts&& hashSalts, const MediaConstraints* constraints, PageIdentifier pageIdentifier)
 {
 #ifndef NDEBUG
     auto device = MockRealtimeMediaSourceCenter::mockDeviceWithPersistentID(deviceID);
     ASSERT(device);
     if (!device)
-        return { "No mock camera device"_s };
+        return CaptureSourceOrError({ "No mock camera device"_s , MediaAccessDenialReason::PermissionDenied });
 #endif
 
-    auto source = adoptRef(*new MockRealtimeVideoSourceMac(WTFMove(deviceID), WTFMove(name), WTFMove(hashSalt)));
+    Ref<RealtimeMediaSource> source = adoptRef(*new MockRealtimeVideoSourceMac(WTFMove(deviceID), WTFMove(name), WTFMove(hashSalts), pageIdentifier));
     if (constraints) {
         if (auto error = source->applyConstraints(*constraints))
-            return WTFMove(error->message);
+            return CaptureSourceOrError(CaptureSourceError { error->invalidConstraint });
     }
 
-    return CaptureSourceOrError(RealtimeVideoSource::create(WTFMove(source)));
+    return source;
 }
 
-Ref<MockRealtimeVideoSource> MockRealtimeVideoSourceMac::createForMockDisplayCapturer(String&& deviceID, String&& name, String&& hashSalt)
+Ref<MockRealtimeVideoSource> MockRealtimeVideoSourceMac::createForMockDisplayCapturer(String&& deviceID, AtomString&& name, MediaDeviceHashSalts&& hashSalts, PageIdentifier pageIdentifier)
 {
-    return adoptRef(*new MockRealtimeVideoSourceMac(WTFMove(deviceID), WTFMove(name), WTFMove(hashSalt)));
+    return adoptRef(*new MockRealtimeVideoSourceMac(WTFMove(deviceID), WTFMove(name), WTFMove(hashSalts), pageIdentifier));
 }
 
-MockRealtimeVideoSourceMac::MockRealtimeVideoSourceMac(String&& deviceID, String&& name, String&& hashSalt)
-    : MockRealtimeVideoSource(WTFMove(deviceID), WTFMove(name), WTFMove(hashSalt))
-    , m_workQueue(WorkQueue::create("MockRealtimeVideoSource Render Queue", WorkQueue::Type::Serial, WorkQueue::QOS::UserInteractive))
+MockRealtimeVideoSourceMac::MockRealtimeVideoSourceMac(String&& deviceID, AtomString&& name, MediaDeviceHashSalts&& hashSalts, PageIdentifier pageIdentifier)
+    : MockRealtimeVideoSource(WTFMove(deviceID), WTFMove(name), WTFMove(hashSalts), pageIdentifier)
+    , m_workQueue(WorkQueue::create("MockRealtimeVideoSource Render Queue"_s, WorkQueue::QOS::UserInteractive))
 {
 }
+
+MockRealtimeVideoSourceMac::~MockRealtimeVideoSourceMac() = default;
 
 void MockRealtimeVideoSourceMac::updateSampleBuffer()
 {
-    auto imageBuffer = this->imageBuffer();
+    RefPtr imageBuffer = this->imageBufferInternal();
     if (!imageBuffer)
         return;
 
-    if (!m_imageTransferSession)
+    if (!m_imageTransferSession) {
         m_imageTransferSession = ImageTransferSessionVT::create(preferedPixelBufferFormat());
+        m_imageTransferSession->setMaximumBufferPoolSize(10);
+    }
 
     PlatformImagePtr platformImage;
-    if (auto nativeImage = imageBuffer->copyImage()->nativeImage())
+    if (auto nativeImage = imageBuffer->copyNativeImage())
         platformImage = nativeImage->platformImage();
 
-    auto sampleTime = MediaTime::createWithDouble((elapsedTime() + 100_ms).seconds());
-    auto sampleBuffer = m_imageTransferSession->createMediaSample(platformImage.get(), sampleTime, size(), sampleRotation());
-    if (!sampleBuffer)
+    auto presentationTime = MediaTime::createWithDouble((elapsedTime() + 100_ms).seconds());
+    auto videoFrame = m_imageTransferSession->createVideoFrame(platformImage.get(), presentationTime, size(), videoFrameRotation());
+    if (!videoFrame) {
+        static const size_t MaxPixelGenerationFailureCount = 150;
+        if (++m_pixelGenerationFailureCount > MaxPixelGenerationFailureCount)
+            captureFailed();
         return;
+    }
 
-    m_workQueue->dispatch([this, protectedThis = makeRef(*this), sampleBuffer = WTFMove(sampleBuffer)]() mutable {
-        dispatchMediaSampleToObservers(*sampleBuffer);
+    m_pixelGenerationFailureCount = 0;
+    auto captureTime = MonotonicTime::now().secondsSinceEpoch();
+    m_workQueue->dispatch([this, protectedThis = Ref { *this }, videoFrame = WTFMove(videoFrame), captureTime]() mutable {
+        VideoFrameTimeMetadata metadata;
+        metadata.captureTime = captureTime;
+        dispatchVideoFrameToObservers(*videoFrame, metadata);
     });
 }
 

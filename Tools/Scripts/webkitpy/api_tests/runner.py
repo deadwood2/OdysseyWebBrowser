@@ -33,24 +33,25 @@ from webkitpy.port.server_process import ServerProcess, _log as server_process_l
 _log = logging.getLogger(__name__)
 
 
-def setup_shard(port=None, devices=None):
+def setup_shard(port=None, devices=None, log_limit=None):
     if devices and getattr(port, 'DEVICE_MANAGER', None):
         port.DEVICE_MANAGER.AVAILABLE_DEVICES = devices.get('available_devices', [])
         port.DEVICE_MANAGER.INITIALIZED_DEVICES = devices.get('initialized_devices', None)
 
-    return _Worker.setup(port=port)
+    return _Worker.setup(port=port, log_limit=log_limit)
 
 
 def run_shard(name, *tests):
     return _Worker.instance.run(name, *tests)
 
 
-def report_result(worker, test, status, output):
-    if status == Runner.STATUS_PASSED and (not output or Runner.instance.port.get_option('quiet')):
+def report_result(worker, test, status, output, elapsed=None):
+    if elapsed < Runner.ELAPSED_THRESHOLD and status == Runner.STATUS_PASSED and (not output or Runner.instance.port.get_option('quiet')):
         Runner.instance.printer.write_update('{} {} {}'.format(worker, test, Runner.NAME_FOR_STATUS[status]))
     else:
-        Runner.instance.printer.writeln('{} {} {}'.format(worker, test, Runner.NAME_FOR_STATUS[status]))
-    Runner.instance.results[test] = status, output
+        elapsed_log = ' (took {} seconds)'.format(round(elapsed, 1)) if elapsed > Runner.ELAPSED_THRESHOLD else ''
+        Runner.instance.printer.writeln('{} {} {}{}'.format(worker, test, Runner.NAME_FOR_STATUS[status], elapsed_log))
+    Runner.instance.results[test] = status, output, elapsed
 
 
 def teardown_shard():
@@ -65,6 +66,8 @@ class Runner(object):
     STATUS_DISABLED = 4
     STATUS_RUNNING = 5
 
+    ELAPSED_THRESHOLD = 3
+
     NAME_FOR_STATUS = [
         'Passed',
         'Failed',
@@ -75,11 +78,12 @@ class Runner(object):
 
     instance = None
 
-    def __init__(self, port, printer):
+    def __init__(self, port, printer, log_limit=250):
         self.port = port
         self.printer = printer
         self.tests_run = 0
         self._num_workers = 1
+        self.log_limit = log_limit
         self._has_logged_for_test = True  # Suppress an empty line between "Running tests" and the first test's output.
         self.results = {}
 
@@ -88,6 +92,14 @@ class Runner(object):
     def command_for_port(port, args):
         if (port.get_option('force')):
             args.append('--gtest_also_run_disabled_tests=1')
+        if (port.get_option('remote_layer_tree')):
+            args.append('--remote-layer-tree')
+        if (port.get_option('no_remote_layer_tree')):
+            args.append('--no-remote-layer-tree')
+        if (port.get_option('use_gpu_process')):
+            args.append('--use-gpu-process')
+        if (port.get_option('no_use_gpu_process')):
+            args.append('--no-use-gpu-process')
         if getattr(port, 'DEVICE_MANAGER', None):
             assert port.DEVICE_MANAGER.INITIALIZED_DEVICES
             return ['/usr/bin/xcrun', 'simctl', 'spawn', port.DEVICE_MANAGER.INITIALIZED_DEVICES[0].udid] + args
@@ -132,7 +144,7 @@ class Runner(object):
 
             with TaskPool(
                 workers=self._num_workers,
-                setup=setup_shard, setupkwargs=dict(port=self.port, devices=devices), teardown=teardown_shard,
+                setup=setup_shard, setupkwargs=dict(port=self.port, devices=devices, log_limit=self.log_limit), teardown=teardown_shard,
             ) as pool:
                 for name, tests in iteritems(shards):
                     pool.do(run_shard, name, *tests)
@@ -152,18 +164,20 @@ class Runner(object):
 
 class _Worker(object):
     instance = None
+    EXCEEDED_LOG_LINE_MESSAGE = 'EXCEEDED LOG LINE THRESHOLD OF {}\n'
 
     @classmethod
-    def setup(cls, port=None):
-        cls.instance = cls(port)
+    def setup(cls, port=None, log_limit=None):
+        cls.instance = cls(port, log_limit)
 
     @classmethod
     def teardown(cls):
         cls.instance = None
 
-    def __init__(self, port):
+    def __init__(self, port, log_limit):
         self._port = port
         self.host = port.host
+        self.log_limit = log_limit
 
         # ServerProcess doesn't allow for a timeout of 'None,' this uses a week instead of None.
         self._timeout = int(self._port.get_option('timeout')) if self._port.get_option('timeout') else 60 * 24 * 7
@@ -175,7 +189,7 @@ class _Worker(object):
             if line.lstrip().startswith('objc['):
                 continue
             result += line + '\n'
-        return result
+        return result.rstrip()
 
     def _run_single_test(self, binary_name, test):
         server_process = ServerProcess(
@@ -189,15 +203,27 @@ class _Worker(object):
 
         stdout_buffer = ''
         stderr_buffer = ''
+        line_count = 0
 
         try:
-            deadline = time.time() + self._timeout
+            started = time.time()
             if status != Runner.STATUS_DISABLED:
                 server_process.start()
 
             while status == Runner.STATUS_RUNNING:
-                stdout_line, stderr_line = server_process.read_either_stdout_or_stderr_line(deadline)
+                stdout_line, stderr_line = server_process.read_either_stdout_or_stderr_line(started + self._timeout)
                 if not stderr_line and not stdout_line:
+                    break
+                if stdout_line:
+                    line_count += 1
+                if stderr_line:
+                    line_count += 1
+                if line_count > self.log_limit:
+                    stderr_line = self.EXCEEDED_LOG_LINE_MESSAGE.format(self.log_limit)
+                    stderr_buffer += stderr_line
+                    _log.error(stderr_line[:-1])
+                    server_process.stop()
+                    status = Runner.STATUS_FAILED
                     break
 
                 if stderr_line:
@@ -224,11 +250,21 @@ class _Worker(object):
                 status = Runner.STATUS_FAILED
 
         finally:
+            output_buffer = stderr_buffer + stdout_buffer
             remaining_stderr = string_utils.decode(server_process.pop_all_buffered_stderr(), target_type=str)
             remaining_stdout = string_utils.decode(server_process.pop_all_buffered_stdout(), target_type=str)
             for line in (remaining_stdout + remaining_stderr).splitlines(False):
+                line_count += 1
+                if line_count > self.log_limit:
+                    status = Runner.STATUS_FAILED
+                    line = self.EXCEEDED_LOG_LINE_MESSAGE.format(self.log_limit)
+
                 _log.error(line)
-            output_buffer = stderr_buffer + stdout_buffer + remaining_stderr + remaining_stdout
+                output_buffer += line + '\n'
+
+                if line_count > self.log_limit:
+                    break
+
             server_process.stop()
 
         TaskPool.Process.queue.send(TaskPool.Task(
@@ -236,6 +272,7 @@ class _Worker(object):
             '{}.{}'.format(binary_name, test),
             status,
             self._filter_noisy_output(output_buffer),
+            elapsed=time.time() - started,
         ))
 
     def run(self, name, *tests):
@@ -252,14 +289,15 @@ class _Worker(object):
                 ]), env=self._port.environment_for_api_tests())
 
             try:
-                deadline = time.time() + self._timeout
+                started = time.time()
                 last_test = None
                 last_status = None
-                stdout_buffer = ''
+                buffer = ''
+                line_count = 0
 
                 server_process.start()
                 while remaining_tests:
-                    stdout = string_utils.decode(server_process.read_stdout_line(deadline), target_type=str)
+                    stdout = string_utils.decode(server_process.read_stdout_line(started + self._timeout), target_type=str)
 
                     # If we've triggered a timeout, we don't know which test caused it. Break out and run singly.
                     if stdout is None and server_process.timed_out:
@@ -275,21 +313,28 @@ class _Worker(object):
 
                     assert stdout is not None
                     stdout_split = stdout.rstrip().split(' ')
+
+                    line_count += len(stdout_split)
+                    if line_count > self.log_limit:
+                        break
+
                     if len(stdout_split) != 2 or not (stdout_split[0].startswith('**') and stdout_split[0].endswith('**')):
-                        stdout_buffer += stdout
+                        buffer += stdout
                         continue
                     if last_test is not None:
                         remaining_tests.remove(last_test)
 
-                        for line in stdout_buffer.splitlines(False):
+                        for line in buffer.splitlines(False):
                             _log.error(line)
+                        line_count = 0
                         TaskPool.Process.queue.send(TaskPool.Task(
                             report_result, None, TaskPool.Process.name,
                             '{}.{}'.format(binary_name, last_test),
-                            last_status, stdout_buffer,
+                            last_status, buffer,
+                            elapsed=time.time() - started,
                         ))
-                        deadline = time.time() + self._timeout
-                        stdout_buffer = ''
+                        started = time.time()
+                        buffer = ''
 
                     if '**PASS**' == stdout_split[0]:
                         last_status = Runner.STATUS_PASSED
@@ -300,16 +345,27 @@ class _Worker(object):
                 # We assume that stderr is only relevant if there is a crash (meaning we triggered an assert)
                 if last_test:
                     remaining_tests.remove(last_test)
-                    stdout_buffer += string_utils.decode(server_process.pop_all_buffered_stdout(), target_type=str)
+                    stdout_buffer = string_utils.decode(server_process.pop_all_buffered_stdout(), target_type=str)
                     stderr_buffer = string_utils.decode(server_process.pop_all_buffered_stderr(), target_type=str) if last_status == Runner.STATUS_CRASHED else ''
-                    for line in (stdout_buffer + stderr_buffer).splitlines(keepends=False):
-                        _log.error(line)
+                    for line in (stdout_buffer + stderr_buffer).splitlines():
+                        line_count += 1
+                        if line_count > self.log_limit:
+                            break
+                        buffer += line
+                        _log.error(line[:-1])
+
+                    if line_count > self.log_limit:
+                        last_status = Runner.STATUS_FAILED
+                        line = self.EXCEEDED_LOG_LINE_MESSAGE.format(self.log_limit)
+                        buffer += line
+                        _log.error(line[:-1])
 
                     TaskPool.Process.queue.send(TaskPool.Task(
                         report_result, None, TaskPool.Process.name,
                         '{}.{}'.format(binary_name, last_test),
                         last_status,
-                        self._filter_noisy_output(stdout_buffer + stderr_buffer),
+                        self._filter_noisy_output(buffer),
+                        elapsed=time.time() - started,
                     ))
 
                 if server_process.timed_out:

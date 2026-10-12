@@ -52,7 +52,7 @@
 #import <wtf/StdLibExtras.h>
 #import <wtf/cocoa/VectorCocoa.h>
 
-typedef HashMap<BackForwardList*, WebBackForwardList*> BackForwardListMap;
+using BackForwardListMap = HashMap<WeakRef<BackForwardList>, WebBackForwardList*>;
 
 // FIXME: Instead of this we could just create a class derived from BackForwardList
 // with a pointer to a WebBackForwardList in it.
@@ -77,7 +77,7 @@ WebBackForwardList *kit(BackForwardList* backForwardList)
     if (!backForwardList)
         return nil;
 
-    if (WebBackForwardList *webBackForwardList = backForwardLists().get(backForwardList))
+    if (WebBackForwardList *webBackForwardList = backForwardLists().get(*backForwardList))
         return webBackForwardList;
 
     return adoptNS([[WebBackForwardList alloc] initWithBackForwardList:*backForwardList]).autorelease();
@@ -91,7 +91,7 @@ WebBackForwardList *kit(BackForwardList* backForwardList)
         return nil;
 
     _private = reinterpret_cast<WebBackForwardListPrivate*>(&backForwardList.leakRef());
-    backForwardLists().set(core(self), self);
+    backForwardLists().set(*core(self), self);
     return self;
 }
 
@@ -118,7 +118,7 @@ WebBackForwardList *kit(BackForwardList* backForwardList)
     ASSERT(backForwardList);
     if (backForwardList) {
         ASSERT(backForwardList->closed());
-        backForwardLists().remove(backForwardList);
+        backForwardLists().remove(*backForwardList);
         backForwardList->deref();
     }
 
@@ -133,7 +133,8 @@ WebBackForwardList *kit(BackForwardList* backForwardList)
 - (void)addItem:(WebHistoryItem *)entry
 {
     ASSERT(entry);
-    core(self)->addItem(*core(entry));
+    if (auto* mainFrame = core([core(self)->webView() mainFrame]))
+        core(self)->addItem(mainFrame->frameID(), *core(entry));
     
     // Since the assumed contract with WebBackForwardList is that it retains its WebHistoryItems,
     // the following line prevents a whole class of problems where a history item will be created in
@@ -175,8 +176,10 @@ constexpr auto WebBackForwardListDictionaryCurrentKey = @"current";
     auto& list = *core(self);
 
     list.setCapacity([[dictionary objectForKey:WebBackForwardListDictionaryCapacityKey] unsignedIntValue]);
-    for (NSDictionary *itemDictionary in [dictionary objectForKey:WebBackForwardListDictionaryEntriesKey])
-        list.addItem(*core(adoptNS([[WebHistoryItem alloc] initFromDictionaryRepresentation:itemDictionary]).get()));
+    if (auto* mainFrame = core([core(self)->webView() mainFrame])) {
+        for (NSDictionary *itemDictionary in [dictionary objectForKey:WebBackForwardListDictionaryEntriesKey])
+            list.addItem(mainFrame->frameID(), *core(adoptNS([[WebHistoryItem alloc] initFromDictionaryRepresentation:itemDictionary]).get()));
+    }
 
     unsigned currentIndex = [[dictionary objectForKey:WebBackForwardListDictionaryCurrentKey] unsignedIntValue];
     size_t listSize = list.entries().size();

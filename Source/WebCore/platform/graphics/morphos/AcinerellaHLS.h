@@ -1,13 +1,12 @@
 #pragma once
 
-#include "config.h"
-
 #if ENABLE(VIDEO)
 
 #include "AcinerellaBuffer.h"
 #include <wtf/RunLoop.h>
 #include <wtf/URL.h>
-#include <wtf/StdMap.h>
+#include <wtf/HashMap.h>
+#include <wtf/Deque.h>
 
 namespace WebCore {
 
@@ -59,11 +58,11 @@ public:
 	HLSStream& operator+=(HLSStream& append); // caution: destructive
 	void assign(const HLSStream& source);
 
-	const HLSChunk &current() const { static HLSChunk empty; return m_chunks.empty() ? empty: m_chunks.front(); }
-	void pop() { if (!m_chunks.empty()) m_remainingDuration -= m_chunks.front().m_duration; m_chunks.pop(); }
+	const HLSChunk &current() const { static HLSChunk empty; return m_chunks.isEmpty() ? empty: m_chunks.first(); }
+	void pop() { if (!m_chunks.isEmpty()) m_remainingDuration -= m_chunks.first().m_duration; m_chunks.removeFirst(); }
 	void popUntil(double position);
 	bool ended() const { return m_ended; }
-	bool empty() const { return m_chunks.empty(); }
+	bool empty() const { return m_chunks.isEmpty(); }
 	size_t size() const { return m_chunks.size(); }
 	void clear();
 	double targetDuration() const { return m_targetDuration; }
@@ -76,7 +75,7 @@ public:
 
 protected:
 	HLSMap               m_map;
-	std::queue<HLSChunk> m_chunks;
+	Deque<HLSChunk>      m_chunks;
 	int64_t              m_mediaSequence = -1;
 	int64_t              m_initialMediaSequence = -1;
 	double               m_targetDuration = 0;
@@ -132,10 +131,10 @@ protected:
 	void requestNextChunk();
 
 protected:
-	RunLoop::Timer<AcinerellaNetworkBufferHLS>  m_playlistRefreshTimer;
+	RunLoop::Timer                              m_playlistRefreshTimer;
 	RefPtr<AcinerellaNetworkBuffer>             m_chunkRequest;
 	RefPtr<AcinerellaNetworkBuffer>             m_chunkRequestInRead;
-	std::queue<RefPtr<AcinerellaNetworkBuffer>> m_chunksRequestPreviouslyRead;
+	Deque<RefPtr<AcinerellaNetworkBuffer>>      m_chunksRequestPreviouslyRead;
 	RefPtr<AcinerellaNetworkFileRequest>        m_hlsRequest;
 	RefPtr<AcinerellaNetworkFileRequest>        m_initializationChunkRequest;
 	Vector<HLSStreamInfo>                       m_streams;
@@ -164,7 +163,9 @@ protected:
 			return a == b;
 		}
 	};
-	std::unordered_map<String, RefPtr<AcinerellaNetworkFileRequest>, StringKeyHash, StringKeyEquals> m_keys;
+ 
+    using FileRequestMap = HashMap<String, RefPtr<AcinerellaNetworkFileRequest>, ASCIICaseInsensitiveHash>;
+	FileRequestMap m_keys;
 };
 
 }

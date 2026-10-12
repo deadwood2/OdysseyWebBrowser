@@ -33,7 +33,7 @@
 
 namespace JSC { namespace DFG {
 
-enum UseKind {
+enum UseKind : uint8_t {
     // The DFG has 3 representations of values used:
 
     // 1. The JSValue representation for a JSValue that must be stored in a GP
@@ -58,6 +58,7 @@ enum UseKind {
     PromiseObjectUse,
     RegExpObjectUse,
     ProxyObjectUse,
+    GlobalProxyUse,
     DerivedArrayUse,
     ObjectOrOtherUse,
     StringIdentUse,
@@ -72,6 +73,8 @@ enum UseKind {
     DateObjectUse,
     MapObjectUse,
     SetObjectUse,
+    MapIteratorObjectUse,
+    SetIteratorObjectUse,
     WeakMapObjectUse,
     WeakSetObjectUse,
     DataViewObjectUse,
@@ -82,6 +85,7 @@ enum UseKind {
     NotCellUse,
     NotCellNorBigIntUse,
     NotDoubleUse,
+    NeitherDoubleNorHeapBigIntUse,
     NeitherDoubleNorHeapBigIntNorStringUse,
     KnownOtherUse,
     OtherUse,
@@ -142,6 +146,8 @@ inline SpeculatedType typeFilterFor(UseKind useKind)
         return SpecRegExpObject;
     case ProxyObjectUse:
         return SpecProxyObject;
+    case GlobalProxyUse:
+        return SpecGlobalProxy;
     case DerivedArrayUse:
         return SpecDerivedArray;
     case ObjectOrOtherUse:
@@ -171,6 +177,9 @@ inline SpeculatedType typeFilterFor(UseKind useKind)
         return SpecMapObject;
     case SetObjectUse:
         return SpecSetObject;
+    case MapIteratorObjectUse:
+    case SetIteratorObjectUse:
+        return SpecObjectOther;
     case WeakMapObjectUse:
         return SpecWeakMapObject;
     case WeakSetObjectUse:
@@ -191,6 +200,8 @@ inline SpeculatedType typeFilterFor(UseKind useKind)
         return ~SpecCellCheck & ~SpecBigInt;
     case NotDoubleUse:
         return ~SpecFullDouble;
+    case NeitherDoubleNorHeapBigIntUse:
+        return ~SpecFullDouble & ~SpecHeapBigInt;
     case NeitherDoubleNorHeapBigIntNorStringUse:
         return ~(SpecFullDouble | SpecHeapBigInt | SpecString);
     case KnownOtherUse:
@@ -253,6 +264,7 @@ inline bool isCell(UseKind kind)
     case RegExpObjectUse:
     case PromiseObjectUse:
     case ProxyObjectUse:
+    case GlobalProxyUse:
     case DerivedArrayUse:
     case StringIdentUse:
     case StringUse:
@@ -264,6 +276,8 @@ inline bool isCell(UseKind kind)
     case DateObjectUse:
     case MapObjectUse:
     case SetObjectUse:
+    case MapIteratorObjectUse:
+    case SetIteratorObjectUse:
     case WeakMapObjectUse:
     case WeakSetObjectUse:
     case DataViewObjectUse:
@@ -312,6 +326,7 @@ inline bool checkMayCrashIfInputIsEmpty(UseKind kind)
     case NotCellUse:
     case NotCellNorBigIntUse:
     case NotDoubleUse:
+    case NeitherDoubleNorHeapBigIntUse:
     case NeitherDoubleNorHeapBigIntNorStringUse:
         return false;
     default:

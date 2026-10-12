@@ -125,14 +125,6 @@ class PortTest(unittest.TestCase):
         # This routine is a no-op. We just test it for coverage.
         port.setup_test_run()
 
-    def test_test_dirs(self):
-        port = self.make_port()
-        port.host.filesystem.write_text_file(port.layout_tests_dir() + '/canvas/test', '')
-        port.host.filesystem.write_text_file(port.layout_tests_dir() + '/css2.1/test', '')
-        dirs = port.test_dirs()
-        self.assertIn('canvas', dirs)
-        self.assertIn('css2.1', dirs)
-
     def test_skipped_perf_tests(self):
         port = self.make_port()
 
@@ -233,12 +225,6 @@ class PortTest(unittest.TestCase):
         port._filesystem = MockFileSystem({'/mock-checkout/LayoutTests/platform/foo/TestExpectations': ''})
         self.assertTrue(port.uses_test_expectations_file())
 
-    def test_reference_files(self):
-        port = self.make_port(with_tests=True)
-        self.assertEqual(port.reference_files('passes/svgreftest.svg'), [('==', port.layout_tests_dir() + '/passes/svgreftest-expected.svg')])
-        self.assertEqual(port.reference_files('passes/xhtreftest.svg'), [('==', port.layout_tests_dir() + '/passes/xhtreftest-expected.html')])
-        self.assertEqual(port.reference_files('passes/phpreftest.php'), [('!=', port.layout_tests_dir() + '/passes/phpreftest-expected-mismatch.svg')])
-
     def test_operating_system(self):
         self.assertEqual('mac', self.make_port().operating_system())
 
@@ -269,6 +255,7 @@ class PortTest(unittest.TestCase):
         self.assertTrue(port.test_exists('passes'))
         self.assertTrue(port.test_exists('passes/text.html'))
         self.assertFalse(port.test_exists('passes/does_not_exist.html'))
+        self.assertTrue(port.test_exists('variant/variant.any.html?1-100'))
 
     def test_test_isfile(self):
         port = self.make_port(with_tests=True)
@@ -306,23 +293,6 @@ class PortTest(unittest.TestCase):
         self.assertTrue(port._filesystem.isdir(jhbuild_path))
         self.assertTrue(port._should_use_jhbuild())
 
-    def test_ref_tests_platform_directory(self):
-        port = self.make_port(port_name='foo')
-        port.default_baseline_search_path = lambda **kwargs: ['/mock-checkout/LayoutTests/platform/foo']
-        port._filesystem.write_text_file('/mock-checkout/LayoutTests/fast/ref-expected.html', 'foo')
-
-        # No platform directory
-        self.assertEqual(
-            [('==', '/mock-checkout/LayoutTests/fast/ref-expected.html')],
-            port.reference_files('fast/ref.html'),
-        )
-
-        port._filesystem.write_text_file('/mock-checkout/LayoutTests/platform/foo/fast/ref-expected-mismatch.html', 'foo-plat')
-        self.assertEqual(
-            [('!=', '/mock-checkout/LayoutTests/platform/foo/fast/ref-expected-mismatch.html')],
-            port.reference_files('fast/ref.html'),
-        )
-
     def test_commits_for_upload(self):
         with mocks.local.Svn(path='/'), mocks.local.Git():
             port = self.make_port(port_name='foo')
@@ -357,6 +327,9 @@ class NaturalCompareTest(unittest.TestCase):
         self.assert_cmp('a', 'ab', -1)
         self.assert_cmp('', '', 0)
         self.assert_cmp('', 'ab', -1)
+        self.assert_cmp('01', '1', -1)
+        self.assert_cmp('001', '1', -1)
+        self.assert_cmp('001', '01', -1)
         self.assert_cmp('1', '2', -1)
         self.assert_cmp('2', '1', 1)
         self.assert_cmp('1', '10', -1)
@@ -379,9 +352,15 @@ class KeyCompareTest(unittest.TestCase):
     def test_test_key(self):
         self.assert_cmp('/a', '/a', 0)
         self.assert_cmp('/a', '/b', -1)
+        self.assert_cmp('/a', '/a2', -1)
         self.assert_cmp('/a2', '/a10', -1)
         self.assert_cmp('/a2/foo', '/a10/foo', -1)
         self.assert_cmp('/a/foo11', '/a/foo2', 1)
+        self.assert_cmp('/a/foo1', '/a/foo01', 1)
+        self.assert_cmp('/a/foo01', '/a/foo001', 1)
         self.assert_cmp('/ab', '/a/a/b', -1)
         self.assert_cmp('/a/a/b', '/ab', 1)
         self.assert_cmp('/foo-bar/baz', '/foo/baz', -1)
+        self.assert_cmp('/foo!bar/baz', '/foo/bar/baz', -1)
+        self.assert_cmp('/foo-bar/baz', '/foo/bar/baz', -1)
+        self.assert_cmp('/foo_bar/baz', '/foo/bar/baz', 1)

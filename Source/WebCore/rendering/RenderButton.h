@@ -1,6 +1,7 @@
 /*
- * Copyright (C) 2005 Apple Inc.
- *
+ * Copyright (C) 2005-2022 Apple Inc.
+ * Copyright (C) 2022 Google Inc. All rights reserved.
+ * 
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
  * License as published by the Free Software Foundation; either
@@ -21,6 +22,7 @@
 #pragma once
 
 #include "RenderFlexibleBox.h"
+#include "RenderTextFragment.h"
 #include <memory>
 
 namespace WebCore {
@@ -32,7 +34,8 @@ class RenderTextFragment;
 // For inputs, they will also generate an anonymous RenderText and keep its style and content up
 // to date as the button changes.
 class RenderButton final : public RenderFlexibleBox {
-    WTF_MAKE_ISO_ALLOCATED(RenderButton);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(RenderButton);
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(RenderButton);
 public:
     RenderButton(HTMLFormControlElement&, RenderStyle&&);
     virtual ~RenderButton();
@@ -46,7 +49,7 @@ public:
     void updateFromElement() override;
 
     bool canHaveGeneratedChildren() const override;
-    bool hasControlClip() const override { return true; }
+    bool hasControlClip() const override;
     LayoutRect controlClipRect(const LayoutPoint&) const override;
 
     void updateAnonymousChildStyle(RenderStyle&) const override;
@@ -58,6 +61,8 @@ public:
     void layout() override;
 #endif
 
+    RenderTextFragment* textRenderer() const { return m_buttonText.get(); }
+
     RenderBlock* innerRenderer() const { return m_inner.get(); }
     void setInnerRenderer(RenderBlock&);
 
@@ -66,15 +71,14 @@ public:
 private:
     void element() const = delete;
 
-    const char* renderName() const override { return "RenderButton"; }
-    bool isRenderButton() const override { return true; }
+    ASCIILiteral renderName() const override { return "RenderButton"_s; }
 
     bool hasLineIfEmpty() const override;
 
     bool isFlexibleBoxImpl() const override { return true; }
 
-    WeakPtr<RenderTextFragment> m_buttonText;
-    WeakPtr<RenderBlock> m_inner;
+    SingleThreadWeakPtr<RenderTextFragment> m_buttonText;
+    SingleThreadWeakPtr<RenderBlock> m_inner;
 };
 
 } // namespace WebCore

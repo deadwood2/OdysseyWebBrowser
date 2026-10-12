@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2011-2019 Apple Inc. All rights reserved.
+ *  Copyright (C) 2011-2022 Apple Inc. All rights reserved.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Library General Public
@@ -22,15 +22,17 @@
 #include "RegExp.h"
 
 #include "InitializeThreading.h"
+#include "JSArrayBufferViewInlines.h"
 #include "JSCInlines.h"
 #include "YarrFlags.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <wtf/Vector.h>
+#include <wtf/WTFProcess.h>
 #include <wtf/text/StringBuilder.h>
 
-#if COMPILER(MSVC)
+#if OS(WINDOWS)
 #include <crtdbg.h>
 #include <mmsystem.h>
 #include <windows.h>
@@ -98,7 +100,7 @@ public:
 
     static GlobalObject* create(VM& vm, Structure* structure, const Vector<String>& arguments)
     {
-        GlobalObject* globalObject = new (NotNull, allocateCell<GlobalObject>(vm.heap)) GlobalObject(vm, structure, arguments);
+        GlobalObject* globalObject = new (NotNull, allocateCell<GlobalObject>(vm)) GlobalObject(vm, structure, arguments);
         return globalObject;
     }
 
@@ -122,7 +124,7 @@ private:
 };
 STATIC_ASSERT_ISO_SUBSPACE_SHARABLE(GlobalObject, JSGlobalObject);
 
-const ClassInfo GlobalObject::s_info = { "global", &JSGlobalObject::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(GlobalObject) };
+const ClassInfo GlobalObject::s_info = { "global"_s, &JSGlobalObject::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(GlobalObject) };
 
 GlobalObject::GlobalObject(VM& vm, Structure* structure, const Vector<String>& arguments)
     : JSGlobalObject(vm, structure)
@@ -190,22 +192,12 @@ static bool testOneRegExp(JSGlobalObject* globalObject, RegExp* regexp, RegExpTe
     } else if (matchResult != -1) {
         if (outVector.size() != regExpTest->expectVector.size()) {
             result = false;
-            if (verbose) {
-#if OS(WINDOWS)
-                printf("Line %d: output vector size mismatch - expected %Iu got %Iu\n", lineNumber, regExpTest->expectVector.size(), outVector.size());
-#else
-                printf("Line %d: output vector size mismatch - expected %zu got %zu\n", lineNumber, regExpTest->expectVector.size(), outVector.size());
-#endif
-            }
+            if (verbose)
+                printf("Line %d: output vector size mismatch - expected %llu got %llu\n", lineNumber, static_cast<unsigned long long>(regExpTest->expectVector.size()), static_cast<unsigned long long>(outVector.size()));
         } else if (outVector.size() % 2) {
             result = false;
-            if (verbose) {
-#if OS(WINDOWS)
-                printf("Line %d: output vector size is odd (%Iu), should be even\n", lineNumber, outVector.size());
-#else
-                printf("Line %d: output vector size is odd (%zu), should be even\n", lineNumber, outVector.size());
-#endif
-            }
+            if (verbose)
+                printf("Line %d: output vector size is odd (%llu), should be even\n", lineNumber, static_cast<unsigned long long>(outVector.size()));
         } else {
             // Check in pairs since the first value of the pair could be -1 in which case the second doesn't matter.
             size_t pairCount = outVector.size() / 2;
@@ -213,23 +205,13 @@ static bool testOneRegExp(JSGlobalObject* globalObject, RegExp* regexp, RegExpTe
                 size_t startIndex = i*2;
                 if (outVector[startIndex] != regExpTest->expectVector[startIndex]) {
                     result = false;
-                    if (verbose) {
-#if OS(WINDOWS)
-                        printf("Line %d: output vector mismatch at index %Iu - expected %d got %d\n", lineNumber, startIndex, regExpTest->expectVector[startIndex], outVector[startIndex]);
-#else
-                        printf("Line %d: output vector mismatch at index %zu - expected %d got %d\n", lineNumber, startIndex, regExpTest->expectVector[startIndex], outVector[startIndex]);
-#endif
-                    }
+                    if (verbose)
+                        printf("Line %d: output vector mismatch at index %llu - expected %d got %d\n", lineNumber, static_cast<unsigned long long>(startIndex), regExpTest->expectVector[startIndex], outVector[startIndex]);
                 }
                 if ((i > 0) && (regExpTest->expectVector[startIndex] != -1) && (outVector[startIndex+1] != regExpTest->expectVector[startIndex+1])) {
                     result = false;
-                    if (verbose) {
-#if OS(WINDOWS)
-                        printf("Line %d: output vector mismatch at index %Iu - expected %d got %d\n", lineNumber, startIndex + 1, regExpTest->expectVector[startIndex + 1], outVector[startIndex + 1]);
-#else
-                        printf("Line %d: output vector mismatch at index %zu - expected %d got %d\n", lineNumber, startIndex + 1, regExpTest->expectVector[startIndex + 1], outVector[startIndex + 1]);
-#endif
-                    }
+                    if (verbose)
+                        printf("Line %d: output vector mismatch at index %llu - expected %d got %d\n", lineNumber, static_cast<unsigned long long>(startIndex + 1), regExpTest->expectVector[startIndex + 1], outVector[startIndex + 1]);
                 }
             }
         }
@@ -318,7 +300,7 @@ static RegExp* parseRegExpLine(VM& vm, char* line, int lineLength, const char** 
 
     ++i;
 
-    auto flags = Yarr::parseFlags(line + i);
+    auto flags = Yarr::parseFlags(StringView::fromLatin1(line + i));
     if (!flags) {
         *regexpError = Yarr::errorMessage(Yarr::ErrorCode::InvalidRegularExpressionFlags);
         return nullptr;
@@ -494,7 +476,7 @@ static NO_RETURN void printUsageStatement(bool help = false)
     fprintf(stderr, "  -h|--help  Prints this help message\n");
     fprintf(stderr, "  -v|--verbose  Verbose output\n");
 
-    exit(help ? EXIT_SUCCESS : EXIT_FAILURE);
+    exitProcess(help ? EXIT_SUCCESS : EXIT_FAILURE);
 }
 
 static void parseArguments(int argc, char** argv, CommandLine& options)
@@ -507,16 +489,16 @@ static void parseArguments(int argc, char** argv, CommandLine& options)
         if (!strcmp(arg, "-v") || !strcmp(arg, "--verbose"))
             options.verbose = true;
         else
-            options.files.append(argv[i]);
+            options.files.append(String::fromLatin1(argv[i]));
     }
 
     for (; i < argc; ++i)
-        options.arguments.append(argv[i]);
+        options.arguments.append(String::fromLatin1(argv[i]));
 }
 
 int realMain(int argc, char** argv)
 {
-    VM* vm = &VM::create(LargeHeap).leakRef();
+    VM* vm = &VM::create(HeapType::Large).leakRef();
     JSLockHolder locker(vm);
 
     CommandLine options;

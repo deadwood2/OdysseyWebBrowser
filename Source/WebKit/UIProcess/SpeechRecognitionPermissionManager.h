@@ -27,14 +27,24 @@
 
 #include "SpeechRecognitionPermissionRequest.h"
 #include <wtf/Deque.h>
+#include <wtf/TZoneMalloc.h>
 #include <wtf/WeakPtr.h>
+
+namespace WebKit {
+class SpeechRecognitionPermissionManager;
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebKit::SpeechRecognitionPermissionManager> : std::true_type { };
+}
 
 namespace WebKit {
 
 class WebPageProxy;
 
 class SpeechRecognitionPermissionManager : public CanMakeWeakPtr<SpeechRecognitionPermissionManager> {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED(SpeechRecognitionPermissionManager);
 public:
     enum class CheckResult { Denied, Granted, Unknown };
     explicit SpeechRecognitionPermissionManager(WebPageProxy&);
@@ -45,6 +55,8 @@ public:
     WebPageProxy& page() { return m_page; }
 
 private:
+    Ref<WebPageProxy> protectedPage() const;
+
     void startNextRequest();
     void startProcessingRequest();
     void continueProcessingRequest();
@@ -53,7 +65,7 @@ private:
     void requestSpeechRecognitionServiceAccess();
     void requestUserPermission(WebCore::SpeechRecognitionRequest& request);
 
-    WebPageProxy& m_page;
+    WeakRef<WebPageProxy> m_page;
     Deque<Ref<SpeechRecognitionPermissionRequest>> m_requests;
     CheckResult m_microphoneCheck { CheckResult::Unknown };
     CheckResult m_speechRecognitionServiceCheck { CheckResult::Unknown };

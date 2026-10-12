@@ -30,8 +30,13 @@
 
 #import "ContentType.h"
 #import "SourceBufferParserWebM.h"
+#import "WebMAudioUtilitiesCocoa.h"
+#import <pal/spi/cocoa/AVFoundationSPI.h>
+#import <pal/spi/cocoa/AudioToolboxSPI.h>
 #import <wtf/SortedArrayMap.h>
+#import <wtf/text/MakeString.h>
 
+#import <pal/cf/AudioToolboxSoftLink.h>
 #import <pal/cf/CoreMediaSoftLink.h>
 #import <pal/cocoa/AVFoundationSoftLink.h>
 
@@ -52,10 +57,69 @@ bool AVAssetMIMETypeCache::isAvailable() const
 #endif
 }
 
-bool AVAssetMIMETypeCache::canDecodeExtendedType(const ContentType& type)
+#if ENABLE(VIDEO) && USE(AVFOUNDATION) && ENABLE(OPUS)
+static bool isMultichannelOpusAvailable()
 {
+    static bool isMultichannelOpusAvailable = [] {
+        if (!isOpusDecoderAvailable())
+            return false;
+
+        AudioStreamBasicDescription asbd { };
+        asbd.mFormatID = kAudioFormatOpus;
+
+        // AvailableDecodeChannelLayoutTags is an array of AudioChannelLayoutTag objects
+        UInt32 propertySize = 0;
+        auto error = PAL::AudioFormatGetPropertyInfo(kAudioFormatProperty_AvailableDecodeChannelLayoutTags, sizeof(asbd), &asbd, &propertySize);
+        if (error != noErr || propertySize < sizeof(AudioChannelLayoutTag))
+            return false;
+
+        size_t count = propertySize / sizeof(AudioChannelLayoutTag);
+        Vector<AudioChannelLayoutTag> channelLayoutTags(count, { });
+
+        error = PAL::AudioFormatGetProperty(kAudioFormatProperty_AvailableDecodeChannelLayoutTags, sizeof(asbd), &asbd, &propertySize, channelLayoutTags.data());
+        if (error != noErr)
+            return false;
+
+        size_t maximumDecodeChannelCount = 0;
+        for (auto& channelLayoutTag : channelLayoutTags) {
+            UInt32 layoutIndicator = (channelLayoutTag & 0xFFFF0000);
+            if (layoutIndicator == kAudioChannelLayoutTag_Unknown || layoutIndicator == kAudioChannelLayoutTag_DiscreteInOrder)
+                continue;
+            maximumDecodeChannelCount = std::max<size_t>(maximumDecodeChannelCount, AudioChannelLayoutTag_GetNumberOfChannels(channelLayoutTag));
+        }
+
+        return maximumDecodeChannelCount > 2;
+    }();
+    return isMultichannelOpusAvailable;
+}
+#endif
+
+bool AVAssetMIMETypeCache::canDecodeExtendedType(const ContentType& typeParameter)
+{
+    ContentType type = typeParameter;
 #if ENABLE(VIDEO) && USE(AVFOUNDATION)
+#if ENABLE(OPUS)
+    // Disclaim support for 'opus' if multi-channel decode is not available.
+    if ((type.containerType() == "video/mp4"_s || type.containerType() == "audio/mp4"_s)
+        && type.codecs().contains("opus"_s) && !isMultichannelOpusAvailable())
+        return false;
+#endif
+
+    // Some platforms will disclaim support for 'flac', and only support the MP4RA registered `fLaC`
+    // codec string for flac, so convert the former to the latter before querying.
+    if ((type.containerType() == "video/mp4"_s || type.containerType() == "audio/mp4"_s)
+        && type.codecs().contains("flac"_s))
+        type = ContentType(makeStringByReplacingAll(type.raw(), "flac"_s, "fLaC"_s));
+
     ASSERT(isAvailable());
+
+#if HAVE(AVURLASSET_ISPLAYABLEEXTENDEDMIMETYPEWITHOPTIONS)
+    if (PAL::canLoad_AVFoundation_AVURLAssetExtendedMIMETypePlayabilityTreatPlaylistMIMETypesAsISOBMFFMediaDataContainersKey()
+        && [PAL::getAVURLAssetClass() respondsToSelector:@selector(isPlayableExtendedMIMEType:options:)]) {
+        if ([PAL::getAVURLAssetClass() isPlayableExtendedMIMEType:type.raw() options:@{ AVURLAssetExtendedMIMETypePlayabilityTreatPlaylistMIMETypesAsISOBMFFMediaDataContainersKey: @YES }])
+            return true;
+    } else
+#endif
     if ([PAL::getAVURLAssetClass() isPlayableExtendedMIMEType:type.raw()])
         return true;
 
@@ -78,20 +142,13 @@ bool AVAssetMIMETypeCache::isUnsupportedContainerType(const String& type)
 
     // AVFoundation will return non-video MIME types which it claims to support, but which we
     // do not support in the <video> element. Reject all non video/, audio/, and application/ types.
-    if (!lowerCaseType.startsWith("video/") && !lowerCaseType.startsWith("audio/") && !lowerCaseType.startsWith("application/"))
+    if (!lowerCaseType.startsWith("video/"_s) && !lowerCaseType.startsWith("audio/"_s) && !lowerCaseType.startsWith("application/"_s))
         return true;
 
     // Reject types we know AVFoundation does not support that sites commonly ask about.
-    if (lowerCaseType == "video/x-flv")
-        return true;
-
-    if (lowerCaseType == "audio/ogg" || lowerCaseType == "video/ogg" || lowerCaseType == "application/ogg")
-        return true;
-
-    if (lowerCaseType == "video/h264")
-        return true;
-
-    return false;
+    static constexpr ComparableASCIILiteral unsupportedTypesArray[] = { "video/h264", "video/x-flv" };
+    static constexpr SortedArraySet unsupportedTypesSet { unsupportedTypesArray };
+    return unsupportedTypesSet.contains(lowerCaseType);
 }
 
 bool AVAssetMIMETypeCache::isStaticContainerType(StringView type)
@@ -140,7 +197,7 @@ void AVAssetMIMETypeCache::addSupportedTypes(const Vector<String>& types)
         m_cacheTypeCallback(types);
 }
 
-void AVAssetMIMETypeCache::initializeCache(HashSet<String, ASCIICaseInsensitiveHash>& cache)
+void AVAssetMIMETypeCache::initializeCache(HashSet<String>& cache)
 {
 #if ENABLE(VIDEO) && USE(AVFOUNDATION)
     if (!isAvailable())
@@ -151,8 +208,8 @@ void AVAssetMIMETypeCache::initializeCache(HashSet<String, ASCIICaseInsensitiveH
 
 #if ENABLE(WEBM_FORMAT_READER)
     if (SourceBufferParserWebM::isWebMFormatReaderAvailable()) {
-        auto webmTypes = SourceBufferParserWebM::webmMIMETypes();
-        cache.add(webmTypes.begin(), webmTypes.end());
+        auto types = SourceBufferParserWebM::supportedMIMETypes();
+        cache.add(types.begin(), types.end());
     }
 #endif
 

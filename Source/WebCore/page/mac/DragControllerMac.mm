@@ -29,6 +29,7 @@
 #if ENABLE(DRAG_SUPPORT)
 
 #import "DataTransfer.h"
+#import "DeprecatedGlobalSettings.h"
 #import "Document.h"
 #import "DocumentFragment.h"
 #import "DragClient.h"
@@ -37,15 +38,15 @@
 #import "EditorClient.h"
 #import "Element.h"
 #import "File.h"
-#import "Frame.h"
-#import "FrameView.h"
 #import "HTMLAttachmentElement.h"
+#import "LocalFrame.h"
+#import "LocalFrameView.h"
 #import "Page.h"
 #import "Pasteboard.h"
 #import "PasteboardStrategy.h"
 #import "PlatformStrategies.h"
 #import "Range.h"
-#import "RuntimeEnabledFeatures.h"
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 #if PLATFORM(IOS_FAMILY)
 #import <MobileCoreServices/MobileCoreServices.h>
@@ -100,7 +101,8 @@ void DragController::cleanupAfterSystemDrag()
     // call it anyway to be on the safe side.
     // We don't want to do this for WebKit2, since the client call to start the drag
     // is asynchronous.
-    if (m_page.mainFrame().view()->platformWidget())
+
+    if (m_page->mainFrame().virtualView()->platformWidget())
         dragEnded();
 #endif
 }
@@ -117,20 +119,19 @@ DragOperation DragController::platformGenericDragOperation()
 void DragController::updateSupportedTypeIdentifiersForDragHandlingMethod(DragHandlingMethod dragHandlingMethod, const DragData& dragData) const
 {
     Vector<String> supportedTypes;
-ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     switch (dragHandlingMethod) {
     case DragHandlingMethod::PageLoad:
-        supportedTypes.append(kUTTypeURL);
+        supportedTypes.append(UTTypeURL.identifier);
         break;
     case DragHandlingMethod::EditPlainText:
-        supportedTypes.append(kUTTypeURL);
-        supportedTypes.append(kUTTypePlainText);
+        supportedTypes.append(UTTypeURL.identifier);
+        supportedTypes.append(UTTypePlainText.identifier);
         break;
     case DragHandlingMethod::EditRichText:
-        if (RuntimeEnabledFeatures::sharedFeatures().attachmentElementEnabled()) {
+        if (DeprecatedGlobalSettings::attachmentElementEnabled()) {
             supportedTypes.append(WebArchivePboardType);
-            supportedTypes.append(kUTTypeContent);
-            supportedTypes.append(kUTTypeItem);
+            supportedTypes.append(UTTypeContent.identifier);
+            supportedTypes.append(UTTypeItem.identifier);
         } else {
             for (NSString *type in Pasteboard::supportedWebContentPasteboardTypes())
                 supportedTypes.append(type);
@@ -144,7 +145,7 @@ ALLOW_DEPRECATED_DECLARATIONS_BEGIN
             supportedTypes.append(type);
         break;
     }
-ALLOW_DEPRECATED_DECLARATIONS_END
+
     auto context = dragData.createPasteboardContext();
     platformStrategies()->pasteboardStrategy()->updateSupportedTypeIdentifiers(supportedTypes, dragData.pasteboardName(), context.get());
 }

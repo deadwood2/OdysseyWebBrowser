@@ -25,20 +25,19 @@
 
 #import "config.h"
 
-#if HAVE(SSL)
-
 #import "HTTPServer.h"
 #import "PlatformUtilities.h"
-#import "TCPServer.h"
 #import "TestNavigationDelegate.h"
 #import "TestWKWebView.h"
 #import "WebCoreTestSupport.h"
+#import <WebKit/WKPreferencesPrivate.h>
 #import <WebKit/WKProcessPoolPrivate.h>
 #import <WebKit/WKWebsiteDataStorePrivate.h>
 #import <WebKit/WebKit.h>
+#import <WebKit/_WKFeature.h>
 #import <WebKit/_WKWebsiteDataStoreConfiguration.h>
 #import <wtf/RetainPtr.h>
-#import <wtf/text/StringConcatenateNumbers.h>
+#import <wtf/text/MakeString.h>
 
 #if PLATFORM(IOS_FAMILY)
 #import <WebKit/WebUIKitSupport.h>
@@ -141,8 +140,6 @@ namespace TestWebKitAPI {
 
 const uint16_t tls1_1 = 0x0302;
 
-#if HAVE(TLS_PROTOCOL_VERSION_T)
-
 TEST(TLSVersion, DefaultBehavior)
 {
     HTTPServer server(HTTPServer::respondWithOK, HTTPServer::Protocol::HttpsWithLegacyTLS);
@@ -156,8 +153,6 @@ TEST(TLSVersion, DefaultBehavior)
     [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:[NSString stringWithFormat:@"https://127.0.0.1:%d/", server.port()]]]];
     [delegate waitForDidFinishNavigation];
 }
-
-#endif // HAVE(TLS_PROTOCOL_VERSION_T)
 
 #if HAVE(TLS_VERSION_DURING_CHALLENGE)
 
@@ -198,26 +193,6 @@ TEST(TLSVersion, NetworkSession)
     }
 }
 
-TEST(TLSVersion, NetworkSessionNSUserDefaults)
-{
-    NSString *defaultsKey = @"WebKitEnableLegacyTLS";
-    [[NSUserDefaults standardUserDefaults] setBool:NO forKey:defaultsKey];
-
-    HTTPServer server(HTTPServer::respondWithOK, HTTPServer::Protocol::HttpsWithLegacyTLS);
-    auto delegate = adoptNS([TestNavigationDelegate new]);
-    {
-        auto webView = makeWebViewWith([WKWebsiteDataStore defaultDataStore], delegate);
-        [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:[NSString stringWithFormat:@"https://127.0.0.1:%d/", server.port()]]]];
-        [delegate waitForDidFailProvisionalNavigation];
-    }
-    {
-        auto webView = makeWebViewWith([WKWebsiteDataStore nonPersistentDataStore], delegate);
-        [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:[NSString stringWithFormat:@"https://127.0.0.1:%d/", server.port()]]]];
-        [delegate waitForDidFailProvisionalNavigation];
-    }
-    [[NSUserDefaults standardUserDefaults] removeObjectForKey:defaultsKey];
-}
-
 TEST(TLSVersion, ShouldAllowDeprecatedTLS)
 {
     HTTPServer server(HTTPServer::respondWithOK, HTTPServer::Protocol::HttpsWithLegacyTLS);
@@ -243,13 +218,12 @@ TEST(TLSVersion, ShouldAllowDeprecatedTLS)
 TEST(TLSVersion, Preconnect)
 {
     bool connectionAttempted = false;
-    TCPServer server(TCPServer::Protocol::HTTPS, [&](SSL *ssl) {
-        EXPECT_FALSE(ssl);
+    HTTPServer server([&](const Connection&) {
         connectionAttempted = true;
-    }, tls1_1);
+    }, HTTPServer::Protocol::HttpsWithLegacyTLS);
 
     auto webView = adoptNS([WKWebView new]);
-    [webView loadHTMLString:makeString("<head><link rel='preconnect' href='https://127.0.0.1:", server.port(), "/'></link></head>") baseURL:nil];
+    [webView loadHTMLString:makeString("<head><link rel='preconnect' href='https://127.0.0.1:"_s, server.port(), "/'></link></head>"_s) baseURL:nil];
 
     auto delegate = adoptNS([TestNavigationDelegate new]);
     [webView setNavigationDelegate:delegate.get()];
@@ -263,12 +237,10 @@ TEST(TLSVersion, Preconnect)
 
 #endif // HAVE(TLS_VERSION_DURING_CHALLENGE)
 
-#if HAVE(TLS_PROTOCOL_VERSION_T)
-
-static std::pair<RetainPtr<WKWebView>, RetainPtr<TestNavigationDelegate>> webViewWithNavigationDelegate()
+static std::pair<RetainPtr<WKWebView>, RetainPtr<TestNavigationDelegate>> webViewWithNavigationDelegate(RetainPtr<WKWebViewConfiguration> configuration = nullptr)
 {
     auto delegate = adoptNS([TestNavigationDelegate new]);
-    auto webView = adoptNS([WKWebView new]);
+    auto webView = configuration ? adoptNS([[WKWebView alloc] initWithFrame:CGRectZero configuration:configuration.get()]) : adoptNS([WKWebView new]);
     [webView setNavigationDelegate:delegate.get()];
     [delegate setDidReceiveAuthenticationChallenge:^(WKWebView *, NSURLAuthenticationChallenge *challenge, void (^callback)(NSURLSessionAuthChallengeDisposition, NSURLCredential *)) {
         EXPECT_WK_STREQ(challenge.protectionSpace.authenticationMethod, NSURLAuthenticationMethodServerTrust);
@@ -280,7 +252,7 @@ static std::pair<RetainPtr<WKWebView>, RetainPtr<TestNavigationDelegate>> webVie
 TEST(TLSVersion, NegotiatedLegacyTLS)
 {
     HTTPServer server({
-        { "/", { "hello" } }
+        { "/"_s, { "hello"_s } }
     }, HTTPServer::Protocol::HttpsWithLegacyTLS);
 
     auto [webView, delegate] = webViewWithNavigationDelegate();
@@ -308,11 +280,11 @@ TEST(TLSVersion, NegotiatedLegacyTLS)
 TEST(TLSVersion, NavigateBack)
 {
     HTTPServer legacyTLSServer({
-        { "/", { "hello" } }
+        { "/"_s, { "hello"_s } }
     }, HTTPServer::Protocol::HttpsWithLegacyTLS);
 
     HTTPServer modernTLSServer({
-        { "/", { "hello" } }
+        { "/"_s, { "hello"_s } }
     }, HTTPServer::Protocol::Https);
     
     auto [webView, delegate] = webViewWithNavigationDelegate();
@@ -338,13 +310,13 @@ TEST(TLSVersion, NavigateBack)
 TEST(TLSVersion, BackForwardNegotiatedLegacyTLS)
 {
     HTTPServer secureServer({
-        { "/", { "hello" }}
+        { "/"_s, { "hello"_s }}
     }, HTTPServer::Protocol::Https);
     HTTPServer insecureServer({
-        { "/", { "hello" } }
+        { "/"_s, { "hello"_s } }
     }, HTTPServer::Protocol::HttpsWithLegacyTLS);
     HTTPServer mixedContentServer({
-        { "/", { {{ "Content-Type", "text/html" }}, makeString("<img src='https://127.0.0.1:", insecureServer.port(), "/'></img>") } },
+        { "/"_s, { {{ "Content-Type"_s, "text/html"_s }}, makeString("<img src='https://127.0.0.1:"_s, insecureServer.port(), "/'></img>"_s) } },
     }, HTTPServer::Protocol::Https);
 
     auto [webView, delegate] = webViewWithNavigationDelegate();
@@ -374,12 +346,12 @@ TEST(TLSVersion, BackForwardNegotiatedLegacyTLS)
 TEST(TLSVersion, Subresource)
 {
     HTTPServer legacyTLSServer({
-        { "/", { "hello" } }
+        { "/"_s, { "hello"_s } }
     }, HTTPServer::Protocol::HttpsWithLegacyTLS);
 
     HTTPServer modernTLSServer({
-        { "/", { makeString("<script>fetch('https://127.0.0.1:", legacyTLSServer.port(), "/',{mode:'no-cors'})</script>") } },
-        { "/pageWithoutSubresource", { "hello" }}
+        { "/"_s, { makeString("<script>fetch('https://127.0.0.1:"_s, legacyTLSServer.port(), "/',{mode:'no-cors'})</script>"_s) } },
+        { "/pageWithoutSubresource"_s, { "hello"_s }}
     }, HTTPServer::Protocol::Https);
     
     auto [webView, delegate] = webViewWithNavigationDelegate();
@@ -406,7 +378,7 @@ TEST(TLSVersion, Subresource)
 TEST(TLSVersion, DidNegotiateModernTLS)
 {
     HTTPServer server({
-        { "/", { "hello" }}
+        { "/"_s, { "hello"_s }}
     }, HTTPServer::Protocol::Https);
 
     auto delegate = adoptNS([TLSNavigationDelegate new]);
@@ -425,16 +397,22 @@ TEST(TLSVersion, DidNegotiateModernTLS)
 TEST(TLSVersion, BackForwardHasOnlySecureContent)
 {
     HTTPServer secureServer({
-        { "/", { "hello" }}
+        { "/"_s, { "hello"_s }}
     }, HTTPServer::Protocol::Https);
     HTTPServer insecureServer({
-        { "/", { "hello" } }
+        { "/"_s, { "hello"_s } }
     });
     HTTPServer mixedContentServer({
-        { "/", { {{ "Content-Type", "text/html" }}, makeString("<img src='http://127.0.0.1:", insecureServer.port(), "/'></img>") } },
+        { "/"_s, { {{ "Content-Type"_s, "text/html"_s }}, makeString("<img src='http://127.0.0.1:"_s, insecureServer.port(), "/'></img>"_s) } },
     }, HTTPServer::Protocol::Https);
 
-    auto [webView, delegate] = webViewWithNavigationDelegate();
+    auto configuration = adoptNS([WKWebViewConfiguration new]);
+    for (_WKFeature *feature in WKPreferences._features) {
+        NSString *key = feature.key;
+        if ([key isEqualToString:@"UpgradeMixedContentEnabled"])
+            [[configuration preferences] _setEnabled:NO forFeature:feature];
+    }
+    auto [webView, delegate] = webViewWithNavigationDelegate(configuration);
     EXPECT_FALSE([webView hasOnlySecureContent]);
 
     [webView loadRequest:secureServer.request()];
@@ -463,11 +441,11 @@ TEST(TLSVersion, BackForwardHasOnlySecureContent)
 TEST(TLSVersion, LegacySubresources)
 {
     HTTPServer legacyServer({
-        { "/frame", { "shouldn't load with fastServerTrustEvaluationEnabled" }}
+        { "/frame"_s, { "shouldn't load with fastServerTrustEvaluationEnabled"_s }}
     }, HTTPServer::Protocol::HttpsWithLegacyTLS);
 
     HTTPServer modernServer({
-        { "/", { makeString("<iframe src='https://127.0.0.1:", legacyServer.port(), "/frame'/>") }}
+        { "/"_s, { makeString("<iframe src='https://127.0.0.1:"_s, legacyServer.port(), "/frame'/>"_s) }}
     }, HTTPServer::Protocol::Https);
 
     auto dataStoreConfiguration = adoptNS([[_WKWebsiteDataStoreConfiguration alloc] initNonPersistentConfiguration]);
@@ -499,8 +477,4 @@ TEST(TLSVersion, LegacySubresources)
 
 #endif // HAVE(TLS_VERSION_DURING_CHALLENGE)
 
-#endif // HAVE(TLS_PROTOCOL_VERSION_T)
-
 }
-
-#endif // HAVE(SSL)

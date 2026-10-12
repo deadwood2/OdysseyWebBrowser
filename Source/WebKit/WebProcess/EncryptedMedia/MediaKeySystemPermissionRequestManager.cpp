@@ -29,18 +29,24 @@
 #if ENABLE(ENCRYPTED_MEDIA)
 
 #include "Logging.h"
+#include "MessageSenderInlines.h"
 #include "WebCoreArgumentCoders.h"
 #include "WebFrame.h"
 #include "WebPage.h"
 #include "WebPageProxyMessages.h"
 #include <WebCore/Document.h>
-#include <WebCore/Frame.h>
+#include <WebCore/FrameDestructionObserverInlines.h>
 #include <WebCore/FrameLoader.h>
+#include <WebCore/LocalFrame.h>
+#include <WebCore/Page.h>
 #include <WebCore/SecurityOrigin.h>
 #include <WebCore/SecurityOriginData.h>
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebKit {
 using namespace WebCore;
+
+WTF_MAKE_TZONE_ALLOCATED_IMPL(MediaKeySystemPermissionRequestManager);
 
 MediaKeySystemPermissionRequestManager::MediaKeySystemPermissionRequestManager(WebPage& page)
     : m_page(page)
@@ -50,7 +56,7 @@ MediaKeySystemPermissionRequestManager::MediaKeySystemPermissionRequestManager(W
 void MediaKeySystemPermissionRequestManager::startMediaKeySystemRequest(MediaKeySystemRequest& request)
 {
     Document* document = request.document();
-    Frame* frame = document ? document->frame() : nullptr;
+    auto* frame = document ? document->frame() : nullptr;
 
     if (!frame || !document->page()) {
         request.deny(emptyString());
@@ -76,9 +82,9 @@ void MediaKeySystemPermissionRequestManager::sendMediaKeySystemRequest(MediaKeyS
         return;
     }
 
-    m_ongoingMediaKeySystemRequests.add(userRequest.identifier(), makeRef(userRequest));
+    m_ongoingMediaKeySystemRequests.add(userRequest.identifier(), userRequest);
 
-    WebFrame* webFrame = WebFrame::fromCoreFrame(*frame);
+    auto webFrame = WebFrame::fromCoreFrame(*frame);
     ASSERT(webFrame);
 
     auto* topLevelDocumentOrigin = userRequest.topLevelDocumentOrigin();
@@ -119,15 +125,13 @@ void MediaKeySystemPermissionRequestManager::mediaCanStart(Document& document)
         sendMediaKeySystemRequest(pendingRequest);
 }
 
-void MediaKeySystemPermissionRequestManager::mediaKeySystemWasGranted(MediaKeySystemRequestIdentifier requestID, CompletionHandler<void()>&& completionHandler)
+void MediaKeySystemPermissionRequestManager::mediaKeySystemWasGranted(MediaKeySystemRequestIdentifier requestID)
 {
     auto request = m_ongoingMediaKeySystemRequests.take(requestID);
-    if (!request) {
-        completionHandler();
+    if (!request)
         return;
-    }
 
-    request->allow(WTFMove(completionHandler));
+    request->allow();
 }
 
 void MediaKeySystemPermissionRequestManager::mediaKeySystemWasDenied(MediaKeySystemRequestIdentifier requestID, String&& message)

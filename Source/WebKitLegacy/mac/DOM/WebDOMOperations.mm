@@ -44,16 +44,16 @@
 #import <JavaScriptCore/JSGlobalObjectInlines.h>
 #import <JavaScriptCore/JSLock.h>
 #import <WebCore/Document.h>
-#import <WebCore/Frame.h>
 #import <WebCore/FrameLoader.h>
 #import <WebCore/HTMLInputElement.h>
-#import <WebCore/HTMLParserIdioms.h>
 #import <WebCore/HTMLTextFormControlElement.h>
 #import <WebCore/JSElement.h>
 #import <WebCore/LegacyWebArchive.h>
+#import <WebCore/LocalFrame.h>
 #import <WebCore/PlatformWheelEvent.h>
 #import <WebCore/Range.h>
 #import <WebCore/RenderElement.h>
+#import <WebCore/RenderStyleInlines.h>
 #import <WebCore/RenderTreeAsText.h>
 #import <WebCore/ShadowRoot.h>
 #import <WebCore/SimpleRange.h>
@@ -62,6 +62,7 @@
 #import <WebKitLegacy/DOMExtensions.h>
 #import <WebKitLegacy/DOMHTML.h>
 #import <wtf/Assertions.h>
+#import <wtf/text/MakeString.h>
 
 using namespace WebCore;
 using namespace JSC;
@@ -92,7 +93,7 @@ using namespace JSC;
 
 - (WebArchive *)webArchiveByFilteringSubframes:(WebArchiveSubframeFilter)webArchiveSubframeFilter
 {
-    auto webArchive = adoptNS([[WebArchive alloc] _initWithCoreLegacyWebArchive:LegacyWebArchive::create(*core(self), [webArchiveSubframeFilter](Frame& subframe) -> bool {
+    auto webArchive = adoptNS([[WebArchive alloc] _initWithCoreLegacyWebArchive:LegacyWebArchive::create(*core(self), [webArchiveSubframeFilter](LocalFrame& subframe) -> bool {
         return webArchiveSubframeFilter(kit(&subframe));
     })]);
 
@@ -139,14 +140,14 @@ using namespace JSC;
     String markupString = serializeFragment(node, SerializedNodes::SubtreeIncludingNode);
     Node::NodeType nodeType = node.nodeType();
     if (nodeType != Node::DOCUMENT_NODE && nodeType != Node::DOCUMENT_TYPE_NODE)
-        markupString = documentTypeString(node.document()) + markupString;
+        markupString = makeString(documentTypeString(node.document()), markupString);
 
     return markupString;
 }
 
 - (NSRect)_renderRect:(bool *)isReplaced
 {
-    return NSRect(core(self)->pixelSnappedRenderRect(isReplaced));
+    return NSRect(core(self)->pixelSnappedAbsoluteBoundingRect(isReplaced));
 }
 
 @end
@@ -155,7 +156,7 @@ using namespace JSC;
 
 - (WebFrame *)webFrame
 {
-    Frame* frame = core(self)->frame();
+    auto* frame = core(self)->frame();
     if (!frame)
         return nil;
     return kit(frame);
@@ -163,7 +164,7 @@ using namespace JSC;
 
 - (NSURL *)URLWithAttributeString:(NSString *)string
 {
-    return core(self)->completeURL(stripLeadingAndTrailingHTMLSpaces(string));
+    return core(self)->completeURL(string);
 }
 
 @end
@@ -192,7 +193,7 @@ using namespace JSC;
 - (NSString *)markupString
 {
     auto range = makeSimpleRange(*core(self));
-    return String { documentTypeString(range.start.document()) + serializePreservingVisualAppearance(range, nullptr, AnnotateForInterchange::Yes) };
+    return makeString(documentTypeString(range.start.document()), serializePreservingVisualAppearance(range, nullptr, AnnotateForInterchange::Yes));
 }
 
 @end

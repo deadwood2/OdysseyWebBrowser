@@ -38,9 +38,10 @@ WK_CLASS_AVAILABLE(macos(12.0), ios(15.0))
 @interface _WKAuthenticatorResponse : NSObject
 
 @property (nonatomic, readonly) _WKAuthenticatorAttachment attachment;
-@property (nonatomic, readonly) NSData *clientDataJSON;
-@property (nonatomic, readonly) NSData *rawId;
-@property (nullable, nonatomic, readonly, strong) _WKAuthenticationExtensionsClientOutputs *extensions;
+@property (nullable, nonatomic, strong, readonly) NSData *clientDataJSON;
+@property (nonatomic, strong, readonly) NSData *rawId;
+@property (nullable, nonatomic, strong, readonly) _WKAuthenticationExtensionsClientOutputs *extensions;
+@property (nullable, nonatomic, copy) NSData *extensionOutputsCBOR;
 
 @end
 

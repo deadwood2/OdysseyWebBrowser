@@ -32,13 +32,15 @@
 #include "LayerTreeContext.h"
 #include "SimpleViewportController.h"
 #include "ThreadedCompositor.h"
-#include "ThreadedDisplayRefreshMonitor.h"
+#include <WebCore/FloatPoint.h>
 #include <WebCore/PlatformScreen.h>
 #include <wtf/Forward.h>
 #include <wtf/OptionSet.h>
 #include <wtf/RunLoop.h>
-#if PLATFORM(GTK)
-#include <WebCore/CoordinatedGraphicsLayer.h>
+#include <wtf/TZoneMalloc.h>
+
+#if !HAVE(DISPLAY_LINK)
+#include "ThreadedDisplayRefreshMonitor.h"
 #endif
 
 #if USE(GRAPHICS_LAYER_TEXTURE_MAPPER)
@@ -48,11 +50,12 @@
 #else // USE(GRAPHICS_LAYER_TEXTURE_MAPPER)
 
 namespace WebCore {
+class CoordinatedGraphicsLayer;
+class Damage;
 class IntRect;
 class IntSize;
 class GraphicsLayer;
 class GraphicsLayerFactory;
-struct CoordinatedGraphicsState;
 struct ViewportAttributes;
 }
 
@@ -62,17 +65,23 @@ class WebPage;
 
 class LayerTreeHost
 #if USE(COORDINATED_GRAPHICS)
-    final : public CompositingCoordinator::Client, public AcceleratedSurface::Client
+    final : public CompositingCoordinator::Client, public AcceleratedSurface::Client, public ThreadedCompositor::Client
+#if !HAVE(DISPLAY_LINK)
+    , public ThreadedDisplayRefreshMonitor::Client
+#endif
 #endif
 {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED(LayerTreeHost);
 public:
+#if HAVE(DISPLAY_LINK)
     explicit LayerTreeHost(WebPage&);
+#else
+    LayerTreeHost(WebPage&, WebCore::PlatformDisplayID);
+#endif
     ~LayerTreeHost();
 
     const LayerTreeContext& layerTreeContext() const { return m_layerTreeContext; }
     void setLayerFlushSchedulingEnabled(bool);
-    void setShouldNotifyAfterNextScheduledLayerFlush(bool);
 
     void scheduleLayerFlush();
     void cancelPendingLayerFlush();
@@ -92,39 +101,55 @@ public:
     void contentsSizeChanged(const WebCore::IntSize&);
     void didChangeViewportAttributes(WebCore::ViewportAttributes&&);
 
-    void setIsDiscardable(bool);
-
     void deviceOrPageScaleFactorChanged();
+    void backgroundColorDidChange();
 
+#if !HAVE(DISPLAY_LINK)
     RefPtr<WebCore::DisplayRefreshMonitor> createDisplayRefreshMonitor(WebCore::PlatformDisplayID);
-
     WebCore::PlatformDisplayID displayID() const { return m_displayID; }
+#endif
 
 #if PLATFORM(GTK)
     void adjustTransientZoom(double, WebCore::FloatPoint);
     void commitTransientZoom(double, WebCore::FloatPoint);
 #endif
+
+#if PLATFORM(WPE) && USE(GBM) && ENABLE(WPE_PLATFORM)
+    void preferredBufferFormatsDidChange();
+#endif
 private:
 #if USE(COORDINATED_GRAPHICS)
     void layerFlushTimerFired();
     void didChangeViewport();
+#if HAVE(DISPLAY_LINK)
+    void didRenderFrameTimerFired();
+#endif
     void renderNextFrame(bool);
 
     // CompositingCoordinator::Client
     void didFlushRootLayer(const WebCore::FloatRect& visibleContentRect) override;
-    void notifyFlushRequired() override { scheduleLayerFlush(); };
-    void commitSceneState(const WebCore::CoordinatedGraphicsState&) override;
+    void commitSceneState(const RefPtr<Nicosia::Scene>&) override;
     void updateScene() override;
 
     // AcceleratedSurface::Client
     void frameComplete() override;
 
-    uint64_t nativeSurfaceHandleForCompositing();
-    void didDestroyGLContext();
-    void willRenderFrame();
-    void didRenderFrame();
-    void requestDisplayRefreshMonitorUpdate();
-    void handleDisplayRefreshMonitorUpdate(bool);
+    // ThreadedCompositor::Client
+    uint64_t nativeSurfaceHandleForCompositing() override;
+    void didCreateGLContext() override;
+    void willDestroyGLContext() override;
+    void didDestroyGLContext() override;
+    void resize(const WebCore::IntSize&) override;
+    void willRenderFrame() override;
+    void clearIfNeeded() override;
+    void didRenderFrame(uint32_t, const WebCore::Damage&) override;
+    void displayDidRefresh(WebCore::PlatformDisplayID) override;
+
+#if !HAVE(DISPLAY_LINK)
+    // ThreadedDisplayRefreshMonitor::Client
+    void requestDisplayRefreshMonitorUpdate() override;
+    void handleDisplayRefreshMonitorUpdate(bool hasBeenRescheduled) override;
+#endif
 
 #if PLATFORM(GTK)
     WebCore::FloatPoint constrainTransientZoomOrigin(double, WebCore::FloatPoint) const;
@@ -132,75 +157,19 @@ private:
     void applyTransientZoomToLayers(double, WebCore::FloatPoint);
 #endif
 
-    class CompositorClient final : public ThreadedCompositor::Client, public ThreadedDisplayRefreshMonitor::Client  {
-        WTF_MAKE_NONCOPYABLE(CompositorClient);
-    public:
-        CompositorClient(LayerTreeHost& layerTreeHost)
-            : m_layerTreeHost(layerTreeHost)
-        {
-        }
-
-    private:
-        uint64_t nativeSurfaceHandleForCompositing() override
-        {
-            return m_layerTreeHost.nativeSurfaceHandleForCompositing();
-        }
-
-        void didDestroyGLContext() override
-        {
-            m_layerTreeHost.didDestroyGLContext();
-        }
-
-        void resize(const WebCore::IntSize& size) override
-        {
-            if (m_layerTreeHost.m_surface)
-                m_layerTreeHost.m_surface->clientResize(size);
-        }
-
-        void willRenderFrame() override
-        {
-            m_layerTreeHost.willRenderFrame();
-        }
-
-        void didRenderFrame() override
-        {
-            m_layerTreeHost.didRenderFrame();
-        }
-
-        void requestDisplayRefreshMonitorUpdate() override
-        {
-            m_layerTreeHost.requestDisplayRefreshMonitorUpdate();
-        }
-
-        void handleDisplayRefreshMonitorUpdate(bool hasBeenRescheduled) override
-        {
-            m_layerTreeHost.handleDisplayRefreshMonitorUpdate(hasBeenRescheduled);
-        }
-
-        LayerTreeHost& m_layerTreeHost;
-    };
-
-    enum class DiscardableSyncActions {
-        UpdateSize = 1 << 1,
-        UpdateViewport = 1 << 2,
-        UpdateScale = 1 << 3
-    };
 #endif // USE(COORDINATED_GRAPHICS)
 
     WebPage& m_webPage;
     LayerTreeContext m_layerTreeContext;
 #if USE(COORDINATED_GRAPHICS)
     bool m_layerFlushSchedulingEnabled { true };
-    bool m_notifyAfterScheduledLayerFlush { false };
     bool m_isSuspended { false };
     bool m_isWaitingForRenderer { false };
     bool m_scheduledWhileWaitingForRenderer { false };
     float m_lastPageScaleFactor { 1 };
     WebCore::IntPoint m_lastScrollPosition;
-    bool m_isDiscardable { false };
-    OptionSet<DiscardableSyncActions> m_discardableSyncActions;
+    bool m_scrolledSinceLastFrame { false };
     WebCore::GraphicsLayer* m_viewOverlayRootLayer { nullptr };
-    CompositorClient m_compositorClient;
     std::unique_ptr<AcceleratedSurface> m_surface;
     RefPtr<ThreadedCompositor> m_compositor;
     SimpleViewportController m_viewportController;
@@ -208,23 +177,34 @@ private:
         CompletionHandler<void()> callback;
         bool needsFreshFlush { false };
     } m_forceRepaintAsync;
-    RunLoop::Timer<LayerTreeHost> m_layerFlushTimer;
+    RunLoop::Timer m_layerFlushTimer;
+#if HAVE(DISPLAY_LINK)
+    RunLoop::Timer m_didRenderFrameTimer;
+#endif
     CompositingCoordinator m_coordinator;
 #endif // USE(COORDINATED_GRAPHICS)
+#if !HAVE(DISPLAY_LINK)
     WebCore::PlatformDisplayID m_displayID;
+#endif
 
 #if PLATFORM(GTK)
     bool m_transientZoom { false };
     double m_transientZoomScale { 1 };
     WebCore::FloatPoint m_transientZoomOrigin;
 #endif
+
+    uint32_t m_compositionRequestID { 0 };
+    uint32_t m_compositionResponseID { 0 };
 };
 
 #if !USE(COORDINATED_GRAPHICS)
+#if HAVE(DISPLAY_LINK)
 inline LayerTreeHost::LayerTreeHost(WebPage& webPage) : m_webPage(webPage) { }
+#else
+inline LayerTreeHost::LayerTreeHost(WebPage& webPage, WebCore::PlatformDisplayID displayID) : m_webPage(webPage), m_displayID(displayID) { }
+#endif
 inline LayerTreeHost::~LayerTreeHost() { }
 inline void LayerTreeHost::setLayerFlushSchedulingEnabled(bool) { }
-inline void LayerTreeHost::setShouldNotifyAfterNextScheduledLayerFlush(bool) { }
 inline void LayerTreeHost::scheduleLayerFlush() { }
 inline void LayerTreeHost::cancelPendingLayerFlush() { }
 inline void LayerTreeHost::setRootCompositingLayer(WebCore::GraphicsLayer*) { }
@@ -238,9 +218,13 @@ inline void LayerTreeHost::resumeRendering() { }
 inline WebCore::GraphicsLayerFactory* LayerTreeHost::graphicsLayerFactory() { return nullptr; }
 inline void LayerTreeHost::contentsSizeChanged(const WebCore::IntSize&) { }
 inline void LayerTreeHost::didChangeViewportAttributes(WebCore::ViewportAttributes&&) { }
-inline void LayerTreeHost::setIsDiscardable(bool) { }
 inline void LayerTreeHost::deviceOrPageScaleFactorChanged() { }
+#if PLATFORM(GTK)
+inline void LayerTreeHost::adjustTransientZoom(double, WebCore::FloatPoint) { }
+inline void LayerTreeHost::commitTransientZoom(double, WebCore::FloatPoint) { }
+#else
 inline RefPtr<WebCore::DisplayRefreshMonitor> LayerTreeHost::createDisplayRefreshMonitor(WebCore::PlatformDisplayID) { return nullptr; }
+#endif
 #endif
 
 } // namespace WebKit

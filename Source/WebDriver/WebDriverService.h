@@ -88,7 +88,10 @@ private:
     void findElements(RefPtr<JSON::Object>&&, Function<void (CommandResult&&)>&&);
     void findElementFromElement(RefPtr<JSON::Object>&&, Function<void (CommandResult&&)>&&);
     void findElementsFromElement(RefPtr<JSON::Object>&&, Function<void (CommandResult&&)>&&);
+    void findElementFromShadowRoot(RefPtr<JSON::Object>&&, Function<void(CommandResult&&)>&&);
+    void findElementsFromShadowRoot(RefPtr<JSON::Object>&&, Function<void(CommandResult&&)>&&);
     void getActiveElement(RefPtr<JSON::Object>&&, Function<void (CommandResult&&)>&&);
+    void getElementShadowRoot(RefPtr<JSON::Object>&&, Function<void(CommandResult&&)>&&);
     void isElementSelected(RefPtr<JSON::Object>&&, Function<void (CommandResult&&)>&&);
     void getElementAttribute(RefPtr<JSON::Object>&&, Function<void (CommandResult&&)>&&);
     void getElementProperty(RefPtr<JSON::Object>&&, Function<void (CommandResult&&)>&&);
@@ -97,6 +100,8 @@ private:
     void getElementTagName(RefPtr<JSON::Object>&&, Function<void (CommandResult&&)>&&);
     void getElementRect(RefPtr<JSON::Object>&&, Function<void (CommandResult&&)>&&);
     void isElementEnabled(RefPtr<JSON::Object>&&, Function<void (CommandResult&&)>&&);
+    void getComputedRole(RefPtr<JSON::Object>&&, Function<void (CommandResult&&)>&&);
+    void getComputedLabel(RefPtr<JSON::Object>&&, Function<void (CommandResult&&)>&&);
     void isElementDisplayed(RefPtr<JSON::Object>&&, Function<void (CommandResult&&)>&&);
     void elementClick(RefPtr<JSON::Object>&&, Function<void (CommandResult&&)>&&);
     void elementClear(RefPtr<JSON::Object>&&, Function<void (CommandResult&&)>&&);
@@ -138,10 +143,8 @@ private:
     HTTPServer m_server;
     RefPtr<Session> m_session;
 
-#if USE(INSPECTOR_SOCKET_SERVER)
     String m_targetAddress;
     uint16_t m_targetPort { 0 };
-#endif
 };
 
 } // namespace WebDriver

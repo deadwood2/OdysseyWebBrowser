@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007, 2008 Apple Inc. All rights reserved.
+ * Copyright (C) 2007-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,12 +28,15 @@
 #include "CachedResource.h"
 #include "CachedResourceClient.h"
 #include "Font.h"
+#include "FrameLoaderTypes.h"
 #include "TextFlags.h"
+#include "TrustedFonts.h"
 #include <pal/SessionID.h>
 
 namespace WebCore {
 
 class CachedResourceLoader;
+class FontCreationContext;
 class FontDescription;
 class FontPlatformData;
 struct FontSelectionSpecifiedCapabilities;
@@ -52,35 +55,44 @@ public:
     void beginLoadIfNeeded(CachedResourceLoader&);
     bool stillNeedsLoad() const override { return !m_loadInitiated; }
 
-    virtual bool ensureCustomFontData(const AtomString& remoteURI);
-    static std::unique_ptr<FontCustomPlatformData> createCustomFontData(SharedBuffer&, const String& itemInCollection, bool& wrapping);
-    static FontPlatformData platformDataFromCustomData(FontCustomPlatformData&, const FontDescription&, bool bold, bool italic, const FontFeatureSettings&, FontSelectionSpecifiedCapabilities);
+    virtual bool ensureCustomFontData();
+    static RefPtr<FontCustomPlatformData> createCustomFontData(SharedBuffer&, const String& itemInCollection, bool& wrapping);
+    static RefPtr<FontCustomPlatformData> createCustomFontDataExperimentalParser(SharedBuffer&, const String& itemInCollection, bool& wrapping);
+    static FontPlatformData platformDataFromCustomData(FontCustomPlatformData&, const FontDescription&, bool bold, bool italic, const FontCreationContext&);
 
-    virtual RefPtr<Font> createFont(const FontDescription&, const AtomString& remoteURI, bool syntheticBold, bool syntheticItalic, const FontFeatureSettings&, FontSelectionSpecifiedCapabilities);
+    virtual RefPtr<Font> createFont(const FontDescription&, bool syntheticBold, bool syntheticItalic, const FontCreationContext&);
+
+    bool didRefuseToParseCustomFontWithSafeFontParser() const { return m_didRefuseToParseCustomFont; }
 
 protected:
-    FontPlatformData platformDataFromCustomData(const FontDescription&, bool bold, bool italic, const FontFeatureSettings&, FontSelectionSpecifiedCapabilities);
+    FontPlatformData platformDataFromCustomData(const FontDescription&, bool bold, bool italic, const FontCreationContext&);
 
     bool ensureCustomFontData(SharedBuffer* data);
 
 private:
     String calculateItemInCollection() const;
 
-    void checkNotify(const NetworkLoadMetrics&) override;
+    void checkNotify(const NetworkLoadMetrics&, LoadWillContinueInAnotherProcess = LoadWillContinueInAnotherProcess::No) override;
     bool mayTryReplaceEncodedData() const override;
 
     void load(CachedResourceLoader&) override;
     NO_RETURN_DUE_TO_ASSERT void setBodyDataFrom(const CachedResource&) final { ASSERT_NOT_REACHED(); }
 
     void didAddClient(CachedResourceClient&) override;
-    void finishLoading(SharedBuffer*, const NetworkLoadMetrics&) override;
+    void finishLoading(const FragmentedSharedBuffer*, const NetworkLoadMetrics&) override;
 
     void allClientsRemoved() override;
+
+    FontParsingPolicy policyForCustomFont(const Ref<SharedBuffer>& data);
+    void setErrorAndDeleteData();
 
     bool m_loadInitiated;
     bool m_hasCreatedFontDataWrappingResource;
 
-    std::unique_ptr<FontCustomPlatformData> m_fontCustomPlatformData;
+    FontParsingPolicy m_fontParsingPolicy { FontParsingPolicy::Deny };
+    bool m_didRefuseToParseCustomFont { false };
+
+    RefPtr<FontCustomPlatformData> m_fontCustomPlatformData;
 
     friend class MemoryCache;
 };

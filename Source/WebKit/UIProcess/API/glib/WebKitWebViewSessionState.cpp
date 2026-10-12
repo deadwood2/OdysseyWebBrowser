@@ -27,6 +27,14 @@
 
 using namespace WebKit;
 
+/**
+ * WebKitWebViewSessionState: (ref-func webkit_web_view_session_state_ref) (unref-func webkit_web_view_session_state_unref)
+ *
+ * Handles serialization of a web view's browsing state.
+ *
+ * Since: 2.12
+ */
+
 struct _WebKitWebViewSessionState {
     _WebKitWebViewSessionState(SessionState&& state)
         : sessionState(WTFMove(state))
@@ -98,32 +106,18 @@ enum HTMLBodyElementType {
     Blob
 };
 
-static inline unsigned toHTMLBodyElementType(HTTPBody::Element::Type type)
+static inline unsigned toHTMLBodyElementType(size_t index)
 {
-    switch (type) {
-    case HTTPBody::Element::Type::Data:
+    switch (index) {
+    case WTF::alternativeIndexV<Vector<uint8_t>, HTTPBody::Element::Data>:
         return HTMLBodyElementType::Data;
-    case HTTPBody::Element::Type::File:
+    case WTF::alternativeIndexV<HTTPBody::Element::FileData, HTTPBody::Element::Data>:
         return HTMLBodyElementType::File;
-    case HTTPBody::Element::Type::Blob:
+    case WTF::alternativeIndexV<String, HTTPBody::Element::Data>:
         return HTMLBodyElementType::Blob;
     }
 
     return HTMLBodyElementType::Data;
-}
-
-static inline HTTPBody::Element::Type toHTTPBodyElementType(unsigned type)
-{
-    switch (type) {
-    case HTMLBodyElementType::Data:
-        return HTTPBody::Element::Type::Data;
-    case HTMLBodyElementType::File:
-        return HTTPBody::Element::Type::File;
-    case HTMLBodyElementType::Blob:
-        return HTTPBody::Element::Type::Blob;
-    }
-
-    return HTTPBody::Element::Type::Data;
 }
 
 static inline void encodeHTTPBody(GVariantBuilder* sessionBuilder, const HTTPBody& httpBody)
@@ -131,26 +125,43 @@ static inline void encodeHTTPBody(GVariantBuilder* sessionBuilder, const HTTPBod
     g_variant_builder_open(sessionBuilder, G_VARIANT_TYPE("(sa" HTTP_BODY_ELEMENT_TYPE_STRING_V1 ")"));
     g_variant_builder_add(sessionBuilder, "s", httpBody.contentType.utf8().data());
     g_variant_builder_open(sessionBuilder, G_VARIANT_TYPE("a" HTTP_BODY_ELEMENT_TYPE_STRING_V1));
-    g_variant_builder_open(sessionBuilder, G_VARIANT_TYPE(HTTP_BODY_ELEMENT_TYPE_STRING_V1));
     for (const auto& element : httpBody.elements) {
-        g_variant_builder_add(sessionBuilder, "u", toHTMLBodyElementType(element.type));
+        g_variant_builder_open(sessionBuilder, G_VARIANT_TYPE(HTTP_BODY_ELEMENT_TYPE_STRING_V1));
+        g_variant_builder_add(sessionBuilder, "u", toHTMLBodyElementType(element.data.index()));
+
         g_variant_builder_open(sessionBuilder, G_VARIANT_TYPE("ay"));
-        for (auto item : element.data)
-            g_variant_builder_add(sessionBuilder, "y", item);
+        if (auto* vector = std::get_if<Vector<uint8_t>>(&element.data)) {
+            for (auto& item : *vector)
+                g_variant_builder_add(sessionBuilder, "y", item);
+        }
         g_variant_builder_close(sessionBuilder);
-        g_variant_builder_add(sessionBuilder, "s", element.filePath.utf8().data());
-        g_variant_builder_add(sessionBuilder, "x", element.fileStart);
-        if (element.fileLength)
-            g_variant_builder_add(sessionBuilder, "mx", TRUE, element.fileLength.value());
-        else
+
+        if (auto* fileData = std::get_if<HTTPBody::Element::FileData>(&element.data)) {
+            g_variant_builder_add(sessionBuilder, "s", fileData->filePath.utf8().data());
+            g_variant_builder_add(sessionBuilder, "x", fileData->fileStart);
+            if (fileData->fileLength)
+                g_variant_builder_add(sessionBuilder, "mx", TRUE, fileData->fileLength.value());
+            else
+                g_variant_builder_add(sessionBuilder, "mx", FALSE);
+            if (fileData->expectedFileModificationTime)
+                g_variant_builder_add(sessionBuilder, "md", TRUE, fileData->expectedFileModificationTime.value());
+            else
+                g_variant_builder_add(sessionBuilder, "md", FALSE);
+        } else {
+            g_variant_builder_add(sessionBuilder, "s", "");
+            int64_t fileStart { 0 };
+            g_variant_builder_add(sessionBuilder, "x", fileStart);
             g_variant_builder_add(sessionBuilder, "mx", FALSE);
-        if (element.expectedFileModificationTime)
-            g_variant_builder_add(sessionBuilder, "md", TRUE, element.expectedFileModificationTime.value());
-        else
             g_variant_builder_add(sessionBuilder, "md", FALSE);
-        g_variant_builder_add(sessionBuilder, "s", element.blobURLString.utf8().data());
+        }
+
+        if (auto* blobURLString = std::get_if<String>(&element.data))
+            g_variant_builder_add(sessionBuilder, "s", blobURLString->utf8().data());
+        else
+            g_variant_builder_add(sessionBuilder, "s", "");
+
+        g_variant_builder_close(sessionBuilder);
     }
-    g_variant_builder_close(sessionBuilder);
     g_variant_builder_close(sessionBuilder);
     g_variant_builder_close(sessionBuilder);
 }
@@ -160,10 +171,10 @@ static inline void encodeFrameState(GVariantBuilder* sessionBuilder, const Frame
     g_variant_builder_add(sessionBuilder, "s", frameState.urlString.utf8().data());
     g_variant_builder_add(sessionBuilder, "s", frameState.originalURLString.utf8().data());
     g_variant_builder_add(sessionBuilder, "s", frameState.referrer.utf8().data());
-    g_variant_builder_add(sessionBuilder, "s", frameState.target.utf8().data());
+    g_variant_builder_add(sessionBuilder, "s", frameState.target.string().utf8().data());
     g_variant_builder_open(sessionBuilder, G_VARIANT_TYPE("as"));
     for (const auto& state : frameState.documentState())
-        g_variant_builder_add(sessionBuilder, "s", state.utf8().data());
+        g_variant_builder_add(sessionBuilder, "s", state.string().utf8().data());
     g_variant_builder_close(sessionBuilder);
     if (!frameState.stateObjectData)
         g_variant_builder_add(sessionBuilder, "may", FALSE);
@@ -259,22 +270,32 @@ static inline bool decodeHTTPBody(GVariant* httpBodyVariant, HTTPBody& httpBody)
     const char* blobURLString;
     while (g_variant_iter_loop(elementsIter.get(), HTTP_BODY_ELEMENT_FORMAT_STRING_V1, &type, &dataIter, &filePath, &fileStart, &hasFileLength, &fileLength, &hasFileModificationTime, &fileModificationTime, &blobURLString)) {
         HTTPBody::Element element;
-        element.type = toHTTPBodyElementType(type);
-        if (gsize dataLength = g_variant_iter_n_children(dataIter)) {
-            element.data.reserveInitialCapacity(dataLength);
-            guchar dataValue;
-            while (g_variant_iter_next(dataIter, "y", &dataValue))
-                element.data.uncheckedAppend(dataValue);
+        switch (type) {
+        case WTF::alternativeIndexV<Vector<uint8_t>, HTTPBody::Element::Data>:
+            if (gsize dataLength = g_variant_iter_n_children(dataIter)) {
+                Vector<uint8_t> data;
+                data.reserveInitialCapacity(dataLength);
+                guchar dataValue;
+                while (g_variant_iter_next(dataIter, "y", &dataValue))
+                    data.append(dataValue);
+                httpBody.elements.append({ WTFMove(data) });
+            }
+            break;
+        case WTF::alternativeIndexV<HTTPBody::Element::FileData, HTTPBody::Element::Data>: {
+            HTTPBody::Element::FileData fileData;
+            fileData.filePath = String::fromUTF8(filePath);
+            fileData.fileStart = fileStart;
+            if (hasFileLength)
+                fileData.fileLength = fileLength;
+            if (hasFileModificationTime)
+                fileData.expectedFileModificationTime = WallTime::fromRawSeconds(fileModificationTime);
+            httpBody.elements.append({ WTFMove(fileData) });
+            break;
         }
-        element.filePath = String::fromUTF8(filePath);
-        element.fileStart = fileStart;
-        if (hasFileLength)
-            element.fileLength = fileLength;
-        if (hasFileModificationTime)
-            element.expectedFileModificationTime = WallTime::fromRawSeconds(fileModificationTime);
-        element.blobURLString = String::fromUTF8(blobURLString);
-
-        httpBody.elements.uncheckedAppend(WTFMove(element));
+        case WTF::alternativeIndexV<String, HTTPBody::Element::Data>:
+            httpBody.elements.append({ String::fromUTF8(blobURLString) });
+            break;
+        }
     }
 
     return true;
@@ -303,13 +324,13 @@ static inline void decodeFrameState(GVariant* frameStateVariant, FrameState& fra
     // send an empty Referer header. Bug #159606.
     if (strlen(referrer))
         frameState.referrer = String::fromUTF8(referrer);
-    frameState.target = String::fromUTF8(target);
+    frameState.target = AtomString::fromUTF8(target);
     if (gsize documentStateLength = g_variant_iter_n_children(documentStateIter.get())) {
-        Vector<String> documentState;
+        Vector<AtomString> documentState;
         documentState.reserveInitialCapacity(documentStateLength);
         const char* documentStateString;
         while (g_variant_iter_next(documentStateIter.get(), "&s", &documentStateString))
-            documentState.uncheckedAppend(String::fromUTF8(documentStateString));
+            documentState.append(AtomString::fromUTF8(documentStateString));
         frameState.setDocumentState(documentState);
     }
     if (stateObjectDataIter) {
@@ -318,7 +339,7 @@ static inline void decodeFrameState(GVariant* frameStateVariant, FrameState& fra
             stateObjectVector.reserveInitialCapacity(stateObjectDataLength);
             guchar stateObjectDataValue;
             while (g_variant_iter_next(stateObjectDataIter.get(), "y", &stateObjectDataValue))
-                stateObjectVector.uncheckedAppend(stateObjectDataValue);
+                stateObjectVector.append(stateObjectDataValue);
         }
         frameState.stateObjectData = WTFMove(stateObjectVector);
     }
@@ -350,7 +371,7 @@ static inline void decodeBackForwardListItemStateV1(GVariantIter* backForwardLis
         state.pageState.title = String::fromUTF8(title);
         decodeFrameState(frameStateVariant, state.pageState.mainFrameState);
         state.pageState.shouldOpenExternalURLsPolicy = toWebCoreExternalURLsPolicy(shouldOpenExternalURLsPolicy);
-        backForwardListState.items.uncheckedAppend(WTFMove(state));
+        backForwardListState.items.append(WTFMove(state));
     }
 }
 
@@ -374,7 +395,7 @@ static inline void decodeBackForwardListItemState(GVariantIter* backForwardListS
         state.pageState.title = String::fromUTF8(title);
         decodeFrameState(frameStateVariant, state.pageState.mainFrameState);
         state.pageState.shouldOpenExternalURLsPolicy = toWebCoreExternalURLsPolicy(shouldOpenExternalURLsPolicy);
-        backForwardListState.items.uncheckedAppend(WTFMove(state));
+        backForwardListState.items.append(WTFMove(state));
     }
 }
 
@@ -449,7 +470,9 @@ WebKitWebViewSessionState* webkit_web_view_session_state_new(GBytes* data)
  * webkit_web_view_session_state_ref:
  * @state: a #WebKitWebViewSessionState
  *
- * Atomically increments the reference count of @state by one. This
+ * Atomically increments the reference count of @state by one.
+ *
+ * This
  * function is MT-safe and may be called from any thread.
  *
  * Returns: The passed in #WebKitWebViewSessionState
@@ -467,7 +490,9 @@ WebKitWebViewSessionState* webkit_web_view_session_state_ref(WebKitWebViewSessio
  * webkit_web_view_session_state_unref:
  * @state: a #WebKitWebViewSessionState
  *
- * Atomically decrements the reference count of @state by one. If the
+ * Atomically decrements the reference count of @state by one.
+ *
+ * If the
  * reference count drops to 0, all memory allocated by the #WebKitWebViewSessionState is
  * released. This function is MT-safe and may be called from any thread.
  *

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,34 +31,34 @@
 
 namespace WebCore {
 
-void DeprecatedCSSOMValue::destroy()
+void DeprecatedCSSOMValue::operator delete(DeprecatedCSSOMValue* value, std::destroying_delete_t)
 {
-    switch (classType()) {
-    case DeprecatedComplexValueClass: {
-        delete downcast<DeprecatedCSSOMComplexValue>(this);
-        return;
+    auto destroyAndFree = [&]<typename ValueType> (ValueType& value) {
+        std::destroy_at(&value);
+        ValueType::freeAfterDestruction(&value);
+    };
+
+    switch (value->classType()) {
+    case ClassType::Complex:
+        destroyAndFree(uncheckedDowncast<DeprecatedCSSOMComplexValue>(*value));
+        break;
+    case ClassType::Primitive:
+        destroyAndFree(uncheckedDowncast<DeprecatedCSSOMPrimitiveValue>(*value));
+        break;
+    case ClassType::List:
+        destroyAndFree(uncheckedDowncast<DeprecatedCSSOMValueList>(*value));
+        break;
     }
-    case DeprecatedPrimitiveValueClass: {
-        delete downcast<DeprecatedCSSOMPrimitiveValue>(this);
-        return;
-    }
-    case DeprecatedValueListClass: {
-        delete downcast<DeprecatedCSSOMValueList>(this);
-        return;
-    }
-    }
-    ASSERT_NOT_REACHED();
-    delete this;
 }
 
-unsigned DeprecatedCSSOMValue::cssValueType() const
+unsigned short DeprecatedCSSOMValue::cssValueType() const
 {
-    switch (m_classType) {
-    case DeprecatedComplexValueClass:
-        return downcast<DeprecatedCSSOMComplexValue>(*this).cssValueType();
-    case DeprecatedPrimitiveValueClass:
-        return CSS_PRIMITIVE_VALUE;
-    case DeprecatedValueListClass:
+    switch (classType()) {
+    case ClassType::Complex:
+        return uncheckedDowncast<DeprecatedCSSOMComplexValue>(*this).cssValueType();
+    case ClassType::Primitive:
+        return uncheckedDowncast<DeprecatedCSSOMPrimitiveValue>(*this).cssValueType();
+    case ClassType::List:
         return CSS_VALUE_LIST;
     }
     ASSERT_NOT_REACHED();
@@ -67,16 +67,36 @@ unsigned DeprecatedCSSOMValue::cssValueType() const
 
 String DeprecatedCSSOMValue::cssText() const
 {
-    switch (m_classType) {
-    case DeprecatedComplexValueClass:
-        return downcast<DeprecatedCSSOMComplexValue>(*this).cssText();
-    case DeprecatedPrimitiveValueClass:
-        return downcast<DeprecatedCSSOMPrimitiveValue>(*this).cssText();
-    case DeprecatedValueListClass:
-        return downcast<DeprecatedCSSOMValueList>(*this).cssText();
+    switch (classType()) {
+    case ClassType::Complex:
+        return uncheckedDowncast<DeprecatedCSSOMComplexValue>(*this).cssText();
+    case ClassType::Primitive:
+        return uncheckedDowncast<DeprecatedCSSOMPrimitiveValue>(*this).cssText();
+    case ClassType::List:
+        return uncheckedDowncast<DeprecatedCSSOMValueList>(*this).cssText();
     }
     ASSERT_NOT_REACHED();
-    return "";
+    return emptyString();
+}
+
+unsigned short DeprecatedCSSOMComplexValue::cssValueType() const
+{
+    // These values are exposed in the DOM, but constants for them are not.
+    constexpr unsigned short CSS_INITIAL = 4;
+    constexpr unsigned short CSS_UNSET = 5;
+    constexpr unsigned short CSS_REVERT = 6;
+    switch (valueID(m_value.get())) {
+    case CSSValueInherit:
+        return CSS_INHERIT;
+    case CSSValueInitial:
+        return CSS_INITIAL;
+    case CSSValueUnset:
+        return CSS_UNSET;
+    case CSSValueRevert:
+        return CSS_REVERT;
+    default:
+        return CSS_CUSTOM;
+    }
 }
 
 }

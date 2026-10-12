@@ -29,6 +29,7 @@
 #include "Capabilities.h"
 #include "CommandResult.h"
 #include <wtf/JSONValues.h>
+#include <wtf/text/StringToIntegerConversion.h>
 
 namespace WebDriver {
 
@@ -39,14 +40,14 @@ void WebDriverService::platformInit()
 Capabilities WebDriverService::platformCapabilities()
 {
     Capabilities capabilities;
-    capabilities.platformName = String("linux");
+    capabilities.platformName = String("linux"_s);
     capabilities.setWindowRect = false;
     return capabilities;
 }
 
 bool WebDriverService::platformValidateCapability(const String& name, const Ref<JSON::Value>& value) const
 {
-    if (name != "wpe:browserOptions")
+    if (name != "wpe:browserOptions"_s)
         return true;
 
     auto browserOptions = value->asObject();
@@ -105,7 +106,7 @@ bool WebDriverService::platformMatchCapability(const String&, const Ref<JSON::Va
 
 void WebDriverService::platformParseCapabilities(const JSON::Object& matchedCapabilities, Capabilities& capabilities) const
 {
-    capabilities.browserBinary = String("MiniBrowser");
+    capabilities.browserBinary = String("MiniBrowser"_s);
     capabilities.browserArguments = Vector<String> { "--automation"_s };
 
     auto browserOptions = matchedCapabilities.getObject("wpe:browserOptions"_s);
@@ -126,7 +127,7 @@ void WebDriverService::platformParseCapabilities(const JSON::Object& matchedCapa
         for (unsigned i = 0; i < browserArgumentsLength; ++i) {
             auto argument = browserArguments->get(i)->asString();
             ASSERT(!argument.isNull());
-            capabilities.browserArguments->uncheckedAppend(WTFMove(argument));
+            capabilities.browserArguments->append(WTFMove(argument));
         }
     }
 
@@ -145,7 +146,16 @@ void WebDriverService::platformParseCapabilities(const JSON::Object& matchedCapa
             auto certificateFile = certificate->getString("certificateFile"_s);
             ASSERT(!certificateFile.isNull());
 
-            capabilities.certificates->uncheckedAppend({ WTFMove(host), WTFMove(certificateFile) });
+            capabilities.certificates->append({ WTFMove(host), WTFMove(certificateFile) });
+        }
+    }
+
+    String targetString;
+    if (browserOptions->getString("targetAddress"_s, targetString)) {
+        auto position = targetString.reverseFind(':');
+        if (position != notFound) {
+            capabilities.targetAddr = targetString.left(position);
+            capabilities.targetPort = parseIntegerAllowingTrailingJunk<uint16_t>(StringView { targetString }.substring(position + 1)).value_or(0);
         }
     }
 }

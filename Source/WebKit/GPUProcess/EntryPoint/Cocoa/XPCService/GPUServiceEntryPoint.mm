@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2019-2024 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -42,23 +42,31 @@ public:
     }
 };
 
-template<>
-void initializeAuxiliaryProcess<GPUProcess>(AuxiliaryProcessInitializationParameters&& parameters)
-{
-    static NeverDestroyed<GPUProcess> gpuProcess(WTFMove(parameters));
-}
-
 } // namespace WebKit
 
 #endif // ENABLE(GPU_PROCESS)
 
-extern "C" WK_EXPORT void GPU_SERVICE_INITIALIZER(xpc_connection_t connection, xpc_object_t initializerMessage, xpc_object_t priorityBoostMessage);
+extern "C" WK_EXPORT void GPU_SERVICE_INITIALIZER(xpc_connection_t connection, xpc_object_t initializerMessage);
 
-void GPU_SERVICE_INITIALIZER(xpc_connection_t connection, xpc_object_t initializerMessage, xpc_object_t priorityBoostMessage)
+void GPU_SERVICE_INITIALIZER(xpc_connection_t connection, xpc_object_t initializerMessage)
 {
+    g_jscConfig.vmCreationDisallowed = true;
+    g_jscConfig.vmEntryDisallowed = true;
+    g_wtfConfig.useSpecialAbortForExtraSecurityImplications = true;
+
     WTF::initializeMainThread();
+    {
+        JSC::Options::initialize();
+        JSC::Options::AllowUnfinalizedAccessScope scope;
+        JSC::ExecutableAllocator::disableJIT();
+        JSC::Options::useWasm() = false;
+        JSC::Options::notifyOptionsChanged();
+    }
+    WTF::compilerFence();
 
 #if ENABLE(GPU_PROCESS)
-    WebKit::XPCServiceInitializer<WebKit::GPUProcess, WebKit::GPUServiceInitializerDelegate>(connection, initializerMessage, priorityBoostMessage);
+    WebKit::XPCServiceInitializer<WebKit::GPUProcess, WebKit::GPUServiceInitializerDelegate>(connection, initializerMessage);
 #endif // ENABLE(GPU_PROCESS)
+
+    JSC::Config::finalize();
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013, 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,19 +29,24 @@
 
 #if JSC_OBJC_API_ENABLED
 
-#import <JavaScriptCore/JSCallbackFunction.h>
+#import "JSCallbackFunction.h"
 
 #if defined(__OBJC__)
+@class JSContext;
+
 JSObjectRef objCCallbackFunctionForMethod(JSContext *, Class, Protocol *, BOOL isInstanceMethod, SEL, const char* types);
 JSObjectRef objCCallbackFunctionForBlock(JSContext *, id);
 JSObjectRef objCCallbackFunctionForInit(JSContext *, Class, Protocol *, SEL, const char* types);
 
-id tryUnwrapConstructor(JSC::VM*, JSObjectRef);
+id tryUnwrapConstructor(JSObjectRef);
 #endif
 
 namespace JSC {
 
 class ObjCCallbackFunctionImpl;
+
+#define OBJC_CALLBACK_FUNCTION_METHOD(method) \
+    WTF_VTBL_FUNCPTR_PTRAUTH_STR("ObjCCallbackFunction." #method) method
 
 class ObjCCallbackFunction : public InternalFunction {
     friend struct APICallbackFunction;
@@ -49,7 +54,7 @@ public:
     typedef InternalFunction Base;
 
     template<typename CellType, SubspaceAccess mode>
-    static IsoSubspace* subspaceFor(VM& vm)
+    static GCClient::IsoSubspace* subspaceFor(VM& vm)
     {
         return vm.objCCallbackFunctionSpace<mode>();
     }
@@ -75,10 +80,12 @@ private:
     JSObjectCallAsFunctionCallback functionCallback() { return m_functionCallback; }
     JSObjectCallAsConstructorCallback constructCallback() { return m_constructCallback; }
 
-    JSObjectCallAsFunctionCallback m_functionCallback;
-    JSObjectCallAsConstructorCallback m_constructCallback;
+    JSObjectCallAsFunctionCallback OBJC_CALLBACK_FUNCTION_METHOD(m_functionCallback);
+    JSObjectCallAsConstructorCallback OBJC_CALLBACK_FUNCTION_METHOD(m_constructCallback);
     std::unique_ptr<ObjCCallbackFunctionImpl> m_impl;
 };
+
+#undef OBJC_CALLBACK_FUNCTION_METHOD
 
 } // namespace JSC
 

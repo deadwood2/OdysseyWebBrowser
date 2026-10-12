@@ -26,10 +26,15 @@
 #if ENABLE(ENCRYPTED_MEDIA)
 
 #import <WebCore/MediaKeySystemClient.h>
+#import <wtf/TZoneMalloc.h>
 
-class WebMediaKeySystemClient : public WebCore::MediaKeySystemClient {
-    WTF_MAKE_FAST_ALLOCATED;
+class WebMediaKeySystemClient final : public WebCore::MediaKeySystemClient {
+    WTF_MAKE_TZONE_ALLOCATED(WebMediaKeySystemClient);
 public:
+    static WebMediaKeySystemClient& singleton();
+
+private:
+    friend NeverDestroyed<WebMediaKeySystemClient>;
     WebMediaKeySystemClient() = default;
 
     void pageDestroyed() override { }

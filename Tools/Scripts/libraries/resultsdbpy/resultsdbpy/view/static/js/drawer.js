@@ -116,6 +116,64 @@ function Drawer(controls = [], onCollapseChange) {
         </div>`;
 }
 
+function CommitSearchBar(onSearchAction = null) {
+    const searchInputRef = REF.createRef({
+        onElementUnmount: () => {
+            window.removeEventListener("keypress", searchHotKeyFunction);
+        }
+    });
+    const searchHotKeyFunction = (e) => {
+        if (e.key !== "f" || !( e.ctrlKey || e.metaKey ))
+            return;
+
+        const element = searchInputRef.element;
+        if (element.disabled)
+            return;
+
+        e.preventDefault();
+        element.focus();
+    };
+    const searchInputEventStream = searchInputRef.fromEvent("keyup");
+    searchInputEventStream.action((e) => {
+        const searchValue = searchInputRef.element.value;
+        if (e.key === "Enter") {
+            if (onSearchAction)
+                onSearchAction(searchValue);
+        }
+    });
+    
+    const searchButtonRef = REF.createRef({});
+    const searchButtonClickEventStream = searchButtonRef.fromEvent("click");
+    searchButtonClickEventStream.action((e) => {
+        const searchValue = searchInputRef.element.value;
+        if (onSearchAction)
+            onSearchAction(searchValue);
+    });
+
+    const clearButtonRef = REF.createRef({});
+    clearButtonRef.fromEvent("click").action(e => {
+        if (onSearchAction)
+            onSearchAction(null);
+    });
+
+    window.addEventListener("keypress", searchHotKeyFunction);
+
+    return `<div class="input">
+        <div class="row">
+            <div class="input col-7">
+                <input type="text" ref="${searchInputRef}" autocomplete="off" autocapitalize="none" required/>
+                <label>Search commit</label>
+            </div>
+            <button class="button col-3 primary" ref="${searchButtonRef}">
+                <img src="library/icons/search.svg" style="height: var(--largeSize); filter: invert(1);">
+            </button>
+            <button class="button col-2" ref="${clearButtonRef}">
+                X
+            </button>
+        </div>
+    </div>`;
+}
+
 let configurations = []
 let configurationsDefinedCallbacks = [];
 function refreshConfigurations() {
@@ -239,7 +297,10 @@ function ConfigurationSelectors(callback) {
         {'query': 'architecture', 'name': 'Architecture'},
         {'query': 'flavor', 'name': 'Flavor'},
     ];
-    return elements.map(details => {
+    const resetButtonRef = REF.createRef({});
+    const resetEventStream = resetButtonRef.fromEvent('click');
+
+    return `${elements.map(details => {
         const modifier = new QueryModifier(details.query);
 
         let ref = REF.createRef({
@@ -275,9 +336,25 @@ function ConfigurationSelectors(callback) {
                                     return;
                                 child.style.display = isExpanded ? 'block' : 'none';
                             });
+                            resetEventStream.action(resetSwitch);
                         }
-                    }
+                    },
+                    onElementUnmount: () => {
+                        resetEventStream.stopAction(resetSwitch);
+                    },
                 });
+
+                const resetSwitch = () => {
+                    Object.keys(switches).forEach(key => {
+                        if (key === 'All')
+                            switches[key].checked = true;
+                        else
+                            switches[key].checked = false;
+                    });
+                    modifier.remove();
+                    callback();
+                };
+
 
                 DOM.inject(element, `<a class="link-button text medium" ref="${expander}">+</a>
                     ${details.name} <br>
@@ -288,6 +365,7 @@ function ConfigurationSelectors(callback) {
                         else if (option !== 'All' && modifier.current().indexOf(option) >= 0)
                             isChecked = true;
 
+                        
                         let swtch = REF.createRef({
                             onElementMount: (element) => {
                                 switches[option] = element;
@@ -311,8 +389,9 @@ function ConfigurationSelectors(callback) {
                                     }
                                     callback();
                                 };
-                            },
+                            }
                         });
+
 
                         return `<div class="input" ${isExpanded ? '' : `style="display: none;"`}>
                                 <label>${escapeHTML(option)}</label>
@@ -329,7 +408,9 @@ function ConfigurationSelectors(callback) {
         });
 
         return `<div style="font-size: var(--smallSize);" ref="${ref}"></div>`;
-    }).join('')
+    }).join('')}
+    <button class="button" ref="${resetButtonRef}">Reset</button>
+    `;
 }
 
 function CommitRepresentation(callback) {
@@ -400,4 +481,4 @@ function CommitRepresentation(callback) {
         </div>`;
 }
 
-export {Drawer, BranchSelector, ConfigurationSelectors, LimitSlider, CommitRepresentation};
+export {Drawer, BranchSelector, ConfigurationSelectors, LimitSlider, CommitRepresentation, CommitSearchBar};

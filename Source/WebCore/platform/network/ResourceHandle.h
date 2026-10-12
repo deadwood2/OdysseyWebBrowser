@@ -26,6 +26,7 @@
 #pragma once
 
 #include "AuthenticationClient.h"
+#include "ResourceLoaderOptions.h"
 #include "StoredCredentialsPolicy.h"
 #include <wtf/Box.h>
 #include <wtf/MonotonicTime.h>
@@ -33,7 +34,7 @@
 #include <wtf/RefPtr.h>
 #include <wtf/text/AtomString.h>
 
-#if PLATFORM(COCOA) || USE(CFURLCONNECTION)
+#if PLATFORM(COCOA)
 #include <wtf/RetainPtr.h>
 #endif
 
@@ -54,14 +55,12 @@ OBJC_CLASS NSURLConnection;
 OBJC_CLASS NSURLRequest;
 #endif
 
-#if USE(CFURLCONNECTION)
-typedef const struct _CFCachedURLResponse* CFCachedURLResponseRef;
-typedef struct _CFURLConnection* CFURLConnectionRef;
-typedef int CFHTTPCookieStorageAcceptPolicy;
-typedef struct OpaqueCFHTTPCookieStorage* CFHTTPCookieStorageRef;
+#if USE(CURL)
+class CurlRequest;
+class CurlResourceHandleDelegate;
 #endif
 
-#if PLATFORM(COCOA) || USE(CFURLCONNECTION)
+#if PLATFORM(COCOA)
 typedef const struct __CFURLStorageSession* CFURLStorageSessionRef;
 #endif
 
@@ -74,7 +73,7 @@ namespace WebCore {
 
 class AuthenticationChallenge;
 class Credential;
-class Frame;
+class LocalFrame;
 class NetworkingContext;
 class ProtectionSpace;
 class ResourceError;
@@ -84,22 +83,17 @@ class NetworkLoadMetrics;
 class ResourceRequest;
 class ResourceResponse;
 class SecurityOrigin;
-class SharedBuffer;
+class FragmentedSharedBuffer;
 class SynchronousLoaderMessageQueue;
 class Timer;
 
-#if USE(CURL)
-class CurlRequest;
-class CurlResourceHandleDelegate;
-#endif
-
 class ResourceHandle : public RefCounted<ResourceHandle>, public AuthenticationClient {
 public:
-    WEBCORE_EXPORT static RefPtr<ResourceHandle> create(NetworkingContext*, const ResourceRequest&, ResourceHandleClient*, bool defersLoading, bool shouldContentSniff, bool shouldContentEncodingSniff, RefPtr<SecurityOrigin>&& sourceOrigin, bool isMainFrameNavigation);
+    WEBCORE_EXPORT static RefPtr<ResourceHandle> create(NetworkingContext*, const ResourceRequest&, ResourceHandleClient*, bool defersLoading, bool shouldContentSniff, ContentEncodingSniffingPolicy, RefPtr<SecurityOrigin>&& sourceOrigin, bool isMainFrameNavigation);
     WEBCORE_EXPORT static void loadResourceSynchronously(NetworkingContext*, const ResourceRequest&, StoredCredentialsPolicy, SecurityOrigin*, ResourceError&, ResourceResponse&, Vector<uint8_t>& data);
     WEBCORE_EXPORT virtual ~ResourceHandle();
 
-#if PLATFORM(COCOA) || USE(CFURLCONNECTION)
+#if PLATFORM(COCOA)
     void willSendRequest(ResourceRequest&&, ResourceResponse&&, CompletionHandler<void(ResourceRequest&&)>&&);
 #endif
 
@@ -113,7 +107,7 @@ public:
     void receivedRequestToPerformDefaultHandling(const AuthenticationChallenge&) override;
     void receivedChallengeRejection(const AuthenticationChallenge&) override;
 
-#if PLATFORM(COCOA) || USE(CFURLCONNECTION)
+#if PLATFORM(COCOA)
     bool tryHandlePasswordBasedAuthentication(const AuthenticationChallenge&);
 #endif
 
@@ -133,17 +127,8 @@ public:
     void unschedule(WTF::SchedulePair&);
 #endif
 
-#if USE(CFURLCONNECTION)
-    CFURLStorageSessionRef storageSession() const;
-    CFURLConnectionRef connection() const;
-    WEBCORE_EXPORT RetainPtr<CFURLConnectionRef> releaseConnectionForDownload();
-    const ResourceRequest& currentRequest() const;
-    static void setHostAllowsAnyHTTPSCertificate(const String&);
-    static void setClientCertificate(const String& host, CFDataRef);
-#endif
-
-#if (OS(WINDOWS) || OS(MORPHOS)) && USE(CURL)
-    static void setHostAllowsAnyHTTPSCertificate(const String&);
+#if OS(MORPHOS)
+    WEBCORE_EXPORT static void setHostAllowsAnyHTTPSCertificate(const String&);
     static void setClientCertificateInfo(const String&, const String&, const String&);
     static void clearClientCertificateInfo(const String&);
 #endif
@@ -151,7 +136,7 @@ public:
     bool shouldContentSniff() const;
     static bool shouldContentSniffURL(const URL&);
 
-    bool shouldContentEncodingSniff() const;
+    ContentEncodingSniffingPolicy contentEncodingSniffingPolicy() const;
 
     WEBCORE_EXPORT static void forceContentSniffing();
 
@@ -199,7 +184,7 @@ public:
     using RefCounted<ResourceHandle>::ref;
     using RefCounted<ResourceHandle>::deref;
 
-#if PLATFORM(COCOA) || USE(CFURLCONNECTION)
+#if PLATFORM(COCOA)
     WEBCORE_EXPORT static CFStringRef synchronousLoadRunLoopMode();
 #endif
 
@@ -210,7 +195,7 @@ public:
     static void registerBuiltinSynchronousLoader(const AtomString& protocol, BuiltinSynchronousLoader);
 
 protected:
-    ResourceHandle(NetworkingContext*, const ResourceRequest&, ResourceHandleClient*, bool defersLoading, bool shouldContentSniff, bool shouldContentEncodingSniff, RefPtr<SecurityOrigin>&& sourceOrigin, bool isMainFrameNavigation);
+    ResourceHandle(NetworkingContext*, const ResourceRequest&, ResourceHandleClient*, bool defersLoading, bool shouldContentSniff, ContentEncodingSniffingPolicy, RefPtr<SecurityOrigin>&& sourceOrigin, bool isMainFrameNavigation);
 
 private:
     enum FailureType {
@@ -221,8 +206,6 @@ private:
 
     void platformSetDefersLoading(bool);
 
-    void platformContinueSynchronousDidReceiveResponse();
-
     void scheduleFailure(FailureType);
 
     bool start();
@@ -231,24 +214,20 @@ private:
     void refAuthenticationClient() override { ref(); }
     void derefAuthenticationClient() override { deref(); }
 
-#if PLATFORM(COCOA) || USE(CFURLCONNECTION)
+#if PLATFORM(COCOA)
     enum class SchedulingBehavior { Asynchronous, Synchronous };
 #endif
 
-#if USE(CFURLCONNECTION)
-    void createCFURLConnection(bool shouldUseCredentialStorage, bool shouldContentSniff, bool shouldContentEncodingSniff, RefPtr<SynchronousLoaderMessageQueue>&&, CFDictionaryRef clientProperties);
-#endif
-
 #if PLATFORM(MAC)
-    void createNSURLConnection(id delegate, bool shouldUseCredentialStorage, bool shouldContentSniff, bool shouldContentEncodingSniff, SchedulingBehavior);
+    void createNSURLConnection(id delegate, bool shouldUseCredentialStorage, bool shouldContentSniff, ContentEncodingSniffingPolicy, SchedulingBehavior);
 #endif
 
 #if PLATFORM(IOS_FAMILY)
-    void createNSURLConnection(id delegate, bool shouldUseCredentialStorage, bool shouldContentSniff, bool shouldContentEncodingSniff, SchedulingBehavior, NSDictionary *connectionProperties);
+    void createNSURLConnection(id delegate, bool shouldUseCredentialStorage, bool shouldContentSniff, ContentEncodingSniffingPolicy, SchedulingBehavior, NSDictionary *connectionProperties);
 #endif
 
 #if PLATFORM(COCOA)
-    NSURLRequest *applySniffingPoliciesIfNeeded(NSURLRequest *, bool shouldContentSniff, bool shouldContentEncodingSniff);
+    NSURLRequest *applySniffingPoliciesIfNeeded(NSURLRequest *, bool shouldContentSniff, ContentEncodingSniffingPolicy);
 #endif
 
 #if USE(CURL)

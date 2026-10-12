@@ -25,29 +25,32 @@
 
 #pragma once
 
-#include <optional>
 #include <wtf/RetainPtr.h>
-
-namespace IPC {
-class Decoder;
-class Encoder;
-}
+#include <wtf/Vector.h>
 
 namespace WebKit {
-    
+
 class SecItemResponseData {
 public:
-    SecItemResponseData(OSStatus, RetainPtr<CFTypeRef>&& result);
+    using Result = std::variant<
+        std::nullptr_t,
+        Vector<RetainPtr<SecCertificateRef>>
+#if HAVE(SEC_KEYCHAIN)
+        , Vector<RetainPtr<SecKeychainItemRef>>
+#endif
+        , RetainPtr<CFTypeRef>
+    >;
+    SecItemResponseData(OSStatus code, Result&& result)
+        : m_resultCode(code)
+        , m_resultObject(WTFMove(result)) { }
 
-    void encode(IPC::Encoder&) const;
-    static std::optional<SecItemResponseData> decode(IPC::Decoder&);
-
-    RetainPtr<CFTypeRef>& resultObject() { return m_resultObject; }
+    Result& resultObject() { return m_resultObject; }
+    const Result& resultObject() const { return m_resultObject; }
     OSStatus resultCode() const { return m_resultCode; }
 
 private:
-    RetainPtr<CFTypeRef> m_resultObject;
     OSStatus m_resultCode;
+    Result m_resultObject;
 };
     
 } // namespace WebKit

@@ -26,7 +26,7 @@
 #pragma once
 
 #include <wtf/MediaTime.h>
-#include <wtf/RefPtr.h>
+#include <wtf/Ref.h>
 #include <wtf/StdMap.h>
 
 namespace WebCore {
@@ -37,7 +37,7 @@ class SampleMap;
 class PresentationOrderSampleMap {
     friend class SampleMap;
 public:
-    using MapType = StdMap<MediaTime, RefPtr<MediaSample>>;
+    using MapType = StdMap<MediaTime, Ref<MediaSample>>;
     typedef MapType::iterator iterator;
     typedef MapType::const_iterator const_iterator;
     typedef MapType::reverse_iterator reverse_iterator;
@@ -74,7 +74,7 @@ class DecodeOrderSampleMap {
     friend class SampleMap;
 public:
     typedef std::pair<MediaTime, MediaTime> KeyType;
-    using MapType = StdMap<KeyType, RefPtr<MediaSample>>;
+    using MapType = StdMap<KeyType, Ref<MediaSample>>;
     typedef MapType::iterator iterator;
     typedef MapType::const_iterator const_iterator;
     typedef MapType::reverse_iterator reverse_iterator;
@@ -91,6 +91,7 @@ public:
     const_reverse_iterator rbegin() const { return m_samples.rbegin(); }
     reverse_iterator rend() { return m_samples.rend(); }
     const_reverse_iterator rend() const { return m_samples.rend(); }
+    size_t size() const { return m_samples.size(); }
 
     WEBCORE_EXPORT iterator findSampleWithDecodeKey(const KeyType&);
     WEBCORE_EXPORT iterator findSampleAfterDecodeKey(const KeyType&);
@@ -99,7 +100,7 @@ public:
     WEBCORE_EXPORT reverse_iterator findSyncSamplePriorToDecodeIterator(reverse_iterator);
     WEBCORE_EXPORT iterator findSyncSampleAfterPresentationTime(const MediaTime&, const MediaTime& threshold = MediaTime::positiveInfiniteTime());
     WEBCORE_EXPORT iterator findSyncSampleAfterDecodeIterator(iterator);
-    WEBCORE_EXPORT reverse_iterator_range findDependentSamples(MediaSample*);
+    WEBCORE_EXPORT reverse_iterator_range findDependentSamples(const MediaSample&);
     WEBCORE_EXPORT iterator_range findSamplesBetweenDecodeKeys(const KeyType&, const KeyType&);
 
 private:
@@ -114,8 +115,8 @@ public:
     WEBCORE_EXPORT bool empty() const;
     size_t size() const { return m_decodeOrder.m_samples.size(); }
     WEBCORE_EXPORT void clear();
-    WEBCORE_EXPORT void addSample(MediaSample&);
-    WEBCORE_EXPORT void removeSample(MediaSample*);
+    WEBCORE_EXPORT void addSample(Ref<MediaSample>&&);
+    WEBCORE_EXPORT void removeSample(const MediaSample&);
     size_t sizeInBytes() const { return m_totalSize; }
 
     template<typename I>
@@ -135,7 +136,7 @@ template<typename I>
 inline void SampleMap::addRange(I begin, I end)
 {
     for (I iter = begin; iter != end; ++iter)
-        addSample(*iter->second);
+        addSample(iter->second.copyRef());
 }
 
 } // namespace WebCore

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # Copyright (c) 2014-2018 Apple Inc. All rights reserved.
 # Copyright (c) 2014 University of Washington. All rights reserved.
@@ -36,7 +36,7 @@ try:
     from .cpp_generator_templates import CppGeneratorTemplates as CppTemplates
     from .generator import Generator, ucfirst
     from .models import EnumType, ObjectType, PrimitiveType, AliasedType, ArrayType, Frameworks
-except ValueError:
+except ImportError:
     from cpp_generator import CppGenerator
     from cpp_generator_templates import CppGeneratorTemplates as CppTemplates
     from generator import Generator, ucfirst
@@ -269,14 +269,6 @@ class CppProtocolTypesHeaderGenerator(CppGenerator):
         for member in optional_members:
             lines.append(self._generate_unchecked_setter_for_member(member, domain))
 
-        if Generator.type_has_open_fields(type_declaration.type):
-            lines.append('')
-            lines.append('    // Property names for type generated as open.')
-            open_members = Generator.open_fields(type_declaration)
-            for type_member in open_members:
-                export_macro = self.model().framework.setting('export_macro', None)
-                lines.append('    %s static const ASCIILiteral %sKey;' % (export_macro, type_member.member_name))
-
         lines.append('};')
         return self.wrap_with_guard_for_condition(type_declaration.condition, '\n'.join(lines))
 
@@ -347,7 +339,7 @@ class CppProtocolTypesHeaderGenerator(CppGenerator):
         lines.append('')
         lines.append('        Builder<STATE | %(camelName)sSet>& set%(camelName)s(%(memberType)s %(memberName)s)' % setter_args)
         lines.append('        {')
-        lines.append('            COMPILE_ASSERT(!(STATE & %(camelName)sSet), property_%(memberKey)s_already_set);' % setter_args)
+        lines.append('            static_assert(!(STATE & %(camelName)sSet), "property %(memberKey)s already set");' % setter_args)
         lines.append('            m_result->%(setter)s("%(memberKey)s"_s, %(memberValue)s);' % setter_args)
         lines.append('            return castState<%(camelName)sSet>();' % setter_args)
         lines.append('        }')

@@ -32,14 +32,7 @@
 
 #if TARGET_OS_IPHONE
 #import <CoreGraphics/CGColor.h>
-#endif
-
-#if !defined(ENABLE_DASHBOARD_SUPPORT)
-#if TARGET_OS_IPHONE
-#define ENABLE_DASHBOARD_SUPPORT 0
-#else
-#define ENABLE_DASHBOARD_SUPPORT 1
-#endif
+#import <WebKitLegacy/WAKView.h>
 #endif
 
 #if !defined(ENABLE_REMOTE_INSPECTOR)
@@ -76,17 +69,6 @@
 @protocol WebDeviceOrientationProvider;
 @protocol WebFormDelegate;
 
-#if !TARGET_OS_IPHONE
-extern NSString *_WebCanGoBackKey;
-extern NSString *_WebCanGoForwardKey;
-extern NSString *_WebEstimatedProgressKey;
-extern NSString *_WebIsLoadingKey;
-extern NSString *_WebMainFrameIconKey;
-extern NSString *_WebMainFrameTitleKey;
-extern NSString *_WebMainFrameURLKey;
-extern NSString *_WebMainFrameDocumentKey;
-#endif
-
 #if TARGET_OS_IPHONE
 extern NSString * const WebViewProgressEstimatedProgressKey;
 extern NSString * const WebViewProgressBackgroundColorKey;
@@ -110,22 +92,11 @@ extern NSString *WebQuickLookFileNameKey;
 extern NSString *WebQuickLookUTIKey;
 #endif
 
-#if TARGET_OS_IOS
+#if TARGET_OS_IOS || (defined(TARGET_OS_VISION) && TARGET_OS_VISION)
 @protocol UIDropSession;
 #endif
 
 extern NSString * const WebViewWillCloseNotification;
-
-#if ENABLE_DASHBOARD_SUPPORT
-// FIXME: Remove this once it is verified no one is dependent on it.
-typedef enum {
-    WebDashboardBehaviorAlwaysSendMouseEventsToAllWindows,
-    WebDashboardBehaviorAlwaysSendActiveNullEventsToPlugIns,
-    WebDashboardBehaviorAlwaysAcceptsFirstMouse,
-    WebDashboardBehaviorAllowWheelScrolling,
-    WebDashboardBehaviorUseBackwardCompatibilityMode
-} WebDashboardBehavior;
-#endif
 
 typedef enum {
     WebInjectAtDocumentStart,
@@ -174,6 +145,7 @@ typedef enum {
     WebNotificationPermissionDenied
 } WebNotificationPermission;
 
+#if TARGET_OS_IPHONE
 @interface WebUITextIndicatorData : NSObject
 @property (nonatomic, retain) UIImage *dataInteractionImage;
 @property (nonatomic, assign) CGRect selectionRectInRootViewCoordinates;
@@ -185,14 +157,6 @@ typedef enum {
 @property (nonatomic, retain) UIImage *contentImageWithoutSelection;
 @property (nonatomic, assign) CGRect contentImageWithoutSelectionRectInRootViewCoordinates;
 @property (nonatomic, retain) UIColor *estimatedBackgroundColor;
-@end
-
-#if !TARGET_OS_IPHONE
-@interface WebController : NSTreeController {
-    IBOutlet WebView *webView;
-}
-- (WebView *)webView;
-- (void)setWebView:(WebView *)newWebView;
 @end
 #endif
 
@@ -550,18 +514,6 @@ Could be worth adding to the API.
 - (NSCachedURLResponse *)_cachedResponseForURL:(NSURL *)URL;
 #endif
 
-#if ENABLE_DASHBOARD_SUPPORT
-// FIXME: Remove these once we have verified no one is calling them
-- (void)_addScrollerDashboardRegions:(NSMutableDictionary *)regions;
-- (NSDictionary *)_dashboardRegions;
-
-- (void)_setDashboardBehavior:(WebDashboardBehavior)behavior to:(BOOL)flag;
-- (BOOL)_dashboardBehavior:(WebDashboardBehavior)behavior;
-#endif
-
-+ (void)_setShouldUseFontSmoothing:(BOOL)f;
-+ (BOOL)_shouldUseFontSmoothing;
-
 #if !TARGET_OS_IPHONE
 // These two methods are useful for a test harness that needs a consistent appearance for the focus rings
 // regardless of OS X version.
@@ -683,7 +635,11 @@ Could be worth adding to the API.
     If layer is NULL, removes any existing layer. Returns YES if the set or
     remove was successful.
  */
+#if TARGET_OS_IPHONE
+- (BOOL)_setMediaLayer:(CALayer*)layer forPluginView:(WAKView*)pluginView;
+#else
 - (BOOL)_setMediaLayer:(CALayer*)layer forPluginView:(NSView*)pluginView;
+#endif
 
 /*!
  @method _wantsTelephoneNumberParsing
@@ -771,6 +727,7 @@ Could be worth adding to the API.
 - (int)validationMessageTimerMagnification;
 - (void)setValidationMessageTimerMagnification:(int)newValue;
 - (NSDictionary *)_contentsOfUserInterfaceItem:(NSString *)userInterfaceItem;
+- (void)_setTopContentInsetForTesting:(float)contentInset;
 
 // Returns YES if NSView -displayRectIgnoringOpacity:inContext: will produce a faithful representation of the content.
 - (BOOL)_isSoftwareRenderable;
@@ -891,11 +848,17 @@ Could be worth adding to the API.
  */
 + (void)_setHTTPPipeliningEnabled:(BOOL)enabled;
 
+- (void)_setPortsForUpgradingInsecureSchemeForTesting:(uint16_t)insecureUpgradePort withSecurePort:(uint16_t)secureUpgradePort;
+
 @property (nonatomic, copy, getter=_sourceApplicationAuditData, setter=_setSourceApplicationAuditData:) NSData *sourceApplicationAuditData;
 
 - (void)_setFontFallbackPrefersPictographs:(BOOL)flag;
 
+#if TARGET_OS_IPHONE
+- (void)showCandidates:(NSArray *)candidates forString:(NSString *)string inRect:(NSRect)rectOfTypedString forSelectedRange:(NSRange)range view:(WAKView *)view completionHandler:(void (^)(NSTextCheckingResult *acceptedCandidate))completionBlock;
+#else
 - (void)showCandidates:(NSArray *)candidates forString:(NSString *)string inRect:(NSRect)rectOfTypedString forSelectedRange:(NSRange)range view:(NSView *)view completionHandler:(void (^)(NSTextCheckingResult *acceptedCandidate))completionBlock;
+#endif
 - (void)forceRequestCandidatesForTesting;
 - (BOOL)shouldRequestCandidates;
 
@@ -1009,8 +972,8 @@ typedef struct WebEdgeInsets {
 - (void)clearNotifications:(NSArray *)notificationIDs;
 - (WebNotificationPermission)policyForOrigin:(WebSecurityOrigin *)origin;
 
-- (void)webView:(WebView *)webView didShowNotification:(uint64_t)notificationID;
-- (void)webView:(WebView *)webView didClickNotification:(uint64_t)notificationID;
+- (void)webView:(WebView *)webView didShowNotification:(NSString *)notificationID;
+- (void)webView:(WebView *)webView didClickNotification:(NSString *)notificationID;
 - (void)webView:(WebView *)webView didCloseNotifications:(NSArray *)notificationIDs;
 @end
 
@@ -1029,11 +992,12 @@ typedef struct WebEdgeInsets {
 - (void)_setNotificationProvider:(id<WebNotificationProvider>)notificationProvider;
 - (id<WebNotificationProvider>)_notificationProvider;
 
-- (void)_notificationDidShow:(uint64_t)notificationID;
-- (void)_notificationDidClick:(uint64_t)notificationID;
+- (void)_notificationDidShow:(NSString *)notificationID;
+- (void)_notificationDidClick:(NSString *)notificationID;
 - (void)_notificationsDidClose:(NSArray *)notificationIDs;
 
-- (uint64_t)_notificationIDForTesting:(JSValueRef)jsNotification;
+- (NSString *)_notificationIDForTesting:(JSValueRef)jsNotification;
+- (void)_clearNotificationPermissionState;
 @end
 
 @interface WebView (WebViewFontSelection)
@@ -1088,6 +1052,12 @@ typedef struct WebEdgeInsets {
 // Addresses <rdar://problem/5008925> - SPI for now
 - (NSCachedURLResponse *)webView:(WebView *)sender resource:(id)identifier willCacheResponse:(NSCachedURLResponse *)response fromDataSource:(WebDataSource *)dataSource;
 @end
+
+#if !TARGET_OS_IPHONE
+@interface WebView (WKWindowSnapshot)
+- (NSImage *)_windowSnapshotInRect:(CGRect)rect;
+@end
+#endif
 
 #ifdef __cplusplus
 extern "C" {

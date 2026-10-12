@@ -28,6 +28,7 @@
 
 #if ENABLE(REMOTE_INSPECTOR)
 
+#import "JSCInlines.h"
 #import <Foundation/Foundation.h>
 #import <mutex>
 #import <wtf/Assertions.h>
@@ -141,7 +142,7 @@ void RemoteInspectorXPCConnection::handleEvent(xpc_object_t object)
     if (!m_validated) {
         audit_token_t token;
         xpc_connection_get_audit_token(m_connection.get(), &token);
-        if (!WTF::hasEntitlement(token, "com.apple.private.webinspector.webinspectord")) {
+        if (!WTF::hasEntitlement(token, "com.apple.private.webinspector.webinspectord"_s)) {
             Locker locker { m_mutex };
             // This will trigger one last XPC_ERROR_CONNECTION_INVALID event on the queue and deref us.
             closeOnQueue();

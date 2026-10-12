@@ -28,6 +28,7 @@
 #include "GStreamerVideoCaptureSource.h"
 #include <gio/gunixfdlist.h>
 #include <wtf/UUID.h>
+#include <wtf/text/MakeString.h>
 
 namespace WebCore {
 
@@ -53,18 +54,18 @@ void GStreamerDisplayCaptureDeviceManager::computeCaptureDevices(CompletionHandl
 {
     m_devices.clear();
 
-    CaptureDevice screenCaptureDevice(WTF::createCanonicalUUIDString(), CaptureDevice::DeviceType::Screen, makeString("Capture Screen"));
+    CaptureDevice screenCaptureDevice(createVersion4UUIDString(), CaptureDevice::DeviceType::Screen, "Capture Screen"_s);
     screenCaptureDevice.setEnabled(true);
     m_devices.append(WTFMove(screenCaptureDevice));
     callback();
 }
 
-CaptureSourceOrError GStreamerDisplayCaptureDeviceManager::createDisplayCaptureSource(const CaptureDevice& device, const MediaConstraints* constraints)
+CaptureSourceOrError GStreamerDisplayCaptureDeviceManager::createDisplayCaptureSource(const CaptureDevice& device, MediaDeviceHashSalts&& hashSalts, const MediaConstraints* constraints)
 {
     const auto it = m_sessions.find(device.persistentId());
     if (it != m_sessions.end()) {
         return GStreamerVideoCaptureSource::createPipewireSource(device.persistentId().isolatedCopy(),
-            it->value->fd, { }, constraints, device.type());
+            it->value->nodeAndFd, WTFMove(hashSalts), constraints, device.type());
     }
 
     GUniqueOutPtr<GError> error;
@@ -73,11 +74,11 @@ CaptureSourceOrError GStreamerDisplayCaptureDeviceManager::createDisplayCaptureS
         "org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop", "org.freedesktop.portal.ScreenCast", nullptr, &error.outPtr()));
     if (error) {
         WTFLogAlways("Unable to connect to the Deskop portal: %s", error->message);
-        return { };
+        return CaptureSourceOrError({ { } , MediaAccessDenialReason::PermissionDenied });
     }
 
-    auto token = makeString("WebKit", WTF::weakRandomUint32());
-    auto sessionToken = makeString("WebKit", WTF::weakRandomUint32());
+    auto token = makeString("WebKit"_s, weakRandomNumber<uint32_t>());
+    auto sessionToken = makeString("WebKit"_s, weakRandomNumber<uint32_t>());
     GVariantBuilder options;
     g_variant_builder_init(&options, G_VARIANT_TYPE_VARDICT);
     g_variant_builder_add(&options, "{sv}", "handle_token", g_variant_new_string(token.ascii().data()));
@@ -87,20 +88,21 @@ CaptureSourceOrError GStreamerDisplayCaptureDeviceManager::createDisplayCaptureS
         G_DBUS_CALL_FLAGS_NONE, s_dbusCallTimeout.millisecondsAs<int>(), nullptr, &error.outPtr()));
     if (error) {
         WTFLogAlways("Unable to create a Deskop portal session: %s", error->message);
-        return { };
+        return CaptureSourceOrError({ { } , MediaAccessDenialReason::PermissionDenied });
     }
 
     GUniqueOutPtr<char> objectPath;
     g_variant_get(result.get(), "(o)", &objectPath.outPtr());
     waitResponseSignal(objectPath.get());
 
-    String requestPath(objectPath.get());
-    auto sessionPath = requestPath.replace("/request/", "/session/").replace(token, sessionToken);
+    auto requestPath = String::fromLatin1(objectPath.get());
+    auto sessionPath = makeStringByReplacingAll(requestPath, "/request/"_s, "/session/"_s);
+    sessionPath = makeStringByReplacingAll(sessionPath, token, sessionToken);
 
     // FIXME: Maybe check this depending on device.type().
     auto outputType = GStreamerDisplayCaptureDeviceManager::PipeWireOutputType::Monitor | GStreamerDisplayCaptureDeviceManager::PipeWireOutputType::Window;
 
-    token = makeString("WebKit", WTF::weakRandomUint32());
+    token = makeString("WebKit"_s, weakRandomNumber<uint32_t>());
     g_variant_builder_init(&options, G_VARIANT_TYPE_VARDICT);
     g_variant_builder_add(&options, "{sv}", "handle_token", g_variant_new_string(token.ascii().data()));
     g_variant_builder_add(&options, "{sv}", "types", g_variant_new_uint32(static_cast<uint32_t>(outputType)));
@@ -122,23 +124,53 @@ CaptureSourceOrError GStreamerDisplayCaptureDeviceManager::createDisplayCaptureS
         g_variant_new("(oa{sv})", sessionPath.ascii().data(), &options), G_DBUS_CALL_FLAGS_NONE, s_dbusCallTimeout.millisecondsAs<int>(), nullptr, &error.outPtr()));
     if (error) {
         WTFLogAlways("SelectSources error: %s", error->message);
-        return { };
+        return CaptureSourceOrError({ { } , MediaAccessDenialReason::PermissionDenied });
     }
     g_variant_get(result.get(), "(o)", &objectPath.outPtr());
     waitResponseSignal(objectPath.get());
 
-    token = makeString("WebKit", WTF::weakRandomUint32());
+    token = makeString("WebKit"_s, weakRandomNumber<uint32_t>());
     g_variant_builder_init(&options, G_VARIANT_TYPE_VARDICT);
     g_variant_builder_add(&options, "{sv}", "handle_token", g_variant_new_string(token.ascii().data()));
     result = adoptGRef(g_dbus_proxy_call_sync(m_proxy.get(), "Start",
         g_variant_new("(osa{sv})", sessionPath.ascii().data(), "", &options), G_DBUS_CALL_FLAGS_NONE, s_dbusCallTimeout.millisecondsAs<int>(), nullptr, &error.outPtr()));
     if (error) {
         WTFLogAlways("Start error: %s", error->message);
-        return { };
+        return CaptureSourceOrError({ { } , MediaAccessDenialReason::PermissionDenied });
     }
 
+    std::optional<uint32_t> nodeId;
     g_variant_get(result.get(), "(o)", &objectPath.outPtr());
-    waitResponseSignal(objectPath.get());
+    waitResponseSignal(objectPath.get(), [&nodeId](GVariant* parameters) mutable {
+        uint32_t portalResponse;
+        GRefPtr<GVariant> responseData;
+        g_variant_get(parameters, "(u@a{sv})", &portalResponse, &responseData.outPtr());
+
+        if (portalResponse) {
+            WTFLogAlways("User cancelled the Start request or an unknown error happened");
+            return;
+        }
+
+        // The portal interface allows multiple streams but we care only about the first one.
+        GUniqueOutPtr<GVariantIter> iter;
+        if (g_variant_lookup(responseData.get(), "streams", "a(ua{sv})", &iter.outPtr())) {
+            auto variant = adoptGRef(g_variant_iter_next_value(iter.get()));
+            if (!variant) {
+                WTFLogAlways("Stream list is empty");
+                return;
+            }
+
+            uint32_t streamId;
+            GRefPtr<GVariant> options;
+            g_variant_get(variant.get(), "(u@a{sv})", &streamId, &options.outPtr());
+            nodeId = streamId;
+        }
+    });
+
+    if (!nodeId) {
+        WTFLogAlways("Unable to retrieve display capture session data");
+        return CaptureSourceOrError({ { } , MediaAccessDenialReason::PermissionDenied });
+    }
 
     GRefPtr<GUnixFDList> fdList;
     int fd = -1;
@@ -147,16 +179,17 @@ CaptureSourceOrError GStreamerDisplayCaptureDeviceManager::createDisplayCaptureS
         g_variant_new("(oa{sv})", sessionPath.ascii().data(), &options), G_DBUS_CALL_FLAGS_NONE, s_dbusCallTimeout.millisecondsAs<int>(), nullptr, &fdList.outPtr(), nullptr, &error.outPtr()));
     if (error) {
         WTFLogAlways("Unable to request display capture. Error: %s", error->message);
-        return { };
+        return CaptureSourceOrError({ { } , MediaAccessDenialReason::PermissionDenied });
     }
 
     int fdOut;
     g_variant_get(result.get(), "(h)", &fdOut);
     fd = g_unix_fd_list_get(fdList.get(), fdOut, nullptr);
 
-    auto session = WTF::makeUnique<GStreamerDisplayCaptureDeviceManager::Session>(fd, WTFMove(sessionPath));
+    NodeAndFD nodeAndFd = { *nodeId, fd };
+    auto session = makeUnique<GStreamerDisplayCaptureDeviceManager::Session>(nodeAndFd, WTFMove(sessionPath));
     m_sessions.add(device.persistentId(), WTFMove(session));
-    return GStreamerVideoCaptureSource::createPipewireSource(device.persistentId().isolatedCopy(), fd, { }, constraints, device.type());
+    return GStreamerVideoCaptureSource::createPipewireSource(device.persistentId().isolatedCopy(), nodeAndFd, WTFMove(hashSalts), constraints, device.type());
 }
 
 void GStreamerDisplayCaptureDeviceManager::stopSource(const String& persistentID)
@@ -177,15 +210,15 @@ void GStreamerDisplayCaptureDeviceManager::stopSource(const String& persistentID
         WTFLogAlways("Portal session could not be closed: %s", error->message);
 }
 
-void GStreamerDisplayCaptureDeviceManager::waitResponseSignal(const char* objectPath)
+void GStreamerDisplayCaptureDeviceManager::waitResponseSignal(const char* objectPath, ResponseCallback&& callback)
 {
     RELEASE_ASSERT(!m_currentResponseCallback);
-    m_currentResponseCallback = [] { };
+    m_currentResponseCallback = WTFMove(callback);
     auto* connection = g_dbus_proxy_get_connection(m_proxy.get());
     auto signalId = g_dbus_connection_signal_subscribe(connection, "org.freedesktop.portal.Desktop", "org.freedesktop.portal.Request",
-        "Response", objectPath, nullptr, G_DBUS_SIGNAL_FLAGS_NO_MATCH_RULE, reinterpret_cast<GDBusSignalCallback>(+[](GDBusConnection*, const char* /* senderName */, const char* /* objectPath */, const char* /* interfaceName */, const char* /* signalName */, GVariant* /* parameters */, gpointer userData) {
+        "Response", objectPath, nullptr, G_DBUS_SIGNAL_FLAGS_NO_MATCH_RULE, reinterpret_cast<GDBusSignalCallback>(+[](GDBusConnection*, const char* /* senderName */, const char* /* objectPath */, const char* /* interfaceName */, const char* /* signalName */, GVariant* parameters, gpointer userData) {
             auto& manager = *reinterpret_cast<GStreamerDisplayCaptureDeviceManager*>(userData);
-            manager.notifyResponse();
+            manager.notifyResponse(parameters);
         }), this, nullptr);
 
     while (m_currentResponseCallback)

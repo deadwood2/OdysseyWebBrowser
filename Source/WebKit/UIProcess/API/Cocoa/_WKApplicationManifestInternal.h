@@ -27,8 +27,7 @@
 
 #import "APIApplicationManifest.h"
 #import "_WKApplicationManifest.h"
-
-#if ENABLE(APPLICATION_MANIFEST)
+#import <wtf/cocoa/VectorCocoa.h>
 
 namespace WebKit {
 
@@ -44,5 +43,3 @@ template<> struct WrapperTraits<API::ApplicationManifest> {
 }
 
 @end
-
-#endif // ENABLE(APPLICATION_MANIFEST)

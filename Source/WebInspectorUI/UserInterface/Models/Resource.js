@@ -26,9 +26,10 @@
 
 WI.Resource = class Resource extends WI.SourceCode
 {
-    constructor(url, {mimeType, type, loaderIdentifier, targetId, requestIdentifier, requestMethod, requestHeaders, requestData, requestSentTimestamp, requestSentWalltime, initiatorCallFrames, initiatorSourceCodeLocation, initiatorNode} = {})
+    constructor(url, {mimeType, type, loaderIdentifier, targetId, requestIdentifier, requestMethod, requestHeaders, requestData, requestSentTimestamp, requestSentWalltime, referrerPolicy, integrity, initiatorStackTrace, initiatorSourceCodeLocation, initiatorNode} = {})
     {
         console.assert(url);
+        console.assert(!initiatorStackTrace || initiatorStackTrace instanceof WI.StackTrace, initiatorStackTrace);
 
         super(url);
 
@@ -54,7 +55,7 @@ WI.Resource = class Resource extends WI.SourceCode
         this._responseCookies = null;
         this._serverTimingEntries = null;
         this._parentFrame = null;
-        this._initiatorCallFrames = initiatorCallFrames || null;
+        this._initiatorStackTrace = initiatorStackTrace || null;
         this._initiatorSourceCodeLocation = initiatorSourceCodeLocation || null;
         this._initiatorNode = initiatorNode || null;
         this._initiatedResources = [];
@@ -79,8 +80,11 @@ WI.Resource = class Resource extends WI.SourceCode
         this._priority = WI.Resource.NetworkPriority.Unknown;
         this._remoteAddress = null;
         this._connectionIdentifier = null;
+        this._isProxyConnection = false;
         this._target = targetId ? WI.targetManager.targetForIdentifier(targetId) : WI.mainTarget;
         this._redirects = [];
+        this._referrerPolicy = referrerPolicy ?? null;
+        this._integrity = integrity ?? null;
 
         // Exact sizes if loaded over the network or cache.
         this._requestHeadersTransferSize = NaN;
@@ -171,6 +175,10 @@ WI.Resource = class Resource extends WI.SourceCode
             if (plural)
                 return WI.UIString("Sockets");
             return WI.UIString("Socket");
+        case WI.Resource.Type.EventSource:
+            if (plural)
+                return WI.UIString("EventSources", "Display name for the type of network requests sent via EventSource(s) API (https://developer.mozilla.org/en-US/docs/Web/API/EventSource)");
+            return WI.UIString("EventSource", "Display name for the type of network requests sent via EventSource API (https://developer.mozilla.org/en-US/docs/Web/API/EventSource)");
         case WI.Resource.Type.Other:
             return WI.UIString("Other");
         default:
@@ -183,11 +191,20 @@ WI.Resource = class Resource extends WI.SourceCode
     {
         let classes = [];
 
+        let localResourceOverride = resource.localResourceOverride || WI.networkManager.localResourceOverridesForURL(resource.url).filter((localResourceOverride) => !localResourceOverride.disabled)[0];
         let isOverride = !!resource.localResourceOverride;
         let wasOverridden = resource.responseSource === WI.Resource.ResponseSource.InspectorOverride;
-        let shouldBeOverridden = resource.isLoading() && WI.networkManager.localResourceOverridesForURL(resource.url).some((localResourceOverride) => !localResourceOverride.disabled);
-        if (isOverride || wasOverridden || shouldBeOverridden)
+        let shouldBeOverridden = resource.isLoading() && localResourceOverride;
+        let shouldBeBlocked = (resource.failed || isOverride) && localResourceOverride?.type === WI.LocalResourceOverride.InterceptType.Block;
+        if (isOverride || wasOverridden || shouldBeOverridden || shouldBeBlocked) {
             classes.push("override");
+
+            if (shouldBeBlocked || localResourceOverride?.type === WI.LocalResourceOverride.InterceptType.ResponseSkippingNetwork)
+                classes.push("skip-network");
+
+            if (localResourceOverride?.localResource.mappedFilePath)
+                classes.push("mapped-file");
+        }
 
         if (resource.type === WI.Resource.Type.Other) {
             if (resource.requestedByteRange)
@@ -314,7 +331,7 @@ WI.Resource = class Resource extends WI.SourceCode
     get requestIdentifier() { return this._requestIdentifier; }
     get requestMethod() { return this._requestMethod; }
     get requestData() { return this._requestData; }
-    get initiatorCallFrames() { return this._initiatorCallFrames; }
+    get initiatorStackTrace() { return this._initiatorStackTrace; }
     get initiatorSourceCodeLocation() { return this._initiatorSourceCodeLocation; }
     get initiatorNode() { return this._initiatorNode; }
     get initiatedResources() { return this._initiatedResources; }
@@ -346,6 +363,8 @@ WI.Resource = class Resource extends WI.SourceCode
     get responseBodyTransferSize() { return this._responseBodyTransferSize; }
     get cachedResponseBodySize() { return this._cachedResponseBodySize; }
     get redirects() { return this._redirects; }
+    get referrerPolicy() { return this._referrerPolicy; }
+    get integrity() { return this._integrity; }
 
     get loadedSecurely()
     {
@@ -382,6 +401,14 @@ WI.Resource = class Resource extends WI.SourceCode
         return WI.truncateURL(this._url, isMultiLine, dataURIMaxSize);
     }
 
+    get displayRemoteAddress()
+    {
+        if (this._isProxyConnection)
+            return WI.UIString("%s (Proxy)", "%s (Proxy) @ Resource Remote Address", "Label for the IP address of a proxy server used to retrieve a network resource.").format(this._remoteAddress);
+
+        return this._remoteAddress;
+    }
+
     get mimeTypeComponents()
     {
         if (!this._mimeTypeComponents)
@@ -410,6 +437,13 @@ WI.Resource = class Resource extends WI.SourceCode
 
         // Return the actual MIME-type since we don't have a better synthesized one to return.
         return this._mimeType;
+    }
+
+    get hasMetadata()
+    {
+        // Some metadata is only collected when Web Inspector is open (e.g. resource timing data, HTTP method, request headers, etc.).
+        // Use `_requestIdentifier` as a general signal since it is always included when metadata is collected.
+        return !!this._requestIdentifier;
     }
 
     createObjectURL()
@@ -670,13 +704,17 @@ WI.Resource = class Resource extends WI.SourceCode
 
         let oldURL = this._url;
         let oldHeaders = this._requestHeaders;
+        let oldMethod = this._requestMethod;
 
         if (request.url)
             this._url = request.url;
 
         this._requestHeaders = request.headers || {};
         this._requestCookies = null;
-        this._redirects.push(new WI.Redirect(oldURL, request.method, oldHeaders, response.status, response.statusText, response.headers, elapsedTime));
+        this._requestMethod = request.method || null;
+        this._redirects.push(new WI.Redirect(oldURL, oldMethod, oldHeaders, response.status, response.statusText, response.headers, elapsedTime));
+        this._referrerPolicy = request.referrerPolicy ?? null;
+        this._integrity = request.integrity ?? null;
 
         if (oldURL !== request.url) {
             // Delete the URL components so the URL is re-parsed the next time it is requested.
@@ -820,6 +858,8 @@ WI.Resource = class Resource extends WI.SourceCode
             this._security.connection = metrics.securityConnection;
         }
 
+        this._isProxyConnection = !!metrics.isProxyConnection;
+
         this.dispatchEventToListeners(WI.Resource.Event.MetricsDidChange);
     }
 
@@ -941,26 +981,6 @@ WI.Resource = class Resource extends WI.SourceCode
 
         this._finished = false;
         this._finishedOrFailedTimestamp = NaN;
-    }
-
-    legacyMarkServedFromMemoryCache()
-    {
-        // COMPATIBILITY (iOS 10.3): This is a legacy code path where we know the resource came from the MemoryCache.
-        console.assert(this._responseSource === WI.Resource.ResponseSource.Unknown);
-
-        this._responseSource = WI.Resource.ResponseSource.MemoryCache;
-
-        this.markAsCached();
-    }
-
-    legacyMarkServedFromDiskCache()
-    {
-        // COMPATIBILITY (iOS 10.3): This is a legacy code path where we know the resource came from the DiskCache.
-        console.assert(this._responseSource === WI.Resource.ResponseSource.Unknown);
-
-        this._responseSource = WI.Resource.ResponseSource.DiskCache;
-
-        this.markAsCached();
     }
 
     isLoading()
@@ -1100,7 +1120,7 @@ WI.Resource = class Resource extends WI.SourceCode
             break;
         }
 
-        return WI.LocalResourceOverride.create(WI.urlWithoutFragment(this.url), type, resourceData);
+        return WI.LocalResourceOverride.create(this.url, type, resourceData);
     }
 
     updateLocalResourceOverrideRequestData(data)
@@ -1113,6 +1133,75 @@ WI.Resource = class Resource extends WI.SourceCode
         this._requestData = data;
 
         this.dispatchEventToListeners(WI.Resource.Event.RequestDataDidChange);
+    }
+
+    generateFetchCode()
+    {
+        let options = {};
+
+        if (this.requestData)
+            options.body = this.requestData;
+
+        options.cache = "default";
+        options.credentials = (this.requestCookies.length || this._requestHeaders.valueForCaseInsensitiveKey("Authorization")) ? "include" : "omit";
+
+        // https://fetch.spec.whatwg.org/#forbidden-header-name
+        const forbiddenHeaders = new Set([
+            "accept-charset",
+            "accept-encoding",
+            "access-control-request-headers",
+            "access-control-request-method",
+            "connection",
+            "content-length",
+            "cookie",
+            "cookie2",
+            "date",
+            "dnt",
+            "expect",
+            "host",
+            "keep-alive",
+            "origin",
+            "referer",
+            "te",
+            "trailer",
+            "transfer-encoding",
+            "upgrade",
+            "via",
+        ]);
+        let headers = Object.entries(this.requestHeaders)
+            .filter((header) => {
+                let key = header[0].toLowerCase();
+                if (forbiddenHeaders.has(key))
+                    return false;
+                if (key.startsWith("proxy-") || key.startsWith("sec-"))
+                    return false;
+                return true;
+            })
+            .sort((a, b) => a[0].extendedLocaleCompare(b[0]))
+            .reduce((accumulator, current) => {
+                accumulator[current[0]] = current[1];
+                return accumulator;
+            }, {});
+        if (!isEmptyObject(headers))
+            options.headers = headers;
+
+        if (this._integrity)
+            options.integrity = this._integrity;
+
+        if (this.requestMethod)
+            options.method = this.requestMethod;
+
+        options.mode = "cors";
+        options.redirect = "follow";
+
+        let referrer = this.requestHeaders.valueForCaseInsensitiveKey("Referer");
+        if (referrer)
+            options.referrer = referrer;
+
+        if (this._referrerPolicy)
+            options.referrerPolicy = this._referrerPolicy;
+
+        return `fetch(${JSON.stringify(this.url)}, ${JSON.stringify(options, null, WI.indentString())})`;
     }
 
     generateCURLCommand()
@@ -1266,6 +1355,7 @@ WI.Resource.Type = {
     Ping: "resource-type-ping",
     Beacon: "resource-type-beacon",
     WebSocket: "resource-type-websocket",
+    EventSource: "resource-type-eventsource",
     Other: "resource-type-other",
 };
 

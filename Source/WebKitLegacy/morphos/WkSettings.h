@@ -58,9 +58,6 @@ typedef enum {
 - (BOOL)localStorageEnabled;
 - (void)setLocalStorageEnabled:(BOOL)enabled;
 
-- (BOOL)offlineWebApplicationCacheEnabled;
-- (void)setOfflineWebApplicationCacheEnabled:(BOOL)enabled;
-
 - (WkSettings_Throttling)throttling;
 - (void)setThrottling:(WkSettings_Throttling)throttling;
 
@@ -136,6 +133,22 @@ typedef enum
 	WkGlobalSettings_Caching_Balanced,
 } WkGlobalSettings_Caching;
 
+typedef enum
+{
+    WkGlobalSettings_HTTP2_Disabled,
+    // Enabled is the default. Should not normally be changed unless to workaround server-side
+    // or cURL issues with HTTP/2
+    WkGlobalSettings_HTTP2_Enabled,
+    WkGlobalSettings_HTTP2_ExceptPOST
+} WkGlobalSettings_HTTP2;
+
+typedef enum
+{
+    WkGlobalSettings_FontCodePath_Auto,
+    WkGlobalSettings_FontCodePath_Simple,
+    WkGlobalSettings_FontCodePath_Complex
+} WkGlobalSettings_FontCodePath;
+
 @interface WkGlobalSettings : OBObject
 
 // Set the default download path for all new downloads, they'll be downloaded with a tmp name
@@ -145,6 +158,9 @@ typedef enum
 
 + (WkGlobalSettings_Antialias)fontAntialias;
 + (void)setAntialias:(WkGlobalSettings_Antialias)aa;
+
++ (WkGlobalSettings_FontCodePath)fontCodePath;
++ (void)setFontCodePath:(WkGlobalSettings_FontCodePath)codePath;
 
 // Sets a custom PEM file to be used to validate a connection to the given domain
 // 'key' is an optional password required to load the PEM file
@@ -176,5 +192,15 @@ typedef enum
 + (void)setProxyURL:(OBURL *)url user:(OBString *)user password:(OBString *)password ignoredHosts:(OBString *)hosts;
 // Clear/disable proxy settings
 + (void)setProxyNone;
+
+// Must be set before 1st browser is created and cannot be changed afterwards
++ (void)setCookieJarPath:(OBString *)path;
+
++ (void)setHTTP2Mode:(WkGlobalSettings_HTTP2)http2;
+
++ (void)setAdBlockBaseName:(OBString *)path;
+
+// Returns # of requests blocked in this session
++ (ULONG)requestsBlockedByAdBlock;
 
 @end

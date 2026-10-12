@@ -75,14 +75,13 @@ void ViewSnapshot::clearImage()
     m_surface = nullptr;
 }
 
-WebCore::VolatilityState ViewSnapshot::setVolatile(bool becomeVolatile)
+WebCore::SetNonVolatileResult ViewSnapshot::setVolatile(bool becomeVolatile)
 {
     if (ViewSnapshotStore::singleton().disableSnapshotVolatilityForTesting())
-        return WebCore::VolatilityState::Valid;
+        return WebCore::SetNonVolatileResult::Valid;
 
     if (!m_surface)
-        return WebCore::VolatilityState::Empty;
-
+        return WebCore::SetNonVolatileResult::Empty;
     return m_surface->setVolatile(becomeVolatile);
 }
 
@@ -91,7 +90,7 @@ id ViewSnapshot::asLayerContents()
     if (!m_surface)
         return nullptr;
 
-    if (setVolatile(false) != WebCore::VolatilityState::Valid) {
+    if (setVolatile(false) != WebCore::SetNonVolatileResult::Valid) {
         clearImage();
         return nullptr;
     }
@@ -105,7 +104,10 @@ RetainPtr<CGImageRef> ViewSnapshot::asImageForTesting()
         return nullptr;
 
     ASSERT(ViewSnapshotStore::singleton().disableSnapshotVolatilityForTesting());
-    return m_surface->createImage();
+    // Note: here we will destroy the context immediately, which will read back
+    // the image to CPU. This should be fine for testing.
+    auto context = m_surface->createPlatformContext();
+    return m_surface->createImage(context.get());
 }
 
 } // namespace WebKit

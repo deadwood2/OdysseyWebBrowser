@@ -27,8 +27,8 @@
 
 #include "APIObject.h"
 #include "Connection.h"
-#include "DataReference.h"
 #include "DownloadID.h"
+#include "IdentifierTypes.h"
 #include "SandboxExtension.h"
 #include <WebCore/ResourceRequest.h>
 #include <wtf/Forward.h>
@@ -93,17 +93,14 @@ public:
     const String& destinationFilename() const { return m_destinationFilename; }
     void setDestinationFilename(const String& d) { m_destinationFilename = d; }
 
-#if USE(SYSTEM_PREVIEW)
-    bool isSystemPreviewDownload() const { return request().isSystemPreview(); }
-    WebCore::SystemPreviewInfo systemPreviewDownloadInfo() const { return request().systemPreviewInfo(); }
-#endif
-
 #if PLATFORM(COCOA)
     void publishProgress(const URL&);
     void setProgress(NSProgress *progress) { m_progress = progress; }
     NSProgress *progress() const { return m_progress.get(); }
 #endif
-
+#if PLATFORM(MAC)
+    void updateQuarantinePropertiesIfPossible();
+#endif
     API::FrameInfo& frameInfo() { return m_frameInfo.get(); }
 
     API::DownloadClient& client() { return m_client.get(); }
@@ -113,13 +110,13 @@ public:
 
     // Message handlers.
     void didStart(const WebCore::ResourceRequest&, const String& suggestedFilename);
-    void didReceiveAuthenticationChallenge(WebCore::AuthenticationChallenge&&, uint64_t challengeID);
+    void didReceiveAuthenticationChallenge(WebCore::AuthenticationChallenge&&, AuthenticationChallengeIdentifier);
     void didReceiveData(uint64_t bytesWritten, uint64_t totalBytesWritten, uint64_t totalBytesExpectedToWrite);
     void shouldDecodeSourceDataOfMIMEType(const String& mimeType, bool& result);
     void didCreateDestination(const String& path);
     void didFinish();
-    void didFail(const WebCore::ResourceError&, const IPC::DataReference& resumeData);
-    void willSendRequest(WebCore::ResourceRequest&& redirectRequest, const WebCore::ResourceResponse& redirectResponse);
+    void didFail(const WebCore::ResourceError&, std::span<const uint8_t> resumeData);
+    void willSendRequest(WebCore::ResourceRequest&& redirectRequest, const WebCore::ResourceResponse& redirectResponse, CompletionHandler<void(WebCore::ResourceRequest&&)>&&);
     void decideDestinationWithSuggestedFilename(const WebCore::ResourceResponse&, String&& suggestedFilename, CompletionHandler<void(String, SandboxExtension::Handle, AllowOverwrite)>&&);
 
 private:

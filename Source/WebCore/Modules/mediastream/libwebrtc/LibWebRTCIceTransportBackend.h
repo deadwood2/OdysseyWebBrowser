@@ -24,7 +24,7 @@
 
 #pragma once
 
-#if ENABLE(WEB_RTC)
+#if ENABLE(WEB_RTC) && USE(LIBWEBRTC)
 
 #include "LibWebRTCMacros.h"
 #include "RTCIceTransportBackend.h"
@@ -52,7 +52,7 @@ public:
 private:
     // RTCIceTransportBackend
     const void* backend() const final { return m_backend.get(); }
-    void registerClient(Client&) final;
+    void registerClient(RTCIceTransportBackendClient&) final;
     void unregisterClient() final;
 
     rtc::scoped_refptr<webrtc::IceTransportInterface> m_backend;
@@ -61,4 +61,4 @@ private:
 
 } // namespace WebCore
 
-#endif // ENABLE(WEB_RTC)
+#endif // ENABLE(WEB_RTC) && USE(LIBWEBRTC)

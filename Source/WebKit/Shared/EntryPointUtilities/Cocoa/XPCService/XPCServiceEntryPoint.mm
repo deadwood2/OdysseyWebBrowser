@@ -25,10 +25,12 @@
 
 #import "config.h"
 
-#import "ArgumentCodersCF.h"
+#import "Logging.h"
 #import "SandboxUtilities.h"
 #import "XPCServiceEntryPoint.h"
 #import <WebCore/ProcessIdentifier.h>
+#import <signal.h>
+#import <wtf/WTFProcess.h>
 #import <wtf/cocoa/Entitlements.h>
 #import <wtf/spi/darwin/SandboxSPI.h>
 #import <wtf/text/StringToIntegerConversion.h>
@@ -44,14 +46,14 @@ bool XPCServiceInitializerDelegate::checkEntitlements()
 #if PLATFORM(MAC) || PLATFORM(MACCATALYST)
     if (isClientSandboxed()) {
         // FIXME(<rdar://problem/54178641>): Remove this check once WebKit can work without network access.
-        if (hasEntitlement("com.apple.security.network.client"))
+        if (hasEntitlement("com.apple.security.network.client"_s))
             return true;
 
         audit_token_t auditToken = { };
         xpc_connection_get_audit_token(m_connection.get(), &auditToken);
         if (auto rc = sandbox_check_by_audit_token(auditToken, "mach-lookup", static_cast<enum sandbox_filter_type>(SANDBOX_FILTER_GLOBAL_NAME | SANDBOX_CHECK_NO_REPORT), "com.apple.nsurlsessiond")) {
             // FIXME (rdar://problem/54178641): This requirement is too strict, it should be possible to load file:// resources without network access.
-            NSLog(@"Application does not have permission to communicate with network resources. rc=%d : errno=%d", rc, errno);
+            RELEASE_LOG_FAULT(Network, "Application does not have permission to communicate with network resources. rc=%d : errno=%d", rc, errno);
             return false;
         }
     }
@@ -71,36 +73,41 @@ bool XPCServiceInitializerDelegate::getConnectionIdentifier(IPC::Connection::Ide
 
 bool XPCServiceInitializerDelegate::getClientIdentifier(String& clientIdentifier)
 {
-    clientIdentifier = xpc_dictionary_get_string(m_initializerMessage, "client-identifier");
+    clientIdentifier = String::fromUTF8(xpc_dictionary_get_string(m_initializerMessage, "client-identifier"));
     return !clientIdentifier.isEmpty();
 }
 
 bool XPCServiceInitializerDelegate::getClientBundleIdentifier(String& clientBundleIdentifier)
 {
-    clientBundleIdentifier = xpc_dictionary_get_string(m_initializerMessage, "client-bundle-identifier");
+    clientBundleIdentifier = String::fromLatin1(xpc_dictionary_get_string(m_initializerMessage, "client-bundle-identifier"));
     return !clientBundleIdentifier.isEmpty();
 }
 
-bool XPCServiceInitializerDelegate::getClientSDKVersion(uint32_t& clientSDKVersion)
+bool XPCServiceInitializerDelegate::getClientSDKAlignedBehaviors(SDKAlignedBehaviors& behaviors)
 {
-    auto version = parseInteger<uint32_t>(xpc_dictionary_get_string(m_initializerMessage, "client-sdk-version"));
-    clientSDKVersion = version.value_or(0);
-    return version.has_value();
+    size_t length = 0;
+    auto behaviorData = xpc_dictionary_get_data(m_initializerMessage, "client-sdk-aligned-behaviors", &length);
+    if (!length || !behaviorData)
+        return false;
+    RELEASE_ASSERT(length == behaviors.storageLengthInBytes());
+    memcpy(behaviors.storage(), behaviorData, length);
+
+    return true;
 }
 
 bool XPCServiceInitializerDelegate::getProcessIdentifier(WebCore::ProcessIdentifier& identifier)
 {
-    auto parsedIdentifier = parseInteger<uint64_t>(xpc_dictionary_get_string(m_initializerMessage, "process-identifier"));
+    auto parsedIdentifier = parseInteger<uint64_t>(StringView::fromLatin1(xpc_dictionary_get_string(m_initializerMessage, "process-identifier")));
     if (!parsedIdentifier)
         return false;
 
-    identifier = makeObjectIdentifier<WebCore::ProcessIdentifierType>(*parsedIdentifier);
+    identifier = LegacyNullableObjectIdentifier<WebCore::ProcessIdentifierType>(*parsedIdentifier);
     return true;
 }
 
 bool XPCServiceInitializerDelegate::getClientProcessName(String& clientProcessName)
 {
-    clientProcessName = xpc_dictionary_get_string(m_initializerMessage, "ui-process-name");
+    clientProcessName = String::fromUTF8(xpc_dictionary_get_string(m_initializerMessage, "ui-process-name"));
     return !clientProcessName.isEmpty();
 }
 
@@ -108,37 +115,39 @@ bool XPCServiceInitializerDelegate::getExtraInitializationData(HashMap<String, S
 {
     xpc_object_t extraDataInitializationDataObject = xpc_dictionary_get_value(m_initializerMessage, "extra-initialization-data");
 
-    String inspectorProcess = xpc_dictionary_get_string(extraDataInitializationDataObject, "inspector-process");
+    auto inspectorProcess = String::fromLatin1(xpc_dictionary_get_string(extraDataInitializationDataObject, "inspector-process"));
     if (!inspectorProcess.isEmpty())
         extraInitializationData.add("inspector-process"_s, inspectorProcess);
 
-#if ENABLE(SERVICE_WORKER)
-    String serviceWorkerProcess = xpc_dictionary_get_string(extraDataInitializationDataObject, "service-worker-process");
+    auto serviceWorkerProcess = String::fromLatin1(xpc_dictionary_get_string(extraDataInitializationDataObject, "service-worker-process"));
     if (!serviceWorkerProcess.isEmpty())
         extraInitializationData.add("service-worker-process"_s, WTFMove(serviceWorkerProcess));
-    String registrableDomain = xpc_dictionary_get_string(extraDataInitializationDataObject, "registrable-domain");
+    auto registrableDomain = String::fromLatin1(xpc_dictionary_get_string(extraDataInitializationDataObject, "registrable-domain"));
     if (!registrableDomain.isEmpty())
         extraInitializationData.add("registrable-domain"_s, WTFMove(registrableDomain));
-#endif
 
-    String isPrewarmedProcess = xpc_dictionary_get_string(extraDataInitializationDataObject, "is-prewarmed");
+    auto isPrewarmedProcess = String::fromLatin1(xpc_dictionary_get_string(extraDataInitializationDataObject, "is-prewarmed"));
     if (!isPrewarmedProcess.isEmpty())
         extraInitializationData.add("is-prewarmed"_s, isPrewarmedProcess);
 
+    auto isLockdownModeEnabled = String::fromLatin1(xpc_dictionary_get_string(extraDataInitializationDataObject, "enable-lockdown-mode"));
+    if (!isLockdownModeEnabled.isEmpty())
+        extraInitializationData.add("enable-lockdown-mode"_s, isLockdownModeEnabled);
+
     if (!isClientSandboxed()) {
-        String userDirectorySuffix = xpc_dictionary_get_string(extraDataInitializationDataObject, "user-directory-suffix");
+        auto userDirectorySuffix = String::fromLatin1(xpc_dictionary_get_string(extraDataInitializationDataObject, "user-directory-suffix"));
         if (!userDirectorySuffix.isEmpty())
             extraInitializationData.add("user-directory-suffix"_s, userDirectorySuffix);
     }
 
-    String alwaysRunsAtBackgroundPriority = xpc_dictionary_get_string(extraDataInitializationDataObject, "always-runs-at-background-priority");
+    auto alwaysRunsAtBackgroundPriority = String::fromLatin1(xpc_dictionary_get_string(extraDataInitializationDataObject, "always-runs-at-background-priority"));
     if (!alwaysRunsAtBackgroundPriority.isEmpty())
         extraInitializationData.add("always-runs-at-background-priority"_s, alwaysRunsAtBackgroundPriority);
 
     return true;
 }
 
-bool XPCServiceInitializerDelegate::hasEntitlement(const char* entitlement)
+bool XPCServiceInitializerDelegate::hasEntitlement(ASCIILiteral entitlement)
 {
     return WTF::hasEntitlement(m_connection.get(), entitlement);
 }
@@ -148,21 +157,75 @@ bool XPCServiceInitializerDelegate::isClientSandboxed()
     return connectedProcessIsSandboxed(m_connection.get());
 }
 
-#if PLATFORM(MAC)
-OSObjectPtr<os_transaction_t>& osTransaction()
+#if !USE(RUNNINGBOARD)
+void setOSTransaction(OSObjectPtr<os_transaction_t>&& transaction)
 {
-    static NeverDestroyed<OSObjectPtr<os_transaction_t>> transaction;
-    return transaction.get();
+    static NeverDestroyed<OSObjectPtr<os_transaction_t>> globalTransaction;
+    static NeverDestroyed<OSObjectPtr<dispatch_source_t>> globalSource;
+
+    // Because we don't use RunningBoard on macOS, we leak an OS transaction to control the lifetime of our XPC
+    // services ourselves. However, one of the side effects of leaking this transaction is that the default SIGTERM
+    // handler doesn't cleanly exit our XPC services when logging out or rebooting. This led to crashes with
+    // XPC_EXIT_REASON_SIGTERM_TIMEOUT as termination reason (rdar://88940229). To address the issue, we now set our
+    // own SIGTERM handler that calls exitProcess(0). In the future, we should likely adopt RunningBoard on macOS and
+    // control our lifetime via process assertions instead of leaking this OS transaction.
+    static dispatch_once_t flag;
+    dispatch_once(&flag, ^{
+        globalSource.get() = adoptOSObject(dispatch_source_create(DISPATCH_SOURCE_TYPE_SIGNAL, SIGTERM, 0, dispatch_get_main_queue()));
+        dispatch_source_set_event_handler(globalSource.get().get(), ^{
+            exitProcess(0);
+        });
+        dispatch_resume(globalSource.get().get());
+    });
+
+    globalTransaction.get() = WTFMove(transaction);
 }
 #endif
 
-void XPCServiceExit(OSObjectPtr<xpc_object_t>&& priorityBoostMessage)
+void setJSCOptions(xpc_object_t initializerMessage, EnableLockdownMode enableLockdownMode)
 {
-    // Make sure to destroy the priority boost message to avoid leaking a transaction.
-    priorityBoostMessage = nullptr;
+    bool optionsChanged = false;
+    if (xpc_dictionary_get_bool(initializerMessage, "configure-jsc-for-testing"))
+        JSC::Config::configureForTesting();
+    if (enableLockdownMode == EnableLockdownMode::Yes) {
+        JSC::Options::initialize();
+        JSC::Options::AllowUnfinalizedAccessScope scope;
+        JSC::ExecutableAllocator::disableJIT();
+        JSC::Options::useGenerationalGC() = false;
+        JSC::Options::useConcurrentGC() = false;
+        JSC::Options::useLLIntICs() = false;
+        JSC::Options::useWasm() = false;
+        JSC::Options::useZombieMode() = true;
+        JSC::Options::allowDoubleShape() = false;
+        JSC::Options::alwaysHaveABadTime() = true;
+        optionsChanged = true;
+    } else if (xpc_dictionary_get_bool(initializerMessage, "disable-jit")) {
+        JSC::Options::initialize();
+        JSC::Options::AllowUnfinalizedAccessScope scope;
+        JSC::ExecutableAllocator::disableJIT();
+        optionsChanged = true;
+    }
+    if (xpc_dictionary_get_bool(initializerMessage, "enable-shared-array-buffer")) {
+        JSC::Options::initialize();
+        JSC::Options::AllowUnfinalizedAccessScope scope;
+        JSC::Options::useSharedArrayBuffer() = true;
+        optionsChanged = true;
+    }
+    // FIXME (276012): Remove this XPC bootstrap message when it's no longer necessary. See rdar://130669638 for more context.
+    if (xpc_dictionary_get_bool(initializerMessage, "disable-jit-cage")) {
+        JSC::Options::initialize();
+        JSC::Options::AllowUnfinalizedAccessScope scope;
+        JSC::Options::useJITCage() = false;
+        optionsChanged = true;
+    }
+    if (optionsChanged)
+        JSC::Options::notifyOptionsChanged();
+}
 
-#if PLATFORM(MAC)
-    osTransaction() = nullptr;
+void XPCServiceExit()
+{
+#if !USE(RUNNINGBOARD)
+    setOSTransaction(nullptr);
 #endif
 
     xpc_transaction_exit_clean();

@@ -27,7 +27,8 @@
 namespace WebCore {
 
 class SVGCircleElement final : public SVGGeometryElement {
-    WTF_MAKE_ISO_ALLOCATED(SVGCircleElement);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(SVGCircleElement);
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(SVGCircleElement);
 public:
     static Ref<SVGCircleElement> create(const QualifiedName&, Document&);
 
@@ -43,9 +44,10 @@ private:
     SVGCircleElement(const QualifiedName&, Document&);
 
     using PropertyRegistry = SVGPropertyOwnerRegistry<SVGCircleElement, SVGGeometryElement>;
-    const SVGPropertyRegistry& propertyRegistry() const final { return m_propertyRegistry; }
+    friend PropertyRegistry;
 
-    void parseAttribute(const QualifiedName&, const AtomString&) final;
+    SVGAnimatedProperty* propertyForAttribute(const QualifiedName&) const;
+    void attributeChanged(const QualifiedName&, const AtomString& oldValue, const AtomString& newValue, AttributeModificationReason) final;
     void svgAttributeChanged(const QualifiedName&) final;
 
     bool isValid() const final { return SVGTests::isValid(); }
@@ -53,7 +55,6 @@ private:
 
     RenderPtr<RenderElement> createElementRenderer(RenderStyle&&, const RenderTreePosition&) final;
 
-    PropertyRegistry m_propertyRegistry { *this };
     Ref<SVGAnimatedLength> m_cx { SVGAnimatedLength::create(this, SVGLengthMode::Width) };
     Ref<SVGAnimatedLength> m_cy { SVGAnimatedLength::create(this, SVGLengthMode::Height) };
     Ref<SVGAnimatedLength> m_r { SVGAnimatedLength::create(this, SVGLengthMode::Other) };

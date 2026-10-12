@@ -39,6 +39,7 @@
 #include <wtf/DateMath.h>
 #include <wtf/HashMap.h>
 #include <wtf/Language.h>
+#include <wtf/text/MakeString.h>
 #include <wtf/text/StringBuilder.h>
 #include <wtf/text/StringHash.h>
 #include <wtf/text/win/WCharStringExtras.h>
@@ -124,13 +125,13 @@ void LocaleWin::ensureShortMonthLabels()
         LOCALE_SABBREVMONTHNAME11,
         LOCALE_SABBREVMONTHNAME12,
     };
-    m_shortMonthLabels.reserveCapacity(WTF_ARRAY_LENGTH(types));
-    for (unsigned i = 0; i < WTF_ARRAY_LENGTH(types); ++i) {
+    m_shortMonthLabels.reserveCapacity(std::size(types));
+    for (unsigned i = 0; i < std::size(types); ++i) {
         m_shortMonthLabels.append(getLocaleInfoString(types[i]));
         if (m_shortMonthLabels.last().isEmpty()) {
             m_shortMonthLabels.shrink(0);
-            m_shortMonthLabels.reserveCapacity(WTF_ARRAY_LENGTH(WTF::monthName));
-            for (unsigned m = 0; m < WTF_ARRAY_LENGTH(WTF::monthName); ++m)
+            m_shortMonthLabels.reserveCapacity(std::size(WTF::monthName));
+            for (unsigned m = 0; m < std::size(WTF::monthName); ++m)
                 m_shortMonthLabels.append(WTF::monthName[m]);
             return;
         }
@@ -259,13 +260,13 @@ void LocaleWin::ensureMonthLabels()
         LOCALE_SMONTHNAME11,
         LOCALE_SMONTHNAME12,
     };
-    m_monthLabels.reserveCapacity(WTF_ARRAY_LENGTH(types));
-    for (unsigned i = 0; i < WTF_ARRAY_LENGTH(types); ++i) {
+    m_monthLabels.reserveCapacity(std::size(types));
+    for (unsigned i = 0; i < std::size(types); ++i) {
         m_monthLabels.append(getLocaleInfoString(types[i]));
         if (m_monthLabels.last().isEmpty()) {
             m_monthLabels.shrink(0);
-            m_monthLabels.reserveCapacity(WTF_ARRAY_LENGTH(WTF::monthFullName));
-            for (unsigned m = 0; m < WTF_ARRAY_LENGTH(WTF::monthFullName); ++m)
+            m_monthLabels.reserveCapacity(std::size(WTF::monthFullName));
+            for (unsigned m = 0; m < std::size(WTF::monthFullName); ++m)
                 m_monthLabels.append(WTF::monthFullName[m]);
             return;
         }
@@ -302,7 +303,7 @@ String LocaleWin::monthFormat()
 String LocaleWin::shortMonthFormat()
 {
     if (m_shortMonthFormat.isNull())
-        m_shortMonthFormat = convertWindowsDateTimeFormat(getLocaleInfoString(LOCALE_SYEARMONTH)).replace("MMMM", "MMM");
+        m_shortMonthFormat = makeStringByReplacingAll(convertWindowsDateTimeFormat(getLocaleInfoString(LOCALE_SYEARMONTH)), "MMMM"_s, "MMM"_s);
     return m_shortMonthFormat;
 }
 
@@ -321,12 +322,9 @@ String LocaleWin::shortTimeFormat()
     // Vista or older Windows doesn't support LOCALE_SSHORTTIME.
     if (format.isEmpty()) {
         format = getLocaleInfoString(LOCALE_STIMEFORMAT);
-        StringBuilder builder;
-        builder.append(getLocaleInfoString(LOCALE_STIME));
-        builder.append("ss");
-        size_t pos = format.reverseFind(builder.toString());
-        if (pos != notFound)
-            format.remove(pos, builder.length());
+        auto locale = makeString(getLocaleInfoString(LOCALE_STIME), "ss"_s);
+        if (format.reverseFind(builder) != notFound)
+            format = makeStringByRemoving(format, pos, builder.length());
     }
     m_timeFormatWithoutSeconds = convertWindowsDateTimeFormat(format);
     return m_timeFormatWithoutSeconds;
@@ -334,25 +332,15 @@ String LocaleWin::shortTimeFormat()
 
 String LocaleWin::dateTimeFormatWithSeconds()
 {
-    if (!m_dateTimeFormatWithSeconds.isNull())
-        return m_dateTimeFormatWithSeconds;
-    StringBuilder builder;
-    builder.append(dateFormat());
-    builder.append(' ');
-    builder.append(timeFormat());
-    m_dateTimeFormatWithSeconds = builder.toString();
+    if (m_dateTimeFormatWithSeconds.isNull())
+        m_dateTimeFormatWithSeconds = makeString(dateFormat(), ' ', timeFormat());
     return m_dateTimeFormatWithSeconds;
 }
 
 String LocaleWin::dateTimeFormatWithoutSeconds()
 {
-    if (!m_dateTimeFormatWithoutSeconds.isNull())
-        return m_dateTimeFormatWithoutSeconds;
-    StringBuilder builder;
-    builder.append(dateFormat());
-    builder.append(' ');
-    builder.append(shortTimeFormat());
-    m_dateTimeFormatWithoutSeconds = builder.toString();
+    if (m_dateTimeFormatWithoutSeconds.isNull())
+        m_dateTimeFormatWithoutSeconds = makeString(dateFormat(), ' ', shortTimeFormat());
     return m_dateTimeFormatWithoutSeconds;
 }
 
@@ -398,16 +386,16 @@ void LocaleWin::initializeLocaleData()
     DWORD digitSubstitution = DigitSubstitution0to9;
     getLocaleInfo(LOCALE_IDIGITSUBSTITUTION, digitSubstitution);
     if (digitSubstitution == DigitSubstitution0to9) {
-        symbols.append("0");
-        symbols.append("1");
-        symbols.append("2");
-        symbols.append("3");
-        symbols.append("4");
-        symbols.append("5");
-        symbols.append("6");
-        symbols.append("7");
-        symbols.append("8");
-        symbols.append("9");
+        symbols.append("0"_s);
+        symbols.append("1"_s);
+        symbols.append("2"_s);
+        symbols.append("3"_s);
+        symbols.append("4"_s);
+        symbols.append("5"_s);
+        symbols.append("6"_s);
+        symbols.append("7"_s);
+        symbols.append("8"_s);
+        symbols.append("9"_s);
     } else {
         String digits = getLocaleInfoString(LOCALE_SNATIVEDIGITS);
         ASSERT(digits.length() >= 10);
@@ -434,17 +422,17 @@ void LocaleWin::initializeLocaleData()
     String negativeSuffix = emptyString();
     switch (negativeFormat) {
     case NegativeFormatParenthesis:
-        negativePrefix = "(";
-        negativeSuffix = ")";
+        negativePrefix = "("_s;
+        negativeSuffix = ")"_s;
         break;
     case NegativeFormatSignSpacePrefix:
-        negativePrefix = negativeSign + " ";
+        negativePrefix = makeString(negativeSign, ' ');
         break;
     case NegativeFormatSignSuffix:
         negativeSuffix = negativeSign;
         break;
     case NegativeFormatSpaceSignSuffix:
-        negativeSuffix = " " + negativeSign;
+        negativeSuffix = makeString(' ', negativeSign);
         break;
     case NegativeFormatSignPrefix:
         FALLTHROUGH;

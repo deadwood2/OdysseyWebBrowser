@@ -34,19 +34,23 @@ namespace WebCore {
 
 class Document;
 class Element;
-class MediaQueryEvaluator;
-class Scope;
-class SelectorFilter;
 class ShadowRoot;
 class StyleSheetContents;
 
+namespace MQ {
+class MediaQueryEvaluator;
+}
+
 namespace Style {
 
+class Scope;
+
 struct InvalidationRuleSet;
+struct SelectorMatchingState;
 
 class Invalidator {
 public:
-    Invalidator(const Vector<StyleSheetContents*>&, const MediaQueryEvaluator&);
+    Invalidator(const Vector<Ref<StyleSheetContents>>&, const MQ::MediaQueryEvaluator&);
     Invalidator(const InvalidationRuleSetVector&);
 
     ~Invalidator();
@@ -59,25 +63,27 @@ public:
 
     static void invalidateShadowParts(ShadowRoot&);
 
-    using MatchElementRuleSets = HashMap<MatchElement, InvalidationRuleSetVector, WTF::IntHash<MatchElement>, WTF::StrongEnumHashTraits<MatchElement>>;
+    using MatchElementRuleSets = HashMap<MatchElement, InvalidationRuleSetVector, IntHash<MatchElement>, WTF::StrongEnumHashTraits<MatchElement>>;
     static void addToMatchElementRuleSets(Invalidator::MatchElementRuleSets&, const InvalidationRuleSet&);
     static void invalidateWithMatchElementRuleSets(Element&, const MatchElementRuleSets&);
     static void invalidateAllStyle(Scope&);
     static void invalidateHostAndSlottedStyleIfNeeded(ShadowRoot&);
+    static void invalidateWithScopeBreakingHasPseudoClassRuleSet(Element&, const RuleSet*);
 
 private:
-    enum class CheckDescendants { Yes, No };
-    CheckDescendants invalidateIfNeeded(Element&, const SelectorFilter*);
-    void invalidateStyleForTree(Element&, SelectorFilter*);
-    void invalidateStyleForDescendants(Element&, SelectorFilter*);
+    enum class CheckDescendants : bool { No, Yes };
+    CheckDescendants invalidateIfNeeded(Element&, SelectorMatchingState*);
+    void invalidateStyleForTree(Element&, SelectorMatchingState*);
+    void invalidateStyleForDescendants(Element&, SelectorMatchingState*);
     void invalidateInShadowTreeIfNeeded(Element&);
-    void invalidateShadowPseudoElements(ShadowRoot&);
+    void invalidateUserAgentParts(ShadowRoot&);
     void invalidateStyleWithMatchElement(Element&, MatchElement);
 
     struct RuleInformation {
         bool hasSlottedPseudoElementRules { false };
         bool hasHostPseudoClassRules { false };
-        bool hasShadowPseudoElementRules { false };
+        bool hasHostPseudoClassRulesMatchingInShadowTree { false };
+        bool hasUserAgentPartRules { false };
         bool hasCuePseudoElementRules { false };
         bool hasPartPseudoElementRules { false };
     };
@@ -89,7 +95,6 @@ private:
     RuleInformation m_ruleInformation;
 
     bool m_dirtiesAllStyle { false };
-    bool m_didInvalidateHostChildren { false };
 };
 
 }

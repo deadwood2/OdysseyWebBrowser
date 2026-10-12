@@ -27,11 +27,11 @@
 #include "SpeechRecognitionResultList.h"
 
 #include "SpeechRecognitionResult.h"
-#include <wtf/IsoMallocInlines.h>
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(SpeechRecognitionResultList);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(SpeechRecognitionResultList);
 
 Ref<SpeechRecognitionResultList> SpeechRecognitionResultList::create()
 {
@@ -50,7 +50,7 @@ SpeechRecognitionResult* SpeechRecognitionResultList::item(uint64_t index) const
 
 void SpeechRecognitionResultList::add(SpeechRecognitionResult& result)
 {
-    m_list.append(makeRef(result));
+    m_list.append(result);
 }
 
 SpeechRecognitionResultList::SpeechRecognitionResultList(Vector<Ref<SpeechRecognitionResult>>&& list)

@@ -28,6 +28,7 @@
 #pragma once
 
 #include "CrossOriginEmbedderPolicy.h"
+#include "CrossOriginOpenerPolicy.h"
 #include <memory>
 #include <wtf/Forward.h>
 #include <wtf/OptionSet.h>
@@ -40,6 +41,7 @@ class SecurityOriginPolicy;
 class ContentSecurityPolicy;
 struct CrossOriginOpenerPolicy;
 struct PolicyContainer;
+enum class ReferrerPolicy : uint8_t;
 
 enum SandboxFlag {
     // See http://www.whatwg.org/specs/web-apps/current-work/#attr-iframe-sandbox for a list of the sandbox flags.
@@ -58,10 +60,12 @@ enum SandboxFlag {
     SandboxDocumentDomain       = 1 << 11,
     SandboxModals               = 1 << 12,
     SandboxStorageAccessByUserActivation = 1 << 13,
+    SandboxTopNavigationToCustomProtocols = 1 << 14,
+    SandboxDownloads = 1 << 15,
     SandboxAll                  = -1 // Mask with all bits set to 1.
 };
 
-typedef int SandboxFlags;
+using SandboxFlags = int;
 
 class SecurityContext {
 public:
@@ -69,7 +73,8 @@ public:
     SandboxFlags creationSandboxFlags() const { return m_creationSandboxFlags; }
 
     SandboxFlags sandboxFlags() const { return m_sandboxFlags; }
-    ContentSecurityPolicy* contentSecurityPolicy() { return m_contentSecurityPolicy.get(); }
+    WEBCORE_EXPORT ContentSecurityPolicy* contentSecurityPolicy();
+    CheckedPtr<ContentSecurityPolicy> checkedContentSecurityPolicy();
 
     bool isSecureTransitionTo(const URL&) const;
 
@@ -78,7 +83,10 @@ public:
 
     bool isSandboxed(SandboxFlags mask) const { return m_sandboxFlags & mask; }
 
-    SecurityOriginPolicy* securityOriginPolicy() const { return m_securityOriginPolicy.get(); }
+    SecurityOriginPolicy* securityOriginPolicy() const;
+
+    bool hasEmptySecurityOriginPolicyAndContentSecurityPolicy() const { return m_hasEmptySecurityOriginPolicy && m_hasEmptyContentSecurityPolicy; }
+    bool hasInitializedSecurityOriginPolicyOrContentSecurityPolicy() const { return m_securityOriginPolicy || m_contentSecurityPolicy; }
 
     // Explicitly override the security origin for this security context.
     // Note: It is dangerous to change the security origin of a script context
@@ -90,19 +98,27 @@ public:
     //       context that already contains content.
     void setContentSecurityPolicy(std::unique_ptr<ContentSecurityPolicy>&&);
 
+    inline void setEmptySecurityOriginPolicyAndContentSecurityPolicy();
+
     const CrossOriginEmbedderPolicy& crossOriginEmbedderPolicy() const { return m_crossOriginEmbedderPolicy; }
     void setCrossOriginEmbedderPolicy(const CrossOriginEmbedderPolicy& crossOriginEmbedderPolicy) { m_crossOriginEmbedderPolicy = crossOriginEmbedderPolicy; }
 
-    virtual const CrossOriginOpenerPolicy& crossOriginOpenerPolicy() const;
+    virtual const CrossOriginOpenerPolicy& crossOriginOpenerPolicy() const { return m_crossOriginOpenerPolicy; }
+    void setCrossOriginOpenerPolicy(const CrossOriginOpenerPolicy& crossOriginOpenerPolicy) { m_crossOriginOpenerPolicy = crossOriginOpenerPolicy; }
 
-    PolicyContainer policyContainer() const;
+    virtual ReferrerPolicy referrerPolicy() const { return m_referrerPolicy; }
+    void setReferrerPolicy(ReferrerPolicy);
+
+    WEBCORE_EXPORT PolicyContainer policyContainer() const;
+    virtual void inheritPolicyContainerFrom(const PolicyContainer&);
 
     WEBCORE_EXPORT SecurityOrigin* securityOrigin() const;
+    WEBCORE_EXPORT RefPtr<SecurityOrigin> protectedSecurityOrigin() const;
 
-    static SandboxFlags parseSandboxPolicy(const String& policy, String& invalidTokensErrorMessage);
+    static SandboxFlags parseSandboxPolicy(StringView policy, String& invalidTokensErrorMessage);
     static bool isSupportedSandboxPolicy(StringView);
 
-    enum MixedContentType {
+    enum MixedContentType : uint8_t {
         Inactive = 1 << 0,
         Active = 1 << 1,
     };
@@ -110,6 +126,8 @@ public:
     bool usedLegacyTLS() const { return m_usedLegacyTLS; }
     void setUsedLegacyTLS(bool used) { m_usedLegacyTLS = used; }
     const OptionSet<MixedContentType>& foundMixedContent() const { return m_mixedContentTypes; }
+    bool wasPrivateRelayed() const { return m_wasPrivateRelayed; }
+    void setWasPrivateRelayed(bool privateRelayed) { m_wasPrivateRelayed = privateRelayed; }
     void setFoundMixedContent(MixedContentType type) { m_mixedContentTypes.add(type); }
     bool geolocationAccessed() const { return m_geolocationAccessed; }
     void setGeolocationAccessed() { m_geolocationAccessed = true; }
@@ -136,19 +154,35 @@ protected:
     void didFailToInitializeSecurityOrigin() { m_haveInitializedSecurityOrigin = false; }
 
 private:
+    virtual void securityOriginDidChange() { };
     void addSandboxFlags(SandboxFlags);
+    virtual std::unique_ptr<ContentSecurityPolicy> makeEmptyContentSecurityPolicy() = 0;
 
     RefPtr<SecurityOriginPolicy> m_securityOriginPolicy;
     std::unique_ptr<ContentSecurityPolicy> m_contentSecurityPolicy;
     CrossOriginEmbedderPolicy m_crossOriginEmbedderPolicy;
+    CrossOriginOpenerPolicy m_crossOriginOpenerPolicy;
     SandboxFlags m_creationSandboxFlags { SandboxNone };
     SandboxFlags m_sandboxFlags { SandboxNone };
+    ReferrerPolicy m_referrerPolicy { ReferrerPolicy::Default };
     OptionSet<MixedContentType> m_mixedContentTypes;
     bool m_haveInitializedSecurityOrigin { false };
     bool m_geolocationAccessed { false };
     bool m_secureCookiesAccessed { false };
     bool m_isStrictMixedContentMode { false };
     bool m_usedLegacyTLS { false };
+    bool m_wasPrivateRelayed { false };
+    bool m_hasEmptySecurityOriginPolicy { false };
+    bool m_hasEmptyContentSecurityPolicy { false };
 };
+
+void SecurityContext::setEmptySecurityOriginPolicyAndContentSecurityPolicy()
+{
+    ASSERT(!m_securityOriginPolicy);
+    ASSERT(!m_contentSecurityPolicy);
+    m_haveInitializedSecurityOrigin = true;
+    m_hasEmptySecurityOriginPolicy = true;
+    m_hasEmptyContentSecurityPolicy = true;
+}
 
 } // namespace WebCore

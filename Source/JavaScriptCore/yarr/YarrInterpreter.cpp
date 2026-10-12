@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009, 2013-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2009-2024 Apple Inc. All rights reserved.
  * Copyright (C) 2010 Peter Varga (pvarga@inf.u-szeged.hu), University of Szeged
  *
  * Redistribution and use in source and binary forms, with or without
@@ -31,17 +31,53 @@
 #include "SuperSampler.h"
 #include "Yarr.h"
 #include "YarrCanonicalize.h"
+#include <wtf/BitVector.h>
 #include <wtf/BumpPointerAllocator.h>
 #include <wtf/CheckedArithmetic.h>
 #include <wtf/DataLog.h>
 #include <wtf/StackCheck.h>
+#include <wtf/TZoneMallocInlines.h>
 #include <wtf/text/WTFString.h>
 
 namespace JSC { namespace Yarr {
 
+WTF_MAKE_TZONE_ALLOCATED_IMPL(BytecodePattern);
+WTF_MAKE_TZONE_ALLOCATED_IMPL(ByteDisjunction);
+
+class ByteTermDumper {
+public:
+    ByteTermDumper(YarrPattern* pattern = nullptr)
+        : m_pattern(pattern)
+    {
+        if (pattern)
+            m_compileMode = pattern->compileMode();
+    }
+
+    ByteTermDumper(CompileMode compileMode)
+        : m_compileMode(compileMode)
+    {
+    }
+
+    void dumpTerm(size_t idx, ByteTerm);
+    void dumpDisjunction(ByteDisjunction*, unsigned nesting = 0);
+    bool unicode() const { return m_compileMode == CompileMode::Unicode; }
+    bool unicodeSets() const { return m_compileMode == CompileMode::UnicodeSets; }
+    bool eitherUnicode() const { return unicode() || unicodeSets(); }
+
+private:
+    YarrPattern* m_pattern { nullptr };
+    unsigned m_nesting { 0 };
+    unsigned m_lineIndent { 0 };
+    CompileMode m_compileMode { CompileMode::Legacy };
+    bool m_recursiveDump { false };
+};
+
 template<typename CharType>
 class Interpreter {
 public:
+    static constexpr bool verbose = false;
+    static constexpr char32_t errorCodePoint = 0xFFFFFFFFu;
+
     struct ParenthesesDisjunctionContext;
 
     struct BackTrackInfoParentheses {
@@ -76,7 +112,7 @@ public:
 
         static size_t allocationSize(unsigned numberOfFrames)
         {
-            static_assert(alignof(DisjunctionContext) <= sizeof(void*), "");
+            static_assert(alignof(DisjunctionContext) <= sizeof(void*));
             size_t rawSize = sizeof(DisjunctionContext) - sizeof(uintptr_t) + Checked<size_t>(numberOfFrames) * sizeof(uintptr_t);
             size_t roundedSize = roundUpToMultipleOf<sizeof(void*)>(rawSize);
             RELEASE_ASSERT(roundedSize >= rawSize);
@@ -104,17 +140,28 @@ public:
 
     struct ParenthesesDisjunctionContext
     {
-        ParenthesesDisjunctionContext(unsigned* output, ByteTerm& term)
-        {
-            unsigned firstSubpatternId = term.atom.subpatternId;
-            unsigned numNestedSubpatterns = term.atom.parenthesesDisjunction->m_numSubpatterns;
+        ParenthesesDisjunctionContext(BytecodePattern* pattern, unsigned* output, ByteTerm& term, unsigned numDuplicateNamedGroups, BitVector& duplicateNamedGroups)
+            : m_pattern(pattern)
+            , m_numNestedSubpatterns(term.atom.parenthesesDisjunction->m_numSubpatterns)
+            , m_duplicateNamedGroups(duplicateNamedGroups)
 
-            for (unsigned i = 0; i < (numNestedSubpatterns << 1); ++i) {
-                subpatternBackup[i] = output[(firstSubpatternId << 1) + i];
+        {
+            m_numBackupIds = m_numNestedSubpatterns * 2 + numDuplicateNamedGroups;
+            unsigned firstSubpatternId = term.subpatternId();
+
+            for (unsigned i = 0; i < (m_numNestedSubpatterns << 1); ++i) {
+                subpatternAndGroupIdBackup[i] = output[(firstSubpatternId << 1) + i];
                 output[(firstSubpatternId << 1) + i] = offsetNoMatch;
             }
 
-            new (getDisjunctionContext(term)) DisjunctionContext();
+            unsigned nameGroupIdx = 0;
+            for (unsigned duplicateNamedGroupId : m_duplicateNamedGroups) {
+                subpatternAndGroupIdBackup[backupOffsetForDuplicateNamedGroup(nameGroupIdx)] = output[m_pattern->offsetForDuplicateNamedGroupId(duplicateNamedGroupId)];
+                output[pattern->offsetForDuplicateNamedGroupId(duplicateNamedGroupId)] = 0;
+                ++nameGroupIdx;
+            }
+
+            new (getDisjunctionContext()) DisjunctionContext();
         }
 
         void* operator new(size_t, void* where)
@@ -122,36 +169,75 @@ public:
             return where;
         }
 
-        void restoreOutput(unsigned* output, unsigned firstSubpatternId, unsigned numNestedSubpatterns)
+        void restoreOutput(unsigned* output, unsigned firstSubpatternId)
         {
-            for (unsigned i = 0; i < (numNestedSubpatterns << 1); ++i)
-                output[(firstSubpatternId << 1) + i] = subpatternBackup[i];
+            for (unsigned i = 0; i < (m_numNestedSubpatterns << 1); ++i)
+                output[(firstSubpatternId << 1) + i] = subpatternAndGroupIdBackup[i];
+
+            unsigned nameGroupIdx = 0;
+            for (unsigned duplicateNamedGroupId : m_duplicateNamedGroups) {
+                output[m_pattern->offsetForDuplicateNamedGroupId(duplicateNamedGroupId)] = subpatternAndGroupIdBackup[backupOffsetForDuplicateNamedGroup(nameGroupIdx)];
+                ++nameGroupIdx;
+            }
         }
 
-        DisjunctionContext* getDisjunctionContext(ByteTerm& term)
+        DisjunctionContext* getDisjunctionContext()
         {
-            return bitwise_cast<DisjunctionContext*>(bitwise_cast<uintptr_t>(this) + allocationSize(term.atom.parenthesesDisjunction->m_numSubpatterns));
+            return bitwise_cast<DisjunctionContext*>(bitwise_cast<uintptr_t>(this) + allocationSize(m_numBackupIds));
         }
 
-        static size_t allocationSize(unsigned numberOfSubpatterns)
+        unsigned backupOffsetForDuplicateNamedGroup(unsigned duplicateNamedGroup)
         {
-            static_assert(alignof(ParenthesesDisjunctionContext) <= sizeof(void*), "");
-            size_t rawSize = sizeof(ParenthesesDisjunctionContext) - sizeof(unsigned) + (Checked<size_t>(numberOfSubpatterns) * 2U) * sizeof(unsigned);
+            unsigned offset = (m_numNestedSubpatterns << 1) + duplicateNamedGroup;
+            ASSERT(offset < m_numBackupIds);
+            return offset;
+        }
+
+        static size_t allocationSize(unsigned numberOfSubpatterns, unsigned numDuplicateNamedGroups)
+        {
+            Checked<size_t> numBackupIds = (Checked<size_t>(numberOfSubpatterns) * 2U) + Checked<size_t>(numDuplicateNamedGroups);
+            return allocationSize(numBackupIds.value());
+        }
+
+        static size_t allocationSize(unsigned numBackupIds)
+        {
+            static_assert(alignof(ParenthesesDisjunctionContext) <= sizeof(void*));
+            size_t rawSize = sizeof(ParenthesesDisjunctionContext) + Checked<size_t>(numBackupIds) * sizeof(unsigned);
             size_t roundedSize = roundUpToMultipleOf<sizeof(void*)>(rawSize);
             RELEASE_ASSERT(roundedSize >= rawSize);
             return roundedSize;
         }
 
         ParenthesesDisjunctionContext* next { nullptr };
-        unsigned subpatternBackup[1];
+        BytecodePattern* m_pattern;
+        unsigned m_numNestedSubpatterns;
+        size_t m_numBackupIds;
+        BitVector m_duplicateNamedGroups;
+        unsigned subpatternAndGroupIdBackup[1];
     };
 
     ParenthesesDisjunctionContext* allocParenthesesDisjunctionContext(ByteDisjunction* disjunction, unsigned* output, ByteTerm& term)
     {
-        size_t size = Checked<size_t>(ParenthesesDisjunctionContext::allocationSize(term.atom.parenthesesDisjunction->m_numSubpatterns)) + DisjunctionContext::allocationSize(disjunction->m_frameSize);
+        BitVector duplicateNamedCaptureGroups;
+        unsigned firstSubpatternId = term.subpatternId();
+        unsigned numNestedSubpatterns = term.atom.parenthesesDisjunction->m_numSubpatterns;
+        unsigned numDuplicateNamedGroups = 0;
+
+        if (pattern->hasDuplicateNamedCaptureGroups()) {
+            for (unsigned i = 0; i < numNestedSubpatterns; ++i) {
+                unsigned subpatternId = firstSubpatternId + i;
+                unsigned duplicateNamedGroup = pattern->m_duplicateNamedGroupForSubpatternId[subpatternId];
+                if (duplicateNamedGroup)
+                    duplicateNamedCaptureGroups.set(duplicateNamedGroup);
+            }
+
+            numDuplicateNamedGroups = duplicateNamedCaptureGroups.bitCount();
+        }
+
+        size_t size = Checked<size_t>(ParenthesesDisjunctionContext::allocationSize(numNestedSubpatterns, numDuplicateNamedGroups)) + DisjunctionContext::allocationSize(disjunction->m_frameSize);
         allocatorPool = allocatorPool->ensureCapacity(size);
         RELEASE_ASSERT(allocatorPool);
-        return new (allocatorPool->alloc(size)) ParenthesesDisjunctionContext(output, term);
+        return new (allocatorPool->alloc(size)) ParenthesesDisjunctionContext(pattern, output, term, numDuplicateNamedGroups, duplicateNamedCaptureGroups);
     }
 
     void freeParenthesesDisjunctionContext(ParenthesesDisjunctionContext* context)
@@ -161,10 +247,10 @@ public:
 
     class InputStream {
     public:
-        InputStream(const CharType* input, unsigned start, unsigned length, bool decodeSurrogatePairs)
-            : input(input)
+        InputStream(std::span<const CharType> input, unsigned start, bool decodeSurrogatePairs)
+            : input(input.data())
             , pos(start)
-            , length(length)
+            , length(input.size())
             , decodeSurrogatePairs(decodeSurrogatePairs)
         {
         }
@@ -180,67 +266,107 @@ public:
             pos -= amount;
         }
 
-        int read()
+        char32_t read()
         {
             ASSERT(pos < length);
             if (pos < length)
                 return input[pos];
-            return -1;
+            return errorCodePoint;
         }
 
-        int readPair()
-        {
-            ASSERT(pos + 1 < length);
-            return input[pos] | input[pos + 1] << 16;
-        }
-
-        int readChecked(unsigned negativePositionOffest)
+        char32_t readChecked(unsigned negativePositionOffest)
         {
             RELEASE_ASSERT(pos >= negativePositionOffest);
             unsigned p = pos - negativePositionOffest;
             ASSERT(p < length);
-            int result = input[p];
+            auto result = input[p];
             if (U16_IS_LEAD(result) && decodeSurrogatePairs && p + 1 < length && U16_IS_TRAIL(input[p + 1])) {
                 if (atEnd())
-                    return -1;
-                
-                result = U16_GET_SUPPLEMENTARY(result, input[p + 1]);
+                    return errorCodePoint;
                 next();
+                return U16_GET_SUPPLEMENTARY(result, input[p + 1]);
+            } else if (decodeSurrogatePairs && p > 0 && U16_IS_TRAIL(result) && U16_IS_LEAD(input[p - 1]))
+                return errorCodePoint;
+            return result;
+        }
+
+        char32_t readCheckedDontAdvance(unsigned negativePositionOffest)
+        {
+            RELEASE_ASSERT(pos >= negativePositionOffest);
+            unsigned p = pos - negativePositionOffest;
+            ASSERT(p < length);
+            auto result = input[p];
+            if (U16_IS_LEAD(result) && decodeSurrogatePairs && p + 1 < length && U16_IS_TRAIL(input[p + 1])) {
+                if (atEnd())
+                    return errorCodePoint;
+                return U16_GET_SUPPLEMENTARY(result, input[p + 1]);
+            }
+            return result;
+        }
+
+        // readForCharacterDump() is only for use by the DUMP_CURR_CHAR macro.
+        // We don't want any side effects like the next() in readChecked() above.
+        char32_t readForCharacterDump(unsigned negativePositionOffest)
+        {
+            RELEASE_ASSERT(pos >= negativePositionOffest);
+            unsigned p = pos - negativePositionOffest;
+            ASSERT(p < length);
+            auto result = input[p];
+            if (U16_IS_LEAD(result) && decodeSurrogatePairs && p + 1 < length && U16_IS_TRAIL(input[p + 1])) {
+                if (atEnd())
+                    return errorCodePoint;
+                return U16_GET_SUPPLEMENTARY(result, input[p + 1]);
             }
             return result;
         }
         
-        int readSurrogatePairChecked(unsigned negativePositionOffset)
+        char32_t tryReadBackward(unsigned negativePositionOffest)
+        {
+            if (pos < negativePositionOffest)
+                return errorCodePoint;
+            unsigned p = pos - negativePositionOffest;
+            ASSERT(p < length);
+            auto result = input[p];
+            if (U16_IS_TRAIL(result) && decodeSurrogatePairs && p > 0 && U16_IS_LEAD(input[p - 1])) {
+                rewind(1);
+                return U16_GET_SUPPLEMENTARY(input[p - 1], result);
+            }
+            return result;
+        }
+
+        char32_t readSurrogatePairChecked(unsigned negativePositionOffset)
         {
             RELEASE_ASSERT(pos >= negativePositionOffset);
             unsigned p = pos - negativePositionOffset;
             ASSERT(p < length);
             if (p + 1 >= length)
-                return -1;
-
-            int first = input[p];
-            int second = input[p + 1];
+                return errorCodePoint;
+            auto first = input[p];
+            auto second = input[p + 1];
             if (U16_IS_LEAD(first) && U16_IS_TRAIL(second))
                 return U16_GET_SUPPLEMENTARY(first, second);
-
-            return -1;
+            return errorCodePoint;
         }
 
-        int reread(unsigned from)
+        char32_t reread(unsigned from)
         {
             ASSERT(from < length);
-            int result = input[from];
-            if (U16_IS_LEAD(result) && decodeSurrogatePairs && from + 1 < length && U16_IS_TRAIL(input[from + 1]))
-                result = U16_GET_SUPPLEMENTARY(result, input[from + 1]);
+            auto result = input[from];
+            if (decodeSurrogatePairs && from + 1 < length) {
+                if (U16_IS_LEAD(result) && U16_IS_TRAIL(input[from + 1]))
+                    return U16_GET_SUPPLEMENTARY(result, input[from + 1]);
+                if (U16_IS_TRAIL(result) && U16_IS_LEAD(input[from + 1]))
+                    return errorCodePoint;
+            }
             return result;
         }
 
-        int prev()
+        char32_t prev()
         {
             ASSERT(!(pos > length));
             if (pos && length)
                 return input[pos - 1];
-            return -1;
+            return errorCodePoint;
         }
 
         unsigned getPos()
@@ -283,6 +409,14 @@ public:
             pos -= count;
         }
 
+        bool tryUncheckInput(unsigned count)
+        {
+            if (count > pos)
+                return false;
+            pos -= count;
+            return true;
+        }
+
         bool atStart(unsigned negativePositionOffset)
         {
             return pos == negativePositionOffset;
@@ -299,6 +433,24 @@ public:
             return (((pos + offset) <= length) && ((pos + offset) >= pos));
         }
 
+        bool isValidNegativeInputOffset(unsigned offset)
+        {
+            return (pos >= offset) && ((pos - offset) < length);
+        }
+
+        void dump(PrintStream& out) const
+        {
+            const unsigned maxPrintLen = 50;
+
+            out.print(sizeof(CharType) == 1 ? "8bit" : "16bit", " len: ", length, " \"");
+            unsigned printLen = std::min(length, maxPrintLen);
+            for (unsigned i = 0; i < printLen; ++i)
+                out.print(CharacterDump(input[i]));
+            if (length > maxPrintLen)
+                out.print("...");
+            out.print("\"");
+        }
+
     private:
         const CharType* input;
         unsigned pos;
@@ -306,9 +458,9 @@ public:
         bool decodeSurrogatePairs;
     };
 
-    bool testCharacterClass(CharacterClass* characterClass, int ch)
+    bool testCharacterClass(CharacterClass* characterClass, char32_t ch)
     {
-        auto linearSearchMatches = [&ch](const Vector<UChar32>& matches) {
+        auto linearSearchMatches = [ch](const Vector<char32_t>& matches) {
             for (unsigned i = 0; i < matches.size(); ++i) {
                 if (ch == matches[i])
                     return true;
@@ -317,7 +469,7 @@ public:
             return false;
         };
 
-        auto binarySearchMatches = [&ch](const Vector<UChar32>& matches) {
+        auto binarySearchMatches = [ch](const Vector<char32_t>& matches) {
             size_t low = 0;
             size_t high = matches.size() - 1;
 
@@ -337,7 +489,7 @@ public:
             return false;
         };
 
-        auto linearSearchRanges = [&ch](const Vector<CharacterRange>& ranges) {
+        auto linearSearchRanges = [ch](const Vector<CharacterRange>& ranges) {
             for (unsigned i = 0; i < ranges.size(); ++i) {
                 if ((ch >= ranges[i].begin) && (ch <= ranges[i].end))
                     return true;
@@ -346,7 +498,7 @@ public:
             return false;
         };
 
-        auto binarySearchRanges = [&ch](const Vector<CharacterRange>& ranges) {
+        auto binarySearchRanges = [ch](const Vector<CharacterRange>& ranges) {
             size_t low = 0;
             size_t high = ranges.size() - 1;
 
@@ -408,56 +560,80 @@ public:
         return false;
     }
 
-    bool checkCharacter(int testChar, unsigned negativeInputOffset)
+    bool checkCharacter(ByteTerm& term, unsigned negativeInputOffset)
     {
-        return testChar == input.readChecked(negativeInputOffset);
+        ASSERT(term.isCharacterType());
+        if (term.matchDirection() == Forward)
+            return term.atom.patternCharacter == static_cast<char32_t>(input.readChecked(negativeInputOffset));
+
+        return term.atom.patternCharacter == static_cast<char32_t>(input.tryReadBackward(negativeInputOffset));
     }
 
-    bool checkSurrogatePair(int testUnicodeChar, unsigned negativeInputOffset)
+    bool checkSurrogatePair(ByteTerm& term, unsigned negativeInputOffset)
     {
-        return testUnicodeChar == input.readSurrogatePairChecked(negativeInputOffset);
+        ASSERT(term.isCharacterType());
+        return term.atom.patternCharacter == static_cast<char32_t>(input.readSurrogatePairChecked(negativeInputOffset));
     }
 
-    bool checkCasedCharacter(int loChar, int hiChar, unsigned negativeInputOffset)
+    bool checkCasedCharacter(ByteTerm& term, unsigned negativeInputOffset)
     {
-        int ch = input.readChecked(negativeInputOffset);
-        return (loChar == ch) || (hiChar == ch);
+        ASSERT(term.isCasedCharacterType());
+        char32_t ch = term.matchDirection() == Forward ? input.readChecked(negativeInputOffset) : input.tryReadBackward(negativeInputOffset);
+        return (term.atom.casedCharacter.lo == ch) || (term.atom.casedCharacter.hi == ch);
     }
 
-    bool checkCharacterClass(CharacterClass* characterClass, bool invert, unsigned negativeInputOffset)
+    bool checkCharacterClass(ByteTerm& term, unsigned negativeInputOffset)
     {
-        int inputChar = input.readChecked(negativeInputOffset);
-        if (inputChar < 0)
+        ASSERT(term.isCharacterClass());
+
+        auto inputChar = term.matchDirection() == Forward ? input.readChecked(negativeInputOffset) : input.tryReadBackward(negativeInputOffset);
+        if (inputChar == errorCodePoint)
             return false;
 
-        bool match = testCharacterClass(characterClass, inputChar);
-        return invert ? !match : match;
+        bool match = testCharacterClass(term.atom.characterClass, static_cast<char32_t>(inputChar));
+        return term.invert() ? !match : match;
     }
     
-    bool checkCharacterClassDontAdvanceInputForNonBMP(CharacterClass* characterClass, unsigned negativeInputOffset)
+    bool checkCharacterClassDontAdvanceInputForNonBMP(ByteTerm& term, unsigned negativeInputOffset)
     {
-        int readCharacter = characterClass->hasOnlyNonBMPCharacters() ? input.readSurrogatePairChecked(negativeInputOffset) :  input.readChecked(negativeInputOffset);
-        if (readCharacter < 0)
+        ASSERT(term.isCharacterClass());
+        CharacterClass* characterClass = term.atom.characterClass;
+
+        if (term.matchDirection() == Backward && negativeInputOffset > input.getPos())
             return false;
 
-        return testCharacterClass(characterClass, readCharacter);
+        auto readCharacter = characterClass->hasOnlyNonBMPCharacters() ? input.readSurrogatePairChecked(negativeInputOffset) :  input.readChecked(negativeInputOffset);
+
+        if (readCharacter == errorCodePoint)
+            return false;
+
+        return testCharacterClass(characterClass, static_cast<char32_t>(readCharacter));
     }
 
-    bool tryConsumeBackReference(int matchBegin, int matchEnd, unsigned negativeInputOffset)
+    bool tryConsumeBackReference(int matchBegin, int matchEnd, ByteTerm& term)
     {
         unsigned matchSize = (unsigned)(matchEnd - matchBegin);
 
-        if (!input.checkInput(matchSize))
-            return false;
+        if (term.matchDirection() == Forward) {
+            if (!input.checkInput(matchSize))
+                return false;
+        }
 
         for (unsigned i = 0; i < matchSize; ++i) {
-            int oldCh = input.reread(matchBegin + i);
-            int ch;
+            unsigned negativeInputOffset = term.inputPosition + matchSize - i;
+            if (term.matchDirection() == Backward && negativeInputOffset > input.getPos())
+                return false;
+
+            char32_t oldCh = input.reread(matchBegin + i);
+            char32_t ch;
             if (!U_IS_BMP(oldCh)) {
-                ch = input.readSurrogatePairChecked(negativeInputOffset + matchSize - i);
+                ch = input.readSurrogatePairChecked(negativeInputOffset);
                 ++i;
             } else
-                ch = input.readChecked(negativeInputOffset + matchSize - i);
+                ch = term.matchDirection() == Forward ? input.readChecked(negativeInputOffset) : input.tryReadBackward(negativeInputOffset);
+
+            if (oldCh == errorCodePoint || ch == errorCodePoint)
+                return false;
 
             if (oldCh == ch)
                 continue;
@@ -466,39 +642,46 @@ public:
                 // See ES 6.0, 21.2.2.8.2 for the definition of Canonicalize(). For non-Unicode
                 // patterns, Unicode values are never allowed to match against ASCII ones.
                 // For Unicode, we need to check all canonical equivalents of a character.
-                if (!unicode && (isASCII(oldCh) || isASCII(ch))) {
+                if (isLegacyCompilation() && (isASCII(oldCh) || isASCII(ch))) {
                     if (toASCIIUpper(oldCh) == toASCIIUpper(ch))
                         continue;
-                } else if (areCanonicallyEquivalent(oldCh, ch, unicode ? CanonicalMode::Unicode : CanonicalMode::UCS2))
+                } else if (areCanonicallyEquivalent(oldCh, ch, isEitherUnicodeCompilation() ? CanonicalMode::Unicode : CanonicalMode::UCS2))
                     continue;
             }
 
-            input.uncheckInput(matchSize);
+            if (term.matchDirection() == Forward)
+                input.uncheckInput(matchSize);
+
             return false;
         }
+
+        if (term.matchDirection() == Backward)
+            input.uncheckInput(matchSize);
 
         return true;
     }
 
     bool matchAssertionBOL(ByteTerm& term)
     {
-        return (input.atStart(term.inputPosition)) || (pattern->multiline() && testCharacterClass(pattern->newlineCharacterClass, input.readChecked(term.inputPosition + 1)));
+        return (input.atStart(term.inputPosition)) || (pattern->multiline() && testCharacterClass(pattern->newlineCharacterClass, input.readCheckedDontAdvance(term.inputPosition + 1)));
     }
 
     bool matchAssertionEOL(ByteTerm& term)
     {
         if (term.inputPosition)
-            return (input.atEnd(term.inputPosition)) || (pattern->multiline() && testCharacterClass(pattern->newlineCharacterClass, input.readChecked(term.inputPosition)));
+            return (input.atEnd(term.inputPosition)) || (pattern->multiline() && testCharacterClass(pattern->newlineCharacterClass, input.readCheckedDontAdvance(term.inputPosition)));
 
         return (input.atEnd()) || (pattern->multiline() && testCharacterClass(pattern->newlineCharacterClass, input.read()));
     }
 
     bool matchAssertionWordBoundary(ByteTerm& term)
     {
-        bool prevIsWordchar = !input.atStart(term.inputPosition) && testCharacterClass(pattern->wordcharCharacterClass, input.readChecked(term.inputPosition + 1));
+        unsigned inputOffset = term.inputPosition;
+
+        bool prevIsWordchar = !input.atStart(inputOffset) && testCharacterClass(pattern->wordcharCharacterClass, input.readChecked(inputOffset + 1));
         bool readIsWordchar;
-        if (term.inputPosition)
-            readIsWordchar = !input.atEnd(term.inputPosition) && testCharacterClass(pattern->wordcharCharacterClass, input.readChecked(term.inputPosition));
+        if (inputOffset)
+            readIsWordchar = !input.atEnd(inputOffset) && testCharacterClass(pattern->wordcharCharacterClass, input.readChecked(inputOffset));
         else
             readIsWordchar = !input.atEnd() && testCharacterClass(pattern->wordcharCharacterClass, input.read());
 
@@ -517,19 +700,40 @@ public:
         case QuantifierType::Greedy:
             if (backTrack->matchAmount) {
                 --backTrack->matchAmount;
-                input.uncheckInput(U16_LENGTH(term.atom.patternCharacter));
+                if (term.matchDirection() == Forward)
+                    input.uncheckInput(U16_LENGTH(term.atom.patternCharacter));
+                else {
+                    if (!input.checkInput(U16_LENGTH(term.atom.patternCharacter)))
+                        break;
+                }
                 return true;
             }
             break;
 
         case QuantifierType::NonGreedy:
-            if ((backTrack->matchAmount < term.atom.quantityMaxCount) && input.checkInput(1)) {
+            if (term.matchDirection() == Forward) {
+                if ((backTrack->matchAmount < term.atom.quantityMaxCount) && input.checkInput(1)) {
+                    ++backTrack->matchAmount;
+                    if (checkCharacter(term, term.inputPosition + 1))
+                        return true;
+                }
+                input.setPos(backTrack->begin);
+                break;
+            }
+            // matchDirection Backward
+            unsigned position = input.getPos();
+
+            if (position < term.inputPosition)
+                break;
+
+            if ((backTrack->matchAmount < term.atom.quantityMaxCount) && input.tryUncheckInput(1)) {
                 ++backTrack->matchAmount;
-                if (checkCharacter(term.atom.patternCharacter, term.inputPosition + 1))
+                if (checkCharacter(term, term.inputPosition))
                     return true;
             }
             input.setPos(backTrack->begin);
             break;
+
         }
 
         return false;
@@ -546,18 +750,38 @@ public:
         case QuantifierType::Greedy:
             if (backTrack->matchAmount) {
                 --backTrack->matchAmount;
-                input.uncheckInput(1);
+                if (term.matchDirection() == Forward)
+                    input.uncheckInput(1);
+                else {
+                    if (!input.checkInput(1))
+                        break;
+                }
                 return true;
             }
             break;
 
         case QuantifierType::NonGreedy:
-            if ((backTrack->matchAmount < term.atom.quantityMaxCount) && input.checkInput(1)) {
+            if (term.matchDirection() == Forward) {
+                if ((backTrack->matchAmount < term.atom.quantityMaxCount) && input.checkInput(1)) {
+                    ++backTrack->matchAmount;
+                    if (checkCasedCharacter(term, term.inputPosition + 1))
+                        return true;
+                }
+                input.uncheckInput(backTrack->matchAmount);
+                break;
+            }
+            // matchDirection Backward
+            unsigned position = input.getPos();
+
+            if (position < term.inputPosition)
+                break;
+
+            if ((backTrack->matchAmount < term.atom.quantityMaxCount) && input.tryUncheckInput(1)) {
                 ++backTrack->matchAmount;
-                if (checkCasedCharacter(term.atom.casedCharacter.lo, term.atom.casedCharacter.hi, term.inputPosition + 1))
+                if (checkCasedCharacter(term, term.inputPosition))
                     return true;
             }
-            input.uncheckInput(backTrack->matchAmount);
+            input.setPos(backTrack->begin);
             break;
         }
 
@@ -571,19 +795,48 @@ public:
 
         switch (term.atom.quantityType) {
         case QuantifierType::FixedCount: {
-            if (unicode) {
-                CharacterClass* charClass = term.atom.characterClass;
+            if (term.matchDirection() == Forward) {
+                if (isEitherUnicodeCompilation()) {
+                    backTrack->begin = input.getPos();
+                    unsigned matchAmount = 0;
+                    for (matchAmount = 0; matchAmount < term.atom.quantityMaxCount; ++matchAmount) {
+                        if (term.invert()) {
+                            if (!checkCharacterClass(term, term.inputPosition - matchAmount)) {
+                                input.setPos(backTrack->begin);
+                                return false;
+                            }
+                        } else {
+                            unsigned matchOffset = matchAmount * (term.atom.characterClass->hasOnlyNonBMPCharacters() ? 2 : 1);
+                            if (!checkCharacterClassDontAdvanceInputForNonBMP(term, term.inputPosition - matchOffset)) {
+                                input.setPos(backTrack->begin);
+                                return false;
+                            }
+                        }
+                    }
+
+                    return true;
+                }
+
+                for (unsigned matchAmount = 0; matchAmount < term.atom.quantityMaxCount; ++matchAmount) {
+                    if (!checkCharacterClass(term, term.inputPosition - matchAmount))
+                        return false;
+                }
+                return true;
+            }
+
+            // matchDirection is Backward
+            if (isEitherUnicodeCompilation()) {
                 backTrack->begin = input.getPos();
-                unsigned matchAmount = 0;
-                for (matchAmount = 0; matchAmount < term.atom.quantityMaxCount; ++matchAmount) {
+                for (unsigned matchAmount = 0; matchAmount < term.atom.quantityMaxCount; ++matchAmount) {
+                    unsigned matchOffset = term.atom.quantityMaxCount - 1 - matchAmount;
                     if (term.invert()) {
-                        if (!checkCharacterClass(charClass, term.invert(), term.inputPosition - matchAmount)) {
+                        if (!checkCharacterClass(term, term.inputPosition - matchOffset)) {
                             input.setPos(backTrack->begin);
                             return false;
                         }
                     } else {
-                        unsigned matchOffset = matchAmount * (charClass->hasOnlyNonBMPCharacters() ? 2 : 1);
-                        if (!checkCharacterClassDontAdvanceInputForNonBMP(charClass, term.inputPosition - matchOffset)) {
+                        matchOffset = matchOffset * (term.atom.characterClass->hasOnlyNonBMPCharacters() ? 2 : 1);
+                        if (!checkCharacterClassDontAdvanceInputForNonBMP(term, term.inputPosition - matchOffset)) {
                             input.setPos(backTrack->begin);
                             return false;
                         }
@@ -593,8 +846,11 @@ public:
                 return true;
             }
 
+            if (input.getPos() < term.inputPosition)
+                return false;
+
             for (unsigned matchAmount = 0; matchAmount < term.atom.quantityMaxCount; ++matchAmount) {
-                if (!checkCharacterClass(term.atom.characterClass, term.invert(), term.inputPosition - matchAmount))
+                if (!checkCharacterClass(term, term.inputPosition - term.atom.quantityMaxCount + matchAmount + 1))
                     return false;
             }
             return true;
@@ -602,10 +858,26 @@ public:
 
         case QuantifierType::Greedy: {
             unsigned position = input.getPos();
-            backTrack->begin = position;
             unsigned matchAmount = 0;
-            while ((matchAmount < term.atom.quantityMaxCount) && input.checkInput(1)) {
-                if (!checkCharacterClass(term.atom.characterClass, term.invert(), term.inputPosition + 1)) {
+            if (term.matchDirection() == Forward) {
+                while ((matchAmount < term.atom.quantityMaxCount) && input.checkInput(1)) {
+                    if (!checkCharacterClass(term, term.inputPosition + 1)) {
+                        input.setPos(position);
+                        break;
+                    }
+                    ++matchAmount;
+                    position = input.getPos();
+                }
+                backTrack->matchAmount = matchAmount;
+                return true;
+            }
+
+            // matchDirection = Backward
+            if (input.getPos() < term.inputPosition)
+                return false;
+
+            while ((matchAmount < term.atom.quantityMaxCount) && input.tryUncheckInput(1)) {
+                if (!checkCharacterClass(term, term.inputPosition)) {
                     input.setPos(position);
                     break;
                 }
@@ -613,7 +885,6 @@ public:
                 position = input.getPos();
             }
             backTrack->matchAmount = matchAmount;
-
             return true;
         }
 
@@ -634,34 +905,49 @@ public:
 
         switch (term.atom.quantityType) {
         case QuantifierType::FixedCount:
-            if (unicode)
+            if (isEitherUnicodeCompilation())
                 input.setPos(backTrack->begin);
             break;
 
         case QuantifierType::Greedy:
             if (backTrack->matchAmount) {
-                if (unicode) {
-                    // Rematch one less match
-                    input.setPos(backTrack->begin);
-                    --backTrack->matchAmount;
-                    for (unsigned matchAmount = 0; (matchAmount < backTrack->matchAmount) && input.checkInput(1); ++matchAmount) {
-                        if (!checkCharacterClass(term.atom.characterClass, term.invert(), term.inputPosition + 1)) {
-                            input.uncheckInput(1);
-                            break;
-                        }
+                if (isEitherUnicodeCompilation()) {
+                    // Unmatch one codepoint
+                    if (term.matchDirection() == Forward) {
+                        --backTrack->matchAmount;
+                        input.uncheckInput(1);
+                        input.tryReadBackward(term.inputPosition);
+                        return true;
                     }
+                    // matchDirection Backwards
+                    --backTrack->matchAmount;
+                    input.readChecked(term.inputPosition);
+                    input.checkInput(1);
                     return true;
                 }
                 --backTrack->matchAmount;
-                input.uncheckInput(1);
+                if (term.matchDirection() == Forward)
+                    input.uncheckInput(1);
+                else
+                    input.checkInput(1);
                 return true;
             }
             break;
 
         case QuantifierType::NonGreedy:
-            if ((backTrack->matchAmount < term.atom.quantityMaxCount) && input.checkInput(1)) {
+            if (term.matchDirection() == Forward) {
+                if ((backTrack->matchAmount < term.atom.quantityMaxCount) && input.checkInput(1)) {
+                    ++backTrack->matchAmount;
+                    if (checkCharacterClass(term, term.inputPosition + 1))
+                        return true;
+                }
+                input.setPos(backTrack->begin);
+                break;
+            }
+            // matchDirection Backward
+            if ((backTrack->matchAmount < term.atom.quantityMaxCount) && input.tryUncheckInput(1)) {
                 ++backTrack->matchAmount;
-                if (checkCharacterClass(term.atom.characterClass, term.invert(), term.inputPosition + 1))
+                if (checkCharacterClass(term, term.inputPosition))
                     return true;
             }
             input.setPos(backTrack->begin);
@@ -676,8 +962,34 @@ public:
         ASSERT(term.type == ByteTerm::Type::BackReference);
         BackTrackInfoBackReference* backTrack = reinterpret_cast<BackTrackInfoBackReference*>(context->frame + term.frameLocation);
 
-        unsigned matchBegin = output[(term.atom.subpatternId << 1)];
-        unsigned matchEnd = output[(term.atom.subpatternId << 1) + 1];
+        // Initialize backtracking info first before we check for possible null matches.
+        switch (term.atom.quantityType) {
+        case QuantifierType::NonGreedy:
+            backTrack->matchAmount = 0;
+            FALLTHROUGH;
+
+        case QuantifierType::FixedCount:
+            backTrack->begin = input.getPos();
+            break;
+
+        case QuantifierType::Greedy:
+            backTrack->matchAmount = 0;
+            break;
+        }
+
+        unsigned subpatternId;
+
+        if (auto duplicateNamedGroupId = term.duplicateNamedGroupId()) {
+            subpatternId = output[pattern->offsetForDuplicateNamedGroupId(duplicateNamedGroupId)];
+            if (subpatternId < 1) {
+                // If we don't have a subpattern that matched, then the string to match is empty.
+                return true;
+            }
+        } else
+            subpatternId = term.subpatternId();
+
+        unsigned matchBegin = output[(subpatternId << 1)];
+        unsigned matchEnd = output[(subpatternId << 1) + 1];
 
         // If the end position of the referenced match hasn't set yet then the backreference in the same parentheses where it references to that.
         // In this case the result of match is empty string like when it references to a parentheses with zero-width match.
@@ -695,9 +1007,8 @@ public:
 
         switch (term.atom.quantityType) {
         case QuantifierType::FixedCount: {
-            backTrack->begin = input.getPos();
             for (unsigned matchAmount = 0; matchAmount < term.atom.quantityMaxCount; ++matchAmount) {
-                if (!tryConsumeBackReference(matchBegin, matchEnd, term.inputPosition)) {
+                if (!tryConsumeBackReference(matchBegin, matchEnd, term)) {
                     input.setPos(backTrack->begin);
                     return false;
                 }
@@ -707,15 +1018,13 @@ public:
 
         case QuantifierType::Greedy: {
             unsigned matchAmount = 0;
-            while ((matchAmount < term.atom.quantityMaxCount) && tryConsumeBackReference(matchBegin, matchEnd, term.inputPosition))
+            while ((matchAmount < term.atom.quantityMaxCount) && tryConsumeBackReference(matchBegin, matchEnd, term))
                 ++matchAmount;
             backTrack->matchAmount = matchAmount;
             return true;
         }
 
         case QuantifierType::NonGreedy:
-            backTrack->begin = input.getPos();
-            backTrack->matchAmount = 0;
             return true;
         }
 
@@ -728,8 +1037,19 @@ public:
         ASSERT(term.type == ByteTerm::Type::BackReference);
         BackTrackInfoBackReference* backTrack = reinterpret_cast<BackTrackInfoBackReference*>(context->frame + term.frameLocation);
 
-        unsigned matchBegin = output[(term.atom.subpatternId << 1)];
-        unsigned matchEnd = output[(term.atom.subpatternId << 1) + 1];
+        unsigned subpatternId;
+
+        if (auto duplicateNamedGroupId = term.duplicateNamedGroupId()) {
+            subpatternId = output[pattern->offsetForDuplicateNamedGroupId(duplicateNamedGroupId)];
+            if (subpatternId < 1) {
+                // If we don't have a subpattern that matched, then the string to match is empty.
+                return false;
+            }
+        } else
+            subpatternId = term.subpatternId();
+
+        unsigned matchBegin = output[(subpatternId << 1)];
+        unsigned matchEnd = output[(subpatternId << 1) + 1];
 
         if (matchBegin == offsetNoMatch)
             return false;
@@ -748,13 +1068,15 @@ public:
         case QuantifierType::Greedy:
             if (backTrack->matchAmount) {
                 --backTrack->matchAmount;
+                if (term.matchDirection() == Backward)
+                    return input.checkInput(matchEnd - matchBegin);
                 input.rewind(matchEnd - matchBegin);
                 return true;
             }
             break;
 
         case QuantifierType::NonGreedy:
-            if ((backTrack->matchAmount < term.atom.quantityMaxCount) && tryConsumeBackReference(matchBegin, matchEnd, term.inputPosition)) {
+            if ((backTrack->matchAmount < term.atom.quantityMaxCount) && tryConsumeBackReference(matchBegin, matchEnd, term)) {
                 ++backTrack->matchAmount;
                 return true;
             }
@@ -768,23 +1090,29 @@ public:
     void recordParenthesesMatch(ByteTerm& term, ParenthesesDisjunctionContext* context)
     {
         if (term.capture()) {
-            unsigned subpatternId = term.atom.subpatternId;
-            output[(subpatternId << 1)] = context->getDisjunctionContext(term)->matchBegin - term.inputPosition;
-            output[(subpatternId << 1) + 1] = context->getDisjunctionContext(term)->matchEnd - term.inputPosition;
+            unsigned subpatternId = term.subpatternId();
+            // For Backward matches, the captured indexes are recorded end then start.
+            output[(subpatternId << 1) + term.matchDirection()] = context->getDisjunctionContext()->matchBegin - term.inputPosition;
+            output[(subpatternId << 1) + 1 - term.matchDirection()] = context->getDisjunctionContext()->matchEnd - term.inputPosition;
+
+            if (term.duplicateNamedGroupId()) {
+                // Record which of the duplicate named subpatterns matched.
+                output[pattern->offsetForDuplicateNamedGroupId(term.duplicateNamedGroupId())] = subpatternId;
+            }
         }
     }
     void resetMatches(ByteTerm& term, ParenthesesDisjunctionContext* context)
     {
-        unsigned firstSubpatternId = term.atom.subpatternId;
-        unsigned count = term.atom.parenthesesDisjunction->m_numSubpatterns;
-        context->restoreOutput(output, firstSubpatternId, count);
+        unsigned firstSubpatternId = term.subpatternId();
+        context->restoreOutput(output, firstSubpatternId);
     }
+
     JSRegExpResult parenthesesDoBacktrack(ByteTerm& term, BackTrackInfoParentheses* backTrack)
     {
         while (backTrack->matchAmount) {
             ParenthesesDisjunctionContext* context = backTrack->lastContext;
 
-            JSRegExpResult result = matchDisjunction(term.atom.parenthesesDisjunction, context->getDisjunctionContext(term), true);
+            JSRegExpResult result = matchDisjunction(term.atom.parenthesesDisjunction, context->getDisjunctionContext(), true);
             if (result == JSRegExpResult::Match)
                 return JSRegExpResult::Match;
 
@@ -822,8 +1150,9 @@ public:
         }
 
         if (term.capture()) {
-            unsigned subpatternId = term.atom.subpatternId;
-            output[(subpatternId << 1)] = input.getPos() - term.inputPosition;
+            unsigned subpatternId = term.subpatternId();
+            // For Backward matches, the captured indexes are recorded end then start.
+            output[(subpatternId << 1) + term.matchDirection()] = input.getPos() - term.inputPosition;
         }
 
         return true;
@@ -835,8 +1164,14 @@ public:
         ASSERT(term.atom.quantityMaxCount == 1);
 
         if (term.capture()) {
-            unsigned subpatternId = term.atom.subpatternId;
-            output[(subpatternId << 1) + 1] = input.getPos() - term.inputPosition;
+            unsigned subpatternId = term.subpatternId();
+            // For Backward matches, the captured indexes are recorded end then start.
+            output[(subpatternId << 1) + 1 - term.matchDirection()] = input.getPos() - term.inputPosition;
+
+            if (term.duplicateNamedGroupId()) {
+                // Record which of the duplicate named subpatterns matched.
+                output[pattern->offsetForDuplicateNamedGroupId(term.duplicateNamedGroupId())] = subpatternId;
+            }
         }
 
         if (term.atom.quantityType == QuantifierType::FixedCount)
@@ -854,9 +1189,14 @@ public:
         BackTrackInfoParenthesesOnce* backTrack = reinterpret_cast<BackTrackInfoParenthesesOnce*>(context->frame + term.frameLocation);
 
         if (term.capture()) {
-            unsigned subpatternId = term.atom.subpatternId;
+            unsigned subpatternId = term.subpatternId();
             output[(subpatternId << 1)] = offsetNoMatch;
             output[(subpatternId << 1) + 1] = offsetNoMatch;
+
+            if (term.duplicateNamedGroupId()) {
+                // Clear matching subpatternId.
+                output[pattern->offsetForDuplicateNamedGroupId(term.duplicateNamedGroupId())] = 0;
+            }
         }
 
         switch (term.atom.quantityType) {
@@ -899,8 +1239,9 @@ public:
                     // the same anyway! (We don't pre-check for greedy or non-greedy matches.)
                     ASSERT((&term - term.atom.parenthesesWidth)->type == ByteTerm::Type::ParenthesesSubpatternOnceBegin);
                     ASSERT((&term - term.atom.parenthesesWidth)->inputPosition == term.inputPosition);
-                    unsigned subpatternId = term.atom.subpatternId;
-                    output[subpatternId << 1] = input.getPos() - term.inputPosition;
+                    unsigned subpatternId = term.subpatternId();
+                    // For Backward matches, the captured indexes are recorded end then start.
+                    output[(subpatternId << 1) + term.matchDirection()] = input.getPos() - term.inputPosition;
                 }
                 context->term -= term.atom.parenthesesWidth;
                 return true;
@@ -968,6 +1309,7 @@ public:
         BackTrackInfoParentheticalAssertion* backTrack = reinterpret_cast<BackTrackInfoParentheticalAssertion*>(context->frame + term.frameLocation);
 
         backTrack->begin = input.getPos();
+
         return true;
     }
 
@@ -982,6 +1324,10 @@ public:
 
         // We've reached the end of the parens; if they are inverted, this is failure.
         if (term.invert()) {
+            if (term.containsAnyCaptures()) {
+                for (unsigned subpattern = term.subpatternId(); subpattern <= term.lastSubpatternId(); subpattern++)
+                    output[subpattern << 1] = offsetNoMatch;
+            }
             context->term -= term.atom.parenthesesWidth;
             return false;
         }
@@ -993,6 +1339,11 @@ public:
     {
         ASSERT(term.type == ByteTerm::Type::ParentheticalAssertionBegin);
         ASSERT(term.atom.quantityMaxCount == 1);
+
+        if (term.matchDirection() == Backward) {
+            BackTrackInfoParentheticalAssertion* backTrack = reinterpret_cast<BackTrackInfoParentheticalAssertion*>(context->frame + term.frameLocation);
+            input.setPos(backTrack->begin);
+        }
 
         // We've failed to match parens; if they are inverted, this is win!
         if (term.invert()) {
@@ -1011,6 +1362,11 @@ public:
         BackTrackInfoParentheticalAssertion* backTrack = reinterpret_cast<BackTrackInfoParentheticalAssertion*>(context->frame + term.frameLocation);
 
         input.setPos(backTrack->begin);
+
+        if (term.containsAnyCaptures()) {
+            for (unsigned subpattern = term.subpatternId(); subpattern <= term.lastSubpatternId(); subpattern++)
+                output[subpattern << 1] = offsetNoMatch;
+        }
 
         context->term -= term.atom.parenthesesWidth;
         return false;
@@ -1038,7 +1394,7 @@ public:
             while (backTrack->matchAmount < minimumMatchCount) {
                 // Try to do a match, and it it succeeds, add it to the list.
                 ParenthesesDisjunctionContext* context = allocParenthesesDisjunctionContext(disjunctionBody, output, term);
-                fixedMatchResult = matchDisjunction(disjunctionBody, context->getDisjunctionContext(term));
+                fixedMatchResult = matchDisjunction(disjunctionBody, context->getDisjunctionContext());
                 if (fixedMatchResult == JSRegExpResult::Match)
                     appendParenthesesDisjunctionContext(backTrack, context);
                 else {
@@ -1067,7 +1423,7 @@ public:
         case QuantifierType::Greedy: {
             while (backTrack->matchAmount < term.atom.quantityMaxCount) {
                 ParenthesesDisjunctionContext* context = allocParenthesesDisjunctionContext(disjunctionBody, output, term);
-                JSRegExpResult result = matchNonZeroDisjunction(disjunctionBody, context->getDisjunctionContext(term));
+                JSRegExpResult result = matchNonZeroDisjunction(disjunctionBody, context->getDisjunctionContext());
                 if (result == JSRegExpResult::Match)
                     appendParenthesesDisjunctionContext(backTrack, context);
                 else {
@@ -1127,7 +1483,7 @@ public:
             while (backTrack->matchAmount < term.atom.quantityMaxCount) {
                 // Try to do a match, and it it succeeds, add it to the list.
                 context = allocParenthesesDisjunctionContext(disjunctionBody, output, term);
-                result = matchDisjunction(disjunctionBody, context->getDisjunctionContext(term));
+                result = matchDisjunction(disjunctionBody, context->getDisjunctionContext());
 
                 if (result == JSRegExpResult::Match)
                     appendParenthesesDisjunctionContext(backTrack, context);
@@ -1155,11 +1511,11 @@ public:
                 return JSRegExpResult::NoMatch;
 
             ParenthesesDisjunctionContext* context = backTrack->lastContext;
-            JSRegExpResult result = matchNonZeroDisjunction(disjunctionBody, context->getDisjunctionContext(term), true);
+            JSRegExpResult result = matchNonZeroDisjunction(disjunctionBody, context->getDisjunctionContext(), true);
             if (result == JSRegExpResult::Match) {
                 while (backTrack->matchAmount < term.atom.quantityMaxCount) {
                     ParenthesesDisjunctionContext* context = allocParenthesesDisjunctionContext(disjunctionBody, output, term);
-                    JSRegExpResult parenthesesResult = matchNonZeroDisjunction(disjunctionBody, context->getDisjunctionContext(term));
+                    JSRegExpResult parenthesesResult = matchNonZeroDisjunction(disjunctionBody, context->getDisjunctionContext());
                     if (parenthesesResult == JSRegExpResult::Match)
                         appendParenthesesDisjunctionContext(backTrack, context);
                     else {
@@ -1204,7 +1560,7 @@ public:
             // If we've not reached the limit, try to add one more match.
             if (backTrack->matchAmount < term.atom.quantityMaxCount) {
                 ParenthesesDisjunctionContext* context = allocParenthesesDisjunctionContext(disjunctionBody, output, term);
-                JSRegExpResult result = matchNonZeroDisjunction(disjunctionBody, context->getDisjunctionContext(term));
+                JSRegExpResult result = matchNonZeroDisjunction(disjunctionBody, context->getDisjunctionContext());
                 if (result == JSRegExpResult::Match) {
                     appendParenthesesDisjunctionContext(backTrack, context);
                     recordParenthesesMatch(term, context);
@@ -1221,7 +1577,7 @@ public:
             // Nope - okay backtrack looking for an alternative.
             while (backTrack->matchAmount) {
                 ParenthesesDisjunctionContext* context = backTrack->lastContext;
-                JSRegExpResult result = matchNonZeroDisjunction(disjunctionBody, context->getDisjunctionContext(term), true);
+                JSRegExpResult result = matchNonZeroDisjunction(disjunctionBody, context->getDisjunctionContext(), true);
                 if (result == JSRegExpResult::Match) {
                     // successful backtrack! we're back in the game!
                     if (backTrack->matchAmount) {
@@ -1287,16 +1643,59 @@ public:
         return true;
     }
 
-#define MATCH_NEXT() { ++context->term; goto matchAgain; }
-#define BACKTRACK() { --context->term; goto backtrack; }
+#define MATCH_NEXT() { if (verbose) { dataLog(" - Match\n"); if (btrack) { dataLog("  Matching\n"); btrack = false; } }  ++context->term; goto matchAgain; }
+#define BACKTRACK() { if (verbose) { dataLog(" - Backtrack\n"); if (!btrack) { dataLog("  Backtracking\n"); btrack = true; } } --context->term; goto backtrack; }
 #define currentTerm() (disjunction->terms[context->term])
+
+#define DUMP_TERM() \
+{ \
+    if (verbose) { \
+        termDumper.dumpTerm(context->term, currentTerm()); \
+        dataLog(" pos:", input.getPos()); \
+    } \
+}
+
+#define DUMP_EXTRA(...) \
+{ \
+    dataLogIf(verbose, " ", __VA_ARGS__); \
+}
+
+#define DUMP_EXTRA_IF(predicate, ...) \
+{ \
+    dataLogIf(verbose && predicate, " ", __VA_ARGS__); \
+}
+
+#define DUMP_CURR_CHAR() \
+{ \
+    if (verbose) { \
+        unsigned offset = currentTerm().inputPosition; \
+        if (currentTerm().matchDirection() == Backward && currentTerm().atom.quantityType == QuantifierType::FixedCount) \
+            offset -= currentTerm().atom.quantityMaxCount - 1; \
+        dataLog(" off:", offset, " got:'"); \
+        char32_t ch = errorCodePoint; \
+        if (input.isValidNegativeInputOffset(offset)) \
+            ch = input.readForCharacterDump(offset); \
+        if (ch == errorCodePoint) \
+            dataLog("<illegal>"); \
+        else if (ch < 0x10000 && (ch < 0xd800 || ch > 0xdfff))\
+            dataLog(static_cast<char16_t>(ch)); \
+        else \
+            dataLogF("\\u{%x}", ch); \
+        dataLog("'"); \
+    } \
+}
+
     JSRegExpResult matchDisjunction(ByteDisjunction* disjunction, DisjunctionContext* context, bool btrack = false)
     {
         if (UNLIKELY(!isSafeToRecurse()))
             return JSRegExpResult::ErrorNoMemory;
 
-        if (!--remainingMatchCount)
+        if (!--remainingMatchCount) {
+            dataLogLnIf(verbose, "      Reached match limit - Returning ErrorHitLimit");
             return JSRegExpResult::ErrorHitLimit;
+        }
+
+        ByteTermDumper termDumper(compileMode);
 
         if (btrack)
             BACKTRACK();
@@ -1307,10 +1706,14 @@ public:
     matchAgain:
         ASSERT(context->term < static_cast<int>(disjunction->terms.size()));
 
+        DUMP_TERM();
+
         switch (currentTerm().type) {
         case ByteTerm::Type::SubpatternBegin:
+            DUMP_EXTRA_IF(currentTerm().capture(), "id:", currentTerm().subpatternId());
             MATCH_NEXT();
         case ByteTerm::Type::SubpatternEnd:
+            DUMP_EXTRA_IF(currentTerm().capture(), "id:", currentTerm().subpatternId(), " - Return Match\n");
             context->matchEnd = input.getPos();
             return JSRegExpResult::Match;
 
@@ -1319,6 +1722,7 @@ public:
         case ByteTerm::Type::BodyAlternativeDisjunction:
         case ByteTerm::Type::BodyAlternativeEnd:
             context->matchEnd = input.getPos();
+            DUMP_EXTRA("- Return Match\n");
             return JSRegExpResult::Match;
 
         case ByteTerm::Type::AlternativeBegin:
@@ -1347,43 +1751,90 @@ public:
 
         case ByteTerm::Type::PatternCharacterOnce:
         case ByteTerm::Type::PatternCharacterFixed: {
-            if (unicode) {
-                if (!U_IS_BMP(currentTerm().atom.patternCharacter)) {
-                    for (unsigned matchAmount = 0; matchAmount < currentTerm().atom.quantityMaxCount; ++matchAmount) {
-                        if (!checkSurrogatePair(currentTerm().atom.patternCharacter, currentTerm().inputPosition - 2 * matchAmount)) {
-                            BACKTRACK();
+            DUMP_CURR_CHAR();
+            if (currentTerm().matchDirection() == Forward) {
+                if (isEitherUnicodeCompilation()) {
+                    if (!U_IS_BMP(currentTerm().atom.patternCharacter)) {
+                        for (unsigned matchAmount = 0; matchAmount < currentTerm().atom.quantityMaxCount; ++matchAmount) {
+                            if (!checkSurrogatePair(currentTerm(), currentTerm().inputPosition - 2 * matchAmount))
+                                BACKTRACK();
                         }
+                        MATCH_NEXT();
                     }
-                    MATCH_NEXT();
                 }
-            }
-            unsigned position = input.getPos(); // May need to back out reading a surrogate pair.
 
-            for (unsigned matchAmount = 0; matchAmount < currentTerm().atom.quantityMaxCount; ++matchAmount) {
-                if (!checkCharacter(currentTerm().atom.patternCharacter, currentTerm().inputPosition - matchAmount)) {
-                    input.setPos(position);
+                unsigned position = input.getPos(); // May need to back out reading a surrogate pair.
+
+                for (unsigned matchAmount = 0; matchAmount < currentTerm().atom.quantityMaxCount; ++matchAmount) {
+                    if (!checkCharacter(currentTerm(), currentTerm().inputPosition - matchAmount)) {
+                        input.setPos(position);
+                        BACKTRACK();
+                    }
+                }
+            } else {
+                auto& term = currentTerm();
+
+                if (isEitherUnicodeCompilation()) {
+                    if (!U_IS_BMP(term.atom.patternCharacter)) {
+                        for (unsigned matchAmount = 0; matchAmount < currentTerm().atom.quantityMaxCount; ++matchAmount) {
+                            auto inputPosition = term.inputPosition + 2 * matchAmount;
+                            if (input.getPos() < inputPosition)
+                                BACKTRACK();
+                            if (!checkSurrogatePair(term, inputPosition))
+                                BACKTRACK();
+                        }
+                        MATCH_NEXT();
+                    }
+                }
+
+                if (input.getPos() < term.inputPosition)
                     BACKTRACK();
+
+                unsigned position = input.getPos(); // May need to back out reading a surrogate pair.
+
+                for (unsigned matchAmount = 0; matchAmount < term.atom.quantityMaxCount; ++matchAmount) {
+                    if (!checkCharacter(term, term.inputPosition + matchAmount + 1 - term.atom.quantityMaxCount)) {
+                        input.setPos(position);
+                        BACKTRACK();
+                    }
                 }
             }
             MATCH_NEXT();
         }
         case ByteTerm::Type::PatternCharacterGreedy: {
+            DUMP_CURR_CHAR();
             BackTrackInfoPatternCharacter* backTrack = reinterpret_cast<BackTrackInfoPatternCharacter*>(context->frame + currentTerm().frameLocation);
             unsigned matchAmount = 0;
             unsigned position = input.getPos(); // May need to back out reading a surrogate pair.
-            while ((matchAmount < currentTerm().atom.quantityMaxCount) && input.checkInput(1)) {
-                if (!checkCharacter(currentTerm().atom.patternCharacter, currentTerm().inputPosition + 1)) {
-                    input.setPos(position);
-                    break;
+            if (currentTerm().matchDirection() == Forward) {
+                while ((matchAmount < currentTerm().atom.quantityMaxCount) && input.checkInput(1)) {
+                    if (!checkCharacter(currentTerm(), currentTerm().inputPosition + 1)) {
+                        input.setPos(position);
+                        break;
+                    }
+                    ++matchAmount;
+                    position = input.getPos();
                 }
-                ++matchAmount;
-                position = input.getPos();
+            } else {
+                auto& term = currentTerm();
+                if (input.getPos() < term.inputPosition)
+                    BACKTRACK();
+
+                while ((matchAmount < term.atom.quantityMaxCount) && input.tryUncheckInput(1)) {
+                    if (!checkCharacter(currentTerm(), term.inputPosition)) {
+                        input.setPos(position);
+                        break;
+                    }
+                    ++matchAmount;
+                    position = input.getPos();
+                }
             }
             backTrack->matchAmount = matchAmount;
 
             MATCH_NEXT();
         }
         case ByteTerm::Type::PatternCharacterNonGreedy: {
+            DUMP_CURR_CHAR();
             BackTrackInfoPatternCharacter* backTrack = reinterpret_cast<BackTrackInfoPatternCharacter*>(context->frame + currentTerm().frameLocation);
             backTrack->begin = input.getPos();
             backTrack->matchAmount = 0;
@@ -1392,56 +1843,96 @@ public:
 
         case ByteTerm::Type::PatternCasedCharacterOnce:
         case ByteTerm::Type::PatternCasedCharacterFixed: {
-            if (unicode) {
+            DUMP_CURR_CHAR();
+            if (isEitherUnicodeCompilation()) {
                 // Case insensitive matching of unicode characters is handled as Type::CharacterClass.
                 ASSERT(U_IS_BMP(currentTerm().atom.patternCharacter));
 
                 unsigned position = input.getPos(); // May need to back out reading a surrogate pair.
-                
-                for (unsigned matchAmount = 0; matchAmount < currentTerm().atom.quantityMaxCount; ++matchAmount) {
-                    if (!checkCasedCharacter(currentTerm().atom.casedCharacter.lo, currentTerm().atom.casedCharacter.hi, currentTerm().inputPosition - matchAmount)) {
-                        input.setPos(position);
+
+                if (currentTerm().matchDirection() == Forward) {
+                    for (unsigned matchAmount = 0; matchAmount < currentTerm().atom.quantityMaxCount; ++matchAmount) {
+                        if (!checkCasedCharacter(currentTerm(), currentTerm().inputPosition - matchAmount)) {
+                            input.setPos(position);
+                            BACKTRACK();
+                        }
+                    }
+                } else {
+                    auto& term = currentTerm();
+
+                    if (input.getPos() < term.inputPosition)
                         BACKTRACK();
+
+                    for (unsigned matchAmount = 0; matchAmount < currentTerm().atom.quantityMaxCount; ++matchAmount) {
+                        if (!checkCasedCharacter(term, term.inputPosition - term.atom.quantityMaxCount + matchAmount + 1)) {
+                            input.setPos(position);
+                            BACKTRACK();
+                        }
                     }
                 }
                 MATCH_NEXT();
             }
 
             for (unsigned matchAmount = 0; matchAmount < currentTerm().atom.quantityMaxCount; ++matchAmount) {
-                if (!checkCasedCharacter(currentTerm().atom.casedCharacter.lo, currentTerm().atom.casedCharacter.hi, currentTerm().inputPosition - matchAmount))
+                if (!checkCasedCharacter(currentTerm(), currentTerm().inputPosition - matchAmount))
                     BACKTRACK();
             }
             MATCH_NEXT();
         }
         case ByteTerm::Type::PatternCasedCharacterGreedy: {
+            DUMP_CURR_CHAR();
             BackTrackInfoPatternCharacter* backTrack = reinterpret_cast<BackTrackInfoPatternCharacter*>(context->frame + currentTerm().frameLocation);
 
             // Case insensitive matching of unicode characters is handled as Type::CharacterClass.
-            ASSERT(!unicode || U_IS_BMP(currentTerm().atom.patternCharacter));
+            ASSERT(!isEitherUnicodeCompilation() || U_IS_BMP(currentTerm().atom.patternCharacter));
 
-            unsigned matchAmount = 0;
-            while ((matchAmount < currentTerm().atom.quantityMaxCount) && input.checkInput(1)) {
-                if (!checkCasedCharacter(currentTerm().atom.casedCharacter.lo, currentTerm().atom.casedCharacter.hi, currentTerm().inputPosition + 1)) {
-                    input.uncheckInput(1);
-                    break;
+            if (currentTerm().matchDirection() == Forward) {
+                unsigned matchAmount = 0;
+                while ((matchAmount < currentTerm().atom.quantityMaxCount) && input.checkInput(1)) {
+                    if (!checkCasedCharacter(currentTerm(), currentTerm().inputPosition + 1)) {
+                        input.uncheckInput(1);
+                        break;
+                    }
+                    ++matchAmount;
                 }
-                ++matchAmount;
-            }
-            backTrack->matchAmount = matchAmount;
+                backTrack->matchAmount = matchAmount;
 
-            MATCH_NEXT();
+                MATCH_NEXT();
+            } else {
+                auto& term = currentTerm();
+
+                if (input.getPos() < term.inputPosition)
+                    BACKTRACK();
+
+                unsigned position = input.getPos();
+                unsigned matchAmount = 0;
+                while ((matchAmount < term.atom.quantityMaxCount) && input.tryUncheckInput(1)) {
+                    if (!checkCasedCharacter(term, term.inputPosition)) {
+                        input.setPos(position);
+                        break;
+                    }
+
+                    ++matchAmount;
+                    position = input.getPos();
+                }
+                backTrack->matchAmount = matchAmount;
+
+                MATCH_NEXT();
+            }
         }
         case ByteTerm::Type::PatternCasedCharacterNonGreedy: {
+            DUMP_CURR_CHAR();
             BackTrackInfoPatternCharacter* backTrack = reinterpret_cast<BackTrackInfoPatternCharacter*>(context->frame + currentTerm().frameLocation);
 
             // Case insensitive matching of unicode characters is handled as Type::CharacterClass.
-            ASSERT(!unicode || U_IS_BMP(currentTerm().atom.patternCharacter));
+            ASSERT(!isEitherUnicodeCompilation() || U_IS_BMP(currentTerm().atom.patternCharacter));
             
             backTrack->matchAmount = 0;
             MATCH_NEXT();
         }
 
         case ByteTerm::Type::CharacterClass:
+            DUMP_CURR_CHAR();
             if (matchCharacterClass(currentTerm(), context))
                 MATCH_NEXT();
             BACKTRACK();
@@ -1450,13 +1941,16 @@ public:
                 MATCH_NEXT();
             BACKTRACK();
         case ByteTerm::Type::ParenthesesSubpattern: {
+            DUMP_EXTRA("\n");
             JSRegExpResult result = matchParentheses(currentTerm(), context);
 
             if (result == JSRegExpResult::Match) {
+                DUMP_EXTRA("     ParenthesesSubpattern");
                 MATCH_NEXT();
             }  else if (result != JSRegExpResult::NoMatch)
                 return result;
 
+            DUMP_EXTRA("     ParenthesesSubpattern");
             BACKTRACK();
         }
         case ByteTerm::Type::ParenthesesSubpatternOnceBegin:
@@ -1485,17 +1979,27 @@ public:
             BACKTRACK();
 
         case ByteTerm::Type::CheckInput:
+            DUMP_EXTRA("count:", currentTerm().checkInputCount);
             if (input.checkInput(currentTerm().checkInputCount))
                 MATCH_NEXT();
             BACKTRACK();
 
         case ByteTerm::Type::UncheckInput:
+            DUMP_EXTRA("count:", currentTerm().checkInputCount);
             input.uncheckInput(currentTerm().checkInputCount);
             MATCH_NEXT();
-                
+
+        case ByteTerm::Type::HaveCheckedInput:
+            DUMP_EXTRA("count:", currentTerm().checkInputCount);
+            if (input.isValidNegativeInputOffset(currentTerm().checkInputCount))
+                MATCH_NEXT();
+            BACKTRACK();
+
         case ByteTerm::Type::DotStarEnclosure:
-            if (matchDotStarEnclosure(currentTerm(), context))
+            if (matchDotStarEnclosure(currentTerm(), context)) {
+                DUMP_EXTRA("- Return Match\n");
                 return JSRegExpResult::Match;
+            }
             BACKTRACK();
         }
 
@@ -1505,8 +2009,11 @@ public:
     backtrack:
         ASSERT(context->term < static_cast<int>(disjunction->terms.size()));
 
+        DUMP_TERM();
+
         switch (currentTerm().type) {
         case ByteTerm::Type::SubpatternBegin:
+            DUMP_EXTRA("id:", currentTerm().subpatternId(), " - Return NoMatch\n");
             return JSRegExpResult::NoMatch;
         case ByteTerm::Type::SubpatternEnd:
             RELEASE_ASSERT_NOT_REACHED();
@@ -1518,8 +2025,10 @@ public:
             if (offset > 0)
                 MATCH_NEXT();
 
-            if (input.atEnd() || pattern->sticky())
+            if (input.atEnd() || pattern->sticky()) {
+                DUMP_EXTRA("- Return NoMatch\n");
                 return JSRegExpResult::NoMatch;
+            }
 
             input.next();
 
@@ -1612,11 +2121,17 @@ public:
             BACKTRACK();
 
         case ByteTerm::Type::CheckInput:
+            DUMP_EXTRA("count:", currentTerm().checkInputCount);
             input.uncheckInput(currentTerm().checkInputCount);
             BACKTRACK();
 
         case ByteTerm::Type::UncheckInput:
+            DUMP_EXTRA("count:", currentTerm().checkInputCount);
             input.checkInput(currentTerm().checkInputCount);
+            BACKTRACK();
+
+        case ByteTerm::Type::HaveCheckedInput:
+            DUMP_EXTRA("count:", currentTerm().checkInputCount);
             BACKTRACK();
 
         case ByteTerm::Type::DotStarEnclosure:
@@ -1657,10 +2172,15 @@ public:
         for (unsigned i = 0; i < pattern->m_body->m_numSubpatterns + 1; ++i)
             output[i << 1] = offsetNoMatch;
 
+        for (unsigned i = pattern->m_offsetVectorBaseForNamedCaptures; i < pattern->m_offsetsSize; ++i)
+            output[i] = 0;
+
         allocatorPool = pattern->m_allocator->startAllocator();
         RELEASE_ASSERT(allocatorPool);
 
         DisjunctionContext* context = allocDisjunctionContext(pattern->m_body.get());
+
+        dataLogLnIf(verbose, "  Interpret input: ", input, "\n  Matching");
 
         JSRegExpResult result = matchDisjunction(pattern->m_body.get(), context, false);
         if (result == JSRegExpResult::Match) {
@@ -1680,21 +2200,26 @@ public:
         return output[0];
     }
 
-    Interpreter(BytecodePattern* pattern, unsigned* output, const CharType* input, unsigned length, unsigned start)
+    Interpreter(BytecodePattern* pattern, unsigned* output, std::span<const CharType> input, unsigned start)
         : pattern(pattern)
-        , unicode(pattern->unicode())
+        , compileMode(pattern->compileMode())
         , output(output)
-        , input(input, start, length, pattern->unicode())
+        , input(input, start, pattern->eitherUnicode())
         , startOffset(start)
         , remainingMatchCount(matchLimit)
     {
     }
 
 private:
+    inline bool isLegacyCompilation() const { return compileMode == CompileMode::Legacy; }
+    inline bool isUnicodeCompilation() const { return compileMode == CompileMode::Unicode; }
+    inline bool isUnicodeSetsCompilation() const { return compileMode == CompileMode::UnicodeSets; }
+    inline bool isEitherUnicodeCompilation() const { return isUnicodeCompilation() || isUnicodeSetsCompilation(); }
+
     inline bool isSafeToRecurse() { return m_stackCheck.isSafeToRecurse(); }
 
     BytecodePattern* pattern;
-    bool unicode;
+    CompileMode compileMode;
     unsigned* output;
     InputStream input;
     StackCheck m_stackCheck;
@@ -1734,12 +2259,12 @@ public:
         }
         regexEnd();
 
-#ifndef NDEBUG
+#ifdef ASSERT_ENABLED
         if (Options::dumpCompiledRegExpPatterns())
-            dumpDisjunction(m_bodyDisjunction.get());
+            ByteTermDumper(&m_pattern).dumpDisjunction(m_bodyDisjunction.get());
 #endif
 
-        return makeUnique<BytecodePattern>(WTFMove(m_bodyDisjunction), m_allParenthesesInfo, m_pattern, allocator, lock);
+        return makeUnique<BytecodePattern>(WTFMove(m_bodyDisjunction), m_allParenthesesInfo, m_pattern, allocator, lock, m_pattern.offsetVectorBaseForNamedCaptures(), m_pattern.offsetsSize());
     }
 
     void checkInput(unsigned count)
@@ -1751,7 +2276,12 @@ public:
     {
         m_bodyDisjunction->terms.append(ByteTerm::UncheckInput(count));
     }
-    
+
+    void haveCheckedInput(unsigned count)
+    {
+        m_bodyDisjunction->terms.append(ByteTerm::HaveCheckedInput(count));
+    }
+
     void assertionBOL(unsigned inputPosition)
     {
         m_bodyDisjunction->terms.append(ByteTerm::BOL(inputPosition));
@@ -1762,51 +2292,61 @@ public:
         m_bodyDisjunction->terms.append(ByteTerm::EOL(inputPosition));
     }
 
-    void assertionWordBoundary(bool invert, unsigned inputPosition)
+    void assertionWordBoundary(bool invert, MatchDirection matchDirection, unsigned inputPosition)
     {
-        m_bodyDisjunction->terms.append(ByteTerm::WordBoundary(invert, inputPosition));
+        m_bodyDisjunction->terms.append(ByteTerm::WordBoundary(invert, matchDirection, inputPosition));
     }
 
-    void atomPatternCharacter(UChar32 ch, unsigned inputPosition, unsigned frameLocation, Checked<unsigned> quantityMaxCount, QuantifierType quantityType)
+    void atomPatternCharacter(char32_t ch, MatchDirection matchDirection, unsigned inputPosition, unsigned frameLocation, Checked<unsigned> quantityMaxCount, QuantifierType quantityType)
     {
         if (m_pattern.ignoreCase()) {
-            UChar32 lo = u_tolower(ch);
-            UChar32 hi = u_toupper(ch);
+            char32_t lo = u_tolower(ch);
+            char32_t hi = u_toupper(ch);
 
             if (lo != hi) {
                 m_bodyDisjunction->terms.append(ByteTerm(lo, hi, inputPosition, frameLocation, quantityMaxCount, quantityType));
+                m_bodyDisjunction->terms.last().m_matchDirection = matchDirection;
                 return;
             }
         }
 
         m_bodyDisjunction->terms.append(ByteTerm(ch, inputPosition, frameLocation, quantityMaxCount, quantityType));
+        m_bodyDisjunction->terms.last().m_matchDirection = matchDirection;
     }
 
-    void atomCharacterClass(CharacterClass* characterClass, bool invert, unsigned inputPosition, unsigned frameLocation, Checked<unsigned> quantityMaxCount, QuantifierType quantityType)
+    void atomCharacterClass(CharacterClass* characterClass, bool invert, MatchDirection matchDirection, unsigned inputPosition, unsigned frameLocation, Checked<unsigned> quantityMaxCount, QuantifierType quantityType)
     {
         m_bodyDisjunction->terms.append(ByteTerm(characterClass, invert, inputPosition));
 
+        if (quantityType != QuantifierType::FixedCount)
+            m_bodyDisjunction->terms.last().atom.quantityMinCount = 0;
         m_bodyDisjunction->terms.last().atom.quantityMaxCount = quantityMaxCount;
         m_bodyDisjunction->terms.last().atom.quantityType = quantityType;
         m_bodyDisjunction->terms.last().frameLocation = frameLocation;
+        m_bodyDisjunction->terms.last().m_matchDirection = matchDirection;
     }
 
-    void atomBackReference(unsigned subpatternId, unsigned inputPosition, unsigned frameLocation, Checked<unsigned> quantityMaxCount, QuantifierType quantityType)
+    void atomBackReference(unsigned subpatternId, MatchDirection matchDirection, unsigned inputPosition, unsigned frameLocation, Checked<unsigned> quantityMaxCount, QuantifierType quantityType)
     {
         ASSERT(subpatternId);
 
-        m_bodyDisjunction->terms.append(ByteTerm::BackReference(subpatternId, inputPosition));
+        m_bodyDisjunction->terms.append(ByteTerm::BackReference(subpatternId, matchDirection, inputPosition));
 
+        if (m_pattern.hasDuplicateNamedCaptureGroups()) {
+            auto duplicateNamedGroupId = m_pattern.m_duplicateNamedGroupForSubpatternId[subpatternId];
+            if (duplicateNamedGroupId)
+                m_bodyDisjunction->terms.last().atom.parenIds.duplicateNamedGroupId = duplicateNamedGroupId;
+        }
         m_bodyDisjunction->terms.last().atom.quantityMaxCount = quantityMaxCount;
         m_bodyDisjunction->terms.last().atom.quantityType = quantityType;
         m_bodyDisjunction->terms.last().frameLocation = frameLocation;
     }
 
-    void atomParenthesesOnceBegin(unsigned subpatternId, bool capture, unsigned inputPosition, unsigned frameLocation, unsigned alternativeFrameLocation)
+    void atomParenthesesOnceBegin(unsigned subpatternId, MatchDirection matchDirection, bool capture, unsigned inputPosition, unsigned frameLocation, unsigned alternativeFrameLocation)
     {
         unsigned beginTerm = m_bodyDisjunction->terms.size();
 
-        m_bodyDisjunction->terms.append(ByteTerm(ByteTerm::Type::ParenthesesSubpatternOnceBegin, subpatternId, capture, false, inputPosition));
+        m_bodyDisjunction->terms.append(ByteTerm(ByteTerm::Type::ParenthesesSubpatternOnceBegin, subpatternId, capture, false, matchDirection, inputPosition));
         m_bodyDisjunction->terms.last().frameLocation = frameLocation;
         m_bodyDisjunction->terms.append(ByteTerm::AlternativeBegin());
         m_bodyDisjunction->terms.last().frameLocation = alternativeFrameLocation;
@@ -1815,11 +2355,11 @@ public:
         m_currentAlternativeIndex = beginTerm + 1;
     }
 
-    void atomParenthesesTerminalBegin(unsigned subpatternId, bool capture, unsigned inputPosition, unsigned frameLocation, unsigned alternativeFrameLocation)
+    void atomParenthesesTerminalBegin(unsigned subpatternId, MatchDirection matchDirection, bool capture, unsigned inputPosition, unsigned frameLocation, unsigned alternativeFrameLocation)
     {
         unsigned beginTerm = m_bodyDisjunction->terms.size();
 
-        m_bodyDisjunction->terms.append(ByteTerm(ByteTerm::Type::ParenthesesSubpatternTerminalBegin, subpatternId, capture, false, inputPosition));
+        m_bodyDisjunction->terms.append(ByteTerm(ByteTerm::Type::ParenthesesSubpatternTerminalBegin, subpatternId, capture, false, matchDirection, inputPosition));
         m_bodyDisjunction->terms.last().frameLocation = frameLocation;
         m_bodyDisjunction->terms.append(ByteTerm::AlternativeBegin());
         m_bodyDisjunction->terms.last().frameLocation = alternativeFrameLocation;
@@ -1828,7 +2368,7 @@ public:
         m_currentAlternativeIndex = beginTerm + 1;
     }
 
-    void atomParenthesesSubpatternBegin(unsigned subpatternId, bool capture, unsigned inputPosition, unsigned frameLocation, unsigned alternativeFrameLocation)
+    void atomParenthesesSubpatternBegin(unsigned subpatternId, MatchDirection matchDirection, bool capture, unsigned inputPosition, unsigned frameLocation, unsigned alternativeFrameLocation)
     {
         // Errrk! - this is a little crazy, we initially generate as a Type::ParenthesesSubpatternOnceBegin,
         // then fix this up at the end! - simplifying this should make it much clearer.
@@ -1836,7 +2376,7 @@ public:
 
         unsigned beginTerm = m_bodyDisjunction->terms.size();
 
-        m_bodyDisjunction->terms.append(ByteTerm(ByteTerm::Type::ParenthesesSubpatternOnceBegin, subpatternId, capture, false, inputPosition));
+        m_bodyDisjunction->terms.append(ByteTerm(ByteTerm::Type::ParenthesesSubpatternOnceBegin, subpatternId, capture, false, matchDirection, inputPosition));
         m_bodyDisjunction->terms.last().frameLocation = frameLocation;
         m_bodyDisjunction->terms.append(ByteTerm::AlternativeBegin());
         m_bodyDisjunction->terms.last().frameLocation = alternativeFrameLocation;
@@ -1845,11 +2385,11 @@ public:
         m_currentAlternativeIndex = beginTerm + 1;
     }
 
-    void atomParentheticalAssertionBegin(unsigned subpatternId, bool invert, unsigned frameLocation, unsigned alternativeFrameLocation)
+    void atomParentheticalAssertionBegin(unsigned subpatternId, bool invert, MatchDirection matchDirection, unsigned frameLocation, unsigned alternativeFrameLocation)
     {
         unsigned beginTerm = m_bodyDisjunction->terms.size();
 
-        m_bodyDisjunction->terms.append(ByteTerm(ByteTerm::Type::ParentheticalAssertionBegin, subpatternId, false, invert, 0));
+        m_bodyDisjunction->terms.append(ByteTerm::ParentheticalAssertionBegin(subpatternId, invert, matchDirection));
         m_bodyDisjunction->terms.last().frameLocation = frameLocation;
         m_bodyDisjunction->terms.append(ByteTerm::AlternativeBegin());
         m_bodyDisjunction->terms.last().frameLocation = alternativeFrameLocation;
@@ -1858,7 +2398,7 @@ public:
         m_currentAlternativeIndex = beginTerm + 1;
     }
 
-    void atomParentheticalAssertionEnd(unsigned inputPosition, unsigned frameLocation, Checked<unsigned> quantityMaxCount, QuantifierType quantityType)
+    void atomParentheticalAssertionEnd(unsigned lastSubpatternId, unsigned frameLocation, Checked<unsigned> quantityMaxCount, QuantifierType quantityType)
     {
         unsigned beginTerm = popParenthesesStack();
         closeAlternative(beginTerm + 1);
@@ -1867,9 +2407,10 @@ public:
         ASSERT(m_bodyDisjunction->terms[beginTerm].type == ByteTerm::Type::ParentheticalAssertionBegin);
 
         bool invert = m_bodyDisjunction->terms[beginTerm].invert();
-        unsigned subpatternId = m_bodyDisjunction->terms[beginTerm].atom.subpatternId;
+        MatchDirection matchDirection = m_bodyDisjunction->terms[beginTerm].matchDirection();
+        unsigned subpatternId = m_bodyDisjunction->terms[beginTerm].subpatternId();
 
-        m_bodyDisjunction->terms.append(ByteTerm(ByteTerm::Type::ParentheticalAssertionEnd, subpatternId, false, invert, inputPosition));
+        m_bodyDisjunction->terms.append(ByteTerm::ParentheticalAssertionEnd(subpatternId, lastSubpatternId, invert, matchDirection));
         m_bodyDisjunction->terms[beginTerm].atom.parenthesesWidth = endTerm - beginTerm;
         m_bodyDisjunction->terms[endTerm].atom.parenthesesWidth = endTerm - beginTerm;
         m_bodyDisjunction->terms[endTerm].frameLocation = frameLocation;
@@ -1955,8 +2496,9 @@ public:
 
         ByteTerm& parenthesesBegin = m_bodyDisjunction->terms[beginTerm];
 
+        auto parenthesesMatchDirection = parenthesesBegin.matchDirection();
         bool capture = parenthesesBegin.capture();
-        unsigned subpatternId = parenthesesBegin.atom.subpatternId;
+        unsigned subpatternId = parenthesesBegin.subpatternId();
 
         unsigned numSubpatterns = lastSubpatternId - subpatternId + 1;
         auto parenthesesDisjunction = makeUnique<ByteDisjunction>(numSubpatterns, callFrameSize);
@@ -1972,7 +2514,14 @@ public:
         m_bodyDisjunction->terms.shrink(beginTerm);
 
         m_bodyDisjunction->terms.append(ByteTerm(ByteTerm::Type::ParenthesesSubpattern, subpatternId, parenthesesDisjunction.get(), capture, inputPosition));
+        m_bodyDisjunction->terms.last().m_matchDirection = parenthesesMatchDirection;
         m_allParenthesesInfo.append(WTFMove(parenthesesDisjunction));
+
+        if (m_pattern.hasDuplicateNamedCaptureGroups() && capture) {
+            auto duplicateNamedGroupId = m_pattern.m_duplicateNamedGroupForSubpatternId[subpatternId];
+            if (duplicateNamedGroupId)
+                m_bodyDisjunction->terms[beginTerm].atom.parenIds.duplicateNamedGroupId = duplicateNamedGroupId;
+        }
 
         m_bodyDisjunction->terms[beginTerm].atom.quantityMinCount = quantityMinCount;
         m_bodyDisjunction->terms[beginTerm].atom.quantityMaxCount = quantityMaxCount;
@@ -1989,12 +2538,27 @@ public:
         ASSERT(m_bodyDisjunction->terms[beginTerm].type == ByteTerm::Type::ParenthesesSubpatternOnceBegin);
 
         bool capture = m_bodyDisjunction->terms[beginTerm].capture();
-        unsigned subpatternId = m_bodyDisjunction->terms[beginTerm].atom.subpatternId;
+        unsigned subpatternId = m_bodyDisjunction->terms[beginTerm].subpatternId();
 
         m_bodyDisjunction->terms.append(ByteTerm(ByteTerm::Type::ParenthesesSubpatternOnceEnd, subpatternId, capture, false, inputPosition));
+        if (m_bodyDisjunction->terms[beginTerm].matchDirection() == Backward) {
+            // Swap input positions for backward captures.
+            m_bodyDisjunction->terms[endTerm].inputPosition = m_bodyDisjunction->terms[beginTerm].inputPosition;
+            m_bodyDisjunction->terms[beginTerm].inputPosition = inputPosition;
+        }
+
+        if (m_pattern.hasDuplicateNamedCaptureGroups() && m_bodyDisjunction->terms[beginTerm].capture()) {
+            auto duplicateNamedGroupId = m_pattern.m_duplicateNamedGroupForSubpatternId[subpatternId];
+            if (duplicateNamedGroupId) {
+                m_bodyDisjunction->terms[endTerm].atom.parenIds.duplicateNamedGroupId = duplicateNamedGroupId;
+                m_bodyDisjunction->terms[beginTerm].atom.parenIds.duplicateNamedGroupId = duplicateNamedGroupId;
+            }
+        }
+
         m_bodyDisjunction->terms[beginTerm].atom.parenthesesWidth = endTerm - beginTerm;
         m_bodyDisjunction->terms[endTerm].atom.parenthesesWidth = endTerm - beginTerm;
         m_bodyDisjunction->terms[endTerm].frameLocation = frameLocation;
+        m_bodyDisjunction->terms[endTerm].m_matchDirection = m_bodyDisjunction->terms[beginTerm].matchDirection();
 
         m_bodyDisjunction->terms[beginTerm].atom.quantityMinCount = quantityMinCount;
         m_bodyDisjunction->terms[beginTerm].atom.quantityMaxCount = quantityMaxCount;
@@ -2012,13 +2576,23 @@ public:
 
         ASSERT(m_bodyDisjunction->terms[beginTerm].type == ByteTerm::Type::ParenthesesSubpatternTerminalBegin);
 
+        if (m_bodyDisjunction->terms[beginTerm].matchDirection() == Backward)
+            inputPosition = 0;
         bool capture = m_bodyDisjunction->terms[beginTerm].capture();
-        unsigned subpatternId = m_bodyDisjunction->terms[beginTerm].atom.subpatternId;
+        unsigned subpatternId = m_bodyDisjunction->terms[beginTerm].subpatternId();
 
         m_bodyDisjunction->terms.append(ByteTerm(ByteTerm::Type::ParenthesesSubpatternTerminalEnd, subpatternId, capture, false, inputPosition));
         m_bodyDisjunction->terms[beginTerm].atom.parenthesesWidth = endTerm - beginTerm;
         m_bodyDisjunction->terms[endTerm].atom.parenthesesWidth = endTerm - beginTerm;
         m_bodyDisjunction->terms[endTerm].frameLocation = frameLocation;
+
+        if (m_pattern.hasDuplicateNamedCaptureGroups() && m_bodyDisjunction->terms[beginTerm].capture()) {
+            auto duplicateNamedGroupId = m_pattern.m_duplicateNamedGroupForSubpatternId[subpatternId];
+            if (duplicateNamedGroupId) {
+                m_bodyDisjunction->terms[endTerm].atom.parenIds.duplicateNamedGroupId = duplicateNamedGroupId;
+                m_bodyDisjunction->terms[beginTerm].atom.parenIds.duplicateNamedGroupId = duplicateNamedGroupId;
+            }
+        }
 
         m_bodyDisjunction->terms[beginTerm].atom.quantityMinCount = quantityMinCount;
         m_bodyDisjunction->terms[beginTerm].atom.quantityMaxCount = quantityMaxCount;
@@ -2059,7 +2633,7 @@ public:
         m_currentAlternativeIndex = newAlternativeIndex;
     }
 
-    std::optional<ErrorCode> WARN_UNUSED_RETURN emitDisjunction(PatternDisjunction* disjunction, CheckedUint32 inputCountAlreadyChecked, unsigned parenthesesInputCountAlreadyChecked)
+    std::optional<ErrorCode> WARN_UNUSED_RETURN emitDisjunction(PatternDisjunction* disjunction, CheckedUint32 inputCountAlreadyChecked, unsigned parenthesesInputCountAlreadyChecked, MatchDirection matchDirection = Forward)
     {
         if (UNLIKELY(!isSafeToRecurse()))
             return ErrorCode::TooManyDisjunctions;
@@ -2077,40 +2651,68 @@ public:
             }
 
             unsigned minimumSize = alternative->m_minimumSize;
-            ASSERT(minimumSize >= parenthesesInputCountAlreadyChecked);
-            unsigned countToCheck = minimumSize - parenthesesInputCountAlreadyChecked;
+            ASSERT(matchDirection == Backward || minimumSize >= parenthesesInputCountAlreadyChecked);
+
+            unsigned countToCheck = 0;
+            unsigned backwardUncheckAmount = 0;
+
+            if (matchDirection == Forward)
+                countToCheck = minimumSize - parenthesesInputCountAlreadyChecked;
+            else {
+                // Backward case
+                unsigned minAlreadyChecked = std::min(disjunction->m_minimumSize, parenthesesInputCountAlreadyChecked);
+                if (minimumSize > minAlreadyChecked) {
+                    countToCheck = minimumSize - minAlreadyChecked;
+                    haveCheckedInput(countToCheck + currentCountAlreadyChecked);
+
+                    if (minimumSize > disjunction->m_minimumSize)
+                        backwardUncheckAmount = countToCheck;
+                    else
+                        backwardUncheckAmount = minimumSize;
+                }
+            }
 
             if (countToCheck) {
-                checkInput(countToCheck);
+                if (matchDirection == Forward)
+                    checkInput(countToCheck);
+
                 currentCountAlreadyChecked += countToCheck;
                 if (currentCountAlreadyChecked.hasOverflowed())
                     return ErrorCode::OffsetTooLarge;
             }
 
-            for (auto& term : alternative->m_terms) {
+            auto termCount = alternative->m_terms.size();
+            for (unsigned i = 0; i < termCount; ++i) {
+                unsigned termIndex = matchDirection == Forward ? i : termCount - 1 - i;
+                auto& term = alternative->m_terms[termIndex];
+
+                auto currentInputPosition = [&]() {
+                    return currentCountAlreadyChecked - term.inputPosition;
+                };
+
                 switch (term.type) {
                 case PatternTerm::Type::AssertionBOL:
-                    assertionBOL(currentCountAlreadyChecked - term.inputPosition);
+                    assertionBOL(currentInputPosition());
                     break;
 
                 case PatternTerm::Type::AssertionEOL:
-                    assertionEOL(currentCountAlreadyChecked - term.inputPosition);
+                    assertionEOL(currentInputPosition());
                     break;
 
                 case PatternTerm::Type::AssertionWordBoundary:
-                    assertionWordBoundary(term.invert(), currentCountAlreadyChecked - term.inputPosition);
+                    assertionWordBoundary(term.invert(), matchDirection, currentInputPosition());
                     break;
 
                 case PatternTerm::Type::PatternCharacter:
-                    atomPatternCharacter(term.patternCharacter, currentCountAlreadyChecked - term.inputPosition, term.frameLocation, term.quantityMaxCount, term.quantityType);
+                    atomPatternCharacter(term.patternCharacter, matchDirection, currentInputPosition(), term.frameLocation, term.quantityMaxCount, term.quantityType);
                     break;
 
                 case PatternTerm::Type::CharacterClass:
-                    atomCharacterClass(term.characterClass, term.invert(), currentCountAlreadyChecked - term.inputPosition, term.frameLocation, term.quantityMaxCount, term.quantityType);
+                    atomCharacterClass(term.characterClass, term.invert(), matchDirection, currentInputPosition(), term.frameLocation, term.quantityMaxCount, term.quantityType);
                     break;
 
                 case PatternTerm::Type::BackReference:
-                    atomBackReference(term.backReferenceSubpatternId, currentCountAlreadyChecked - term.inputPosition, term.frameLocation, term.quantityMaxCount, term.quantityType);
+                    atomBackReference(term.backReferenceSubpatternId, matchDirection, currentInputPosition(), term.frameLocation, term.quantityMaxCount, term.quantityType);
                     break;
 
                 case PatternTerm::Type::ForwardReference:
@@ -2125,21 +2727,22 @@ public:
                             disjunctionAlreadyCheckedCount = term.parentheses.disjunction->m_minimumSize;
                         else
                             alternativeFrameLocation += YarrStackSpaceForBackTrackInfoParenthesesOnce;
-                        unsigned delegateEndInputOffset = currentCountAlreadyChecked - term.inputPosition;
-                        atomParenthesesOnceBegin(term.parentheses.subpatternId, term.capture(), disjunctionAlreadyCheckedCount + delegateEndInputOffset, term.frameLocation, alternativeFrameLocation);
-                        if (auto error = emitDisjunction(term.parentheses.disjunction, currentCountAlreadyChecked, disjunctionAlreadyCheckedCount))
+                        unsigned delegateEndInputOffset = currentInputPosition();
+                        atomParenthesesOnceBegin(term.parentheses.subpatternId, matchDirection, term.capture(), disjunctionAlreadyCheckedCount + delegateEndInputOffset, term.frameLocation, alternativeFrameLocation);
+                        if (auto error = emitDisjunction(term.parentheses.disjunction, currentCountAlreadyChecked, disjunctionAlreadyCheckedCount, matchDirection))
                             return error;
                         atomParenthesesOnceEnd(delegateEndInputOffset, term.frameLocation, term.quantityMinCount, term.quantityMaxCount, term.quantityType);
                     } else if (term.parentheses.isTerminal) {
-                        unsigned delegateEndInputOffset = currentCountAlreadyChecked - term.inputPosition;
-                        atomParenthesesTerminalBegin(term.parentheses.subpatternId, term.capture(), disjunctionAlreadyCheckedCount + delegateEndInputOffset, term.frameLocation, term.frameLocation + YarrStackSpaceForBackTrackInfoParenthesesTerminal);
-                        if (auto error = emitDisjunction(term.parentheses.disjunction, currentCountAlreadyChecked, disjunctionAlreadyCheckedCount))
+                        unsigned delegateEndInputOffset = currentInputPosition();
+                        atomParenthesesTerminalBegin(term.parentheses.subpatternId, matchDirection, term.capture(), disjunctionAlreadyCheckedCount + delegateEndInputOffset, term.frameLocation, term.frameLocation + YarrStackSpaceForBackTrackInfoParenthesesTerminal);
+                        if (auto error = emitDisjunction(term.parentheses.disjunction, currentCountAlreadyChecked, disjunctionAlreadyCheckedCount, matchDirection))
                             return error;
                         atomParenthesesTerminalEnd(delegateEndInputOffset, term.frameLocation, term.quantityMinCount, term.quantityMaxCount, term.quantityType);
                     } else {
-                        unsigned delegateEndInputOffset = currentCountAlreadyChecked - term.inputPosition;
-                        atomParenthesesSubpatternBegin(term.parentheses.subpatternId, term.capture(), disjunctionAlreadyCheckedCount + delegateEndInputOffset, term.frameLocation, 0);
-                        if (auto error = emitDisjunction(term.parentheses.disjunction, currentCountAlreadyChecked, 0))
+                        unsigned delegateEndInputOffset = currentInputPosition();
+                        atomParenthesesSubpatternBegin(term.parentheses.subpatternId, matchDirection, term.capture(), disjunctionAlreadyCheckedCount + delegateEndInputOffset, term.frameLocation, 0);
+                        unsigned inputOffset = 0;
+                        if (auto error = emitDisjunction(term.parentheses.disjunction, currentCountAlreadyChecked, inputOffset, matchDirection))
                             return error;
                         atomParenthesesSubpatternEnd(term.parentheses.lastSubpatternId, delegateEndInputOffset, term.frameLocation, term.quantityMinCount, term.quantityMaxCount, term.quantityType, term.parentheses.disjunction->m_callFrameSize);
                     }
@@ -2148,25 +2751,48 @@ public:
 
                 case PatternTerm::Type::ParentheticalAssertion: {
                     unsigned alternativeFrameLocation = term.frameLocation + YarrStackSpaceForBackTrackInfoParentheticalAssertion;
-                    unsigned positiveInputOffset = currentCountAlreadyChecked - term.inputPosition;
-                    unsigned uncheckAmount = 0;
-                    if (positiveInputOffset > term.parentheses.disjunction->m_minimumSize) {
-                        uncheckAmount = positiveInputOffset - term.parentheses.disjunction->m_minimumSize;
-                        uncheckInput(uncheckAmount);
-                        currentCountAlreadyChecked -= uncheckAmount;
-                        if (currentCountAlreadyChecked.hasOverflowed())
-                            return ErrorCode::OffsetTooLarge;
-                    }
+                    unsigned positiveInputOffset = currentInputPosition();
+                    if (term.matchDirection() == Forward) {
+                        unsigned uncheckAmount = 0;
+                        if (positiveInputOffset > term.parentheses.disjunction->m_minimumSize) {
+                            uncheckAmount = positiveInputOffset - term.parentheses.disjunction->m_minimumSize;
+                            uncheckInput(uncheckAmount);
+                            currentCountAlreadyChecked -= uncheckAmount;
+                            if (currentCountAlreadyChecked.hasOverflowed())
+                                return ErrorCode::OffsetTooLarge;
+                        }
 
-                    atomParentheticalAssertionBegin(term.parentheses.subpatternId, term.invert(), term.frameLocation, alternativeFrameLocation);
-                    if (auto error = emitDisjunction(term.parentheses.disjunction, currentCountAlreadyChecked, positiveInputOffset - uncheckAmount))
-                        return error;
-                    atomParentheticalAssertionEnd(0, term.frameLocation, term.quantityMaxCount, term.quantityType);
-                    if (uncheckAmount) {
-                        checkInput(uncheckAmount);
-                        currentCountAlreadyChecked += uncheckAmount;
-                        if (currentCountAlreadyChecked.hasOverflowed())
-                            return ErrorCode::OffsetTooLarge;
+                        atomParentheticalAssertionBegin(term.parentheses.subpatternId, term.invert(), term.matchDirection(), term.frameLocation, alternativeFrameLocation);
+                        if (auto error = emitDisjunction(term.parentheses.disjunction, currentCountAlreadyChecked, positiveInputOffset - uncheckAmount, term.matchDirection()))
+                            return error;
+                        atomParentheticalAssertionEnd(term.parentheses.lastSubpatternId, term.frameLocation, term.quantityMaxCount, term.quantityType);
+                        if (uncheckAmount) {
+                            checkInput(uncheckAmount);
+                            currentCountAlreadyChecked += uncheckAmount;
+                            if (currentCountAlreadyChecked.hasOverflowed())
+                                return ErrorCode::OffsetTooLarge;
+                        }
+                    } else { // Backward
+                        CheckedUint32 checkedCountForLookbehind = currentCountAlreadyChecked;
+                        ASSERT(checkedCountForLookbehind >= term.inputPosition);
+                        checkedCountForLookbehind -= term.inputPosition;
+                        auto minimumSize = term.parentheses.disjunction->m_minimumSize;
+                        if (minimumSize) {
+                            checkedCountForLookbehind += minimumSize;
+                            if (checkedCountForLookbehind.hasOverflowed())
+                                return ErrorCode::OffsetTooLarge;
+                            if (checkedCountForLookbehind > currentCountAlreadyChecked
+                                && !term.invert()) {
+                                // Do a quick check for what is required for the lookbehind.
+                                // An inverted lookbehind can "match" without processing any input.
+                                haveCheckedInput(checkedCountForLookbehind);
+                            }
+                        }
+                        atomParentheticalAssertionBegin(term.parentheses.subpatternId, term.invert(), term.matchDirection(), term.frameLocation, alternativeFrameLocation);
+
+                        if (auto error = emitDisjunction(term.parentheses.disjunction, checkedCountForLookbehind, positiveInputOffset + minimumSize, term.matchDirection()))
+                            return error;
+                        atomParentheticalAssertionEnd(term.parentheses.lastSubpatternId, term.frameLocation, term.quantityMaxCount, term.quantityType);
                     }
                     break;
                 }
@@ -2176,269 +2802,12 @@ public:
                     break;
                 }
             }
+
+            if (matchDirection == Backward && backwardUncheckAmount)
+                uncheckInput(backwardUncheckAmount);
         }
         return std::nullopt;
     }
-#ifndef NDEBUG
-    void dumpDisjunction(ByteDisjunction* disjunction, unsigned nesting = 0)
-    {
-        PrintStream& out = WTF::dataFile();
-
-        unsigned termIndexNest = 0;
-
-        if (!nesting) {
-            out.printf("ByteDisjunction(%p):\n", disjunction);
-            nesting = 1;
-        } else {
-            termIndexNest = nesting - 1;
-            nesting = 2;
-        }
-
-        auto outputTermIndexAndNest = [&](size_t index, unsigned termNesting) {
-            for (unsigned nestingDepth = 0; nestingDepth < termIndexNest; nestingDepth++)
-                out.print("  ");
-            out.printf("%4zu", index);
-            for (unsigned nestingDepth = 0; nestingDepth < termNesting; nestingDepth++)
-                out.print("  ");
-        };
-
-        auto dumpQuantity = [&](ByteTerm& term) {
-            if (term.atom.quantityType == QuantifierType::FixedCount && term.atom.quantityMinCount == 1 && term.atom.quantityMaxCount == 1)
-                return;
-
-            out.print(" {", term.atom.quantityMinCount);
-            if (term.atom.quantityMinCount != term.atom.quantityMaxCount) {
-                if (term.atom.quantityMaxCount == UINT_MAX)
-                    out.print(",inf");
-                else
-                    out.print(",", term.atom.quantityMaxCount);
-            }
-            out.print("}");
-            if (term.atom.quantityType == QuantifierType::Greedy)
-                out.print(" greedy");
-            else if (term.atom.quantityType == QuantifierType::NonGreedy)
-                out.print(" non-greedy");
-        };
-
-        auto dumpCaptured = [&](ByteTerm& term) {
-            if (term.capture())
-                out.print(" captured (#", term.atom.subpatternId, ")");
-        };
-
-        auto dumpInverted = [&](ByteTerm& term) {
-            if (term.invert())
-                out.print(" inverted");
-        };
-
-        auto dumpInputPosition = [&](ByteTerm& term) {
-            out.printf(" inputPosition %u", term.inputPosition);
-        };
-
-        auto dumpFrameLocation = [&](ByteTerm& term) {
-            out.printf(" frameLocation %u", term.frameLocation);
-        };
-        
-        auto dumpCharacter = [&](ByteTerm& term) {
-            out.print(" ");
-            dumpUChar32(out, term.atom.patternCharacter);
-        };
-
-        auto dumpCharClass = [&](ByteTerm& term) {
-            out.print(" ");
-            dumpCharacterClass(out, &m_pattern, term.atom.characterClass);
-        };
-
-        for (size_t idx = 0; idx < disjunction->terms.size(); ++idx) {
-            ByteTerm term = disjunction->terms[idx];
-
-            bool outputNewline = true;
-
-            switch (term.type) {
-            case ByteTerm::Type::BodyAlternativeBegin:
-                outputTermIndexAndNest(idx, nesting++);
-                out.print("BodyAlternativeBegin");
-                if (term.alternative.onceThrough)
-                    out.print(" onceThrough");
-                dumpFrameLocation(term);
-                break;
-            case ByteTerm::Type::BodyAlternativeDisjunction:
-                outputTermIndexAndNest(idx, nesting - 1);
-                out.print("BodyAlternativeDisjunction");
-                dumpFrameLocation(term);
-                break;
-            case ByteTerm::Type::BodyAlternativeEnd:
-                outputTermIndexAndNest(idx, --nesting);
-                out.print("BodyAlternativeEnd");
-                dumpFrameLocation(term);
-                break;
-            case ByteTerm::Type::AlternativeBegin:
-                outputTermIndexAndNest(idx, nesting++);
-                out.print("AlternativeBegin");
-                dumpFrameLocation(term);
-                break;
-            case ByteTerm::Type::AlternativeDisjunction:
-                outputTermIndexAndNest(idx, nesting - 1);
-                out.print("AlternativeDisjunction");
-                dumpFrameLocation(term);
-                break;
-            case ByteTerm::Type::AlternativeEnd:
-                outputTermIndexAndNest(idx, --nesting);
-                out.print("AlternativeEnd");
-                dumpFrameLocation(term);
-                break;
-            case ByteTerm::Type::SubpatternBegin:
-                outputTermIndexAndNest(idx, nesting++);
-                out.print("SubpatternBegin");
-                break;
-            case ByteTerm::Type::SubpatternEnd:
-                outputTermIndexAndNest(idx, --nesting);
-                out.print("SubpatternEnd");
-                break;
-            case ByteTerm::Type::AssertionBOL:
-                outputTermIndexAndNest(idx, nesting);
-                out.print("AssertionBOL");
-                break;
-            case ByteTerm::Type::AssertionEOL:
-                outputTermIndexAndNest(idx, nesting);
-                out.print("AssertionEOL");
-                break;
-            case ByteTerm::Type::AssertionWordBoundary:
-                outputTermIndexAndNest(idx, nesting);
-                out.print("AssertionWordBoundary");
-                break;
-            case ByteTerm::Type::PatternCharacterOnce:
-                outputTermIndexAndNest(idx, nesting);
-                out.print("PatternCharacterOnce");
-                dumpInverted(term);
-                dumpInputPosition(term);
-                dumpFrameLocation(term);
-                dumpCharacter(term);
-                dumpQuantity(term);
-                break;
-            case ByteTerm::Type::PatternCharacterFixed:
-                outputTermIndexAndNest(idx, nesting);
-                out.print("PatternCharacterFixed");
-                dumpInverted(term);
-                dumpInputPosition(term);
-                dumpFrameLocation(term);
-                dumpCharacter(term);
-                out.print(" {", term.atom.quantityMinCount, "}");
-                break;
-            case ByteTerm::Type::PatternCharacterGreedy:
-                outputTermIndexAndNest(idx, nesting);
-                out.print("PatternCharacterGreedy");
-                dumpInverted(term);
-                dumpInputPosition(term);
-                dumpFrameLocation(term);
-                dumpCharacter(term);
-                dumpQuantity(term);
-                break;
-            case ByteTerm::Type::PatternCharacterNonGreedy:
-                outputTermIndexAndNest(idx, nesting);
-                out.print("PatternCharacterNonGreedy");
-                dumpInverted(term);
-                dumpInputPosition(term);
-                dumpFrameLocation(term);
-                dumpCharacter(term);
-                dumpQuantity(term);
-                break;
-            case ByteTerm::Type::PatternCasedCharacterOnce:
-                outputTermIndexAndNest(idx, nesting);
-                out.print("PatternCasedCharacterOnce");
-                break;
-            case ByteTerm::Type::PatternCasedCharacterFixed:
-                outputTermIndexAndNest(idx, nesting);
-                out.print("PatternCasedCharacterFixed");
-                break;
-            case ByteTerm::Type::PatternCasedCharacterGreedy:
-                outputTermIndexAndNest(idx, nesting);
-                out.print("PatternCasedCharacterGreedy");
-                break;
-            case ByteTerm::Type::PatternCasedCharacterNonGreedy:
-                outputTermIndexAndNest(idx, nesting);
-                out.print("PatternCasedCharacterNonGreedy");
-                break;
-            case ByteTerm::Type::CharacterClass:
-                outputTermIndexAndNest(idx, nesting);
-                out.print("CharacterClass");
-                dumpInverted(term);
-                dumpInputPosition(term);
-                dumpFrameLocation(term);
-                dumpCharClass(term);
-                dumpQuantity(term);
-                break;
-            case ByteTerm::Type::BackReference:
-                outputTermIndexAndNest(idx, nesting);
-                out.print("BackReference #", term.atom.subpatternId);
-                dumpQuantity(term);
-                break;
-            case ByteTerm::Type::ParenthesesSubpattern:
-                outputTermIndexAndNest(idx, nesting);
-                out.print("ParenthesesSubpattern");
-                dumpCaptured(term);
-                dumpInverted(term);
-                dumpInputPosition(term);
-                dumpFrameLocation(term);
-                dumpQuantity(term);
-                out.print("\n");
-                outputNewline = false;
-                dumpDisjunction(term.atom.parenthesesDisjunction, nesting);
-                break;
-            case ByteTerm::Type::ParenthesesSubpatternOnceBegin:
-                outputTermIndexAndNest(idx, nesting++);
-                out.print("ParenthesesSubpatternOnceBegin");
-                dumpCaptured(term);
-                dumpInverted(term);
-                dumpInputPosition(term);
-                dumpFrameLocation(term);
-                break;
-            case ByteTerm::Type::ParenthesesSubpatternOnceEnd:
-                outputTermIndexAndNest(idx, --nesting);
-                out.print("ParenthesesSubpatternOnceEnd");
-                dumpFrameLocation(term);
-                break;
-            case ByteTerm::Type::ParenthesesSubpatternTerminalBegin:
-                outputTermIndexAndNest(idx, nesting++);
-                out.print("ParenthesesSubpatternTerminalBegin");
-                dumpInverted(term);
-                dumpInputPosition(term);
-                dumpFrameLocation(term);
-                break;
-            case ByteTerm::Type::ParenthesesSubpatternTerminalEnd:
-                outputTermIndexAndNest(idx, --nesting);
-                out.print("ParenthesesSubpatternTerminalEnd");
-                dumpFrameLocation(term);
-                break;
-            case ByteTerm::Type::ParentheticalAssertionBegin:
-                outputTermIndexAndNest(idx, nesting++);
-                out.print("ParentheticalAssertionBegin");
-                dumpInverted(term);
-                dumpInputPosition(term);
-                dumpFrameLocation(term);
-                break;
-            case ByteTerm::Type::ParentheticalAssertionEnd:
-                outputTermIndexAndNest(idx, --nesting);
-                out.print("ParentheticalAssertionEnd");
-                dumpFrameLocation(term);
-                break;
-            case ByteTerm::Type::CheckInput:
-                outputTermIndexAndNest(idx, nesting);
-                out.print("CheckInput ", term.checkInputCount);
-                break;
-            case ByteTerm::Type::UncheckInput:
-                outputTermIndexAndNest(idx, nesting);
-                out.print("UncheckInput ", term.checkInputCount);
-                break;
-            case ByteTerm::Type::DotStarEnclosure:
-                outputTermIndexAndNest(idx, nesting);
-                out.print("DotStarEnclosure");
-                break;
-            }
-            if (outputNewline)
-                out.print("\n");
-        }
-    }
-#endif
 
 private:
     inline bool isSafeToRecurse() { return m_stackCheck.isSafeToRecurse(); }
@@ -2451,39 +2820,350 @@ private:
     Vector<std::unique_ptr<ByteDisjunction>> m_allParenthesesInfo;
 };
 
+void ByteTermDumper::dumpTerm(size_t idx, ByteTerm term)
+{
+    PrintStream& out = WTF::dataFile();
+
+    auto outputTermIndexAndNest = [&](size_t index, unsigned termNesting) {
+        if (!m_recursiveDump)
+            termNesting = 1;
+
+        for (unsigned lineIndent = 0; lineIndent < m_lineIndent; lineIndent++)
+            out.print(" ");
+        out.printf("%4zu", index);
+        for (unsigned nestingDepth = 0; nestingDepth < termNesting; nestingDepth++)
+            out.print("  ");
+    };
+
+    auto dumpQuantity = [&](ByteTerm& term) {
+        if (term.atom.quantityType == QuantifierType::FixedCount) {
+            if (term.atom.quantityMaxCount > 1)
+                out.print(" {", term.atom.quantityMaxCount, "}");
+            return;
+        }
+
+        out.print(" {", term.atom.quantityMinCount);
+        if (term.atom.quantityMaxCount == UINT_MAX)
+            out.print(",inf");
+        else
+            out.print(",", term.atom.quantityMaxCount);
+        out.print("}");
+
+        if (term.atom.quantityType == QuantifierType::Greedy)
+            out.print(" greedy");
+        else if (term.atom.quantityType == QuantifierType::NonGreedy)
+            out.print(" non-greedy");
+    };
+
+    auto dumpCaptured = [&](ByteTerm& term) {
+        if (term.capture())
+            out.print(" captured (#", term.subpatternId(), ")");
+    };
+
+    auto dumpInverted = [&](ByteTerm& term) {
+        if (term.invert())
+            out.print(" inverted");
+    };
+
+    auto dumpMatchDirection = [&](ByteTerm& term) {
+        if (term.matchDirection() == Backward) {
+            if (term.type == ByteTerm::Type::ParentheticalAssertionBegin
+                || term.type == ByteTerm::Type::ParentheticalAssertionEnd) {
+                out.print(" lookbehind");
+            } else
+                out.print(" backward");
+        }
+    };
+
+    auto dumpInputPosition = [&](ByteTerm& term) {
+        out.printf(" inputPosition %u", term.inputPosition);
+    };
+
+    auto dumpFrameLocation = [&](ByteTerm& term) {
+        out.printf(" frameLocation %u", term.frameLocation);
+    };
+
+    auto dumpCharacter = [&](ByteTerm& term) {
+        out.print(" ");
+        dumpUChar32(out, term.atom.patternCharacter);
+    };
+
+    auto dumpCharClass = [&](ByteTerm& term) {
+        out.print(" ");
+        dumpCharacterClass(out, m_pattern, term.atom.characterClass);
+    };
+
+    switch (term.type) {
+    case ByteTerm::Type::BodyAlternativeBegin:
+        outputTermIndexAndNest(idx, m_nesting++);
+        out.print("BodyAlternativeBegin");
+        if (term.alternative.onceThrough)
+            out.print(" onceThrough");
+        break;
+    case ByteTerm::Type::BodyAlternativeDisjunction:
+        outputTermIndexAndNest(idx, m_nesting - 1);
+        out.print("BodyAlternativeDisjunction");
+        break;
+    case ByteTerm::Type::BodyAlternativeEnd:
+        outputTermIndexAndNest(idx, --m_nesting);
+        out.print("BodyAlternativeEnd");
+        break;
+    case ByteTerm::Type::AlternativeBegin:
+        outputTermIndexAndNest(idx, m_nesting++);
+        out.print("AlternativeBegin");
+        dumpFrameLocation(term);
+        break;
+    case ByteTerm::Type::AlternativeDisjunction:
+        outputTermIndexAndNest(idx, m_nesting - 1);
+        out.print("AlternativeDisjunction");
+        dumpFrameLocation(term);
+        break;
+    case ByteTerm::Type::AlternativeEnd:
+        outputTermIndexAndNest(idx, --m_nesting);
+        out.print("AlternativeEnd");
+        dumpFrameLocation(term);
+        break;
+    case ByteTerm::Type::SubpatternBegin:
+        outputTermIndexAndNest(idx, m_nesting++);
+        out.print("SubpatternBegin");
+        dumpMatchDirection(term);
+        break;
+    case ByteTerm::Type::SubpatternEnd:
+        outputTermIndexAndNest(idx, --m_nesting);
+        out.print("SubpatternEnd");
+        dumpMatchDirection(term);
+        break;
+    case ByteTerm::Type::AssertionBOL:
+        outputTermIndexAndNest(idx, m_nesting);
+        out.print("AssertionBOL");
+        break;
+    case ByteTerm::Type::AssertionEOL:
+        outputTermIndexAndNest(idx, m_nesting);
+        out.print("AssertionEOL");
+        break;
+    case ByteTerm::Type::AssertionWordBoundary:
+        outputTermIndexAndNest(idx, m_nesting);
+        out.print("AssertionWordBoundary");
+        dumpInverted(term);
+        dumpMatchDirection(term);
+        break;
+    case ByteTerm::Type::PatternCharacterOnce:
+        outputTermIndexAndNest(idx, m_nesting);
+        out.print("PatternCharacterOnce");
+        dumpInverted(term);
+        dumpInputPosition(term);
+        dumpCharacter(term);
+        dumpQuantity(term);
+        dumpMatchDirection(term);
+        break;
+    case ByteTerm::Type::PatternCharacterFixed:
+        outputTermIndexAndNest(idx, m_nesting);
+        out.print("PatternCharacterFixed");
+        dumpInverted(term);
+        dumpInputPosition(term);
+        dumpFrameLocation(term);
+        dumpCharacter(term);
+        out.print(" {", term.atom.quantityMinCount, "}");
+        dumpMatchDirection(term);
+        break;
+    case ByteTerm::Type::PatternCharacterGreedy:
+        outputTermIndexAndNest(idx, m_nesting);
+        out.print("PatternCharacterGreedy");
+        dumpInverted(term);
+        dumpInputPosition(term);
+        dumpFrameLocation(term);
+        dumpCharacter(term);
+        dumpQuantity(term);
+        dumpMatchDirection(term);
+        break;
+    case ByteTerm::Type::PatternCharacterNonGreedy:
+        outputTermIndexAndNest(idx, m_nesting);
+        out.print("PatternCharacterNonGreedy");
+        dumpInverted(term);
+        dumpInputPosition(term);
+        dumpFrameLocation(term);
+        dumpCharacter(term);
+        dumpQuantity(term);
+        dumpMatchDirection(term);
+        break;
+    case ByteTerm::Type::PatternCasedCharacterOnce:
+        outputTermIndexAndNest(idx, m_nesting);
+        out.print("PatternCasedCharacterOnce");
+        dumpMatchDirection(term);
+        break;
+    case ByteTerm::Type::PatternCasedCharacterFixed:
+        outputTermIndexAndNest(idx, m_nesting);
+        out.print("PatternCasedCharacterFixed");
+        dumpMatchDirection(term);
+        break;
+    case ByteTerm::Type::PatternCasedCharacterGreedy:
+        outputTermIndexAndNest(idx, m_nesting);
+        out.print("PatternCasedCharacterGreedy");
+        dumpMatchDirection(term);
+        break;
+    case ByteTerm::Type::PatternCasedCharacterNonGreedy:
+        outputTermIndexAndNest(idx, m_nesting);
+        out.print("PatternCasedCharacterNonGreedy");
+        dumpMatchDirection(term);
+        break;
+    case ByteTerm::Type::CharacterClass:
+        outputTermIndexAndNest(idx, m_nesting);
+        out.print("CharacterClass");
+        dumpInverted(term);
+        dumpInputPosition(term);
+        if (term.atom.quantityType != QuantifierType::FixedCount || eitherUnicode())
+            dumpFrameLocation(term);
+        dumpCharClass(term);
+        dumpQuantity(term);
+        dumpMatchDirection(term);
+        break;
+    case ByteTerm::Type::BackReference:
+        //  Need to update this for named capture group back references
+        outputTermIndexAndNest(idx, m_nesting);
+        out.print("BackReference #", term.subpatternId());
+        dumpInputPosition(term);
+        dumpQuantity(term);
+        break;
+    case ByteTerm::Type::ParenthesesSubpattern:
+        outputTermIndexAndNest(idx, m_nesting);
+        out.print("ParenthesesSubpattern");
+        dumpCaptured(term);
+        dumpInverted(term);
+        dumpMatchDirection(term);
+        dumpInputPosition(term);
+        dumpFrameLocation(term);
+        dumpQuantity(term);
+        if (m_recursiveDump) {
+            out.print("\n");
+            dumpDisjunction(term.atom.parenthesesDisjunction, m_nesting);
+        }
+        break;
+    case ByteTerm::Type::ParenthesesSubpatternOnceBegin:
+        outputTermIndexAndNest(idx, m_nesting++);
+        out.print("ParenthesesSubpatternOnceBegin");
+        dumpCaptured(term);
+        dumpInverted(term);
+        dumpMatchDirection(term);
+        dumpInputPosition(term);
+        dumpFrameLocation(term);
+        break;
+    case ByteTerm::Type::ParenthesesSubpatternOnceEnd:
+        outputTermIndexAndNest(idx, --m_nesting);
+        out.print("ParenthesesSubpatternOnceEnd");
+        dumpCaptured(term);
+        dumpInverted(term);
+        dumpMatchDirection(term);
+        dumpInputPosition(term);
+        dumpFrameLocation(term);
+        break;
+    case ByteTerm::Type::ParenthesesSubpatternTerminalBegin:
+        outputTermIndexAndNest(idx, m_nesting++);
+        out.print("ParenthesesSubpatternTerminalBegin");
+        dumpInverted(term);
+        dumpMatchDirection(term);
+        dumpInputPosition(term);
+        dumpFrameLocation(term);
+        break;
+    case ByteTerm::Type::ParenthesesSubpatternTerminalEnd:
+        outputTermIndexAndNest(idx, --m_nesting);
+        out.print("ParenthesesSubpatternTerminalEnd");
+        dumpInverted(term);
+        dumpMatchDirection(term);
+        dumpInputPosition(term);
+        dumpFrameLocation(term);
+        break;
+    case ByteTerm::Type::ParentheticalAssertionBegin:
+        outputTermIndexAndNest(idx, m_nesting++);
+        out.print("ParentheticalAssertionBegin");
+        dumpInverted(term);
+        dumpMatchDirection(term);
+        dumpInputPosition(term);
+        dumpFrameLocation(term);
+        break;
+    case ByteTerm::Type::ParentheticalAssertionEnd:
+        outputTermIndexAndNest(idx, --m_nesting);
+        out.print("ParentheticalAssertionEnd");
+        dumpInverted(term);
+        dumpMatchDirection(term);
+        dumpInputPosition(term);
+        dumpFrameLocation(term);
+        break;
+    case ByteTerm::Type::CheckInput:
+        outputTermIndexAndNest(idx, m_nesting);
+        out.print("CheckInput ", term.checkInputCount);
+        break;
+    case ByteTerm::Type::UncheckInput:
+        outputTermIndexAndNest(idx, m_nesting);
+        out.print("UncheckInput ", term.checkInputCount);
+        break;
+    case ByteTerm::Type::HaveCheckedInput:
+        outputTermIndexAndNest(idx, m_nesting);
+        out.print("HaveCheckedInput ", term.checkInputCount);
+        break;
+    case ByteTerm::Type::DotStarEnclosure:
+        outputTermIndexAndNest(idx, m_nesting);
+        out.print("DotStarEnclosure");
+        break;
+    }
+}
+
+void ByteTermDumper::dumpDisjunction(ByteDisjunction* disjunction, unsigned nesting)
+{
+    PrintStream& out = WTF::dataFile();
+
+    unsigned savedLineIndent = m_lineIndent;
+    if (!nesting) {
+        out.printf("ByteDisjunction(%p):\n", disjunction);
+        m_recursiveDump = true;
+        m_nesting = 1;
+    } else
+        m_lineIndent = nesting - 1;
+
+    for (size_t idx = 0; idx < disjunction->terms.size(); ++idx) {
+        ByteTerm term = disjunction->terms[idx];
+
+        dumpTerm(idx, term);
+
+        if (term.type != ByteTerm::Type::ParenthesesSubpattern)
+            out.print("\n");
+    }
+
+    m_lineIndent = savedLineIndent;
+}
+
 std::unique_ptr<BytecodePattern> byteCompile(YarrPattern& pattern, BumpPointerAllocator* allocator, ErrorCode& errorCode, ConcurrentJSLock* lock)
 {
     return ByteCompiler(pattern).compile(allocator, lock, errorCode);
 }
 
-unsigned interpret(BytecodePattern* bytecode, const String& input, unsigned start, unsigned* output)
+unsigned interpret(BytecodePattern* bytecode, StringView input, unsigned start, unsigned* output)
 {
     SuperSamplerScope superSamplerScope(false);
     if (input.is8Bit())
-        return Interpreter<LChar>(bytecode, output, input.characters8(), input.length(), start).interpret();
-    return Interpreter<UChar>(bytecode, output, input.characters16(), input.length(), start).interpret();
+        return Interpreter<LChar>(bytecode, output, input.span8(), start).interpret();
+    return Interpreter<UChar>(bytecode, output, input.span16(), start).interpret();
 }
 
-unsigned interpret(BytecodePattern* bytecode, const LChar* input, unsigned length, unsigned start, unsigned* output)
+unsigned interpret(BytecodePattern* bytecode, std::span<const LChar> input, unsigned start, unsigned* output)
 {
     SuperSamplerScope superSamplerScope(false);
-    return Interpreter<LChar>(bytecode, output, input, length, start).interpret();
+    return Interpreter<LChar>(bytecode, output, input, start).interpret();
 }
 
-unsigned interpret(BytecodePattern* bytecode, const UChar* input, unsigned length, unsigned start, unsigned* output)
+unsigned interpret(BytecodePattern* bytecode, std::span<const UChar> input, unsigned start, unsigned* output)
 {
     SuperSamplerScope superSamplerScope(false);
-    return Interpreter<UChar>(bytecode, output, input, length, start).interpret();
+    return Interpreter<UChar>(bytecode, output, input, start).interpret();
 }
 
 // These should be the same for both UChar & LChar.
-COMPILE_ASSERT(sizeof(BackTrackInfoPatternCharacter) == (YarrStackSpaceForBackTrackInfoPatternCharacter * sizeof(uintptr_t)), CheckYarrStackSpaceForBackTrackInfoPatternCharacter);
-COMPILE_ASSERT(sizeof(BackTrackInfoCharacterClass) == (YarrStackSpaceForBackTrackInfoCharacterClass * sizeof(uintptr_t)), CheckYarrStackSpaceForBackTrackInfoCharacterClass);
-COMPILE_ASSERT(sizeof(BackTrackInfoBackReference) == (YarrStackSpaceForBackTrackInfoBackReference * sizeof(uintptr_t)), CheckYarrStackSpaceForBackTrackInfoBackReference);
-COMPILE_ASSERT(sizeof(BackTrackInfoAlternative) == (YarrStackSpaceForBackTrackInfoAlternative * sizeof(uintptr_t)), CheckYarrStackSpaceForBackTrackInfoAlternative);
-COMPILE_ASSERT(sizeof(BackTrackInfoParentheticalAssertion) == (YarrStackSpaceForBackTrackInfoParentheticalAssertion * sizeof(uintptr_t)), CheckYarrStackSpaceForBackTrackInfoParentheticalAssertion);
-COMPILE_ASSERT(sizeof(BackTrackInfoParenthesesOnce) == (YarrStackSpaceForBackTrackInfoParenthesesOnce * sizeof(uintptr_t)), CheckYarrStackSpaceForBackTrackInfoParenthesesOnce);
-COMPILE_ASSERT(sizeof(Interpreter<UChar>::BackTrackInfoParentheses) <= (YarrStackSpaceForBackTrackInfoParentheses * sizeof(uintptr_t)), CheckYarrStackSpaceForBackTrackInfoParentheses);
+static_assert(sizeof(BackTrackInfoPatternCharacter) == (YarrStackSpaceForBackTrackInfoPatternCharacter * sizeof(uintptr_t)));
+static_assert(sizeof(BackTrackInfoCharacterClass) == (YarrStackSpaceForBackTrackInfoCharacterClass * sizeof(uintptr_t)));
+static_assert(sizeof(BackTrackInfoBackReference) == (YarrStackSpaceForBackTrackInfoBackReference * sizeof(uintptr_t)));
+static_assert(sizeof(BackTrackInfoAlternative) == (YarrStackSpaceForBackTrackInfoAlternative * sizeof(uintptr_t)));
+static_assert(sizeof(BackTrackInfoParentheticalAssertion) == (YarrStackSpaceForBackTrackInfoParentheticalAssertion * sizeof(uintptr_t)));
+static_assert(sizeof(BackTrackInfoParenthesesOnce) == (YarrStackSpaceForBackTrackInfoParenthesesOnce * sizeof(uintptr_t)));
+static_assert(sizeof(Interpreter<UChar>::BackTrackInfoParentheses) <= (YarrStackSpaceForBackTrackInfoParentheses * sizeof(uintptr_t)));
 
 
 } }

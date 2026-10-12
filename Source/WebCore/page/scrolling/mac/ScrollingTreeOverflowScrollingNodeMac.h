@@ -28,11 +28,12 @@
 #if ENABLE(ASYNC_SCROLLING) && PLATFORM(MAC)
 
 #include "ScrollingTreeOverflowScrollingNode.h"
-#include "ScrollingTreeScrollingNodeDelegateMac.h"
 
 OBJC_CLASS CALayer;
 
 namespace WebCore {
+
+class ScrollingTreeScrollingNodeDelegateMac;
 
 class WEBCORE_EXPORT ScrollingTreeOverflowScrollingNodeMac : public ScrollingTreeOverflowScrollingNode {
 public:
@@ -42,10 +43,7 @@ public:
 protected:
     ScrollingTreeOverflowScrollingNodeMac(ScrollingTree&, ScrollingNodeID);
 
-    void commitStateBeforeChildren(const ScrollingStateNode&) override;
-    void commitStateAfterChildren(const ScrollingStateNode&) override;
-    
-    FloatPoint adjustedScrollPosition(const FloatPoint&, ScrollClamping) const override;
+    bool commitStateBeforeChildren(const ScrollingStateNode&) override;
 
     void currentScrollPositionChanged(ScrollType, ScrollingLayerPositionAction) final;
     void willDoProgrammaticScroll(const FloatPoint&) final;
@@ -56,9 +54,9 @@ protected:
     WheelEventHandlingResult handleWheelEvent(const PlatformWheelEvent&, EventTargeting) override;
 
 private:
-    void willBeDestroyed() final;
+    ScrollingTreeScrollingNodeDelegateMac& delegate() const;
 
-    ScrollingTreeScrollingNodeDelegateMac m_delegate;
+    void willBeDestroyed() final;
 };
 
 } // namespace WebKit

@@ -25,48 +25,86 @@
 
 #pragma once
 
-#include "AbstractFrame.h"
-#include "GlobalFrameIdentifier.h"
-#include <wtf/Ref.h>
+#include "Frame.h"
+#include "LayerHostingContextIdentifier.h"
 #include <wtf/RefPtr.h>
 #include <wtf/TypeCasts.h>
+#include <wtf/UniqueRef.h>
 
 namespace WebCore {
 
+class IntPoint;
 class RemoteDOMWindow;
+class RemoteFrameClient;
+class RemoteFrameView;
+class WeakPtrImplWithEventTargetData;
 
-class RemoteFrame final : public AbstractFrame {
+enum class AdvancedPrivacyProtections : uint16_t;
+enum class RenderAsTextFlag : uint16_t;
+
+class RemoteFrame final : public Frame {
 public:
-    static Ref<RemoteFrame> create(GlobalFrameIdentifier&& frameIdentifier)
-    {
-        return adoptRef(* new RemoteFrame(WTFMove(frameIdentifier)));
-    }
+    using ClientCreator = CompletionHandler<UniqueRef<RemoteFrameClient>(RemoteFrame&)>;
+    WEBCORE_EXPORT static Ref<RemoteFrame> createMainFrame(Page&, ClientCreator&&, FrameIdentifier, Frame* opener);
+    WEBCORE_EXPORT static Ref<RemoteFrame> createSubframe(Page&, ClientCreator&&, FrameIdentifier, Frame& parent);
+    WEBCORE_EXPORT static Ref<RemoteFrame> createSubframeWithContentsInAnotherProcess(Page&, ClientCreator&&, FrameIdentifier, HTMLFrameOwnerElement&, std::optional<LayerHostingContextIdentifier>);
     ~RemoteFrame();
 
-    const GlobalFrameIdentifier& identifier() const { return m_identifier; }
+    RemoteDOMWindow& window() const;
 
-    void setWindow(RemoteDOMWindow* window) { m_window = window; }
-    RemoteDOMWindow* window() const { return m_window; }
+    const RemoteFrameClient& client() const { return m_client.get(); }
+    RemoteFrameClient& client() { return m_client.get(); }
 
-    void setOpener(AbstractFrame* opener) { m_opener = opener; }
-    AbstractFrame* opener() const { return m_opener.get(); }
+    RemoteFrameView* view() const { return m_view.get(); }
+    WEBCORE_EXPORT void setView(RefPtr<RemoteFrameView>&&);
+
+    Markable<LayerHostingContextIdentifier> layerHostingContextIdentifier() const { return m_layerHostingContextIdentifier; }
+
+    String renderTreeAsText(size_t baseIndent, OptionSet<RenderAsTextFlag>);
+    void bindRemoteAccessibilityFrames(int processIdentifier, Vector<uint8_t>&&, CompletionHandler<void(Vector<uint8_t>, int)>&&);
+    void updateRemoteFrameAccessibilityOffset(IntPoint);
+    void unbindRemoteAccessibilityFrames(int);
+
+    void setCustomUserAgent(const String& customUserAgent) { m_customUserAgent = customUserAgent; }
+    String customUserAgent() const final;
+    void setCustomUserAgentAsSiteSpecificQuirks(const String& customUserAgentAsSiteSpecificQuirks) { m_customUserAgentAsSiteSpecificQuirks = customUserAgentAsSiteSpecificQuirks; }
+    String customUserAgentAsSiteSpecificQuirks() const final;
+
+    void setCustomNavigatorPlatform(const String& customNavigatorPlatform) { m_customNavigatorPlatform = customNavigatorPlatform; }
+    String customNavigatorPlatform() const final;
+
+    void setAdvancedPrivacyProtections(OptionSet<AdvancedPrivacyProtections> advancedPrivacyProtections) { m_advancedPrivacyProtections = advancedPrivacyProtections; }
+    OptionSet<AdvancedPrivacyProtections> advancedPrivacyProtections() const final;
 
 private:
-    WEBCORE_EXPORT explicit RemoteFrame(GlobalFrameIdentifier&&);
+    WEBCORE_EXPORT explicit RemoteFrame(Page&, ClientCreator&&, FrameIdentifier, HTMLFrameOwnerElement*, Frame* parent, Markable<LayerHostingContextIdentifier>, Frame* opener);
 
-    bool isRemoteFrame() const final { return true; }
-    bool isLocalFrame() const final { return false; }
+    void frameDetached() final;
+    bool preventsParentFromBeingComplete() const final;
+    void changeLocation(FrameLoadRequest&&) final;
+    void didFinishLoadInAnotherProcess() final;
+    bool isRootFrame() const final { return false; }
+    void documentURLForConsoleLog(CompletionHandler<void(const URL&)>&&) final;
 
-    AbstractDOMWindow* virtualWindow() const final;
+    FrameView* virtualView() const final;
+    void disconnectView() final;
+    DOMWindow* virtualWindow() const final;
+    FrameLoaderClient& loaderClient() final;
+    void reinitializeDocumentSecurityContext() final { }
 
-    GlobalFrameIdentifier m_identifier;
-    RemoteDOMWindow* m_window { nullptr };
-
-    RefPtr<AbstractFrame> m_opener;
+    Ref<RemoteDOMWindow> m_window;
+    RefPtr<RemoteFrameView> m_view;
+    UniqueRef<RemoteFrameClient> m_client;
+    Markable<LayerHostingContextIdentifier> m_layerHostingContextIdentifier;
+    String m_customUserAgent;
+    String m_customUserAgentAsSiteSpecificQuirks;
+    String m_customNavigatorPlatform;
+    OptionSet<AdvancedPrivacyProtections> m_advancedPrivacyProtections;
+    bool m_preventsParentFromBeingComplete { true };
 };
 
 } // namespace WebCore
 
 SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::RemoteFrame)
-    static bool isType(const WebCore::AbstractFrame& frame) { return frame.isRemoteFrame(); }
+static bool isType(const WebCore::Frame& frame) { return frame.frameType() == WebCore::Frame::FrameType::Remote; }
 SPECIALIZE_TYPE_TRAITS_END()

@@ -27,14 +27,25 @@
 
 #if ENABLE(DATA_DETECTION) && PLATFORM(MAC)
 
+#import "GraphicsLayer.h"
 #import "GraphicsLayerClient.h"
 #import "SimpleRange.h"
+#import "Timer.h"
 #import <wtf/RefCounted.h>
 #import <wtf/RefPtr.h>
 #import <wtf/RetainPtr.h>
 #import <wtf/WeakPtr.h>
 
-typedef struct __DDHighlight *DDHighlightRef;
+using DDHighlightRef = struct __DDHighlight*;
+
+namespace WebCore {
+class DataDetectorHighlightClient;
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebCore::DataDetectorHighlightClient> : std::true_type { };
+}
 
 namespace WebCore {
 
@@ -42,28 +53,34 @@ class DataDetectorHighlight;
 class FloatRect;
 class GraphicsContext;
 class GraphicsLayer;
-class Page;
+
+enum class RenderingUpdateStep : uint32_t;
 
 class DataDetectorHighlightClient : public CanMakeWeakPtr<DataDetectorHighlightClient> {
 public:
-    virtual ~DataDetectorHighlightClient() = default;
-
-    virtual DataDetectorHighlight* activeHighlight() const = 0;
+    WEBCORE_EXPORT virtual ~DataDetectorHighlightClient() = default;
+    WEBCORE_EXPORT virtual DataDetectorHighlight* activeHighlight() const = 0;
+    WEBCORE_EXPORT virtual void scheduleRenderingUpdate(OptionSet<RenderingUpdateStep>) = 0;
+    WEBCORE_EXPORT virtual float deviceScaleFactor() const = 0;
+    WEBCORE_EXPORT virtual RefPtr<GraphicsLayer> createGraphicsLayer(GraphicsLayerClient&) = 0;
 };
 
 class DataDetectorHighlight : public RefCounted<DataDetectorHighlight>, private GraphicsLayerClient, public CanMakeWeakPtr<DataDetectorHighlight> {
     WTF_MAKE_NONCOPYABLE(DataDetectorHighlight);
 public:
-    static Ref<DataDetectorHighlight> createForSelection(Page&, DataDetectorHighlightClient&, RetainPtr<DDHighlightRef>&&, SimpleRange&&);
-    static Ref<DataDetectorHighlight> createForTelephoneNumber(Page&, DataDetectorHighlightClient&, RetainPtr<DDHighlightRef>&&, SimpleRange&&);
-    static Ref<DataDetectorHighlight> createForImageOverlay(Page&, DataDetectorHighlightClient&, RetainPtr<DDHighlightRef>&&, SimpleRange&&);
+    static Ref<DataDetectorHighlight> createForSelection(DataDetectorHighlightClient&, RetainPtr<DDHighlightRef>&&, SimpleRange&&);
+    static Ref<DataDetectorHighlight> createForTelephoneNumber(DataDetectorHighlightClient&, RetainPtr<DDHighlightRef>&&, SimpleRange&&);
+    static Ref<DataDetectorHighlight> createForImageOverlay(DataDetectorHighlightClient&, RetainPtr<DDHighlightRef>&&, SimpleRange&&);
+#if ENABLE(UNIFIED_PDF_DATA_DETECTION)
+    WEBCORE_EXPORT static Ref<DataDetectorHighlight> createForPDFSelection(DataDetectorHighlightClient&, RetainPtr<DDHighlightRef>&&);
+#endif
 
-    ~DataDetectorHighlight() = default;
+    ~DataDetectorHighlight();
 
     void invalidate();
 
     DDHighlightRef highlight() const { return m_highlight.get(); }
-    const SimpleRange& range() const { return m_range; }
+    const SimpleRange& range() const;
     GraphicsLayer& layer() const { return m_graphicsLayer.get(); }
 
     enum class Type : uint8_t {
@@ -71,31 +88,43 @@ public:
         TelephoneNumber = 1 << 0,
         Selection = 1 << 1,
         ImageOverlay = 1 << 2,
+#if ENABLE(UNIFIED_PDF_DATA_DETECTION)
+        PDFSelection = 1 << 3,
+#endif
     };
 
     Type type() const { return m_type; }
+    bool isRangeSupportingType() const;
 
-    void fadeIn();
-    void fadeOut();
+    WEBCORE_EXPORT void fadeIn();
+    WEBCORE_EXPORT void fadeOut();
+    WEBCORE_EXPORT void dismissImmediately();
 
-    void setHighlight(DDHighlightRef);
+    WEBCORE_EXPORT void setHighlight(DDHighlightRef);
 
 private:
-    DataDetectorHighlight(Page&, DataDetectorHighlightClient&, Type, RetainPtr<DDHighlightRef>&&, SimpleRange&&);
+    DataDetectorHighlight(DataDetectorHighlightClient&, Type, RetainPtr<DDHighlightRef>&&, std::optional<SimpleRange>&&);
 
     // GraphicsLayerClient
     void notifyFlushRequired(const GraphicsLayer*) override;
-    void paintContents(const GraphicsLayer*, GraphicsContext&, const FloatRect& inClip, GraphicsLayerPaintBehavior) override;
+    void paintContents(const GraphicsLayer*, GraphicsContext&, const FloatRect& inClip, OptionSet<GraphicsLayerPaintBehavior>) override;
     float deviceScaleFactor() const override;
 
+    void fadeAnimationTimerFired();
+    void startFadeAnimation();
     void didFinishFadeOutAnimation();
 
     WeakPtr<DataDetectorHighlightClient> m_client;
-    WeakPtr<Page> m_page;
     RetainPtr<DDHighlightRef> m_highlight;
-    SimpleRange m_range;
+    std::optional<SimpleRange> m_range;
     Ref<GraphicsLayer> m_graphicsLayer;
     Type m_type { Type::None };
+
+    Timer m_fadeAnimationTimer;
+    WallTime m_fadeAnimationStartTime;
+
+    enum class FadeAnimationState : uint8_t { NotAnimating, FadingIn, FadingOut };
+    FadeAnimationState m_fadeAnimationState { FadeAnimationState::NotAnimating };
 };
 
 bool areEquivalent(const DataDetectorHighlight*, const DataDetectorHighlight*);

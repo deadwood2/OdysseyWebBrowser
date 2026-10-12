@@ -1,4 +1,4 @@
-# Copyright (C) 2020, 2021 Apple Inc. All rights reserved.
+# Copyright (C) 2020-2024 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -20,9 +20,13 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import sys
+
+if sys.version_info < (3, 6):
+    raise ImportError("webkitscmpy requires Python 3.6 or above")
+
 import logging
 import os
-import sys
 
 log = logging.getLogger('webkitscmpy')
 
@@ -46,15 +50,23 @@ except ImportError:
         "Please install webkitcorepy with `pip install webkitcorepy --extra-index-url <package index URL>`"
     )
 
-version = Version(2, 0, 1)
+version = Version(7, 0, 0)
+if sys.version_info < (3, 0):
+    raise ImportError('webkitscmpy no longer supports Python 2')
 
 AutoInstall.register(Package('fasteners', Version(0, 15, 0)))
+AutoInstall.register(Package('markupsafe', Version(2, 1, 5), pypi_name='MarkupSafe', wheel=True))
+AutoInstall.register(Package('jinja2', Version(3, 1, 4), implicit_deps=['markupsafe']))
 AutoInstall.register(Package('monotonic', Version(1, 5)))
-AutoInstall.register(Package('whichcraft', Version(0, 6, 1)))
 AutoInstall.register(Package('xmltodict', Version(0, 11, 0)))
+AutoInstall.register(Package('webkitbugspy', Version(0, 8, 0)), local=True)
+
+if sys.version_info > (3, 6):
+    AutoInstall.register(Package('rapidfuzz', Version(3, 4, 0)))
 
 from webkitscmpy.contributor import Contributor
 from webkitscmpy.commit import Commit
+from webkitscmpy.commit_classifier import CommitClassifier
 from webkitscmpy.pull_request import PullRequest
 from webkitscmpy.scm_base import ScmBase
 

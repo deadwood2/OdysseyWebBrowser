@@ -30,51 +30,55 @@
 #include "TrackListBase.h"
 
 #include "EventNames.h"
-#include "HTMLMediaElement.h"
 #include "ScriptExecutionContext.h"
 #include "TrackEvent.h"
-#include <wtf/IsoMallocInlines.h>
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(TrackListBase);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(TrackListBase);
 
-TrackListBase::TrackListBase(WeakPtr<HTMLMediaElement> element, ScriptExecutionContext* context)
+TrackListBase::TrackListBase(ScriptExecutionContext* context, Type type)
     : ActiveDOMObject(context)
-    , m_element(element)
+    , m_type(type)
 {
-    ASSERT(!context || is<Document>(context));
 }
 
-TrackListBase::~TrackListBase()
+TrackListBase::~TrackListBase() = default;
+
+void TrackListBase::didMoveToNewDocument(Document& newDocument)
 {
-    clearElement();
+    ActiveDOMObject::didMoveToNewDocument(newDocument);
+    for (RefPtr track : m_inbandTracks)
+        track->didMoveToNewDocument(newDocument);
 }
 
-void TrackListBase::clearElement()
+WebCoreOpaqueRoot TrackListBase::opaqueRoot()
 {
-    m_element = nullptr;
-    for (auto& track : m_inbandTracks) {
-        track->setMediaElement(nullptr);
-        track->clearClient();
-    }
-}
-
-Element* TrackListBase::element() const
-{
-    return m_element.get();
-}
-
-void* TrackListBase::opaqueRoot() const
-{
-    if (auto* associatedElement = element())
-        return associatedElement->opaqueRoot();
-    return nullptr;
+    if (auto* rootObserver = m_opaqueRootObserver.get())
+        return (*rootObserver)();
+    return WebCoreOpaqueRoot { this };
 }
 
 unsigned TrackListBase::length() const
 {
     return m_inbandTracks.size();
+}
+
+RefPtr<TrackBase> TrackListBase::find(TrackID trackID) const
+{
+    size_t index = m_inbandTracks.findIf([&](auto& value) {
+        return value->trackId() == trackID;
+    });
+    if (index == notFound)
+        return nullptr;
+    return m_inbandTracks[index];
+}
+
+void TrackListBase::remove(TrackID trackID, bool scheduleEvent)
+{
+    if (RefPtr track = find(trackID))
+        remove(*track, scheduleEvent);
 }
 
 void TrackListBase::remove(TrackBase& track, bool scheduleEvent)
@@ -83,10 +87,8 @@ void TrackListBase::remove(TrackBase& track, bool scheduleEvent)
     if (index == notFound)
         return;
 
-    if (track.mediaElement()) {
-        ASSERT(track.mediaElement() == m_element);
-        track.setMediaElement(nullptr);
-    }
+    if (track.trackList() == this)
+        track.clearTrackList();
 
     Ref<TrackBase> trackRef = *m_inbandTracks[index];
 
@@ -99,6 +101,11 @@ void TrackListBase::remove(TrackBase& track, bool scheduleEvent)
 bool TrackListBase::contains(TrackBase& track) const
 {
     return m_inbandTracks.find(&track) != notFound;
+}
+
+bool TrackListBase::contains(TrackID trackID) const
+{
+    return find(trackID);
 }
 
 void TrackListBase::scheduleTrackEvent(const AtomString& eventName, Ref<TrackBase>&& track)

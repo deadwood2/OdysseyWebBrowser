@@ -32,11 +32,14 @@ class ImageDocumentElement;
 class HTMLImageElement;
 
 class ImageDocument final : public HTMLDocument {
-    WTF_MAKE_ISO_ALLOCATED(ImageDocument);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(ImageDocument);
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(ImageDocument);
 public:
-    static Ref<ImageDocument> create(Frame& frame, const URL& url)
+    static Ref<ImageDocument> create(LocalFrame& frame, const URL& url)
     {
-        return adoptRef(*new ImageDocument(frame, url));
+        auto document = adoptRef(*new ImageDocument(frame, url));
+        document->addToContextsMap();
+        return document;
     }
 
     WEBCORE_EXPORT HTMLImageElement* imageElement() const;
@@ -47,12 +50,11 @@ public:
     void disconnectImageElement() { m_imageElement = nullptr; }
 
 #if !PLATFORM(IOS_FAMILY)
-    void windowSizeChanged();
     void imageClicked(int x, int y);
 #endif
 
 private:
-    ImageDocument(Frame&, const URL&);
+    ImageDocument(LocalFrame&, const URL&);
 
     Ref<DocumentParser> createParser() override;
 
@@ -64,11 +66,12 @@ private:
     void restoreImageSize();
     bool imageFitsInWindow();
     float scale();
+    void didChangeViewSize() final;
 #endif
 
     void imageUpdated();
 
-    ImageDocumentElement* m_imageElement;
+    WeakPtr<ImageDocumentElement, WeakPtrImplWithEventTargetData> m_imageElement;
 
     // Whether enough of the image has been loaded to determine its size.
     bool m_imageSizeIsKnown;
@@ -86,5 +89,9 @@ private:
 
 SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::ImageDocument)
     static bool isType(const WebCore::Document& document) { return document.isImageDocument(); }
-    static bool isType(const WebCore::Node& node) { return is<WebCore::Document>(node) && isType(downcast<WebCore::Document>(node)); }
+    static bool isType(const WebCore::Node& node)
+    {
+        auto* document = dynamicDowncast<WebCore::Document>(node);
+        return document && isType(*document);
+    }
 SPECIALIZE_TYPE_TRAITS_END()

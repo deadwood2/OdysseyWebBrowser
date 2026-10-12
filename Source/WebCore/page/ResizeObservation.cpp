@@ -24,48 +24,69 @@
  */
 
 #include "config.h"
-
-#if ENABLE(RESIZE_OBSERVER)
 #include "ResizeObservation.h"
 
+#include "ElementInlines.h"
 #include "HTMLFrameOwnerElement.h"
-#include "RenderBox.h"
+#include "Logging.h"
+#include "RenderBoxInlines.h"
+#include "RenderElementInlines.h"
 #include "SVGElement.h"
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
 
-Ref<ResizeObservation> ResizeObservation::create(Element& target)
+Ref<ResizeObservation> ResizeObservation::create(Element& target, ResizeObserverBoxOptions observedBox)
 {
-    return adoptRef(*new ResizeObservation(target));
+    return adoptRef(*new ResizeObservation(target, observedBox));
 }
 
-ResizeObservation::ResizeObservation(Element& element)
-    : m_target { makeWeakPtr(element) }
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(ResizeObservation);
+
+ResizeObservation::ResizeObservation(Element& element, ResizeObserverBoxOptions observedBox)
+    : m_target { element }
+    , m_lastObservationSizes { LayoutSize(-1, -1), LayoutSize(-1, -1), LayoutSize(-1, -1) }
+    , m_observedBox { observedBox }
 {
 }
 
-ResizeObservation::~ResizeObservation()
+ResizeObservation::~ResizeObservation() = default;
+
+void ResizeObservation::updateObservationSize(const BoxSizes& boxSizes)
 {
+    m_lastObservationSizes = boxSizes;
 }
 
-void ResizeObservation::updateObservationSize(const LayoutSize& size)
+void ResizeObservation::resetObservationSize()
 {
-    m_lastObservationSize = size;
+    m_lastObservationSizes = { LayoutSize(-1, -1), LayoutSize(-1, -1), LayoutSize(-1, -1) };
 }
 
-LayoutSize ResizeObservation::computeObservedSize() const
+auto ResizeObservation::computeObservedSizes() const -> std::optional<BoxSizes>
 {
-    if (m_target->isSVGElement()) {
-        if (auto svgRect = downcast<SVGElement>(*m_target).getBoundingBox())
-            return LayoutSize(svgRect->width(), svgRect->height());
+    if (auto* svg = dynamicDowncast<SVGElement>(target())) {
+        if (svg->hasAssociatedSVGLayoutBox()) {
+            LayoutSize size;
+            if (auto svgRect = svg->getBoundingBox()) {
+                size.setWidth(svgRect->width());
+                size.setHeight(svgRect->height());
+            }
+            return { { size, size, size } };
+        }
     }
+
     auto* box = m_target->renderBox();
     if (box) {
-        auto contentSize = box->contentSize();
-        return LayoutSize(adjustLayoutUnitForAbsoluteZoom(contentSize.width(), *box), adjustLayoutUnitForAbsoluteZoom(contentSize.height(), *box));
+        if (box->isSkippedContent())
+            return std::nullopt;
+        return { {
+            adjustLayoutSizeForAbsoluteZoom(box->contentSize(), *box),
+            adjustLayoutSizeForAbsoluteZoom(box->contentLogicalSize(), *box),
+            adjustLayoutSizeForAbsoluteZoom(box->borderBoxLogicalSize(), *box)
+        } };
     }
 
-    return LayoutSize();
+    return BoxSizes { };
 }
 
 LayoutPoint ResizeObservation::computeTargetLocation() const
@@ -80,26 +101,70 @@ LayoutPoint ResizeObservation::computeTargetLocation() const
 
 FloatRect ResizeObservation::computeContentRect() const
 {
-    return FloatRect(FloatPoint(computeTargetLocation()), FloatSize(m_lastObservationSize));
+    return FloatRect(FloatPoint(computeTargetLocation()), FloatSize(m_lastObservationSizes.contentBoxSize));
 }
 
-bool ResizeObservation::elementSizeChanged(LayoutSize& currentSize) const
+FloatSize ResizeObservation::borderBoxSize() const
 {
-    currentSize = computeObservedSize();
-    return m_lastObservationSize != currentSize;
+    return m_lastObservationSizes.borderBoxLogicalSize;
 }
 
+FloatSize ResizeObservation::contentBoxSize() const
+{
+    return m_lastObservationSizes.contentBoxLogicalSize;
+}
+
+FloatSize ResizeObservation::snappedContentBoxSize() const
+{
+    return m_lastObservationSizes.contentBoxLogicalSize; // FIXME: Need to pixel snap.
+}
+
+RefPtr<Element> ResizeObservation::protectedTarget() const
+{
+    return m_target.get();
+}
+
+std::optional<ResizeObservation::BoxSizes> ResizeObservation::elementSizeChanged() const
+{
+    auto currentSizes = computeObservedSizes();
+    if (!currentSizes)
+        return std::nullopt;
+
+    LOG_WITH_STREAM(ResizeObserver, stream << "ResizeObservation " << this << " elementSizeChanged - new content box " << currentSizes->contentBoxSize);
+
+    switch (m_observedBox) {
+    case ResizeObserverBoxOptions::BorderBox:
+        if (m_lastObservationSizes.borderBoxLogicalSize != currentSizes->borderBoxLogicalSize)
+            return currentSizes;
+        break;
+    case ResizeObserverBoxOptions::ContentBox:
+        if (m_lastObservationSizes.contentBoxLogicalSize != currentSizes->contentBoxLogicalSize)
+            return currentSizes;
+        break;
+    }
+
+    return { };
+}
+
+// https://drafts.csswg.org/resize-observer/#calculate-depth-for-node
 size_t ResizeObservation::targetElementDepth() const
 {
     unsigned depth = 0;
     for (Element* ownerElement = m_target.get(); ownerElement; ownerElement = ownerElement->document().ownerElement()) {
-        for (Element* parent = ownerElement; parent; parent = parent->parentElement())
+        for (Element* parent = ownerElement; parent; parent = parent->parentElementInComposedTree())
             ++depth;
     }
 
     return depth;
 }
 
-} // namespace WebCore
+TextStream& operator<<(TextStream& ts, const ResizeObservation& observation)
+{
+    ts.dumpProperty("target", ValueOrNull(observation.target()));
+    ts.dumpProperty("border box", observation.borderBoxSize());
+    ts.dumpProperty("content box", observation.contentBoxSize());
+    ts.dumpProperty("snapped content box", observation.snappedContentBoxSize());
+    return ts;
+}
 
-#endif // ENABLE(RESIZE_OBSERVER)
+} // namespace WebCore

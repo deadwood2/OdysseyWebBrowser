@@ -26,8 +26,6 @@
 #include "config.h"
 #include "AccessibilityUIElement.h"
 
-#if HAVE(ACCESSIBILITY)
-
 #include <WebCore/NotImplemented.h>
 
 namespace WTR {
@@ -53,17 +51,19 @@ bool AccessibilityUIElement::isEqual(AccessibilityUIElement*)
     return false;
 }
 
-void AccessibilityUIElement::getChildren(Vector<RefPtr<AccessibilityUIElement>>&)
+Vector<RefPtr<AccessibilityUIElement>> AccessibilityUIElement::getChildren() const
 {
     notImplemented();
+    return { };
 }
 
-void AccessibilityUIElement::getChildrenWithRange(Vector<RefPtr<AccessibilityUIElement>>&, unsigned, unsigned)
+Vector<RefPtr<AccessibilityUIElement>> AccessibilityUIElement::getChildrenInRange(unsigned, unsigned) const
 {
     notImplemented();
+    return { };
 }
 
-int AccessibilityUIElement::childrenCount()
+unsigned AccessibilityUIElement::childrenCount()
 {
     notImplemented();
     return 0;
@@ -190,6 +190,18 @@ JSRetainPtr<JSStringRef> AccessibilityUIElement::stringAttributeValue(JSStringRe
     return nullptr;
 }
 
+JSRetainPtr<JSStringRef> AccessibilityUIElement::currentStateValue() const
+{
+    notImplemented();
+    return nullptr;
+}
+
+JSRetainPtr<JSStringRef> AccessibilityUIElement::sortDirection() const
+{
+    notImplemented();
+    return nullptr;
+}
+
 JSRetainPtr<JSStringRef> AccessibilityUIElement::stringDescriptionOfAttributeValue(JSStringRef)
 {
     notImplemented();
@@ -202,19 +214,25 @@ double AccessibilityUIElement::numberAttributeValue(JSStringRef attribute)
     return 0;
 }
 
-JSValueRef AccessibilityUIElement::uiElementArrayAttributeValue(JSStringRef attribute) const
+JSValueRef AccessibilityUIElement::uiElementArrayAttributeValue(JSContextRef, JSStringRef attribute)
 {
     notImplemented();
     return nullptr;
 }
 
-JSValueRef AccessibilityUIElement::rowHeaders() const
+JSValueRef AccessibilityUIElement::rowHeaders(JSContextRef)
 {
     notImplemented();
     return nullptr;
 }
 
-JSValueRef AccessibilityUIElement::columnHeaders() const
+JSValueRef AccessibilityUIElement::columnHeaders(JSContextRef)
+{
+    notImplemented();
+    return nullptr;
+}
+
+JSValueRef AccessibilityUIElement::selectedCells(JSContextRef)
 {
     notImplemented();
     return nullptr;
@@ -287,6 +305,24 @@ JSRetainPtr<JSStringRef> AccessibilityUIElement::description()
 }
 
 JSRetainPtr<JSStringRef> AccessibilityUIElement::orientation() const
+{
+    notImplemented();
+    return nullptr;
+}
+
+bool AccessibilityUIElement::isAtomicLiveRegion() const
+{
+    notImplemented();
+    return false;
+}
+
+JSRetainPtr<JSStringRef> AccessibilityUIElement::liveRegionRelevant() const
+{
+    notImplemented();
+    return nullptr;
+}
+
+JSRetainPtr<JSStringRef> AccessibilityUIElement::liveRegionStatus() const
 {
     notImplemented();
     return nullptr;
@@ -389,6 +425,12 @@ bool AccessibilityUIElement::isIncrementActionSupported()
 }
 
 bool AccessibilityUIElement::isDecrementActionSupported()
+{
+    notImplemented();
+    return false;
+}
+
+bool AccessibilityUIElement::isBusy() const
 {
     notImplemented();
     return false;
@@ -616,10 +658,22 @@ JSRetainPtr<JSStringRef> AccessibilityUIElement::selectedTextRange()
     return nullptr;
 }
 
+JSRetainPtr<JSStringRef> AccessibilityUIElement::intersectionWithSelectionRange()
+{
+    notImplemented();
+    return nullptr;
+}
+
 bool AccessibilityUIElement::setSelectedTextRange(unsigned, unsigned)
 {
     notImplemented();
     return false;
+}
+
+JSRetainPtr<JSStringRef> AccessibilityUIElement::textInputMarkedRange() const
+{
+    notImplemented();
+    return nullptr;
 }
 
 void AccessibilityUIElement::increment()
@@ -668,25 +722,13 @@ JSRetainPtr<JSStringRef> AccessibilityUIElement::accessibilityValue() const
     return nullptr;
 }
 
-JSRetainPtr<JSStringRef> AccessibilityUIElement::documentEncoding()
-{
-    notImplemented();
-    return nullptr;
-}
-
-JSRetainPtr<JSStringRef> AccessibilityUIElement::documentURI()
-{
-    notImplemented();
-    return nullptr;
-}
-
 JSRetainPtr<JSStringRef> AccessibilityUIElement::url()
 {
     notImplemented();
     return nullptr;
 }
 
-bool AccessibilityUIElement::addNotificationListener(JSValueRef functionCallback)
+bool AccessibilityUIElement::addNotificationListener(JSContextRef, JSValueRef functionCallback)
 {
     notImplemented();
     return false;
@@ -1003,6 +1045,37 @@ bool AccessibilityUIElement::insertText(JSStringRef)
     return false;
 }
 
-} // namespace  WTF
+JSRetainPtr<JSStringRef> AccessibilityUIElement::domIdentifier() const
+{
+    notImplemented();
+    return nullptr;
+}
 
-#endif // HAVE(ACCESSIBILITY)
+bool AccessibilityUIElement::isInsertion() const
+{
+    notImplemented();
+    return false;
+}
+
+bool AccessibilityUIElement::isDeletion() const
+{
+    notImplemented();
+    return false;
+}
+
+
+bool AccessibilityUIElement::isFirstItemInSuggestion() const
+{
+    notImplemented();
+    return false;
+}
+
+
+bool AccessibilityUIElement::isLastItemInSuggestion() const
+{
+    notImplemented();
+    return false;
+}
+
+} // namespace WTR
+

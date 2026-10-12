@@ -25,7 +25,7 @@
  
 #pragma once
 
-#include "DOMWindow.h"
+#include "LocalDOMWindow.h"
 #include <wtf/URL.h>
 #include "ScriptCachedFrameData.h"
 #include <wtf/RefPtr.h>
@@ -37,10 +37,11 @@ class CachedFrame;
 class CachedFramePlatformData;
 class Document;
 class DocumentLoader;
-class FrameView;
+class LocalFrameView;
 class Node;
 enum class HasInsecureContent : bool;
 enum class UsedLegacyTLS : bool;
+enum class WasPrivateRelayed : bool;
 
 class CachedFrameBase {
 public:
@@ -48,6 +49,7 @@ public:
 
     Document* document() const { return m_document.get(); }
     FrameView* view() const { return m_view.get(); }
+    RefPtr<FrameView> protectedView() const;
     const URL& url() const { return m_url; }
     bool isMainFrame() { return m_isMainFrame; }
 
@@ -66,6 +68,9 @@ protected:
     bool m_isMainFrame;
 
     Vector<UniqueRef<CachedFrame>> m_childFrames;
+
+private:
+    void initializeWithLocalFrame(LocalFrame&);
 };
 
 class CachedFrame : private CachedFrameBase {
@@ -82,6 +87,7 @@ public:
 
     HasInsecureContent hasInsecureContent() const;
     UsedLegacyTLS usedLegacyTLS() const;
+    WasPrivateRelayed wasPrivateRelayed() const;
 
     using CachedFrameBase::document;
     using CachedFrameBase::view;

@@ -25,9 +25,10 @@
 
 #pragma once
 
+#include "EventTarget.h"
 #include "VoidCallback.h"
-#include <wtf/IsoMalloc.h>
 #include <wtf/RefCounted.h>
+#include <wtf/TZoneMalloc.h>
 #include <wtf/WeakPtr.h>
 #include <wtf/text/WTFString.h>
 
@@ -37,7 +38,7 @@ class Document;
 class UndoManager;
 
 class UndoItem : public RefCounted<UndoItem>, public CanMakeWeakPtr<UndoItem> {
-    WTF_MAKE_ISO_ALLOCATED(UndoItem);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(UndoItem);
 public:
     struct Init {
         String label;
@@ -54,6 +55,7 @@ public:
     void invalidate();
 
     Document* document() const;
+    RefPtr<Document> protectedDocument() const;
 
     UndoManager* undoManager() const;
     void setUndoManager(UndoManager*);
@@ -74,7 +76,7 @@ private:
     Ref<VoidCallback> m_undoHandler;
     Ref<VoidCallback> m_redoHandler;
     WeakPtr<UndoManager> m_undoManager;
-    WeakPtr<Document> m_document;
+    WeakPtr<Document, WeakPtrImplWithEventTargetData> m_document;
 };
 
 } // namespace WebCore

@@ -4,7 +4,7 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2,1 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -88,9 +88,9 @@ public:
     {
         static long sequenceID = 0;
         StringBuilder messageBuilder;
-        messageBuilder.append("{\"id\":", ++sequenceID, ",\"method\":\"Automation.", command, '"');
+        messageBuilder.append("{\"id\":"_s, ++sequenceID, ",\"method\":\"Automation."_s, command, '"');
         if (!parameters.isNull())
-            messageBuilder.append(",\"params\":", parameters);
+            messageBuilder.append(",\"params\":"_s, parameters);
         messageBuilder.append('}');
         m_connection->sendMessage("SendMessageToBackend", g_variant_new("(tts)", m_connectionID, m_target.id, messageBuilder.toString().utf8().data()));
     }
@@ -192,7 +192,7 @@ public:
         m_createWebViewWasCalled = false;
         m_message = CString();
         auto signalID = g_signal_connect(m_session, "create-web-view", G_CALLBACK(createWebViewCallback), this);
-        sendCommandToBackend("createBrowsingContext");
+        sendCommandToBackend("createBrowsingContext"_s);
         g_main_loop_run(m_mainLoop.get());
         g_signal_handler_disconnect(m_session, signalID);
         g_assert_true(m_createWebViewWasCalled);
@@ -212,7 +212,7 @@ public:
         m_createWebViewInWindowWasCalled = false;
         m_message = { };
         auto signalID = g_signal_connect(m_session, "create-web-view::window", G_CALLBACK(createWebViewInWindowCallback), this);
-        sendCommandToBackend("createBrowsingContext", "{\"presentationHint\":\"Window\"}");
+        sendCommandToBackend("createBrowsingContext"_s, "{\"presentationHint\":\"Window\"}"_s);
         g_main_loop_run(m_mainLoop.get());
         g_signal_handler_disconnect(m_session, signalID);
         g_assert_true(m_createWebViewInWindowWasCalled);
@@ -230,7 +230,7 @@ public:
         m_createWebViewInTabWasCalled = false;
         m_message = { };
         auto signalID = g_signal_connect(m_session, "create-web-view::tab", G_CALLBACK(createWebViewInTabCallback), this);
-        sendCommandToBackend("createBrowsingContext", "{\"presentationHint\":\"Tab\"}");
+        sendCommandToBackend("createBrowsingContext"_s, "{\"presentationHint\":\"Tab\"}"_s);
         g_main_loop_run(m_mainLoop.get());
         g_signal_handler_disconnect(m_session, signalID);
         g_assert_true(m_createWebViewInTabWasCalled);
@@ -300,14 +300,25 @@ const SocketConnection::MessageHandlers AutomationTest::s_messageHandlers = {
 
 static void testAutomationSessionRequestSession(AutomationTest* test, gconstpointer)
 {
-    String sessionID = createCanonicalUUIDString();
+    String sessionID = createVersion4UUIDString();
     // WebKitAutomationSession::automation-started is never emitted if automation is not enabled.
     g_assert_false(webkit_web_context_is_automation_allowed(test->m_webContext.get()));
+#if ENABLE(2022_GLIB_API)
+    // Network session for automation is nullptr if automation is not enabled.
+    g_assert_null(webkit_web_context_get_network_session_for_automation(test->m_webContext.get()));
+#endif
     auto* session = test->requestSession(sessionID.utf8().data());
     g_assert_null(session);
 
     webkit_web_context_set_automation_allowed(test->m_webContext.get(), TRUE);
     g_assert_true(webkit_web_context_is_automation_allowed(test->m_webContext.get()));
+#if ENABLE(2022_GLIB_API)
+    auto* networkSession = webkit_web_context_get_network_session_for_automation(test->m_webContext.get());
+    g_assert_nonnull(networkSession);
+    test->assertObjectIsDeletedWhenTestFinishes(G_OBJECT(networkSession));
+    g_assert_true(webkit_network_session_is_ephemeral(networkSession));
+    g_assert_false(networkSession == test->m_networkSession.get());
+#endif
 
     // There can't be more than one context with automation enabled
     GRefPtr<WebKitWebContext> otherContext = adoptGRef(webkit_web_context_new());
@@ -329,6 +340,9 @@ static void testAutomationSessionRequestSession(AutomationTest* test, gconstpoin
     auto webView = Test::adoptView(Test::createWebView(test->m_webContext.get()));
     g_assert_false(webkit_web_view_is_controlled_by_automation(webView.get()));
     g_assert_false(test->createTopLevelBrowsingContext(webView.get()));
+#if ENABLE(2022_GLIB_API)
+    g_assert_false(webkit_web_view_get_network_session(webView.get()) == networkSession);
+#endif
 
     // And will work with a proper web view.
     webView = Test::adoptView(g_object_new(WEBKIT_TYPE_WEB_VIEW,
@@ -340,6 +354,9 @@ static void testAutomationSessionRequestSession(AutomationTest* test, gconstpoin
         nullptr));
     g_assert_true(webkit_web_view_is_controlled_by_automation(webView.get()));
     g_assert_cmpuint(webkit_web_view_get_automation_presentation_type(webView.get()), ==, WEBKIT_AUTOMATION_BROWSING_CONTEXT_PRESENTATION_WINDOW);
+#if ENABLE(2022_GLIB_API)
+    g_assert_true(webkit_web_view_get_network_session(webView.get()) == networkSession);
+#endif
     g_assert_true(test->createTopLevelBrowsingContext(webView.get()));
 
     auto newWebViewInWindow = Test::adoptView(g_object_new(WEBKIT_TYPE_WEB_VIEW,
@@ -347,10 +364,17 @@ static void testAutomationSessionRequestSession(AutomationTest* test, gconstpoin
         "backend", Test::createWebViewBackend(),
 #endif
         "web-context", test->m_webContext.get(),
+#if ENABLE(2022_GLIB_API)
+        // Check also here that network session property is ignored when is-controlled-by-automation is true.
+        "network-session", test->m_networkSession.get(),
+#endif
         "is-controlled-by-automation", TRUE,
         nullptr));
     g_assert_true(webkit_web_view_is_controlled_by_automation(newWebViewInWindow.get()));
     g_assert_cmpuint(webkit_web_view_get_automation_presentation_type(newWebViewInWindow.get()), ==, WEBKIT_AUTOMATION_BROWSING_CONTEXT_PRESENTATION_WINDOW);
+#if ENABLE(2022_GLIB_API)
+    g_assert_true(webkit_web_view_get_network_session(newWebViewInWindow.get()) == networkSession);
+#endif
     g_assert_true(test->createNewWindow(newWebViewInWindow.get()));
 
     auto newWebViewInTab = Test::adoptView(g_object_new(WEBKIT_TYPE_WEB_VIEW,

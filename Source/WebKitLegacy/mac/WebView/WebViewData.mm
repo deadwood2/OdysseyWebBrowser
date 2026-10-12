@@ -34,6 +34,7 @@
 #import "WebSelectionServiceController.h"
 #import "WebViewGroup.h"
 #import "WebViewInternal.h"
+#import "WebViewRenderingUpdateScheduler.h"
 #import <JavaScriptCore/InitializeThreading.h>
 #import <WebCore/AlternativeTextUIController.h>
 #import <WebCore/HistoryItem.h>
@@ -41,15 +42,13 @@
 #import <WebCore/TextIndicatorWindow.h>
 #import <WebCore/ValidationBubble.h>
 #import <WebCore/WebCoreJITOperations.h>
+#import <pal/spi/mac/NSWindowSPI.h>
 #import <wtf/MainThread.h>
 #import <wtf/RunLoop.h>
 #import <wtf/SetForScope.h>
 
 #if PLATFORM(IOS_FAMILY)
 #import "WebGeolocationProviderIOS.h"
-#import <WebCore/RuntimeApplicationChecks.h>
-#import <WebCore/WebCoreThread.h>
-#import <WebCore/WebCoreThreadInternal.h>
 #endif
 
 #if ENABLE(WIRELESS_PLAYBACK_TARGET) && !PLATFORM(IOS_FAMILY)
@@ -63,82 +62,6 @@
 
 BOOL applicationIsTerminating = NO;
 int pluginDatabaseClientCount = 0;
-
-static CFRunLoopRef currentRunLoop()
-{
-#if PLATFORM(IOS_FAMILY)
-    // A race condition during WebView deallocation can lead to a crash if the layer sync run loop
-    // observer is added to the main run loop <rdar://problem/9798550>. However, for responsiveness,
-    // we still allow this, see <rdar://problem/7403328>. Since the race condition and subsequent
-    // crash are especially troublesome for iBooks, we never allow the observer to be added to the
-    // main run loop in iBooks.
-    if (WebCore::CocoaApplication::isIBooks())
-        return WebThreadRunLoop();
-#endif
-    return CFRunLoopGetCurrent();
-}
-
-void LayerFlushController::scheduleLayerFlush()
-{
-    m_layerFlushScheduler.schedule();
-}
-
-void LayerFlushController::invalidate()
-{
-    m_layerFlushScheduler.invalidate();
-    m_webView = nullptr;
-}
-
-LayerFlushController::LayerFlushController(WebView* webView)
-    : m_webView(webView)
-    , m_layerFlushScheduler(this)
-{
-    ASSERT_ARG(webView, webView);
-}
-
-WebViewLayerFlushScheduler::WebViewLayerFlushScheduler(LayerFlushController* flushController)
-    : m_flushController(flushController)
-{
-    m_runLoopObserver = makeUnique<WebCore::RunLoopObserver>(static_cast<CFIndex>(WebCore::RunLoopObserver::WellKnownRunLoopOrders::LayerFlush), [this]() {
-        this->layerFlushCallback();
-    });
-}
-
-WebViewLayerFlushScheduler::~WebViewLayerFlushScheduler()
-{
-}
-
-void WebViewLayerFlushScheduler::schedule()
-{
-    if (m_insideCallback)
-        m_rescheduledInsideCallback = true;
-
-    m_runLoopObserver->schedule(currentRunLoop());
-}
-
-void WebViewLayerFlushScheduler::invalidate()
-{
-    m_runLoopObserver->invalidate();
-}
-
-void WebViewLayerFlushScheduler::layerFlushCallback()
-{
-#if PLATFORM(IOS_FAMILY)
-    // Normally the layer flush callback happens before the web lock auto-unlock observer runs.
-    // However if the flush is rescheduled from the callback it may get pushed past it, to the next cycle.
-    WebThreadLock();
-#endif
-
-    @autoreleasepool {
-        RefPtr<LayerFlushController> protector = m_flushController;
-
-        SetForScope<bool> insideCallbackScope(m_insideCallback, true);
-        m_rescheduledInsideCallback = false;
-
-        if (m_flushController->flushLayers() && !m_rescheduledInsideCallback)
-            invalidate();
-    }
-}
 
 #if PLATFORM(MAC)
 
@@ -157,16 +80,14 @@ void WebViewLayerFlushScheduler::layerFlushCallback()
 - (void)startObserving:(NSWindow *)window
 {
     // An NSView derived object such as WebView cannot observe these notifications, because NSView itself observes them.
-    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_windowVisibilityChanged:)
-                                                 name:@"NSWindowDidOrderOffScreenNotification" object:window];
-    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_windowVisibilityChanged:)
-                                                 name:@"_NSWindowDidBecomeVisible" object:window];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_windowVisibilityChanged:) name:NSWindowDidOrderOffScreenNotification object:window];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_windowVisibilityChanged:) name:NSWindowDidOrderOnScreenNotification object:window];
 }
 
 - (void)stopObserving:(NSWindow *)window
 {
-    [[NSNotificationCenter defaultCenter] removeObserver:self name:@"NSWindowDidOrderOffScreenNotification" object:window];
-    [[NSNotificationCenter defaultCenter] removeObserver:self name:@"_NSWindowDidBecomeVisible" object:window];
+    [[NSNotificationCenter defaultCenter] removeObserver:self name:NSWindowDidOrderOffScreenNotification object:window];
+    [[NSNotificationCenter defaultCenter] removeObserver:self name:NSWindowDidOrderOnScreenNotification object:window];
 }
 
 - (void)_windowVisibilityChanged:(NSNotification *)notification

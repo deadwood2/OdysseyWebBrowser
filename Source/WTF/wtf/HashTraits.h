@@ -26,6 +26,7 @@
 #include <wtf/HashFunctions.h>
 #include <wtf/KeyValuePair.h>
 #include <wtf/StdLibExtras.h>
+#include <wtf/text/ASCIILiteral.h>
 
 #ifdef __OBJC__
 #include <CoreFoundation/CoreFoundation.h>
@@ -89,6 +90,13 @@ template<typename T> struct HashTraits : GenericHashTraits<T> { };
 
 template<typename T> struct FloatHashTraits : GenericHashTraits<T> {
     static T emptyValue() { return std::numeric_limits<T>::infinity(); }
+    static void constructDeletedValue(T& slot) { slot = -std::numeric_limits<T>::infinity(); }
+    static bool isDeletedValue(T value) { return value == -std::numeric_limits<T>::infinity(); }
+};
+
+template<typename T> struct FloatWithZeroEmptyKeyHashTraits : GenericHashTraits<T> {
+    static constexpr bool emptyValueIsZero = true;
+    static T emptyValue() { return static_cast<T>(0); }
     static void constructDeletedValue(T& slot) { slot = -std::numeric_limits<T>::infinity(); }
     static bool isDeletedValue(T value) { return value == -std::numeric_limits<T>::infinity(); }
 };
@@ -182,6 +190,12 @@ template<typename T> struct HashTraits<UniqueRef<T>> : SimpleClassHashTraits<Uni
     typedef std::nullptr_t EmptyValueType;
     static EmptyValueType emptyValue() { return nullptr; }
 
+    template <typename>
+    static void constructEmptyValue(UniqueRef<T>& slot)
+    {
+        new (NotNull, std::addressof(slot)) UniqueRef<T>(HashTableEmptyValue);
+    }
+
     static void constructDeletedValue(UniqueRef<T>& slot) { new (NotNull, std::addressof(slot)) UniqueRef<T> { reinterpret_cast<T*>(-1) }; }
     static bool isDeletedValue(const UniqueRef<T>& value) { return value.get() == reinterpret_cast<T*>(-1); }
 
@@ -195,19 +209,27 @@ template<typename T> struct HashTraits<UniqueRef<T>> : SimpleClassHashTraits<Uni
     static TakeType take(std::nullptr_t) { return nullptr; }
 };
 
-template<typename P> struct HashTraits<RefPtr<P>> : SimpleClassHashTraits<RefPtr<P>> {
+template<> struct HashTraits<ASCIILiteral> : SimpleClassHashTraits<ASCIILiteral> {
+    static ASCIILiteral emptyValue() { return { }; }
+
+    static void constructDeletedValue(ASCIILiteral& slot) { slot = ASCIILiteral::deletedValue(); }
+    static bool isDeletedValue(const ASCIILiteral& value) { return value.isDeletedValue(); }
+};
+
+template<typename P, typename Q, typename R> struct HashTraits<RefPtr<P, Q, R>> : SimpleClassHashTraits<RefPtr<P, Q, R>> {
     static P* emptyValue() { return nullptr; }
 
-    typedef P* PeekType;
-    static PeekType peek(const RefPtr<P>& value) { return value.get(); }
+    using PeekType = P*;
+    static PeekType peek(const RefPtr<P, Q, R>& value) { return value.get(); }
     static PeekType peek(P* value) { return value; }
 
-    static void customDeleteBucket(RefPtr<P>& value)
+    static void customDeleteBucket(RefPtr<P, Q, R>& value)
     {
         // See unique_ptr's customDeleteBucket() for an explanation.
-        ASSERT(!SimpleClassHashTraits<RefPtr<P>>::isDeletedValue(value));
+        bool isDeletedValue = SimpleClassHashTraits<RefPtr<P, Q, R>>::isDeletedValue(value);
+        ASSERT_UNUSED(isDeletedValue, !isDeletedValue);
         auto valueToBeDestroyed = WTFMove(value);
-        SimpleClassHashTraits<RefPtr<P>>::constructDeletedValue(value);
+        SimpleClassHashTraits<RefPtr<P, Q, R>>::constructDeletedValue(value);
     }
 };
 
@@ -242,8 +264,20 @@ template<typename P> struct HashTraits<Packed<P*>> : SimpleClassHashTraits<Packe
     static Packed<P*> emptyValue() { return nullptr; }
     static bool isEmptyValue(const TargetType& value) { return value.get() == nullptr; }
 
-    using PeekType = P*;
-    static PeekType peek(const TargetType& value) { return value.get(); }
+    using PeekType = Packed<P*>;
+    static PeekType peek(const TargetType& value) { return value; }
+    static PeekType peek(P* value) { return value; }
+};
+
+template<typename P> struct HashTraits<CompactPtr<P>> : SimpleClassHashTraits<CompactPtr<P>> {
+    static constexpr bool hasIsEmptyValueFunction = true;
+    using TargetType = CompactPtr<P>;
+
+    static CompactPtr<P> emptyValue() { return nullptr; }
+    static bool isEmptyValue(const TargetType& value) { return !value; }
+
+    using PeekType = CompactPtr<P>;
+    static PeekType peek(const TargetType& value) { return value; }
     static PeekType peek(P* value) { return value; }
 };
 
@@ -290,18 +324,14 @@ struct HashTraitHasCustomDelete {
 };
 
 template<typename Traits, typename T>
-typename std::enable_if<HashTraitHasCustomDelete<Traits, T>::value>::type
-hashTraitsDeleteBucket(T& value)
+void hashTraitsDeleteBucket(T& value)
 {
-    Traits::customDeleteBucket(value);
-}
-
-template<typename Traits, typename T>
-typename std::enable_if<!HashTraitHasCustomDelete<Traits, T>::value>::type
-hashTraitsDeleteBucket(T& value)
-{
-    value.~T();
-    Traits::constructDeletedValue(value);
+    if constexpr (HashTraitHasCustomDelete<Traits, T>::value)
+        Traits::customDeleteBucket(value);
+    else {
+        value.~T();
+        Traits::constructDeletedValue(value);
+    }
 }
 
 template<typename FirstTraitsArg, typename SecondTraitsArg>
@@ -328,13 +358,7 @@ struct TupleHashTraits : GenericHashTraits<std::tuple<typename FirstTrait::Trait
     typedef std::tuple<typename FirstTrait::TraitType, typename Traits::TraitType...> TraitType;
     typedef std::tuple<typename FirstTrait::EmptyValueType, typename Traits::EmptyValueType...> EmptyValueType;
 
-    // We should use emptyValueIsZero = Traits::emptyValueIsZero &&... whenever we switch to C++17. We can't do anything
-    // better here right now because GCC can't do C++.
-    template<typename BoolType>
-    static constexpr bool allTrue(BoolType value) { return value; }
-    template<typename BoolType, typename... BoolTypes>
-    static constexpr bool allTrue(BoolType value, BoolTypes... values) { return value && allTrue(values...); }
-    static constexpr bool emptyValueIsZero = allTrue(FirstTrait::emptyValueIsZero, Traits::emptyValueIsZero...);
+    static constexpr bool emptyValueIsZero = FirstTrait::emptyValueIsZero && (Traits::emptyValueIsZero && ...);
     static EmptyValueType emptyValue() { return std::make_tuple(FirstTrait::emptyValue(), Traits::emptyValue()...); }
 
     static constexpr unsigned minimumTableSize = FirstTrait::minimumTableSize;

@@ -11,13 +11,17 @@
 
 #include "libANGLE/Device.h"
 #include "libANGLE/renderer/DisplayImpl.h"
+#include "libANGLE/renderer/ShareGroupImpl.h"
 
 #include "libANGLE/renderer/d3d/RendererD3D.h"
 
 namespace rx
 {
 class ShareGroupD3D : public ShareGroupImpl
-{};
+{
+  public:
+    ShareGroupD3D(const egl::ShareGroupState &state) : ShareGroupImpl(state) {}
+};
 
 class DisplayD3D : public DisplayImpl, public d3d::Context
 {
@@ -60,7 +64,7 @@ class DisplayD3D : public DisplayImpl, public d3d::Context
                                                          EGLClientBuffer buffer,
                                                          const egl::AttributeMap &attribs) override;
 
-    ShareGroupImpl *createShareGroup() override;
+    ShareGroupImpl *createShareGroup(const egl::ShareGroupState &state) override;
 
     egl::Error makeCurrent(egl::Display *display,
                            egl::Surface *drawSurface,
@@ -84,12 +88,15 @@ class DisplayD3D : public DisplayImpl, public d3d::Context
 
     DeviceImpl *createDevice() override;
 
-    std::string getVendorString() const override;
+    std::string getRendererDescription() override;
+    std::string getVendorString() override;
+    std::string getVersionString(bool includeFullVersion) override;
 
     egl::Error waitClient(const gl::Context *context) override;
     egl::Error waitNative(const gl::Context *context, EGLint engine) override;
     gl::Version getMaxSupportedESVersion() const override;
     gl::Version getMaxConformantESVersion() const override;
+    Optional<gl::Version> getMaxSupportedDesktopVersion() const override;
 
     void handleResult(HRESULT hr,
                       const char *message,
@@ -98,6 +105,8 @@ class DisplayD3D : public DisplayImpl, public d3d::Context
                       unsigned int line) override;
 
     const std::string &getStoredErrorString() const { return mStoredErrorString; }
+
+    void initializeFrontendFeatures(angle::FrontendFeatures *features) const override;
 
     void populateFeatureList(angle::FeatureList *features) override;
 

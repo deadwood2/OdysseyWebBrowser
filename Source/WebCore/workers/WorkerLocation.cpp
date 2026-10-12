@@ -27,6 +27,8 @@
 #include "WorkerLocation.h"
 
 #include "SecurityOrigin.h"
+#include "WebCoreOpaqueRoot.h"
+#include <wtf/text/MakeString.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
@@ -38,7 +40,7 @@ String WorkerLocation::href() const
 
 String WorkerLocation::protocol() const
 {
-    return makeString(m_url.protocol(), ":");
+    return makeString(m_url.protocol(), ':');
 }
 
 String WorkerLocation::host() const
@@ -76,6 +78,11 @@ String WorkerLocation::hash() const
 String WorkerLocation::origin() const
 {
     return m_origin;
+}
+
+WebCoreOpaqueRoot root(WorkerLocation* location)
+{
+    return WebCoreOpaqueRoot { location };
 }
 
 } // namespace WebCore

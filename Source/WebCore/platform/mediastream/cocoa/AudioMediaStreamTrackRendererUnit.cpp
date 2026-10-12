@@ -33,31 +33,6 @@
 
 namespace WebCore {
 
-static AudioMediaStreamTrackRendererUnit::CreateInternalUnitFunction& getCreateInternalUnitFunction()
-{
-    static NeverDestroyed<AudioMediaStreamTrackRendererUnit::CreateInternalUnitFunction> function;
-    return function;
-}
-
-void AudioMediaStreamTrackRendererUnit::setCreateInternalUnitFunction(CreateInternalUnitFunction&& function)
-{
-    getCreateInternalUnitFunction() = WTFMove(function);
-}
-
-static UniqueRef<AudioMediaStreamTrackRendererInternalUnit> createInternalUnit(AudioMediaStreamTrackRendererUnit& unit)
-{
-    AudioMediaStreamTrackRendererInternalUnit::RenderCallback callback = [&unit](auto sampleCount, auto& list, auto sampleTime, auto hostTime, auto& flags) {
-        unit.render(sampleCount, list, sampleTime, hostTime, flags);
-        return 0;
-    };
-
-    auto& function = getCreateInternalUnitFunction();
-    if (function)
-        return function(WTFMove(callback));
-
-    return AudioMediaStreamTrackRendererInternalUnit::createLocalInternalUnit(WTFMove(callback));
-}
-
 AudioMediaStreamTrackRendererUnit& AudioMediaStreamTrackRendererUnit::singleton()
 {
     static NeverDestroyed<AudioMediaStreamTrackRendererUnit> registry;
@@ -65,7 +40,7 @@ AudioMediaStreamTrackRendererUnit& AudioMediaStreamTrackRendererUnit::singleton(
 }
 
 AudioMediaStreamTrackRendererUnit::AudioMediaStreamTrackRendererUnit()
-    : m_internalUnit(createInternalUnit(*this))
+    : m_internalUnit(AudioMediaStreamTrackRendererInternalUnit::create(*this))
 {
 }
 
@@ -137,7 +112,23 @@ void AudioMediaStreamTrackRendererUnit::stop()
     m_internalUnit->stop();
 }
 
-void AudioMediaStreamTrackRendererUnit::retrieveFormatDescription(CompletionHandler<void(const CAAudioStreamDescription*)>&& callback)
+void AudioMediaStreamTrackRendererUnit::reset()
+{
+    RELEASE_LOG(WebRTC, "AudioMediaStreamTrackRendererUnit::reset");
+    if (!isMainThread()) {
+        callOnMainThread([weakThis = WeakPtr { this }] {
+            if (weakThis)
+                weakThis->reset();
+        });
+        return;
+    }
+
+    m_resetObservers.forEach([](auto& observer) {
+        observer();
+    });
+}
+
+void AudioMediaStreamTrackRendererUnit::retrieveFormatDescription(CompletionHandler<void(std::optional<CAAudioStreamDescription>)>&& callback)
 {
     ASSERT(isMainThread());
     m_internalUnit->retrieveFormatDescription(WTFMove(callback));
@@ -152,11 +143,12 @@ void AudioMediaStreamTrackRendererUnit::updateRenderSourcesIfNecessary()
     if (!m_hasPendingRenderSources)
         return;
 
+    DisableMallocRestrictionsForCurrentThreadScope disableMallocRestrictions;
     m_renderSources = WTFMove(m_pendingRenderSources);
     m_hasPendingRenderSources = false;
 }
 
-void AudioMediaStreamTrackRendererUnit::render(size_t sampleCount, AudioBufferList& ioData, uint64_t sampleTime, double hostTime, AudioUnitRenderActionFlags& actionFlags)
+OSStatus AudioMediaStreamTrackRendererUnit::render(size_t sampleCount, AudioBufferList& ioData, uint64_t sampleTime, double hostTime, AudioUnitRenderActionFlags& actionFlags)
 {
     // For performance reasons, we forbid heap allocations while doing rendering on the audio thread.
     ForbidMallocUseForCurrentThreadScope forbidMallocUse;
@@ -165,18 +157,15 @@ void AudioMediaStreamTrackRendererUnit::render(size_t sampleCount, AudioBufferLi
 
     updateRenderSourcesIfNecessary();
 
-    if (m_renderSources.isEmpty()) {
-        actionFlags = kAudioUnitRenderAction_OutputIsSilence;
-        return;
-    }
-
     // Mix all sources.
-    bool isFirstSource = true;
+    bool hasCopiedData = false;
     for (auto& source : m_renderSources) {
-        source->pullSamples(ioData, sampleCount, sampleTime, hostTime, isFirstSource ? AudioSampleDataSource::Copy : AudioSampleDataSource::Mix);
-        isFirstSource = false;
+        if (source->pullSamples(ioData, sampleCount, sampleTime, hostTime, hasCopiedData ? AudioSampleDataSource::Mix : AudioSampleDataSource::Copy))
+            hasCopiedData = true;
     }
-    return;
+    if (!hasCopiedData)
+        actionFlags = kAudioUnitRenderAction_OutputIsSilence;
+    return 0;
 }
 
 } // namespace WebCore

@@ -34,8 +34,8 @@
 #import <WebCore/Document.h>
 #import <WebCore/Editor.h>
 #import <WebCore/FocusController.h>
-#import <WebCore/Frame.h>
 #import <WebCore/FrameSelection.h>
+#import <WebCore/LocalFrame.h>
 #import <WebCore/Page.h>
 
 static NSString *serviceControlsPasteboardName = @"WebKitServiceControlsPasteboard";
@@ -141,9 +141,9 @@ RetainPtr<NSImage> WebSharingServicePickerClient::imageForCurrentSharingServiceP
     [pasteboard declareTypes:@[ NSPasteboardTypeTIFF ] owner:nil];
     [pasteboard setData:data forType:NSPasteboardTypeTIFF];
 
-    if (auto* node = page->contextMenuController().context().hitTestResult().innerNode()) {
-        if (auto* frame = node->document().frame())
-            frame->editor().replaceNodeFromPasteboard(node, serviceControlsPasteboardName);
+    if (RefPtr node = page->contextMenuController().context().hitTestResult().innerNode()) {
+        if (RefPtr frame = node->document().frame())
+            frame->editor().replaceNodeFromPasteboard(*node, serviceControlsPasteboardName);
     }
 
     [self clear];
@@ -214,8 +214,8 @@ RetainPtr<NSImage> WebSharingServicePickerClient::imageForCurrentSharingServiceP
         }];
     }
     else if ([item isKindOfClass:[NSAttributedString class]]) {
-        auto& frame = _pickerClient->pageForSharingServicePicker(*self)->focusController().focusedOrMainFrame();
-        frame.editor().replaceSelectionWithAttributedString(item);
+        if (RefPtr frame = _pickerClient->pageForSharingServicePicker(*self)->focusController().focusedOrMainFrame())
+            frame->editor().replaceSelectionWithAttributedString(item);
     } else
         LOG_ERROR("sharingService:didShareItems: - Unknown item type returned\n");
 }

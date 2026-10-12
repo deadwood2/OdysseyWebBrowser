@@ -38,31 +38,46 @@ namespace WebKit {
 // low-level in some way. That doesn't seem to be the case.
 class WebPlatformTouchPoint {
 public:
-    enum TouchPointState {
-        TouchReleased,
-        TouchPressed,
-        TouchMoved,
-        TouchStationary,
-        TouchCancelled
+    enum class State : uint8_t {
+        Released,
+        Pressed,
+        Moved,
+        Stationary,
+        Cancelled
     };
 
-    enum class TouchType {
+    enum class TouchType : bool {
         Direct,
         Stylus
     };
 
     WebPlatformTouchPoint() = default;
-    WebPlatformTouchPoint(unsigned identifier, WebCore::IntPoint location, TouchPointState phase)
+    WebPlatformTouchPoint(unsigned identifier, WebCore::IntPoint location, State phase)
         : m_identifier(identifier)
         , m_location(location)
         , m_phase(phase)
     {
     }
+#if ENABLE(IOS_TOUCH_EVENTS)
+    WebPlatformTouchPoint(unsigned identifier, WebCore::IntPoint location, State phase, double radiusX, double radiusY, double rotationAngle, double force, double altitudeAngle, double azimuthAngle, TouchType touchType)
+        : m_identifier(identifier)
+        , m_location(location)
+        , m_phase(phase)
+        , m_radiusX(radiusX)
+        , m_radiusY(radiusY)
+        , m_rotationAngle(rotationAngle)
+        , m_force(force)
+        , m_altitudeAngle(altitudeAngle)
+        , m_azimuthAngle(azimuthAngle)
+        , m_touchType(touchType)
+    {
+    }
+#endif
 
     unsigned identifier() const { return m_identifier; }
     WebCore::IntPoint location() const { return m_location; }
-    TouchPointState phase() const { return static_cast<TouchPointState>(m_phase); }
-    TouchPointState state() const { return phase(); }
+    State phase() const { return m_phase; }
+    State state() const { return phase(); }
 
 #if ENABLE(IOS_TOUCH_EVENTS)
     void setRadiusX(double radiusX) { m_radiusX = radiusX; }
@@ -77,17 +92,15 @@ public:
     double altitudeAngle() const { return m_altitudeAngle; }
     void setAzimuthAngle(double azimuthAngle) { m_azimuthAngle = azimuthAngle; }
     double azimuthAngle() const { return m_azimuthAngle; }
-    void setTouchType(TouchType touchType) { m_touchType = static_cast<uint32_t>(touchType); }
-    TouchType touchType() const { return static_cast<TouchType>(m_touchType); }
+    void setTouchType(TouchType touchType) { m_touchType = touchType; }
+    TouchType touchType() const { return m_touchType; }
 #endif
 
-    void encode(IPC::Encoder&) const;
-    static std::optional<WebPlatformTouchPoint> decode(IPC::Decoder&);
 
 private:
     unsigned m_identifier { 0 };
     WebCore::IntPoint m_location;
-    uint32_t m_phase { TouchReleased };
+    State m_phase { State::Released };
 #if ENABLE(IOS_TOUCH_EVENTS)
     double m_radiusX { 0 };
     double m_radiusY { 0 };
@@ -95,29 +108,37 @@ private:
     double m_force { 0 };
     double m_altitudeAngle { 0 };
     double m_azimuthAngle { 0 };
-    uint32_t m_touchType { static_cast<uint32_t>(TouchType::Direct) };
+    TouchType m_touchType { TouchType::Direct };
 #endif
 };
 
 class WebTouchEvent : public WebEvent {
 public:
-    WebTouchEvent() = default;
-    WebTouchEvent(WebEvent::Type type, OptionSet<Modifier> modifiers, WallTime timestamp, const Vector<WebPlatformTouchPoint>& touchPoints, WebCore::IntPoint position, bool isPotentialTap, bool isGesture, float gestureScale, float gestureRotation)
-        : WebEvent(type, modifiers, timestamp)
+    WebTouchEvent(WebEvent&& event, const Vector<WebPlatformTouchPoint>& touchPoints, const Vector<WebTouchEvent>& coalescedEvents, const Vector<WebTouchEvent>& predictedEvents, WebCore::IntPoint position, bool isPotentialTap, bool isGesture, float gestureScale, float gestureRotation, bool canPreventNativeGestures = true)
+        : WebEvent(WTFMove(event))
         , m_touchPoints(touchPoints)
+        , m_coalescedEvents(coalescedEvents)
+        , m_predictedEvents(predictedEvents)
         , m_position(position)
-        , m_canPreventNativeGestures(true)
+        , m_canPreventNativeGestures(canPreventNativeGestures)
         , m_isPotentialTap(isPotentialTap)
         , m_isGesture(isGesture)
         , m_gestureScale(gestureScale)
         , m_gestureRotation(gestureRotation)
     {
-        ASSERT(type == TouchStart || type == TouchMove || type == TouchEnd || type == TouchCancel);
+        ASSERT(type() == WebEventType::TouchStart || type() == WebEventType::TouchMove || type() == WebEventType::TouchEnd || type() == WebEventType::TouchCancel);
     }
 
     const Vector<WebPlatformTouchPoint>& touchPoints() const { return m_touchPoints; }
 
+    const Vector<WebTouchEvent>& coalescedEvents() const { return m_coalescedEvents; }
+    void setCoalescedEvents(const Vector<WebTouchEvent>& coalescedEvents) { m_coalescedEvents = coalescedEvents; }
+
+    const Vector<WebTouchEvent>& predictedEvents() const { return m_predictedEvents; }
+    void setPredictedEvents(const Vector<WebTouchEvent>& predictedEvents) { m_predictedEvents = predictedEvents; }
+
     WebCore::IntPoint position() const { return m_position; }
+    void setPosition(WebCore::IntPoint position) { m_position = position; }
 
     bool isPotentialTap() const { return m_isPotentialTap; }
 
@@ -129,13 +150,12 @@ public:
     void setCanPreventNativeGestures(bool canPreventNativeGestures) { m_canPreventNativeGestures = canPreventNativeGestures; }
 
     bool allTouchPointsAreReleased() const;
-
-    void encode(IPC::Encoder&) const;
-    static WARN_UNUSED_RETURN bool decode(IPC::Decoder&, WebTouchEvent&);
     
 private:
     Vector<WebPlatformTouchPoint> m_touchPoints;
-    
+    Vector<WebTouchEvent> m_coalescedEvents;
+    Vector<WebTouchEvent> m_predictedEvents;
+
     WebCore::IntPoint m_position;
     bool m_canPreventNativeGestures { false };
     bool m_isPotentialTap { false };
@@ -148,23 +168,23 @@ private:
 
 class WebPlatformTouchPoint {
 public:
-    enum TouchPointState {
-        TouchReleased,
-        TouchPressed,
-        TouchMoved,
-        TouchStationary,
-        TouchCancelled
+    enum class State : uint8_t {
+        Released,
+        Pressed,
+        Moved,
+        Stationary,
+        Cancelled
     };
 
     WebPlatformTouchPoint()
         : m_rotationAngle(0.0), m_force(0.0) { }
 
-    WebPlatformTouchPoint(uint32_t id, TouchPointState, const WebCore::IntPoint& screenPosition, const WebCore::IntPoint& position);
+    WebPlatformTouchPoint(uint32_t id, State, const WebCore::IntPoint& screenPosition, const WebCore::IntPoint& position);
 
-    WebPlatformTouchPoint(uint32_t id, TouchPointState, const WebCore::IntPoint& screenPosition, const WebCore::IntPoint& position, const WebCore::IntSize& radius, float rotationAngle = 0.0, float force = 0.0);
+    WebPlatformTouchPoint(uint32_t id, State, const WebCore::IntPoint& screenPosition, const WebCore::IntPoint& position, const WebCore::IntSize& radius, float rotationAngle = 0.0, float force = 0.0);
     
     uint32_t id() const { return m_id; }
-    TouchPointState state() const { return static_cast<TouchPointState>(m_state); }
+    State state() const { return m_state; }
 
     const WebCore::IntPoint& screenPosition() const { return m_screenPosition; }
     const WebCore::IntPoint& position() const { return m_position; }
@@ -172,14 +192,11 @@ public:
     float rotationAngle() const { return m_rotationAngle; }
     float force() const { return m_force; }
 
-    void setState(TouchPointState state) { m_state = state; }
-
-    void encode(IPC::Encoder&) const;
-    static std::optional<WebPlatformTouchPoint> decode(IPC::Decoder&);
+    void setState(State state) { m_state = state; }
 
 private:
     uint32_t m_id;
-    uint32_t m_state;
+    State m_state;
     WebCore::IntPoint m_screenPosition;
     WebCore::IntPoint m_position;
     WebCore::IntSize m_radius;
@@ -189,20 +206,22 @@ private:
 
 class WebTouchEvent : public WebEvent {
 public:
-    WebTouchEvent() { }
-    WebTouchEvent(Type, Vector<WebPlatformTouchPoint>&&, OptionSet<Modifier>, WallTime timestamp);
+    WebTouchEvent(WebEvent&&, Vector<WebPlatformTouchPoint>&&, Vector<WebTouchEvent>&&, Vector<WebTouchEvent>&&);
 
     const Vector<WebPlatformTouchPoint>& touchPoints() const { return m_touchPoints; }
 
+    const Vector<WebTouchEvent>& coalescedEvents() const { return m_coalescedEvents; }
+
+    const Vector<WebTouchEvent>& predictedEvents() const { return m_predictedEvents; }
+
     bool allTouchPointsAreReleased() const;
 
-    void encode(IPC::Encoder&) const;
-    static WARN_UNUSED_RETURN bool decode(IPC::Decoder&, WebTouchEvent&);
-
 private:
-    static bool isTouchEventType(Type);
+    static bool isTouchEventType(WebEventType);
 
     Vector<WebPlatformTouchPoint> m_touchPoints;
+    Vector<WebTouchEvent> m_coalescedEvents;
+    Vector<WebTouchEvent> m_predictedEvents;
 };
 
 #endif // PLATFORM(IOS_FAMILY)

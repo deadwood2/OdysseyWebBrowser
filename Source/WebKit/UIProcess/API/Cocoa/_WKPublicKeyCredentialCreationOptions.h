@@ -42,6 +42,7 @@ typedef NS_ENUM(NSInteger, _WKAttestationConveyancePreference) {
     _WKAttestationConveyancePreferenceNone,
     _WKAttestationConveyancePreferenceIndirect,
     _WKAttestationConveyancePreferenceDirect,
+    _WKAttestationConveyancePreferenceEnterprise,
 } WK_API_AVAILABLE(macos(12.0), ios(15.0));
 
 WK_CLASS_AVAILABLE(macos(12.0), ios(15.0))
@@ -63,6 +64,7 @@ WK_CLASS_AVAILABLE(macos(12.0), ios(15.0))
 /*!@discussion The default value is _WKAttestationConveyancePrefenprenceNone.*/
 @property (nonatomic) _WKAttestationConveyancePreference attestation;
 @property (nullable, nonatomic, strong) _WKAuthenticationExtensionsClientInputs *extensions;
+@property (nullable, nonatomic, strong) NSData *extensionsCBOR;
 
 @end
 

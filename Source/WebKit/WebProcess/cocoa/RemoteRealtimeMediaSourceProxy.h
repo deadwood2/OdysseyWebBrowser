@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2020-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,8 +27,8 @@
 
 #if PLATFORM(COCOA) && ENABLE(MEDIA_STREAM)
 
-#include "UserMediaCaptureManagerProxyMessages.h"
 #include <WebCore/RealtimeMediaSource.h>
+#include <wtf/Deque.h>
 
 namespace IPC {
 class Connection;
@@ -38,7 +38,7 @@ namespace WebCore {
 class CAAudioStreamDescription;
 class ImageTransferSessionVT;
 struct MediaConstraints;
-class RemoteVideoSample;
+enum class MediaAccessDenialReason : uint8_t;
 }
 
 namespace WebKit {
@@ -48,50 +48,66 @@ public:
     RemoteRealtimeMediaSourceProxy(WebCore::RealtimeMediaSourceIdentifier, const WebCore::CaptureDevice&, bool shouldCaptureInGPUProcess, const WebCore::MediaConstraints*);
     ~RemoteRealtimeMediaSourceProxy();
 
-    IPC::Connection* connection();
+    RemoteRealtimeMediaSourceProxy(RemoteRealtimeMediaSourceProxy&&) = default;
+    RemoteRealtimeMediaSourceProxy& operator=(RemoteRealtimeMediaSourceProxy&&) = default;
+
+    IPC::Connection& connection() { return m_connection.get(); }
     WebCore::RealtimeMediaSourceIdentifier identifier() const { return m_identifier; }
     WebCore::CaptureDevice::DeviceType deviceType() const { return m_device.type(); }
+    const WebCore::CaptureDevice& device() const { return m_device; }
     bool shouldCaptureInGPUProcess() const { return m_shouldCaptureInGPUProcess; }
 
-    using CreateCallback = CompletionHandler<void(bool, String&&, WebCore::RealtimeMediaSourceSettings&&, WebCore::RealtimeMediaSourceCapabilities&&, Vector<WebCore::VideoPresetData>&&, WebCore::IntSize, double)>;
-    void createRemoteMediaSource(const String&, CreateCallback&&);
+    using CreateCallback = CompletionHandler<void(WebCore::CaptureSourceError&&, WebCore::RealtimeMediaSourceSettings&&, WebCore::RealtimeMediaSourceCapabilities&&)>;
+    void createRemoteMediaSource(const WebCore::MediaDeviceHashSalts&, WebCore::PageIdentifier, CreateCallback&&, bool shouldUseRemoteFrame = false);
+
+    RemoteRealtimeMediaSourceProxy clone();
+    void createRemoteCloneSource(WebCore::RealtimeMediaSourceIdentifier, WebCore::PageIdentifier);
 
     void applyConstraintsSucceeded();
-    void applyConstraintsFailed(String&& failedConstraint, String&& errorMessage);
+    void applyConstraintsFailed(WebCore::MediaConstraintType, String&& errorMessage);
     void failApplyConstraintCallbacks(const String& errorMessage);
-    
-    void hasEnded();
-    void startProducingData();
+
+    bool isEnded() const { return m_isEnded; }
+    void end();
+    void startProducingData(WebCore::PageIdentifier);
     void stopProducingData();
+    void endProducingData();
     void applyConstraints(const WebCore::MediaConstraints&, WebCore::RealtimeMediaSource::ApplyConstraintsHandler&&);
 
-    void whenReady(CompletionHandler<void(String)>&&);
+    Ref<WebCore::RealtimeMediaSource::TakePhotoNativePromise> takePhoto(WebCore::PhotoSettings&&);
+    Ref<WebCore::RealtimeMediaSource::PhotoCapabilitiesNativePromise> getPhotoCapabilities();
+    Ref<WebCore::RealtimeMediaSource::PhotoSettingsNativePromise> getPhotoSettings();
+
+    void whenReady(CompletionHandler<void(WebCore::CaptureSourceError&&)>&&);
     void setAsReady();
     void resetReady() { m_isReady = false; }
     bool isReady() const { return m_isReady; }
 
-    void didFail(String&& errorMessage);
+    void didFail(WebCore::CaptureSourceError&&);
+
+    bool interrupted() const { return m_interrupted; }
+    void setInterrupted(bool interrupted) { m_interrupted = interrupted; }
+
+    void updateConnection();
+
+    bool isPowerEfficient() const;
 
 private:
+    struct PromiseConverter;
+
     WebCore::RealtimeMediaSourceIdentifier m_identifier;
+    Ref<IPC::Connection> m_connection;
     WebCore::CaptureDevice m_device;
     bool m_shouldCaptureInGPUProcess { false };
 
     WebCore::MediaConstraints m_constraints;
-    Deque<WebCore::RealtimeMediaSource::ApplyConstraintsHandler> m_pendingApplyConstraintsCallbacks;
+    Deque<std::pair<WebCore::RealtimeMediaSource::ApplyConstraintsHandler, WebCore::MediaConstraints>> m_pendingApplyConstraintsRequests;
     bool m_isReady { false };
-    CompletionHandler<void(String)> m_callback;
-    String m_errorMessage;
+    CompletionHandler<void(WebCore::CaptureSourceError&&)> m_callback;
+    WebCore::CaptureSourceError m_failureReason;
+    bool m_interrupted { false };
+    bool m_isEnded { false };
 };
-
-inline RemoteRealtimeMediaSourceProxy::RemoteRealtimeMediaSourceProxy(WebCore::RealtimeMediaSourceIdentifier identifier, const WebCore::CaptureDevice& device, bool shouldCaptureInGPUProcess, const WebCore::MediaConstraints* constraints)
-    : m_identifier(identifier)
-    , m_device(device)
-    , m_shouldCaptureInGPUProcess(shouldCaptureInGPUProcess)
-{
-    if (constraints)
-        m_constraints = *constraints;
-}
 
 } // namespace WebKit
 

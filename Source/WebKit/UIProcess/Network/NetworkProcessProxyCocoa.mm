@@ -27,8 +27,22 @@
 #import "NetworkProcessProxy.h"
 
 #import "LaunchServicesDatabaseXPCConstants.h"
+#import "NetworkProcessMessages.h"
+#import "PageClient.h"
+#import "WKUIDelegatePrivate.h"
+#import "WKWebViewInternal.h"
+#import "WebPageProxy.h"
 #import "WebProcessPool.h"
+#import "WebProcessProxy.h"
 #import "XPCEndpoint.h"
+#import <WebCore/RuntimeApplicationChecks.h>
+#import <wtf/EnumTraits.h>
+
+#if PLATFORM(IOS_FAMILY)
+#import <UIKit/UIKit.h>
+#import <wtf/BlockPtr.h>
+#import <wtf/WeakPtr.h>
+#endif
 
 namespace WebKit {
 
@@ -47,22 +61,106 @@ bool NetworkProcessProxy::XPCEventHandler::handleXPCEvent(xpc_object_t event) co
     if (!event || xpc_get_type(event) == XPC_TYPE_ERROR)
         return false;
 
-    String messageName = xpc_dictionary_get_string(event, XPCEndpoint::xpcMessageNameKey);
-    if (messageName.isEmpty())
+    auto* messageName = xpc_dictionary_get_string(event, XPCEndpoint::xpcMessageNameKey);
+    if (!messageName || !*messageName)
         return false;
 
-    if (messageName == LaunchServicesDatabaseXPCConstants::xpcLaunchServicesDatabaseXPCEndpointMessageName) {
+    if (LaunchServicesDatabaseXPCConstants::xpcLaunchServicesDatabaseXPCEndpointMessageName == messageName) {
         m_networkProcess->m_endpointMessage = event;
-        for (auto& dataStore : copyToVectorOf<Ref<WebsiteDataStore>>(m_networkProcess->m_websiteDataStores))
-            dataStore->sendNetworkProcessXPCEndpointToAllWebProcesses();
+        for (auto& processPool : WebProcessPool::allProcessPools()) {
+            for (Ref process : processPool->processes())
+                m_networkProcess->sendXPCEndpointToProcess(process);
+        }
+#if ENABLE(GPU_PROCESS)
+        if (auto gpuProcess = GPUProcessProxy::singletonIfCreated())
+            m_networkProcess->sendXPCEndpointToProcess(*gpuProcess);
+#endif
     }
 
     return true;
 }
 
 NetworkProcessProxy::XPCEventHandler::XPCEventHandler(const NetworkProcessProxy& networkProcess)
-    : m_networkProcess(makeWeakPtr(networkProcess))
+    : m_networkProcess(networkProcess)
 {
 }
+
+bool NetworkProcessProxy::sendXPCEndpointToProcess(AuxiliaryProcessProxy& process)
+{
+    RELEASE_LOG(Process, "%p - NetworkProcessProxy::sendXPCEndpointToProcess(%p) state = %d has connection = %d XPC endpoint message = %p", this, &process, enumToUnderlyingType(process.state()), process.hasConnection(), xpcEndpointMessage());
+
+    if (process.state() != AuxiliaryProcessProxy::State::Running)
+        return false;
+    if (!process.hasConnection())
+        return false;
+    auto message = xpcEndpointMessage();
+    if (!message)
+        return false;
+    auto xpcConnection = process.connection().xpcConnection();
+    RELEASE_ASSERT(xpcConnection);
+    xpc_connection_send_message(xpcConnection, message);
+    return true;
+}
+
+#if PLATFORM(IOS_FAMILY)
+
+void NetworkProcessProxy::addBackgroundStateObservers()
+{
+    m_backgroundObserver = [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationDidEnterBackgroundNotification object:[UIApplication sharedApplication] queue:nil usingBlock:makeBlockPtr([weakThis = WeakPtr { *this }](NSNotification *) {
+        if (weakThis)
+            weakThis->applicationDidEnterBackground();
+    }).get()];
+    m_foregroundObserver = [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationWillEnterForegroundNotification object:[UIApplication sharedApplication] queue:nil usingBlock:makeBlockPtr([weakThis = WeakPtr { *this }](NSNotification *) {
+        if (weakThis)
+            weakThis->applicationWillEnterForeground();
+    }).get()];
+}
+
+void NetworkProcessProxy::removeBackgroundStateObservers()
+{
+    [[NSNotificationCenter defaultCenter] removeObserver:m_backgroundObserver.get()];
+    [[NSNotificationCenter defaultCenter] removeObserver:m_foregroundObserver.get()];
+}
+
+void NetworkProcessProxy::setBackupExclusionPeriodForTesting(PAL::SessionID sessionID, Seconds period, CompletionHandler<void()>&& completionHandler)
+{
+    sendWithAsyncReply(Messages::NetworkProcess::SetBackupExclusionPeriodForTesting(sessionID, period), WTFMove(completionHandler));
+}
+
+#endif
+
+#if ENABLE(APPLE_PAY_REMOTE_UI_USES_SCENE)
+void NetworkProcessProxy::getWindowSceneAndBundleIdentifierForPaymentPresentation(WebPageProxyIdentifier webPageProxyIdentifier, CompletionHandler<void(const String&, const String&)>&& completionHandler)
+{
+    auto sceneIdentifier = nullString();
+    auto bundleIdentifier = WebCore::applicationBundleIdentifier();
+    auto page = WebProcessProxy::webPage(webPageProxyIdentifier);
+    if (!page) {
+        completionHandler(sceneIdentifier, bundleIdentifier);
+        return;
+    }
+
+    sceneIdentifier = page->pageClient().sceneID();
+    RetainPtr<WKWebView> webView = page->cocoaView();
+    id webViewUIDelegate = [webView UIDelegate];
+    if ([webViewUIDelegate respondsToSelector:@selector(_hostSceneIdentifierForWebView:)])
+        sceneIdentifier = [webViewUIDelegate _hostSceneIdentifierForWebView:webView.get()];
+    if ([webViewUIDelegate respondsToSelector:@selector(_hostSceneBundleIdentifierForWebView:)])
+        bundleIdentifier = [webViewUIDelegate _hostSceneBundleIdentifierForWebView:webView.get()];
+
+    completionHandler(sceneIdentifier, bundleIdentifier);
+}
+#endif
+
+#if ENABLE(APPLE_PAY_REMOTE_UI)
+void NetworkProcessProxy::getPaymentCoordinatorEmbeddingUserAgent(WebPageProxyIdentifier webPageProxyIdentifier, CompletionHandler<void(const String&)>&& completionHandler)
+{
+    RefPtr page = WebProcessProxy::webPage(webPageProxyIdentifier);
+    if (!page)
+        return completionHandler(WebPageProxy::standardUserAgent());
+
+    completionHandler(page->userAgent());
+}
+#endif
 
 }

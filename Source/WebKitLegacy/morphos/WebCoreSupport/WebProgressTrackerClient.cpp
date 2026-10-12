@@ -39,7 +39,7 @@ WebProgressTrackerClient::WebProgressTrackerClient(WebPage& webPage)
 {
 }
     
-void WebProgressTrackerClient::progressStarted(Frame& originatingProgressFrame)
+void WebProgressTrackerClient::progressStarted(LocalFrame& originatingProgressFrame)
 {
     if (!originatingProgressFrame.isMainFrame())
         return;
@@ -47,7 +47,7 @@ void WebProgressTrackerClient::progressStarted(Frame& originatingProgressFrame)
 		m_webPage._fProgressStarted();
 }
 
-void WebProgressTrackerClient::progressEstimateChanged(Frame& originatingProgressFrame)
+void WebProgressTrackerClient::progressEstimateChanged(LocalFrame& originatingProgressFrame)
 {
     if (!originatingProgressFrame.isMainFrame())
         return;
@@ -57,7 +57,7 @@ void WebProgressTrackerClient::progressEstimateChanged(Frame& originatingProgres
 		m_webPage._fProgressUpdated(progress);
 }
 
-void WebProgressTrackerClient::progressFinished(Frame& originatingProgressFrame)
+void WebProgressTrackerClient::progressFinished(LocalFrame& originatingProgressFrame)
 {
     if (!originatingProgressFrame.isMainFrame())
         return;

@@ -26,23 +26,25 @@
 #include "config.h"
 #include "WKView.h"
 
+#include "APIClient.h"
 #include "APIPageConfiguration.h"
-#include "APIViewClient.h"
 #include "PageClientImpl.h"
 #include "WKAPICast.h"
-#include "WPEView.h"
+#include "WPEWebViewLegacy.h"
+#include "WPEWebViewPlatform.h"
 
 using namespace WebKit;
 
-namespace API {
-template<> struct ClientTraits<WKViewClientBase> {
-    typedef std::tuple<WKViewClientV0> Versions;
-};
-}
-
-WKViewRef WKViewCreate(struct wpe_view_backend* backend, WKPageConfigurationRef configuration)
+#if ENABLE(WPE_PLATFORM)
+WKViewRef WKViewCreate(WPEDisplay* display, WKPageConfigurationRef configuration)
 {
-    return toAPI(WKWPE::View::create(backend, *toImpl(configuration)));
+    return toAPI(&WKWPE::ViewPlatform::create(display, *toImpl(configuration)).leakRef());
+}
+#endif
+
+WKViewRef WKViewCreateDeprecated(struct wpe_view_backend* backend, WKPageConfigurationRef configuration)
+{
+    return toAPI(&WKWPE::ViewLegacy::create(backend, *toImpl(configuration)).leakRef());
 }
 
 WKPageRef WKViewGetPage(WKViewRef view)
@@ -50,23 +52,9 @@ WKPageRef WKViewGetPage(WKViewRef view)
     return toAPI(&toImpl(view)->page());
 }
 
-void WKViewSetViewClient(WKViewRef view, const WKViewClientBase* client)
+#if ENABLE(WPE_PLATFORM)
+WPEView* WKViewGetView(WKViewRef view)
 {
-    class ViewClient final : public API::Client<WKViewClientBase>, public API::ViewClient {
-    public:
-        explicit ViewClient(const WKViewClientBase* client)
-        {
-            initialize(client);
-        }
-
-    private:
-        void frameDisplayed(WKWPE::View& view) override
-        {
-            if (!m_client.frameDisplayed)
-                return;
-            m_client.frameDisplayed(toAPI(&view), m_client.base.clientInfo);
-        }
-    };
-
-    toImpl(view)->setClient(makeUnique<ViewClient>(client));
+    return toImpl(view)->wpeView();
 }
+#endif

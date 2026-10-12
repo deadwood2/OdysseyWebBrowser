@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009-2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2009-2023 Apple Inc. All rights reserved.
  * Copyright (C) 2019 the V8 project authors. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -33,16 +33,21 @@
 #include "VM.h"
 #include "Yarr.h"
 #include "YarrPattern.h"
-#include <wtf/Bitmap.h>
+#include <wtf/Atomics.h>
+#include <wtf/BitSet.h>
 #include <wtf/FixedVector.h>
+#include <wtf/StackCheck.h>
+#include <wtf/TZoneMalloc.h>
 #include <wtf/UniqueRef.h>
 
 #define YARR_CALL
 
 namespace JSC {
 
-class VM;
+class CCallHelpers;
 class ExecutablePool;
+class MacroAssembler;
+class VM;
 
 namespace Yarr {
 
@@ -53,18 +58,20 @@ enum class JITFailureReason : uint8_t {
     DecodeSurrogatePair,
     BackReference,
     ForwardReference,
+    Lookbehind,
     VariableCountedParenthesisWithNonZeroMinimum,
     ParenthesizedSubpattern,
     FixedCountParenthesizedSubpattern,
     ParenthesisNestedTooDeep,
     ExecutableMemoryAllocationFailure,
+    OffsetTooLarge,
 };
 
 class BoyerMooreFastCandidates {
-    WTF_MAKE_FAST_ALLOCATED(BoyerMooreFastCandidates);
+    WTF_MAKE_TZONE_ALLOCATED(BoyerMooreFastCandidates);
 public:
     static constexpr unsigned maxSize = 2;
-    using CharacterVector = Vector<UChar32, maxSize>;
+    using CharacterVector = Vector<char32_t, maxSize>;
 
     BoyerMooreFastCandidates() = default;
 
@@ -77,9 +84,9 @@ public:
 
     bool isEmpty() const { return m_characters.isEmpty(); }
     unsigned size() const { return m_characters.size(); }
-    UChar32 at(unsigned index) const { return m_characters.at(index); }
+    char32_t at(unsigned index) const { return m_characters.at(index); }
 
-    void add(UChar32 character)
+    void add(char32_t character)
     {
         if (!isValid())
             return;
@@ -112,11 +119,11 @@ private:
 
 class BoyerMooreBitmap {
     WTF_MAKE_NONCOPYABLE(BoyerMooreBitmap);
-    WTF_MAKE_FAST_ALLOCATED(BoyerMooreBitmap);
+    WTF_MAKE_TZONE_ALLOCATED(BoyerMooreBitmap);
 public:
     static constexpr unsigned mapSize = 128;
     static constexpr unsigned mapMask = 128 - 1;
-    using Map = Bitmap<mapSize>;
+    using Map = WTF::BitSet<mapSize>;
 
     BoyerMooreBitmap() = default;
 
@@ -124,7 +131,7 @@ public:
     const Map& map() const { return m_map; }
     const BoyerMooreFastCandidates& charactersFastPath() const { return m_charactersFastPath; }
 
-    bool add(CharSize charSize, UChar32 character)
+    bool add(CharSize charSize, char32_t character)
     {
         if (isAllSet())
             return false;
@@ -139,12 +146,12 @@ public:
         return !isAllSet();
     }
 
-    void addCharacters(CharSize charSize, const Vector<UChar32>& characters)
+    void addCharacters(CharSize charSize, const Vector<char32_t>& characters)
     {
         if (isAllSet())
             return;
         ASSERT(std::is_sorted(characters.begin(), characters.end()));
-        for (UChar32 character : characters) {
+        for (auto character : characters) {
             // Early return since characters are sorted.
             if (charSize == CharSize::Char8 && character > 0xff)
                 return;
@@ -174,7 +181,7 @@ public:
                 setAll();
                 return;
             }
-            for (UChar32 character = begin; character <= end; ++character) {
+            for (auto character = begin; character <= end; ++character) {
                 if (!add(charSize, character))
                     return;
             }
@@ -188,6 +195,8 @@ public:
 
     bool isAllSet() const { return m_count == mapSize; }
 
+    void dump(PrintStream&) const;
+
 private:
     Map m_map { };
     BoyerMooreFastCandidates m_charactersFastPath;
@@ -195,21 +204,86 @@ private:
 };
 
 #if CPU(ARM64E)
-extern "C" EncodedMatchResult vmEntryToYarrJIT(const void* input, UCPURegister start, UCPURegister length, int* output, MatchingContextHolder* matchingContext, const void* codePtr);
+extern "C" UGPRPair vmEntryToYarrJIT(const void* input, UCPURegister start, UCPURegister length, int* output, MatchingContextHolder* matchingContext, const void* codePtr);
 extern "C" void vmEntryToYarrJITAfter(void);
 #endif
 
-class YarrCodeBlock {
-    WTF_MAKE_FAST_ALLOCATED;
-    WTF_MAKE_NONCOPYABLE(YarrCodeBlock);
-
-    using YarrJITCode8 = EncodedMatchResult (*)(const LChar* input, UCPURegister start, UCPURegister length, int* output, MatchingContextHolder& matchingContext) YARR_CALL;
-    using YarrJITCode16 = EncodedMatchResult (*)(const UChar* input, UCPURegister start, UCPURegister length, int* output, MatchingContextHolder& matchingContext) YARR_CALL;
-    using YarrJITCodeMatchOnly8 = EncodedMatchResult (*)(const LChar* input, UCPURegister start, UCPURegister length, void*, MatchingContextHolder& matchingContext) YARR_CALL;
-    using YarrJITCodeMatchOnly16 = EncodedMatchResult (*)(const UChar* input, UCPURegister start, UCPURegister length, void*, MatchingContextHolder& matchingContext) YARR_CALL;
+class YarrBoyerMooreData {
+    WTF_MAKE_TZONE_ALLOCATED(YarrBoyerMooreData);
+    WTF_MAKE_NONCOPYABLE(YarrBoyerMooreData);
 
 public:
-    YarrCodeBlock() = default;
+    YarrBoyerMooreData() = default;
+
+    void saveMaps(Vector<UniqueRef<BoyerMooreBitmap::Map>>&& maps)
+    {
+        m_maps.appendVector(WTFMove(maps));
+    }
+
+    void clearMaps()
+    {
+        m_maps.clear();
+    }
+
+    const BoyerMooreBitmap::Map::WordType* tryReuseBoyerMooreBitmap(const BoyerMooreBitmap::Map& map) const
+    {
+        for (auto& stored : m_maps) {
+            if (stored.get() == map)
+                return stored->storage();
+        }
+        return nullptr;
+    }
+
+private:
+    Vector<UniqueRef<BoyerMooreBitmap::Map>> m_maps;
+};
+
+class YarrCodeBlock final : public YarrBoyerMooreData {
+    struct InlineStats {
+        InlineStats()
+            : m_insnCount(0)
+            , m_stackSize(0)
+            , m_needsTemp2(false)
+            , m_canInline(false)
+        {
+        }
+
+        void set(unsigned insnCount, unsigned stackSize, bool canInline, bool needsTemp2)
+        {
+            m_insnCount= insnCount;
+            m_stackSize = stackSize;
+            m_needsTemp2 = needsTemp2;
+            WTF::storeStoreFence();
+            m_canInline = canInline;
+        }
+
+        void clear()
+        {
+        }
+
+        unsigned codeSize() const { return m_insnCount; }
+        unsigned stackSize() const { return m_stackSize; }
+        bool canInline() const { return m_canInline; }
+        bool needsTemp2() const { return m_needsTemp2; }
+
+        unsigned m_insnCount;
+        unsigned m_stackSize : 30;
+        bool m_needsTemp2 : 1;
+        bool m_canInline : 1;
+    };
+
+    WTF_MAKE_TZONE_ALLOCATED(YarrCodeBlock);
+    WTF_MAKE_NONCOPYABLE(YarrCodeBlock);
+
+public:
+    using YarrJITCode8 = UGPRPair SYSV_ABI (*)(const LChar* input, UCPURegister start, UCPURegister length, int* output, MatchingContextHolder*) YARR_CALL;
+    using YarrJITCode16 = UGPRPair SYSV_ABI (*)(const UChar* input, UCPURegister start, UCPURegister length, int* output, MatchingContextHolder*) YARR_CALL;
+    using YarrJITCodeMatchOnly8 = UGPRPair SYSV_ABI (*)(const LChar* input, UCPURegister start, UCPURegister length, void*, MatchingContextHolder*) YARR_CALL;
+    using YarrJITCodeMatchOnly16 = UGPRPair SYSV_ABI (*)(const UChar* input, UCPURegister start, UCPURegister length, void*, MatchingContextHolder*) YARR_CALL;
+
+    YarrCodeBlock(RegExp* regExp)
+        : m_regExp(regExp)
+    { }
 
     void setFallBackWithFailureReason(JITFailureReason failureReason) { m_failureReason = failureReason; }
     std::optional<JITFailureReason> failureReason() { return m_failureReason; }
@@ -219,16 +293,12 @@ public:
     void set8BitCode(MacroAssemblerCodeRef<Yarr8BitPtrTag> ref, Vector<UniqueRef<BoyerMooreBitmap::Map>> maps)
     {
         m_ref8 = ref;
-        m_maps.reserveCapacity(m_maps.size() + maps.size());
-        for (unsigned index = 0; index < maps.size(); ++index)
-            m_maps.uncheckedAppend(WTFMove(maps[index]));
+        saveMaps(WTFMove(maps));
     }
     void set16BitCode(MacroAssemblerCodeRef<Yarr16BitPtrTag> ref, Vector<UniqueRef<BoyerMooreBitmap::Map>> maps)
     {
         m_ref16 = ref;
-        m_maps.reserveCapacity(m_maps.size() + maps.size());
-        for (unsigned index = 0; index < maps.size(); ++index)
-            m_maps.uncheckedAppend(WTFMove(maps[index]));
+        saveMaps(WTFMove(maps));
     }
 
     bool has8BitCodeMatchOnly() { return m_matchOnly8.size(); }
@@ -236,16 +306,12 @@ public:
     void set8BitCodeMatchOnly(MacroAssemblerCodeRef<YarrMatchOnly8BitPtrTag> matchOnly, Vector<UniqueRef<BoyerMooreBitmap::Map>> maps)
     {
         m_matchOnly8 = matchOnly;
-        m_maps.reserveCapacity(m_maps.size() + maps.size());
-        for (unsigned index = 0; index < maps.size(); ++index)
-            m_maps.uncheckedAppend(WTFMove(maps[index]));
+        saveMaps(WTFMove(maps));
     }
     void set16BitCodeMatchOnly(MacroAssemblerCodeRef<YarrMatchOnly16BitPtrTag> matchOnly, Vector<UniqueRef<BoyerMooreBitmap::Map>> maps)
     {
         m_matchOnly16 = matchOnly;
-        m_maps.reserveCapacity(m_maps.size() + maps.size());
-        for (unsigned index = 0; index < maps.size(); ++index)
-            m_maps.uncheckedAppend(WTFMove(maps[index]));
+        saveMaps(WTFMove(maps));
     }
 
     bool usesPatternContextBuffer() { return m_usesPatternContextBuffer; }
@@ -253,44 +319,57 @@ public:
     void setUsesPatternContextBuffer() { m_usesPatternContextBuffer = true; }
 #endif
 
-    MatchResult execute(const LChar* input, unsigned start, unsigned length, int* output, MatchingContextHolder& matchingContext)
+    void set8BitInlineStats(unsigned insnCount, unsigned stackSize, bool canInline, bool needsT2)
+    {
+        m_matchOnly8Stats.set(insnCount, stackSize, canInline, needsT2);
+    }
+
+    void set16BitInlineStats(unsigned insnCount, unsigned stackSize, bool canInline, bool needsT2)
+    {
+        m_matchOnly16Stats.set(insnCount, stackSize, canInline, needsT2);
+    }
+
+    InlineStats& get8BitInlineStats() { return m_matchOnly8Stats; }
+    InlineStats& get16BitInlineStats() { return  m_matchOnly16Stats; }
+
+    MatchResult execute(std::span<const LChar> input, unsigned start, int* output, MatchingContextHolder* matchingContext)
     {
         ASSERT(has8BitCode());
 #if CPU(ARM64E)
         if (Options::useJITCage())
-            return MatchResult(vmEntryToYarrJIT(input, start, length, output, &matchingContext, retagCodePtr<Yarr8BitPtrTag, YarrEntryPtrTag>(m_ref8.code().executableAddress())));
+            return MatchResult(vmEntryToYarrJIT(input.data(), start, input.size(), output, matchingContext, retagCodePtr<Yarr8BitPtrTag, YarrEntryPtrTag>(m_ref8.code().taggedPtr())));
 #endif
-        return MatchResult(untagCFunctionPtr<YarrJITCode8, Yarr8BitPtrTag>(m_ref8.code().executableAddress())(input, start, length, output, matchingContext));
+        return MatchResult(untagCFunctionPtr<YarrJITCode8, Yarr8BitPtrTag>(m_ref8.code().taggedPtr())(input.data(), start, input.size(), output, matchingContext));
     }
 
-    MatchResult execute(const UChar* input, unsigned start, unsigned length, int* output, MatchingContextHolder& matchingContext)
+    MatchResult execute(std::span<const UChar> input, unsigned start, int* output, MatchingContextHolder* matchingContext)
     {
         ASSERT(has16BitCode());
 #if CPU(ARM64E)
         if (Options::useJITCage())
-            return MatchResult(vmEntryToYarrJIT(input, start, length, output, &matchingContext, retagCodePtr<Yarr16BitPtrTag, YarrEntryPtrTag>(m_ref16.code().executableAddress())));
+            return MatchResult(vmEntryToYarrJIT(input.data(), start, input.size(), output, matchingContext, retagCodePtr<Yarr16BitPtrTag, YarrEntryPtrTag>(m_ref16.code().taggedPtr())));
 #endif
-        return MatchResult(untagCFunctionPtr<YarrJITCode16, Yarr16BitPtrTag>(m_ref16.code().executableAddress())(input, start, length, output, matchingContext));
+        return MatchResult(untagCFunctionPtr<YarrJITCode16, Yarr16BitPtrTag>(m_ref16.code().taggedPtr())(input.data(), start, input.size(), output, matchingContext));
     }
 
-    MatchResult execute(const LChar* input, unsigned start, unsigned length, MatchingContextHolder& matchingContext)
+    MatchResult execute(std::span<const LChar> input, unsigned start, MatchingContextHolder* matchingContext)
     {
         ASSERT(has8BitCodeMatchOnly());
 #if CPU(ARM64E)
         if (Options::useJITCage())
-            return MatchResult(vmEntryToYarrJIT(input, start, length, nullptr, &matchingContext, retagCodePtr<YarrMatchOnly8BitPtrTag, YarrEntryPtrTag>(m_matchOnly8.code().executableAddress())));
+            return MatchResult(vmEntryToYarrJIT(input.data(), start, input.size(), nullptr, matchingContext, retagCodePtr<YarrMatchOnly8BitPtrTag, YarrEntryPtrTag>(m_matchOnly8.code().taggedPtr())));
 #endif
-        return MatchResult(untagCFunctionPtr<YarrJITCodeMatchOnly8, YarrMatchOnly8BitPtrTag>(m_matchOnly8.code().executableAddress())(input, start, length, nullptr, matchingContext));
+        return MatchResult(untagCFunctionPtr<YarrJITCodeMatchOnly8, YarrMatchOnly8BitPtrTag>(m_matchOnly8.code().taggedPtr())(input.data(), start, input.size(), nullptr, matchingContext));
     }
 
-    MatchResult execute(const UChar* input, unsigned start, unsigned length, MatchingContextHolder& matchingContext)
+    MatchResult execute(std::span<const UChar> input, unsigned start, MatchingContextHolder* matchingContext)
     {
         ASSERT(has16BitCodeMatchOnly());
 #if CPU(ARM64E)
         if (Options::useJITCage())
-            return MatchResult(vmEntryToYarrJIT(input, start, length, nullptr, &matchingContext, retagCodePtr<YarrMatchOnly16BitPtrTag, YarrEntryPtrTag>(m_matchOnly16.code().executableAddress())));
+            return MatchResult(vmEntryToYarrJIT(input.data(), start, input.size(), nullptr, matchingContext, retagCodePtr<YarrMatchOnly16BitPtrTag, YarrEntryPtrTag>(m_matchOnly16.code().taggedPtr())));
 #endif
-        return MatchResult(untagCFunctionPtr<YarrJITCodeMatchOnly16, YarrMatchOnly16BitPtrTag>(m_matchOnly16.code().executableAddress())(input, start, length, nullptr, matchingContext));
+        return MatchResult(untagCFunctionPtr<YarrJITCodeMatchOnly16, YarrMatchOnly16BitPtrTag>(m_matchOnly16.code().taggedPtr())(input.data(), start, input.size(), nullptr, matchingContext));
     }
 
 #if ENABLE(REGEXP_TRACING)
@@ -299,7 +378,7 @@ public:
         if (!has8BitCodeMatchOnly())
             return 0;
 
-        return m_matchOnly8.code().executableAddress();
+        return m_matchOnly8.code().taggedPtr();
     }
 
     void *get16BitMatchOnlyAddr()
@@ -307,7 +386,7 @@ public:
         if (!has16BitCodeMatchOnly())
             return 0;
 
-        return m_matchOnly16.code().executableAddress();
+        return m_matchOnly16.code().taggedPtr();
     }
 
     void *get8BitMatchAddr()
@@ -315,7 +394,7 @@ public:
         if (!has8BitCode())
             return 0;
 
-        return m_ref8.code().executableAddress();
+        return m_ref8.code().taggedPtr();
     }
 
     void *get16BitMatchAddr()
@@ -323,7 +402,7 @@ public:
         if (!has16BitCode())
             return 0;
 
-        return m_ref16.code().executableAddress();
+        return m_ref16.code().taggedPtr();
     }
 #endif
 
@@ -338,34 +417,43 @@ public:
         m_ref16 = MacroAssemblerCodeRef<Yarr16BitPtrTag>();
         m_matchOnly8 = MacroAssemblerCodeRef<YarrMatchOnly8BitPtrTag>();
         m_matchOnly16 = MacroAssemblerCodeRef<YarrMatchOnly16BitPtrTag>();
-        m_maps.clear();
         m_failureReason = std::nullopt;
+        clearMaps();
     }
 
-    const BoyerMooreBitmap::Map::WordType* tryReuseBoyerMooreBitmap(const BoyerMooreBitmap::Map& map) const
-    {
-        for (auto& stored : m_maps) {
-            if (stored.get() == map)
-                return stored->storage();
-        }
-        return nullptr;
-    }
+    void dumpSimpleName(PrintStream&) const;
 
 private:
     MacroAssemblerCodeRef<Yarr8BitPtrTag> m_ref8;
     MacroAssemblerCodeRef<Yarr16BitPtrTag> m_ref16;
     MacroAssemblerCodeRef<YarrMatchOnly8BitPtrTag> m_matchOnly8;
     MacroAssemblerCodeRef<YarrMatchOnly16BitPtrTag> m_matchOnly16;
-    Vector<UniqueRef<BoyerMooreBitmap::Map>> m_maps;
+    InlineStats m_matchOnly8Stats;
+    InlineStats m_matchOnly16Stats;
+    RegExp* m_regExp { nullptr };
+
     bool m_usesPatternContextBuffer { false };
     std::optional<JITFailureReason> m_failureReason;
 };
 
 enum class JITCompileMode : uint8_t {
     MatchOnly,
-    IncludeSubpatterns
+    IncludeSubpatterns,
+    InlineTest
 };
-void jitCompile(YarrPattern&, String& patternString, CharSize, VM*, YarrCodeBlock& jitObject, JITCompileMode);
+void jitCompile(YarrPattern&, StringView patternString, CharSize, std::optional<StringView> sampleString, VM*, YarrCodeBlock& jitObject, JITCompileMode);
+
+#if ENABLE(YARR_JIT_REGEXP_TEST_INLINE)
+
+
+class YarrJITRegisters;
+
+void jitCompileInlinedTest(StackCheck*, StringView, OptionSet<Yarr::Flags>, CharSize, VM*, YarrBoyerMooreData&, CCallHelpers&, YarrJITRegisters&);
+#endif
+
+#if ENABLE(YARR_JIT_BACKREFERENCES_FOR_16BIT_EXPRS)
+MacroAssemblerCodeRef<JITThunkPtrTag> areCanonicallyEquivalentThunkGenerator(VM&);
+#endif
 
 } } // namespace JSC::Yarr
 

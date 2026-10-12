@@ -29,8 +29,9 @@
 #import "config.h"
 #import "ResourceLoader.h"
 
+#import "DocumentLoader.h"
 #import "FrameLoader.h"
-#import "FrameLoaderClient.h"
+#import "LocalFrameLoaderClient.h"
 #import <wtf/CompletionHandler.h>
 
 namespace WebCore {
@@ -39,7 +40,7 @@ void ResourceLoader::willCacheResponseAsync(ResourceHandle*, NSCachedURLResponse
 {
     if (m_options.sendLoadCallbacks == SendCallbackPolicy::DoNotSendCallbacks)
         return completionHandler(nullptr);
-    frameLoader()->client().willCacheResponse(documentLoader(), identifier(), response, WTFMove(completionHandler));
+    checkedFrameLoader()->client().willCacheResponse(protectedDocumentLoader().get(), identifier(), response, WTFMove(completionHandler));
 }
 
 }

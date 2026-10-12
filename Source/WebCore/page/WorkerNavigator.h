@@ -25,25 +25,38 @@
 
 #pragma once
 
+#include "JSDOMPromiseDeferredForward.h"
 #include "NavigatorBase.h"
 #include "Supplementable.h"
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
+class GPU;
+
 class WorkerNavigator final : public NavigatorBase, public Supplementable<WorkerNavigator> {
 public:
     static Ref<WorkerNavigator> create(ScriptExecutionContext& context, const String& userAgent, bool isOnline) { return adoptRef(*new WorkerNavigator(context, userAgent, isOnline)); }
 
+    virtual ~WorkerNavigator();
+
     const String& userAgent() const final;
     bool onLine() const final;
     void setIsOnline(bool isOnline) { m_isOnline = isOnline; }
+
+    void setAppBadge(std::optional<unsigned long long>, Ref<DeferredPromise>&&);
+    void clearAppBadge(Ref<DeferredPromise>&&);
+
+    GPU* gpu();
 
 private:
     explicit WorkerNavigator(ScriptExecutionContext&, const String&, bool isOnline);
 
     String m_userAgent;
     bool m_isOnline;
+#if HAVE(WEBGPU_IMPLEMENTATION)
+    RefPtr<GPU> m_gpuForWebGPU;
+#endif
 };
 
 } // namespace WebCore

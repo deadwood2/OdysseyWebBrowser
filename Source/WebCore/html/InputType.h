@@ -154,8 +154,8 @@ public:
         Type::Submit,
     };
 
-    static Ref<InputType> create(HTMLInputElement&, const AtomString&);
-    static Ref<InputType> createText(HTMLInputElement&);
+    static RefPtr<InputType> createIfDifferent(HTMLInputElement&, const AtomString&, InputType* currentInputType = nullptr);
+
     virtual ~InputType();
 
     void detachFromElement() { m_element = nullptr; }
@@ -163,6 +163,8 @@ public:
     static bool themeSupportsDataListUI(InputType*);
 
     virtual const AtomString& formControlType() const = 0;
+
+    bool isValidValue(const String&) const;
 
     // Type query functions.
 
@@ -174,6 +176,7 @@ public:
     // scattered code with special cases for various types.
 
     bool isCheckbox() const { return m_type == Type::Checkbox; }
+    bool isSwitch() const { return isCheckbox() && m_element && m_element->hasSwitchAttribute(); }
     bool isColorControl() const { return m_type == Type::Color; }
     bool isDateField() const { return m_type == Type::Date; }
     bool isDateTimeLocalField() const { return m_type == Type::DateTimeLocal; }
@@ -200,12 +203,18 @@ public:
     bool isCheckable() const { return checkableTypes.contains(m_type); }
     bool isSteppable() const { return steppableTypes.contains(m_type); }
     bool supportsValidation() const { return !nonValidatingTypes.contains(m_type); }
-    bool canHaveTypeSpecificValue() const { return isFileUpload(); }
+
+    Type type() const { return m_type; }
 
     bool isInteractiveContent() const;
-    bool supportLabels() const;
+    bool isLabelable() const;
     bool isEnumeratable() const;
-    bool needsShadowSubtree() const { return !nonShadowRootTypes.contains(m_type); }
+    bool needsShadowSubtree() const { return !nonShadowRootTypes.contains(m_type) || isSwitch(); }
+    bool hasCreatedShadowSubtree() const { return m_hasCreatedShadowSubtree; }
+
+#if ENABLE(TOUCH_EVENTS)
+    bool hasTouchEventHandler() const;
+#endif
 
     // Form value functions.
 
@@ -213,15 +222,15 @@ public:
     virtual FormControlState saveFormControlState() const;
     virtual void restoreFormControlState(const FormControlState&);
     virtual bool isFormDataAppendable() const;
-    virtual bool appendFormData(DOMFormData&, bool multipart) const;
+    virtual bool appendFormData(DOMFormData&) const;
 
     // DOM property functions.
 
-    virtual bool getTypeSpecificValue(String&); // Checked first, before internal storage or the value attribute.
     virtual String fallbackValue() const; // Checked last, if both internal storage and value attribute are missing.
     virtual String defaultValue() const; // Checked after even fallbackValue, only when the valueWithDefault function is called.
-    virtual double valueAsDate() const;
-    virtual ExceptionOr<void> setValueAsDate(double) const;
+    virtual WallTime valueAsDate() const;
+    virtual ExceptionOr<void> setValueAsDate(WallTime) const;
+    virtual WallTime accessibilityValueAsDate() const;
     virtual double valueAsDouble() const;
     virtual ExceptionOr<void> setValueAsDouble(double, TextFieldEventBehavior) const;
     virtual ExceptionOr<void> setValueAsDecimal(const Decimal&, TextFieldEventBehavior) const;
@@ -229,11 +238,11 @@ public:
     // Validation functions.
 
     virtual String validationMessage() const;
-    virtual bool typeMismatchFor(const String&) const;
+    virtual bool typeMismatchFor(const String&) const { return false; }
     virtual bool supportsRequired() const;
-    virtual bool valueMissing(const String&) const;
-    virtual bool hasBadInput() const;
-    virtual bool patternMismatch(const String&) const;
+    virtual bool valueMissing(const String&) const { return false; }
+    virtual bool hasBadInput() const { return false; }
+    virtual bool patternMismatch(const String&) const { return false; }
     bool rangeUnderflow(const String&) const;
     bool rangeOverflow(const String&) const;
     bool isInRange(const String&) const;
@@ -258,7 +267,7 @@ public:
 
     // Type check for the current input value. We do nothing for some types
     // though typeMismatchFor() does something for them because of value sanitization.
-    virtual bool typeMismatch() const;
+    virtual bool typeMismatch() const { return false; }
 
     // Return value of null string means "use the default value".
     // This function must be called only by HTMLInputElement::sanitizeValue().
@@ -266,13 +275,17 @@ public:
 
     // Event handlers.
 
-    virtual void handleClickEvent(MouseEvent&);
-    virtual void handleMouseDownEvent(MouseEvent&);
-    virtual void willDispatchClick(InputElementClickState&);
-    virtual void didDispatchClick(Event&, const InputElementClickState&);
-    virtual void handleDOMActivateEvent(Event&);
+    virtual void handleClickEvent(MouseEvent&) { }
+    virtual void handleMouseDownEvent(MouseEvent&) { }
+    virtual void handleMouseMoveEvent(MouseEvent&) { }
+    virtual void willDispatchClick(InputElementClickState&) { }
+    virtual void didDispatchClick(Event&, const InputElementClickState&) { }
+    virtual void handleDOMActivateEvent(Event&) { }
 
-    enum ShouldCallBaseEventHandler { No, Yes };
+    virtual bool allowsShowPickerAcrossFrames();
+    virtual void showPicker();
+
+    enum ShouldCallBaseEventHandler : bool { No, Yes };
     virtual ShouldCallBaseEventHandler handleKeydownEvent(KeyboardEvent&);
 
     virtual void handleKeypressEvent(KeyboardEvent&);
@@ -281,7 +294,7 @@ public:
     virtual void forwardEvent(Event&);
 
 #if ENABLE(TOUCH_EVENTS)
-    virtual void handleTouchEvent(TouchEvent&);
+    virtual void handleTouchEvent(TouchEvent&) { }
 #endif
 
     // Helpers for event handlers.
@@ -300,20 +313,16 @@ public:
 
     virtual void elementDidBlur() { }
 
-#if ENABLE(TOUCH_EVENTS)
-    virtual bool hasTouchEventHandler() const;
-#endif
-
     // Shadow tree handling.
 
-    virtual void createShadowSubtreeAndUpdateInnerTextElementEditability(ContainerNode::ChildChange::Source, bool);
-    virtual void destroyShadowSubtree();
+    void createShadowSubtreeIfNeeded();
+    virtual void createShadowSubtree();
+    virtual void removeShadowSubtree();
 
     virtual HTMLElement* containerElement() const { return nullptr; }
     virtual HTMLElement* innerBlockElement() const { return nullptr; }
     virtual RefPtr<TextControlInnerTextElement> innerTextElement() const;
     virtual HTMLElement* innerSpinButtonElement() const { return nullptr; }
-    virtual HTMLElement* capsLockIndicatorElement() const { return nullptr; }
     virtual HTMLElement* autoFillButtonElement() const { return nullptr; }
     virtual HTMLElement* resultsButtonElement() const { return nullptr; }
     virtual HTMLElement* cancelButtonElement() const { return nullptr; }
@@ -323,6 +332,7 @@ public:
 #if ENABLE(DATALIST_ELEMENT)
     virtual HTMLElement* dataListButtonElement() const { return nullptr; }
 #endif
+    RefPtr<TextControlInnerTextElement> innerTextElementCreatingShadowSubtreeIfNeeded();
 
     // Miscellaneous functions.
 
@@ -332,13 +342,10 @@ public:
     virtual void attach();
     virtual void detach();
     virtual bool shouldRespectAlignAttribute();
-    virtual FileList* files();
-    virtual void setFiles(RefPtr<FileList>&&, WasSetByJavaScript);
     virtual Icon* icon() const;
     virtual bool shouldSendChangeEventAfterCheckedChanged();
-    virtual bool canSetValue(const String&);
     virtual bool storesValueSeparateFromAttribute();
-    virtual void setValue(const String&, bool valueChanged, TextFieldEventBehavior);
+    virtual void setValue(const String&, bool valueChanged, TextFieldEventBehavior, TextControlSetValueSelection);
     virtual bool shouldResetOnDocumentActivation();
     virtual bool shouldRespectListAttribute();
     virtual bool shouldRespectHeightAndWidthAttributes();
@@ -354,15 +361,13 @@ public:
     virtual void updateAutoFillButton();
     virtual String defaultToolTip() const;
     virtual bool matchesIndeterminatePseudoClass() const;
-    virtual bool shouldAppearIndeterminate() const;
     virtual bool isPresentingAttachedView() const;
     virtual bool supportsSelectionAPI() const;
-    virtual Color valueAsColor() const;
-    virtual void selectColor(StringView);
-    virtual Vector<Color> suggestedColors() const;
+    virtual bool dirAutoUsesValue() const;
 #if ENABLE(DATALIST_ELEMENT)
     virtual bool isFocusingWithDataListDropdown() const { return false; };
 #endif
+    virtual void willUpdateCheckedness(bool /*nowChecked*/, WasSetByJavaScript) { }
 
     // Parses the specified string for the type, and return
     // the Decimal value for the parsing result if the parsing
@@ -400,32 +405,33 @@ public:
     virtual String resultForDialogSubmit() const;
 
 protected:
-    explicit InputType(Type type, HTMLInputElement& element)
+    InputType(Type type, HTMLInputElement& element)
         : m_type(type)
-        , m_element(makeWeakPtr(element)) { }
+        , m_element(element)
+    {
+    }
+
     HTMLInputElement* element() const { return m_element.get(); }
+    RefPtr<HTMLInputElement> protectedElement() const { return m_element.get(); }
     Chrome* chrome() const;
     Decimal parseToNumberOrNaN(const String&) const;
+
+    // Derive the step base, following the HTML algorithm steps.
+    Decimal findStepBase(const Decimal&) const;
 
 private:
     // Helper for stepUp()/stepDown(). Adds step value * count to the current value.
     ExceptionOr<void> applyStep(int count, AnyStepHandling, TextFieldEventBehavior);
 
     const Type m_type;
+    bool m_hasCreatedShadowSubtree { false };
     // m_element is null if this InputType is no longer associated with an element (either the element died or changed input type).
-    WeakPtr<HTMLInputElement> m_element;
+    WeakPtr<HTMLInputElement, WeakPtrImplWithEventTargetData> m_element;
 };
-
-template<typename DowncastedType>
-ALWAYS_INLINE bool isInvalidInputType(const InputType& baseInputType, const String& value)
-{
-    auto& inputType = static_cast<const DowncastedType&>(baseInputType);
-    return inputType.typeMismatch() || inputType.stepMismatch(value) || inputType.rangeUnderflow(value) || inputType.rangeOverflow(value) || inputType.patternMismatch(value) || inputType.valueMissing(value) || inputType.hasBadInput();
-}
 
 } // namespace WebCore
 
-#define SPECIALIZE_TYPE_TRAITS_INPUT_TYPE(ToValueTypeName, predicate) \
+#define SPECIALIZE_TYPE_TRAITS_INPUT_TYPE(ToValueTypeName, TypeEnumValue) \
 SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::ToValueTypeName) \
-static bool isType(const WebCore::InputType& input) { return input.predicate; } \
+static bool isType(const WebCore::InputType& input) { return input.type() == WebCore::InputType::TypeEnumValue; } \
 SPECIALIZE_TYPE_TRAITS_END()

@@ -27,6 +27,7 @@
 
 #if ENABLE(VIDEO)
 
+#include "ContextDestructionObserver.h"
 #include "Event.h"
 #include "EventTarget.h"
 #include "MediaControllerInterface.h"
@@ -41,8 +42,12 @@ namespace WebCore {
 
 class HTMLMediaElement;
 
-class MediaController final : public RefCounted<MediaController>, public MediaControllerInterface, public EventTargetWithInlineData {
-    WTF_MAKE_ISO_ALLOCATED(MediaController);
+class MediaController final
+    : public RefCounted<MediaController>
+    , public MediaControllerInterface
+    , public ContextDestructionObserver
+    , public EventTarget {
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(MediaController);
 public:
     static Ref<MediaController> create(ScriptExecutionContext&);
     virtual ~MediaController();
@@ -94,14 +99,11 @@ private:
 
     void refEventTarget() final { ref(); }
     void derefEventTarget() final { deref(); }
-    EventTargetInterface eventTargetInterface() const final { return MediaControllerEventTargetInterfaceType; }
-    ScriptExecutionContext* scriptExecutionContext() const final { return &m_scriptExecutionContext; };
+    enum EventTargetInterfaceType eventTargetInterface() const final { return EventTargetInterfaceType::MediaController; }
+    ScriptExecutionContext* scriptExecutionContext() const final { return ContextDestructionObserver::scriptExecutionContext(); };
 
     void addMediaElement(HTMLMediaElement&);
     void removeMediaElement(HTMLMediaElement&);
-    bool containsMediaElement(HTMLMediaElement&) const;
-
-    const String& mediaGroup() const { return m_mediaGroup; }
 
     bool supportsFullscreen(HTMLMediaElementEnums::VideoFullscreenMode) const final { return false; }
     bool isFullscreen() const final { return false; }
@@ -144,10 +146,8 @@ private:
     Vector<Ref<Event>> m_pendingEvents;
     Timer m_asyncEventTimer;
     mutable Timer m_clearPositionTimer;
-    String m_mediaGroup;
     bool m_closedCaptionsVisible;
     std::unique_ptr<PAL::Clock> m_clock;
-    ScriptExecutionContext& m_scriptExecutionContext;
     Timer m_timeupdateTimer;
     MonotonicTime m_previousTimeupdateTime;
     bool m_resetCurrentTimeInNextPlay { false };

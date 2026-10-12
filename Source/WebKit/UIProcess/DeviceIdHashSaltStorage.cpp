@@ -34,6 +34,8 @@
 #include <wtf/FileSystem.h>
 #include <wtf/HexNumber.h>
 #include <wtf/RunLoop.h>
+#include <wtf/StdLibExtras.h>
+#include <wtf/text/MakeString.h>
 #include <wtf/text/StringBuilder.h>
 #include <wtf/text/StringHash.h>
 
@@ -67,7 +69,7 @@ void DeviceIdHashSaltStorage::completePendingHandler(CompletionHandler<void(Hash
 }
 
 DeviceIdHashSaltStorage::DeviceIdHashSaltStorage(const String& deviceIdHashSaltStorageDirectory)
-    : m_queue(WorkQueue::create("com.apple.WebKit.DeviceIdHashSaltStorage"))
+    : m_queue(WorkQueue::create("com.apple.WebKit.DeviceIdHashSaltStorage"_s))
     , m_deviceIdHashSaltStorageDirectory(!deviceIdHashSaltStorageDirectory.isEmpty() ? FileSystem::pathByAppendingComponent(deviceIdHashSaltStorageDirectory, String::number(deviceIdHashSaltStorageVersion)) : String())
 {
     if (m_deviceIdHashSaltStorageDirectory.isEmpty()) {
@@ -75,7 +77,7 @@ DeviceIdHashSaltStorage::DeviceIdHashSaltStorage(const String& deviceIdHashSaltS
         return;
     }
 
-    loadStorageFromDisk([this, protectedThis = makeRef(*this)] (auto&& deviceIdHashSaltForOrigins) {
+    loadStorageFromDisk([this, protectedThis = Ref { *this }] (auto&& deviceIdHashSaltForOrigins) {
         ASSERT(RunLoop::isMain());
         m_deviceIdHashSaltForOrigins = WTFMove(deviceIdHashSaltForOrigins);
         m_isLoaded = true;
@@ -88,12 +90,14 @@ DeviceIdHashSaltStorage::DeviceIdHashSaltStorage(const String& deviceIdHashSaltS
 
 DeviceIdHashSaltStorage::~DeviceIdHashSaltStorage()
 {
+    m_isClosed = true;
+
     auto pendingCompletionHandlers = WTFMove(m_pendingCompletionHandlers);
     for (auto& completionHandler : pendingCompletionHandlers)
         completionHandler();
 }
 
-static std::optional<SecurityOriginData> getSecurityOriginData(const char* name, KeyedDecoder* decoder)
+static std::optional<SecurityOriginData> getSecurityOriginData(ASCIILiteral name, KeyedDecoder* decoder)
 {
     String origin;
 
@@ -109,7 +113,7 @@ static std::optional<SecurityOriginData> getSecurityOriginData(const char* name,
 
 void DeviceIdHashSaltStorage::loadStorageFromDisk(CompletionHandler<void(HashMap<String, std::unique_ptr<HashSaltForOrigin>>&&)>&& completionHandler)
 {
-    m_queue->dispatch([this, protectedThis = makeRef(*this), completionHandler = WTFMove(completionHandler)]() mutable {
+    m_queue->dispatch([this, protectedThis = Ref { *this }, completionHandler = WTFMove(completionHandler)]() mutable {
         ASSERT(!RunLoop::isMain());
 
         FileSystem::makeAllDirectories(m_deviceIdHashSaltStorageDirectory);
@@ -137,11 +141,11 @@ void DeviceIdHashSaltStorage::loadStorageFromDisk(CompletionHandler<void(HashMap
             }
 
             auto hashSaltForOrigin = getDataFromDecoder(decoder.get(), WTFMove(deviceIdHashSalt));
+            if (!hashSaltForOrigin)
+                continue;
 
             auto origins = makeString(hashSaltForOrigin->documentOrigin.toString(), hashSaltForOrigin->parentOrigin.toString());
-            auto deviceIdHashSaltForOrigin = deviceIdHashSaltForOrigins.ensure(origins, [hashSaltForOrigin = WTFMove(hashSaltForOrigin)] () mutable {
-                return WTFMove(hashSaltForOrigin);
-            });
+            auto deviceIdHashSaltForOrigin = deviceIdHashSaltForOrigins.add(origins, WTFMove(hashSaltForOrigin));
 
             if (!deviceIdHashSaltForOrigin.isNewEntry)
                 RELEASE_LOG_ERROR(DiskPersistency, "DeviceIdHashSaltStorage: There are two files with different hash salts for the same origin: '%s'", originPath.utf8().data());
@@ -155,20 +159,20 @@ void DeviceIdHashSaltStorage::loadStorageFromDisk(CompletionHandler<void(HashMap
 
 std::unique_ptr<DeviceIdHashSaltStorage::HashSaltForOrigin> DeviceIdHashSaltStorage::getDataFromDecoder(KeyedDecoder* decoder, String&& deviceIdHashSalt) const
 {
-    auto securityOriginData = getSecurityOriginData("origin", decoder);
+    auto securityOriginData = getSecurityOriginData("origin"_s, decoder);
     if (!securityOriginData) {
         RELEASE_LOG_ERROR(DiskPersistency, "DeviceIdHashSaltStorage: The security origin data in the file is not correct: '%s'", deviceIdHashSalt.utf8().data());
         return nullptr;
     }
 
-    auto parentSecurityOriginData = getSecurityOriginData("parentOrigin", decoder);
+    auto parentSecurityOriginData = getSecurityOriginData("parentOrigin"_s, decoder);
     if (!parentSecurityOriginData) {
         RELEASE_LOG_ERROR(DiskPersistency, "DeviceIdHashSaltStorage: The parent security origin data in the file is not correct: '%s'", deviceIdHashSalt.utf8().data());
         return nullptr;
     }
 
     double lastTimeUsed;
-    if (!decoder->decodeDouble("lastTimeUsed", lastTimeUsed)) {
+    if (!decoder->decodeDouble("lastTimeUsed"_s, lastTimeUsed)) {
         RELEASE_LOG_ERROR(DiskPersistency, "DeviceIdHashSaltStorage: The last time used was not correctly restored for: '%s'", deviceIdHashSalt.utf8().data());
         return nullptr;
     }
@@ -183,9 +187,9 @@ std::unique_ptr<DeviceIdHashSaltStorage::HashSaltForOrigin> DeviceIdHashSaltStor
 std::unique_ptr<KeyedEncoder> DeviceIdHashSaltStorage::createEncoderFromData(const HashSaltForOrigin& hashSaltForOrigin) const
 {
     auto encoder = KeyedEncoder::encoder();
-    encoder->encodeString("origin", hashSaltForOrigin.documentOrigin.databaseIdentifier());
-    encoder->encodeString("parentOrigin", hashSaltForOrigin.parentOrigin.databaseIdentifier());
-    encoder->encodeDouble("lastTimeUsed", hashSaltForOrigin.lastTimeUsed.secondsSinceEpoch().value());
+    encoder->encodeString("origin"_s, hashSaltForOrigin.documentOrigin.databaseIdentifier());
+    encoder->encodeString("parentOrigin"_s, hashSaltForOrigin.parentOrigin.databaseIdentifier());
+    encoder->encodeDouble("lastTimeUsed"_s, hashSaltForOrigin.lastTimeUsed.secondsSinceEpoch().value());
     return encoder;
 }
 
@@ -194,7 +198,7 @@ void DeviceIdHashSaltStorage::storeHashSaltToDisk(const HashSaltForOrigin& hashS
     if (m_deviceIdHashSaltStorageDirectory.isEmpty())
         return;
 
-    m_queue->dispatch([this, protectedThis = makeRef(*this), hashSaltForOrigin = hashSaltForOrigin.isolatedCopy()]() mutable {
+    m_queue->dispatch([this, protectedThis = Ref { *this }, hashSaltForOrigin = hashSaltForOrigin.isolatedCopy()]() mutable {
         auto encoder = createEncoderFromData(hashSaltForOrigin);
         writeToDisk(WTFMove(encoder), FileSystem::pathByAppendingComponent(m_deviceIdHashSaltStorageDirectory, hashSaltForOrigin.deviceIdHashSalt));
     });
@@ -203,14 +207,14 @@ void DeviceIdHashSaltStorage::storeHashSaltToDisk(const HashSaltForOrigin& hashS
 void DeviceIdHashSaltStorage::completeDeviceIdHashSaltForOriginCall(SecurityOriginData&& documentOrigin, SecurityOriginData&& parentOrigin, CompletionHandler<void(String&&)>&& completionHandler)
 {
     auto origins = makeString(documentOrigin.toString(), parentOrigin.toString());
-    auto& deviceIdHashSalt = m_deviceIdHashSaltForOrigins.ensure(origins, [documentOrigin = WTFMove(documentOrigin), parentOrigin = WTFMove(parentOrigin)] () mutable {
-        uint64_t randomData[randomDataSize];
-        cryptographicallyRandomValues(reinterpret_cast<unsigned char*>(randomData), sizeof(randomData));
+    auto& deviceIdHashSalt = m_deviceIdHashSaltForOrigins.ensure(origins, [&] {
+        std::array<uint64_t, randomDataSize> randomData;
+        cryptographicallyRandomValues(asWritableBytes(std::span<uint64_t> { randomData }));
 
         StringBuilder builder;
         builder.reserveCapacity(hashSaltSize);
-        for (unsigned i = 0; i < randomDataSize; i++)
-            builder.append(hex(randomData[i]));
+        for (uint64_t number : randomData)
+            builder.append(hex(number));
 
         String deviceIdHashSalt = builder.toString();
 
@@ -256,10 +260,10 @@ void DeviceIdHashSaltStorage::getDeviceIdHashSaltOrigins(CompletionHandler<void(
 
 void DeviceIdHashSaltStorage::deleteHashSaltFromDisk(const HashSaltForOrigin& hashSaltForOrigin)
 {
-    m_queue->dispatch([this, protectedThis = makeRef(*this), deviceIdHashSalt = hashSaltForOrigin.deviceIdHashSalt.isolatedCopy()]() mutable {
+    m_queue->dispatch([this, protectedThis = Ref { *this }, deviceIdHashSalt = hashSaltForOrigin.deviceIdHashSalt.isolatedCopy()]() mutable {
         ASSERT(!RunLoop::isMain());
 
-        String fileFullPath = FileSystem::pathByAppendingComponent(m_deviceIdHashSaltStorageDirectory, deviceIdHashSalt.utf8().data());
+        String fileFullPath = FileSystem::pathByAppendingComponent(m_deviceIdHashSaltStorageDirectory, deviceIdHashSalt);
         FileSystem::deleteFile(fileFullPath);
     });
 }
@@ -267,6 +271,16 @@ void DeviceIdHashSaltStorage::deleteHashSaltFromDisk(const HashSaltForOrigin& ha
 void DeviceIdHashSaltStorage::deleteDeviceIdHashSaltForOrigins(const Vector<SecurityOriginData>& origins, CompletionHandler<void()>&& completionHandler)
 {
     ASSERT(RunLoop::isMain());
+
+    if (!m_isLoaded) {
+        m_pendingCompletionHandlers.append([this, origins, completionHandler = WTFMove(completionHandler)]() mutable {
+            if (m_isClosed)
+                return completionHandler();
+
+            deleteDeviceIdHashSaltForOrigins(origins, WTFMove(completionHandler));
+        });
+        return;
+    }
 
     m_deviceIdHashSaltForOrigins.removeIf([this, &origins](auto& keyAndValue) {
         bool needsRemoval = origins.contains(keyAndValue.value->documentOrigin) || origins.contains(keyAndValue.value->parentOrigin);
@@ -283,6 +297,16 @@ void DeviceIdHashSaltStorage::deleteDeviceIdHashSaltForOrigins(const Vector<Secu
 void DeviceIdHashSaltStorage::deleteDeviceIdHashSaltOriginsModifiedSince(WallTime time, CompletionHandler<void()>&& completionHandler)
 {
     ASSERT(RunLoop::isMain());
+
+    if (!m_isLoaded) {
+        m_pendingCompletionHandlers.append([this, time, completionHandler = WTFMove(completionHandler)]() mutable {
+            if (m_isClosed)
+                return completionHandler();
+
+            deleteDeviceIdHashSaltOriginsModifiedSince(time, WTFMove(completionHandler));
+        });
+        return;
+    }
 
     m_deviceIdHashSaltForOrigins.removeIf([this, time](auto& keyAndValue) {
         bool needsRemoval = keyAndValue.value->lastTimeUsed > time;

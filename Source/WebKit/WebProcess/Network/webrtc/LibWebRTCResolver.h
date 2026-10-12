@@ -27,11 +27,22 @@
 
 #if USE(LIBWEBRTC)
 
+#include "LibWebRTCDnsResolverFactory.h"
 #include "LibWebRTCResolverIdentifier.h"
 #include <WebCore/LibWebRTCMacros.h>
-#include <webrtc/api/packet_socket_factory.h>
-#include <webrtc/rtc_base/async_resolver_interface.h>
+#include <wtf/Identified.h>
+#include <wtf/TZoneMalloc.h>
 #include <wtf/Vector.h>
+#include <wtf/WeakPtr.h>
+
+namespace WebKit {
+class LibWebRTCResolver;
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebKit::LibWebRTCResolver> : std::true_type { };
+}
 
 namespace IPC {
 class Connection;
@@ -40,37 +51,34 @@ class Connection;
 namespace WebKit {
 class LibWebRTCSocketFactory;
 
-class LibWebRTCResolver final : public rtc::AsyncResolverInterface {
-    WTF_MAKE_FAST_ALLOCATED;
+class LibWebRTCResolver final : public LibWebRTCDnsResolverFactory::Resolver, private webrtc::AsyncDnsResolverResult, public CanMakeWeakPtr<LibWebRTCResolver>, public Identified<LibWebRTCResolverIdentifier> {
+    WTF_MAKE_TZONE_ALLOCATED(LibWebRTCResolver);
 public:
-    LibWebRTCResolver() : m_identifier(LibWebRTCResolverIdentifier::generate()) { }
+    LibWebRTCResolver() = default;
+    ~LibWebRTCResolver();
 
-    bool isResolving() const { return m_isResolving; }
-    LibWebRTCResolverIdentifier identifier() const { return m_identifier; }
+    void start(const rtc::SocketAddress&, Function<void()>&&) final;
 
 private:
     friend class WebRTCResolver;
 
-    // AsyncResolverInterface API.
-    void Start(const rtc::SocketAddress&) final;
-    bool GetResolvedAddress(int, rtc::SocketAddress*) const final;
-    int GetError() const final { return m_error; }
-    void Destroy(bool) final;
+    // webrtc::AsyncDnsResolverInterface
+    const webrtc::AsyncDnsResolverResult& result() const final;
 
-    void doDestroy();
+    // webrtc::AsyncDnsResolverResult
+    bool GetResolvedAddress(int family, rtc::SocketAddress*) const final;
+    int GetError() const { return m_error; }
+
     void setError(int);
-    void setResolvedAddress(const Vector<rtc::IPAddress>&);
+    void setResolvedAddress(Vector<rtc::IPAddress>&&);
 
     static void sendOnMainThread(Function<void(IPC::Connection&)>&&);
 
-    LibWebRTCResolverIdentifier m_identifier;
     Vector<rtc::IPAddress> m_addresses;
     rtc::SocketAddress m_addressToResolve;
+    Function<void()> m_callback;
     int m_error { 0 };
     uint16_t m_port { 0 };
-    bool m_isResolving { false };
-    bool m_isProvidingResults { false };
-    bool m_shouldDestroy { false };
 };
 
 } // namespace WebKit

@@ -17,6 +17,7 @@
 #include "libANGLE/renderer/copyvertex.h"
 #include "libANGLE/renderer/d3d/d3d11/Renderer11.h"
 #include "libANGLE/renderer/d3d/d3d11/renderer11_utils.h"
+#include "libANGLE/renderer/d3d/d3d11/texture_format_table.h"
 #include "libANGLE/renderer/dxgi_support_table.h"
 
 namespace rx
@@ -30,6 +31,69 @@ bool SupportsMipGen(DXGI_FORMAT dxgiFormat, D3D_FEATURE_LEVEL featureLevel)
     const auto &support = GetDXGISupport(dxgiFormat, featureLevel);
     ASSERT((support.optionallySupportedFlags & D3D11_FORMAT_SUPPORT_MIP_AUTOGEN) == 0);
     return ((support.alwaysSupportedFlags & D3D11_FORMAT_SUPPORT_MIP_AUTOGEN) != 0);
+}
+
+bool IsSupportedMultiplanarFormat(DXGI_FORMAT dxgiFormat)
+{
+    return dxgiFormat == DXGI_FORMAT_NV12 || dxgiFormat == DXGI_FORMAT_P010 ||
+           dxgiFormat == DXGI_FORMAT_P016;
+}
+
+const Format &GetYUVPlaneFormat(DXGI_FORMAT dxgiFormat, int plane)
+{
+    static constexpr Format nv12Plane0Info(
+        GL_R8, angle::FormatID::R8_UNORM, DXGI_FORMAT_NV12, DXGI_FORMAT_R8_UNORM,
+        DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_R8_UNORM, DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_R8_UNORM,
+        DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_R8_TYPELESS, GL_RGBA8, nullptr);
+
+    static constexpr Format nv12Plane1Info(
+        GL_RG8, angle::FormatID::R8G8_UNORM, DXGI_FORMAT_NV12, DXGI_FORMAT_R8G8_UNORM,
+        DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_R8G8_UNORM, DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_R8G8_UNORM,
+        DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_R8G8_TYPELESS, GL_RGBA8, nullptr);
+
+    static constexpr Format p010Plane0Info(
+        GL_R16_EXT, angle::FormatID::R16_UNORM, DXGI_FORMAT_P010, DXGI_FORMAT_R16_UNORM,
+        DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_R16_UNORM, DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_R16_UNORM,
+        DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_R16_TYPELESS, GL_RGBA16_EXT, nullptr);
+
+    static constexpr Format p010Plane1Info(
+        GL_RG16_EXT, angle::FormatID::R16G16_UNORM, DXGI_FORMAT_P010, DXGI_FORMAT_R16G16_UNORM,
+        DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_R16G16_UNORM, DXGI_FORMAT_UNKNOWN,
+        DXGI_FORMAT_R16G16_UNORM, DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_UNKNOWN,
+        DXGI_FORMAT_R16G16_TYPELESS, GL_RGBA16_EXT, nullptr);
+
+    static constexpr Format p016Plane0Info(
+        GL_R16_EXT, angle::FormatID::R16_UNORM, DXGI_FORMAT_P016, DXGI_FORMAT_R16_UNORM,
+        DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_R16_UNORM, DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_R16_UNORM,
+        DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_R16_TYPELESS, GL_RGBA16_EXT, nullptr);
+
+    static constexpr Format p016Plane1Info(
+        GL_RG16_EXT, angle::FormatID::R16G16_UNORM, DXGI_FORMAT_P016, DXGI_FORMAT_R16G16_UNORM,
+        DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_R16G16_UNORM, DXGI_FORMAT_UNKNOWN,
+        DXGI_FORMAT_R16G16_UNORM, DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_UNKNOWN,
+        DXGI_FORMAT_R16G16_TYPELESS, GL_RGBA16_EXT, nullptr);
+
+    ASSERT(IsSupportedMultiplanarFormat(dxgiFormat));
+    if (plane < 0 || plane > 1)
+    {
+        ERR() << "Invalid client buffer texture plane: " << plane;
+        static constexpr Format defaultInfo;
+        return defaultInfo;
+    }
+
+    switch (dxgiFormat)
+    {
+        case DXGI_FORMAT_NV12:
+            return plane == 0 ? nv12Plane0Info : nv12Plane1Info;
+        case DXGI_FORMAT_P010:
+            return plane == 0 ? p010Plane0Info : p010Plane1Info;
+        case DXGI_FORMAT_P016:
+            return plane == 0 ? p016Plane0Info : p016Plane1Info;
+        default:
+            ERR() << "Not supported multiplanar format: " << dxgiFormat;
+    }
+    static constexpr Format defaultInfo;
+    return defaultInfo;
 }
 
 DXGIFormatSize::DXGIFormatSize(GLuint pixelBits, GLuint blockWidth, GLuint blockHeight)
@@ -322,26 +386,30 @@ const VertexFormat *GetVertexFormatInfo_FL_9_3(angle::FormatID vertexFormatID)
         // GL_UNSIGNED_SHORT -- un-normalized
         case angle::FormatID::R16_USCALED:
         {
-            static constexpr VertexFormat info(VERTEX_CONVERT_CPU, DXGI_FORMAT_R32G32_FLOAT,
-                                               &CopyTo32FVertexData<GLushort, 1, 2, false>);
+            static constexpr VertexFormat info(
+                VERTEX_CONVERT_CPU, DXGI_FORMAT_R32G32_FLOAT,
+                &CopyToFloatVertexData<GLushort, 1, 2, false, false>);
             return &info;
         }
         case angle::FormatID::R16G16_USCALED:
         {
-            static constexpr VertexFormat info(VERTEX_CONVERT_CPU, DXGI_FORMAT_R32G32_FLOAT,
-                                               &CopyTo32FVertexData<GLushort, 2, 2, false>);
+            static constexpr VertexFormat info(
+                VERTEX_CONVERT_CPU, DXGI_FORMAT_R32G32_FLOAT,
+                &CopyToFloatVertexData<GLushort, 2, 2, false, false>);
             return &info;
         }
         case angle::FormatID::R16G16B16_USCALED:
         {
-            static constexpr VertexFormat info(VERTEX_CONVERT_CPU, DXGI_FORMAT_R32G32B32_FLOAT,
-                                               &CopyTo32FVertexData<GLushort, 3, 3, false>);
+            static constexpr VertexFormat info(
+                VERTEX_CONVERT_CPU, DXGI_FORMAT_R32G32B32_FLOAT,
+                &CopyToFloatVertexData<GLushort, 3, 3, false, false>);
             return &info;
         }
         case angle::FormatID::R16G16B16A16_USCALED:
         {
-            static constexpr VertexFormat info(VERTEX_CONVERT_CPU, DXGI_FORMAT_R32G32B32A32_FLOAT,
-                                               &CopyTo32FVertexData<GLushort, 4, 4, false>);
+            static constexpr VertexFormat info(
+                VERTEX_CONVERT_CPU, DXGI_FORMAT_R32G32B32A32_FLOAT,
+                &CopyToFloatVertexData<GLushort, 4, 4, false, false>);
             return &info;
         }
 
@@ -349,25 +417,25 @@ const VertexFormat *GetVertexFormatInfo_FL_9_3(angle::FormatID vertexFormatID)
         case angle::FormatID::R16_UNORM:
         {
             static constexpr VertexFormat info(VERTEX_CONVERT_CPU, DXGI_FORMAT_R32G32_FLOAT,
-                                               &CopyTo32FVertexData<GLushort, 1, 2, true>);
+                                               &CopyToFloatVertexData<GLushort, 1, 2, true, false>);
             return &info;
         }
         case angle::FormatID::R16G16_UNORM:
         {
             static constexpr VertexFormat info(VERTEX_CONVERT_CPU, DXGI_FORMAT_R32G32_FLOAT,
-                                               &CopyTo32FVertexData<GLushort, 2, 2, true>);
+                                               &CopyToFloatVertexData<GLushort, 2, 2, true, false>);
             return &info;
         }
         case angle::FormatID::R16G16B16_UNORM:
         {
             static constexpr VertexFormat info(VERTEX_CONVERT_CPU, DXGI_FORMAT_R32G32B32_FLOAT,
-                                               &CopyTo32FVertexData<GLushort, 3, 3, true>);
+                                               &CopyToFloatVertexData<GLushort, 3, 3, true, false>);
             return &info;
         }
         case angle::FormatID::R16G16B16A16_UNORM:
         {
             static constexpr VertexFormat info(VERTEX_CONVERT_CPU, DXGI_FORMAT_R32G32B32A32_FLOAT,
-                                               &CopyTo32FVertexData<GLushort, 4, 4, true>);
+                                               &CopyToFloatVertexData<GLushort, 4, 4, true, false>);
             return &info;
         }
 
@@ -652,25 +720,25 @@ const VertexFormat &GetVertexFormatInfo(angle::FormatID vertexFormatID,
         case angle::FormatID::R32_SNORM:
         {
             static constexpr VertexFormat info(VERTEX_CONVERT_CPU, DXGI_FORMAT_R32_FLOAT,
-                                               &CopyTo32FVertexData<GLint, 1, 1, true>);
+                                               &CopyToFloatVertexData<GLint, 1, 1, true, false>);
             return info;
         }
         case angle::FormatID::R32G32_SNORM:
         {
             static constexpr VertexFormat info(VERTEX_CONVERT_CPU, DXGI_FORMAT_R32G32_FLOAT,
-                                               &CopyTo32FVertexData<GLint, 2, 2, true>);
+                                               &CopyToFloatVertexData<GLint, 2, 2, true, false>);
             return info;
         }
         case angle::FormatID::R32G32B32_SNORM:
         {
             static constexpr VertexFormat info(VERTEX_CONVERT_CPU, DXGI_FORMAT_R32G32B32_FLOAT,
-                                               &CopyTo32FVertexData<GLint, 3, 3, true>);
+                                               &CopyToFloatVertexData<GLint, 3, 3, true, false>);
             return info;
         }
         case angle::FormatID::R32G32B32A32_SNORM:
         {
             static constexpr VertexFormat info(VERTEX_CONVERT_CPU, DXGI_FORMAT_R32G32B32A32_FLOAT,
-                                               &CopyTo32FVertexData<GLint, 4, 4, true>);
+                                               &CopyToFloatVertexData<GLint, 4, 4, true, false>);
             return info;
         }
 
@@ -704,25 +772,25 @@ const VertexFormat &GetVertexFormatInfo(angle::FormatID vertexFormatID,
         case angle::FormatID::R32_UNORM:
         {
             static constexpr VertexFormat info(VERTEX_CONVERT_CPU, DXGI_FORMAT_R32_FLOAT,
-                                               &CopyTo32FVertexData<GLuint, 1, 1, true>);
+                                               &CopyToFloatVertexData<GLuint, 1, 1, true, false>);
             return info;
         }
         case angle::FormatID::R32G32_UNORM:
         {
             static constexpr VertexFormat info(VERTEX_CONVERT_CPU, DXGI_FORMAT_R32G32_FLOAT,
-                                               &CopyTo32FVertexData<GLuint, 2, 2, true>);
+                                               &CopyToFloatVertexData<GLuint, 2, 2, true, false>);
             return info;
         }
         case angle::FormatID::R32G32B32_UNORM:
         {
             static constexpr VertexFormat info(VERTEX_CONVERT_CPU, DXGI_FORMAT_R32G32B32_FLOAT,
-                                               &CopyTo32FVertexData<GLuint, 3, 3, true>);
+                                               &CopyToFloatVertexData<GLuint, 3, 3, true, false>);
             return info;
         }
         case angle::FormatID::R32G32B32A32_UNORM:
         {
             static constexpr VertexFormat info(VERTEX_CONVERT_CPU, DXGI_FORMAT_R32G32B32A32_FLOAT,
-                                               &CopyTo32FVertexData<GLuint, 4, 4, true>);
+                                               &CopyToFloatVertexData<GLuint, 4, 4, true, false>);
             return info;
         }
 
@@ -807,22 +875,25 @@ const VertexFormat &GetVertexFormatInfo(angle::FormatID vertexFormatID,
         // GL_INT_2_10_10_10_REV
         case angle::FormatID::R10G10B10A2_SSCALED:
         {
-            static constexpr VertexFormat info(VERTEX_CONVERT_CPU, DXGI_FORMAT_R32G32B32A32_FLOAT,
-                                               &CopyXYZ10W2ToXYZW32FVertexData<true, false, true>);
+            static constexpr VertexFormat info(
+                VERTEX_CONVERT_CPU, DXGI_FORMAT_R32G32B32A32_FLOAT,
+                &CopyXYZ10W2ToXYZWFloatVertexData<true, false, true, false>);
             return info;
         }
         case angle::FormatID::R10G10B10A2_SNORM:
         {
-            static constexpr VertexFormat info(VERTEX_CONVERT_CPU, DXGI_FORMAT_R32G32B32A32_FLOAT,
-                                               &CopyXYZ10W2ToXYZW32FVertexData<true, true, true>);
+            static constexpr VertexFormat info(
+                VERTEX_CONVERT_CPU, DXGI_FORMAT_R32G32B32A32_FLOAT,
+                &CopyXYZ10W2ToXYZWFloatVertexData<true, true, true, false>);
             return info;
         }
 
         // GL_UNSIGNED_INT_2_10_10_10_REV
         case angle::FormatID::R10G10B10A2_USCALED:
         {
-            static constexpr VertexFormat info(VERTEX_CONVERT_CPU, DXGI_FORMAT_R32G32B32A32_FLOAT,
-                                               &CopyXYZ10W2ToXYZW32FVertexData<false, false, true>);
+            static constexpr VertexFormat info(
+                VERTEX_CONVERT_CPU, DXGI_FORMAT_R32G32B32A32_FLOAT,
+                &CopyXYZ10W2ToXYZWFloatVertexData<false, false, true, false>);
             return info;
         }
         case angle::FormatID::R10G10B10A2_UNORM:
@@ -995,8 +1066,9 @@ const VertexFormat &GetVertexFormatInfo(angle::FormatID vertexFormatID,
         // GL_INT_2_10_10_10_REV
         case angle::FormatID::R10G10B10A2_SINT:
         {
-            static constexpr VertexFormat info(VERTEX_CONVERT_CPU, DXGI_FORMAT_R16G16B16A16_SINT,
-                                               &CopyXYZ10W2ToXYZW32FVertexData<true, true, false>);
+            static constexpr VertexFormat info(
+                VERTEX_CONVERT_CPU, DXGI_FORMAT_R16G16B16A16_SINT,
+                &CopyXYZ10W2ToXYZWFloatVertexData<true, true, false, false>);
             return info;
         }
 

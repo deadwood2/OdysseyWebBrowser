@@ -26,7 +26,11 @@
 #import "config.h"
 #import "WKPDFConfiguration.h"
 
+#import "WKObject.h"
+
 @implementation WKPDFConfiguration
+
+WK_OBJECT_DISABLE_DISABLE_KVC_IVAR_ACCESS;
 
 - (instancetype)init
 {
@@ -34,6 +38,7 @@
         return nil;
 
     self.rect = CGRectNull;
+    self.allowTransparentBackground = NO;
     return self;
 }
 
@@ -42,6 +47,7 @@
     WKPDFConfiguration *pdfConfiguration = [(WKPDFConfiguration *)[[self class] allocWithZone:zone] init];
 
     pdfConfiguration.rect = self.rect;
+    pdfConfiguration.allowTransparentBackground = self.allowTransparentBackground;
 
     return pdfConfiguration;
 }

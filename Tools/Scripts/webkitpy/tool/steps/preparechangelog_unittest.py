@@ -27,16 +27,14 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import unittest
 
 # Do not import changelog_unittest.ChangeLogTest directly as that will cause it to be run again.
-from webkitpy.common.checkout import changelog_unittest
+from webkitcorepy import OutputCapture
 
+from webkitpy.common.checkout import changelog_unittest
 from webkitpy.common.system.filesystem_mock import MockFileSystem
 from webkitpy.tool.mocktool import MockOptions, MockTool
 from webkitpy.tool.steps.preparechangelog import PrepareChangeLog
-
-from webkitcorepy import OutputCapture
 
 
 class PrepareChangeLogTest(changelog_unittest.ChangeLogTest):
@@ -115,7 +113,7 @@ class PrepareChangeLogTest(changelog_unittest.ChangeLogTest):
             step._tool.filesystem.write_text_file(path, start_file)
             step._resolve_existing_entry(path)
             actual_output = step._tool.filesystem.read_text_file(path)
-            self.assertEquals(actual_output, end_file)
+            self.assertEqual(actual_output, end_file)
 
     def test_ensure_bug_url(self):
         step = PrepareChangeLog(MockTool(), MockOptions())

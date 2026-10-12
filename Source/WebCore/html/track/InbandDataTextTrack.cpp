@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2014 Cable Television Labs Inc.  All rights reserved.
- * Copyright (C) 2014-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,48 +30,57 @@
 #if ENABLE(VIDEO)
 
 #include "DataCue.h"
-#include "HTMLMediaElement.h"
 #include "InbandTextTrackPrivate.h"
-#include <wtf/IsoMallocInlines.h>
+#include "TextTrackList.h"
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(InbandDataTextTrack);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(InbandDataTextTrack);
 
-inline InbandDataTextTrack::InbandDataTextTrack(Document& document, TextTrackClient& client, InbandTextTrackPrivate& trackPrivate)
-    : InbandTextTrack(document, client, trackPrivate)
+inline InbandDataTextTrack::InbandDataTextTrack(ScriptExecutionContext& context, InbandTextTrackPrivate& trackPrivate)
+    : InbandTextTrack(context, trackPrivate)
 {
 }
 
-Ref<InbandDataTextTrack> InbandDataTextTrack::create(Document& document, TextTrackClient& client, InbandTextTrackPrivate& trackPrivate)
+Ref<InbandDataTextTrack> InbandDataTextTrack::create(ScriptExecutionContext& context, InbandTextTrackPrivate& trackPrivate)
 {
-    auto textTrack = adoptRef(*new InbandDataTextTrack(document, client, trackPrivate));
+    auto textTrack = adoptRef(*new InbandDataTextTrack(context, trackPrivate));
     textTrack->suspendIfNeeded();
     return textTrack;
 }
 
 InbandDataTextTrack::~InbandDataTextTrack() = default;
 
-void InbandDataTextTrack::addDataCue(const MediaTime& start, const MediaTime& end, const void* data, unsigned length)
+void InbandDataTextTrack::addDataCue(const MediaTime& start, const MediaTime& end, std::span<const uint8_t> data)
 {
-    addCue(DataCue::create(document(), start, end, data, length));
+    // FIXME: handle datacue creation on worker.
+    if (RefPtr document = dynamicDowncast<Document>(scriptExecutionContext()))
+        addCue(DataCue::create(*document, start, end, data));
 }
 
 #if ENABLE(DATACUE_VALUE)
 
 void InbandDataTextTrack::addDataCue(const MediaTime& start, const MediaTime& end, Ref<SerializedPlatformDataCue>&& platformValue, const String& type)
 {
+    // FIXME: handle datacue creation on worker.
+    RefPtr document = dynamicDowncast<Document>(scriptExecutionContext());
+    if (!document)
+        return;
+
     if (findIncompleteCue(platformValue))
         return;
 
-    auto cue = DataCue::create(document(), start, end, platformValue.copyRef(), type);
+    auto cue = DataCue::create(*document, start, end, platformValue.copyRef(), type);
     if (hasCue(cue, TextTrackCue::IgnoreDuration)) {
         INFO_LOG(LOGIDENTIFIER, "ignoring already added cue: ", cue.get());
         return;
     }
 
-    if (end.isPositiveInfinite() && mediaElement()) {
-        cue->setEndTime(mediaElement()->durationMediaTime());
+    auto* textTrackList = downcast<TextTrackList>(trackList());
+    if (end.isPositiveInfinite()) {
+        if (textTrackList && textTrackList->duration().isValid())
+            cue->setEndTime(textTrackList->duration());
         m_incompleteCueMap.append(&cue.get());
     }
 
@@ -82,7 +91,7 @@ void InbandDataTextTrack::addDataCue(const MediaTime& start, const MediaTime& en
 
 RefPtr<DataCue> InbandDataTextTrack::findIncompleteCue(const SerializedPlatformDataCue& cueToFind)
 {
-    auto index = m_incompleteCueMap.findMatching([&](const auto& cue) {
+    auto index = m_incompleteCueMap.findIf([&](const auto& cue) {
         return cueToFind.isEqual(*cue->platformValue());
     });
 
@@ -101,8 +110,9 @@ void InbandDataTextTrack::updateDataCue(const MediaTime& start, const MediaTime&
     cue->willChange();
 
     MediaTime end = inEnd;
-    if (end.isPositiveInfinite() && mediaElement())
-        end = mediaElement()->durationMediaTime();
+    auto* textTrackList = downcast<TextTrackList>(trackList());
+    if (end.isPositiveInfinite() && textTrackList && textTrackList->duration().isValid())
+        end = textTrackList->duration();
     else
         m_incompleteCueMap.removeFirst(cue);
 

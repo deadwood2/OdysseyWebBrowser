@@ -29,20 +29,7 @@ namespace WebCore {
 
 enum class MediaEncodingType : bool {
     Record,
-    Transmission,
+    WebRTC,
 };
 
 }
-
-namespace WTF {
-
-template<> struct EnumTraits<WebCore::MediaEncodingType> {
-    using values = EnumValues<
-        WebCore::MediaEncodingType,
-        WebCore::MediaEncodingType::Record,
-        WebCore::MediaEncodingType::Transmission
-    >;
-};
-
-}
-

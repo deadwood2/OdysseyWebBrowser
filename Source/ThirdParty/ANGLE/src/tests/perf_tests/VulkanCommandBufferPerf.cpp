@@ -96,19 +96,11 @@ VulkanCommandBufferPerfTest::VulkanCommandBufferPerfTest()
     mCBImplementation = GetParam().CBImplementation;
     mFrames           = GetParam().frames;
     mBuffers          = GetParam().buffers;
-
-// This test appears to be flaky on multiple platforms.
-#if !defined(ANGLE_PLATFORM_ANDROID)
-    // mSkipTest = true;
-#endif  // !defined(ANGLE_PLATFORM_ANDROID)
 }
 
 void VulkanCommandBufferPerfTest::SetUp()
 {
-    if (mSkipTest)
-    {
-        return;
-    }
+    ANGLEPerfTest::SetUp();
 
     init_global_layer_properties(mInfo);
     init_instance_extension_names(mInfo);
@@ -181,11 +173,6 @@ void VulkanCommandBufferPerfTest::step()
 
 void VulkanCommandBufferPerfTest::TearDown()
 {
-    if (mSkipTest)
-    {
-        return;
-    }
-
     vkDestroySemaphore(mInfo.device, mImageAcquiredSemaphore, NULL);
     vkDestroyFence(mInfo.device, mDrawFence, NULL);
     destroy_pipeline(mInfo);

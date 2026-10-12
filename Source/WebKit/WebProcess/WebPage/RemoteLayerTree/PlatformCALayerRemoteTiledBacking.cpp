@@ -36,8 +36,9 @@ using namespace WebCore;
 
 PlatformCALayerRemoteTiledBacking::PlatformCALayerRemoteTiledBacking(LayerType layerType, PlatformCALayerClient* owner, RemoteLayerTreeContext& context)
     : PlatformCALayerRemote(layerType, owner, context)
-    , m_tileController(makeUnique<TileController>(this))
+    , m_tileController(makeUnique<TileController>(this, WebCore::TileController::AllowScrollPerformanceLogging::No))
 {
+    PlatformCALayerRemote::setContentsScale(m_tileController->contentsScale());
 }
 
 PlatformCALayerRemoteTiledBacking::~PlatformCALayerRemoteTiledBacking()
@@ -96,16 +97,6 @@ void PlatformCALayerRemoteTiledBacking::setWantsDeepColorBackingStore(bool wants
     m_tileController->setWantsDeepColorBackingStore(wantsDeepColorBackingStore);
 }
 
-bool PlatformCALayerRemoteTiledBacking::supportsSubpixelAntialiasedText() const
-{
-    return m_tileController->supportsSubpixelAntialiasedText();
-}
-
-void PlatformCALayerRemoteTiledBacking::setSupportsSubpixelAntialiasedText(bool supportsSubpixelAntialiasedText)
-{
-    m_tileController->setSupportsSubpixelAntialiasedText(supportsSubpixelAntialiasedText);
-}
-
 float PlatformCALayerRemoteTiledBacking::contentsScale() const
 {
     return m_tileController->contentsScale();
@@ -113,6 +104,7 @@ float PlatformCALayerRemoteTiledBacking::contentsScale() const
 
 void PlatformCALayerRemoteTiledBacking::setContentsScale(float scale)
 {
+    PlatformCALayerRemote::setContentsScale(scale);
     m_tileController->setContentsScale(scale);
 }
 

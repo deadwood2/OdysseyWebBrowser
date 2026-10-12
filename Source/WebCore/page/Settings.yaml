@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2020 Apple Inc. All rights reserved.
+# Copyright (c) 2020-2023 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -29,7 +29,7 @@ AcceleratedCompositedAnimationsEnabled:
     WebCore:
       default: true
 
-AcceleratedFiltersEnabled:
+AllowAnimationControlsOverride:
   type: bool
   defaultValue:
     WebCore:
@@ -39,13 +39,6 @@ AnimatedImageDebugCanvasDrawingEnabled:
   type: bool
   defaultValue:
     WebCore:
-      default: false
-
-AudioPlaybackRequiresUserGesture:
-  type: bool
-  defaultValue:
-    WebCore:
-      PLATFORM(IOS_FAMILY): true
       default: false
 
 AutoscrollForDragAndDropEnabled:
@@ -88,14 +81,6 @@ CrossOriginCheckInGetMatchedCSSRulesDisabled:
     WebCore:
       default: false
 
-DataDetectorTypes:
-  type: uint32_t
-  refinedType: DataDetectorType
-  condition: ENABLE(DATA_DETECTION)
-  defaultValue:
-    WebCore:
-      default: DataDetectorType::None
-
 DefaultVideoPosterURL:
   comment: >-
     Some apps could have a default video poster if it is not set.
@@ -104,28 +89,16 @@ DefaultVideoPosterURL:
     WebCore:
       default: '{ }'
 
-DisableScreenSizeOverride:
-  type: bool
-  defaultValue:
-    WebCore:
-      default: false
-
-DownloadableBinaryFontsEnabled:
+DownloadableBinaryFontTrustedTypes:
   comment: >-
     FIXME: This should really be disabled by default as it makes platforms that don't support the
     feature download files they can't use by. Leaving enabled for now to not change existing behavior.
-  type: bool
-  defaultValue:
-    WebCore:
-      PLATFORM(WATCHOS): false
-      default: true
-
-EditableLinkBehavior:
   type: uint32_t
-  refinedType: EditableLinkBehavior
+  refinedType: DownloadableBinaryFontTrustedTypes
   defaultValue:
     WebCore:
-      default: EditableLinkBehavior::Default
+      PLATFORM(WATCHOS): DownloadableBinaryFontTrustedTypes::None
+      default: DownloadableBinaryFontTrustedTypes::Any
 
 EditingBehaviorType:
   type: uint32_t
@@ -165,32 +138,11 @@ FontLoadTimingOverride:
     WebCore:
       default: FontLoadTimingOverride::None
 
-FontRenderingMode:
-  type: uint32_t
-  refinedType: FontRenderingMode
-  defaultValue:
-    WebCore:
-      default: FontRenderingMode::Normal
-
 ForceCompositingMode:
   type: bool
   defaultValue:
     WebCore:
       default: false
-
-ForcePendingWebGLPolicy:
-  type: bool
-  webcoreGetter: isForcePendingWebGLPolicy
-  defaultValue:
-    WebCore:
-      default: false
-
-ForcedPrefersContrastAccessibilityValue:
-  type: uint32_t
-  refinedType: ForcedAccessibilityValue
-  defaultValue:
-    WebCore:
-      default: ForcedAccessibilityValue::System
 
 ForcedColorsAreInvertedAccessibilityValue:
   type: uint32_t
@@ -200,6 +152,13 @@ ForcedColorsAreInvertedAccessibilityValue:
       default: ForcedAccessibilityValue::System
 
 ForcedDisplayIsMonochromeAccessibilityValue:
+  type: uint32_t
+  refinedType: ForcedAccessibilityValue
+  defaultValue:
+    WebCore:
+      default: ForcedAccessibilityValue::System
+
+ForcedPrefersContrastAccessibilityValue:
   type: uint32_t
   refinedType: ForcedAccessibilityValue
   defaultValue:
@@ -220,14 +179,6 @@ ForcedSupportsHighDynamicRangeValue:
   defaultValue:
     WebCore:
       default: ForcedAccessibilityValue::System
-
-FrameFlattening:
-  type: uint32_t
-  refinedType: FrameFlattening
-  webcoreOnChange: setNeedsRelayoutAllFrames
-  defaultValue:
-    WebCore:
-      default: FrameFlattening::Disabled
 
 GeolocationFloorLevelEnabled:
   type: bool
@@ -253,7 +204,7 @@ ImageSubsamplingEnabled:
   type: bool
   defaultValue:
     WebCore:
-      PLATFORM(IOS_FAMILY): true
+      PLATFORM(COCOA): true
       default: false
 
 ImagesEnabled:
@@ -264,12 +215,6 @@ ImagesEnabled:
   defaultValue:
     WebCore:
       default: true
-
-IsAccessibilityIsolatedTreeEnabled:
-  type: bool
-  defaultValue:
-    WebCore:
-      default: false
 
 IsPerActivityStateCPUUsageMeasurementEnabled:
   type: bool
@@ -306,22 +251,7 @@ IsPostLoadMemoryUsageMeasurementEnabled:
       PLATFORM(COCOA): true
       default: false
 
-JavaScriptRuntimeFlags:
-  type: uint32_t
-  refinedType: JSC::RuntimeFlags
-  defaultValue:
-    WebCore:
-      default: '{ }'
-
 LangAttributeAwareFormControlUIEnabled:
-  type: bool
-  defaultValue:
-    WebCore:
-      default: false
-
-LegacyBeforeLoadEventEnabled:
-  comment: >-
-    FIMXE: This does not appear to ever be set to true. Remove once verified.
   type: bool
   defaultValue:
     WebCore:
@@ -332,12 +262,6 @@ LocalStorageDatabasePath:
   defaultValue:
     WebCore:
       default: '{ }'
-
-MaximumAccelerated2dCanvasSize:
-  type: uint32_t
-  defaultValue:
-    WebCore:
-      default: 5120*2880
 
 MaximumHTMLParserDOMTreeDepth:
   type: uint32_t
@@ -353,14 +277,7 @@ MaximumSourceBufferSize:
   condition: ENABLE(MEDIA_SOURCE)
   defaultValue:
     WebCore:
-      default: 318767104
-
-MediaDeviceIdentifierStorageDirectory:
-  type: String
-  condition: ENABLE(MEDIA_STREAM)
-  defaultValue:
-    WebCore:
-      default: '{ }'
+      default: SettingsBase::defaultMaximumSourceBufferSize()
 
 MediaKeysStorageDirectory:
   type: String
@@ -375,9 +292,9 @@ MediaTypeOverride:
     WebCore:
       default: '"screen"'
 
-MinimumAccelerated2dCanvasSize:
+MinimumAccelerated2DContextArea:
   comment: >-
-    Number of pixels below which 2D canvas is rendered in software
+    Number of pixels below which Canvas 2D Context is rendered in software
     even if hardware acceleration is enabled.
     Hardware acceleration is useful for large canvases where it can avoid the
     pixel bandwidth between the CPU and GPU. But GPU acceleration comes at
@@ -385,10 +302,11 @@ MinimumAccelerated2dCanvasSize:
     widely used for stylized fonts. Anti-aliasing text in hardware at that
     scale is generally slower. So below a certain size it is better to
     draw canvas in software.
-  type: uint32_t
+  type: uint64_t
   defaultValue:
     WebCore:
-      default: 257*256
+      USE(SKIA): 128 * 129
+      default: 0
 
 NeedsDeferKeyDownAndKeyPressTimersUntilNextEditingCommandQuirk:
   comment: >-
@@ -417,14 +335,6 @@ PitchCorrectionAlgorithm:
     WebCore:
       default: MediaPlayerEnums::PitchCorrectionAlgorithm::BestAllAround
 
-PDFImageCachingPolicy:
-  type: uint32_t
-  refinedType: PDFImageCachingPolicy
-  defaultValue:
-    WebCore:
-      PLATFORM(IOS_FAMILY): PDFImageCachingPolicy::BelowMemoryLimit
-      default: PDFImageCachingPolicy::Enabled
-
 PreferMIMETypeForImages:
   type: bool
   defaultValue:
@@ -432,25 +342,6 @@ PreferMIMETypeForImages:
       default: false
 
 PreventKeyboardDOMEventDispatch:
-  type: bool
-  defaultValue:
-    WebCore:
-      default: false
-
-PrivateClickMeasurementFraudPreventionEnabled:
-  type: bool
-  defaultValue:
-    WebCore:
-      "HAVE(RSA_BSSA)": true
-      default: false
-
-QuickTimePluginReplacementEnabled:
-  type: bool
-  defaultValue:
-    WebCore:
-      default: false
-
-RepaintOutsideLayoutEnabled:
   type: bool
   defaultValue:
     WebCore:
@@ -516,13 +407,6 @@ StorageBlockingPolicy:
     WebCore:
       default: StorageBlockingPolicy::AllowAll
 
-SystemLayoutDirection:
-  type: uint32_t
-  refinedType: TextDirection
-  defaultValue:
-    WebCore:
-      default: TextDirection::LTR
-
 TextAutosizingWindowSizeOverrideHeight:
   type: uint32_t
   webcoreOnChange: setNeedsRecalcStyleInAllFrames
@@ -586,13 +470,6 @@ UseAnonymousModeWhenFetchingMaskImages:
     WebCore:
       default: true
 
-UserInterfaceDirectionPolicy:
-  type: uint32_t
-  refinedType: UserInterfaceDirectionPolicy
-  defaultValue:
-    WebCore:
-      default: UserInterfaceDirectionPolicy::Content
-
 UserStyleSheetLocation:
   type: String
   refinedType: URL
@@ -612,13 +489,6 @@ ValidationMessageTimerMagnification:
     WebCore:
       default: 50
 
-VideoPlaybackRequiresUserGesture:
-  type: bool
-  defaultValue:
-    WebCore:
-      PLATFORM(IOS_FAMILY): true
-      default: false
-
 WebGLErrorsToConsoleEnabled:
   type: bool
   defaultValue:
@@ -627,7 +497,6 @@ WebGLErrorsToConsoleEnabled:
 
 WebRTCEncryptionEnabled:
   type: bool
-  inspectorOverride: true
   defaultValue:
     WebCore:
       default: true
@@ -642,4 +511,5 @@ YouTubeFlashPluginReplacementEnabled:
   type: bool
   defaultValue:
     WebCore:
+      PLATFORM(COCOA): true
       default: false

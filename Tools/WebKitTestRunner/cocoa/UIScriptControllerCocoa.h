@@ -39,10 +39,11 @@ protected:
     void doAsyncTask(JSValueRef) override;
 
 private:
+    void doAfterPresentationUpdate(JSValueRef) override;
+
     void setViewScale(double) override;
     void setMinimumEffectiveWidth(double) override;
-    void becomeFirstResponder() override;
-    void resignFirstResponder() override;
+    void setWebViewEditable(bool) override;
     void removeViewFromWindow(JSValueRef) override;
     void addViewToWindow(JSValueRef) override;
     void overridePreference(JSStringRef, JSStringRef) override;
@@ -51,7 +52,10 @@ private:
     void setDefaultCalendarType(JSStringRef calendarIdentifier, JSStringRef localeIdentifier) override;
     JSRetainPtr<JSStringRef> lastUndoLabel() const override;
     JSRetainPtr<JSStringRef> firstRedoLabel() const override;
+    JSRetainPtr<JSStringRef> caLayerTreeAsText() const override;
     NSUndoManager *platformUndoManager() const override;
+
+    JSRetainPtr<JSStringRef> scrollingTreeAsText() const override;
 
     void setDidShowContextMenuCallback(JSValueRef) override;
     void setDidDismissContextMenuCallback(JSValueRef) override;
@@ -74,6 +78,21 @@ private:
     void dismissContactPickerWithContacts(JSValueRef) override;
 
     void completeTaskAsynchronouslyAfterActivityStateUpdate(unsigned callbackID);
+
+    unsigned long countOfUpdatesWithLayerChanges() const override;
+
+#if ENABLE(IMAGE_ANALYSIS)
+    uint64_t currentImageAnalysisRequestID() const final;
+    void installFakeMachineReadableCodeResultsForImageAnalysis() final;
+#endif
+
+    void setSpellCheckerResults(JSValueRef) final;
+
+    void requestTextExtraction(JSValueRef callback, TextExtractionOptions*) final;
+
+    void requestRenderedTextForFrontmostTarget(int x, int y, JSValueRef callback) final;
+    void adjustVisibilityForFrontmostTarget(int x, int y, JSValueRef callback) final;
+    void resetVisibilityAdjustments(JSValueRef callback) final;
 };
 
 } // namespace WTR

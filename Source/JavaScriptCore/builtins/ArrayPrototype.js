@@ -130,6 +130,7 @@ function forEach(callback /*, thisArg */)
     }
 }
 
+@alwaysInline
 function filter(callback /*, thisArg */)
 {
     "use strict";
@@ -141,7 +142,7 @@ function filter(callback /*, thisArg */)
         @throwTypeError("Array.prototype.filter callback must be a function");
     
     var thisArg = @argument(1);
-    var result = @arraySpeciesCreate(array, 0);
+    var result = @newArrayWithSpecies(0, array);
 
     var nextIndex = 0;
     for (var i = 0; i < length; i++) {
@@ -167,7 +168,7 @@ function map(callback /*, thisArg */)
         @throwTypeError("Array.prototype.map callback must be a function");
     
     var thisArg = @argument(1);
-    var result = @arraySpeciesCreate(array, length);
+    var result = @newArrayWithSpecies(length, array);
 
     for (var i = 0; i < length; i++) {
         if (!(i in array))
@@ -343,201 +344,7 @@ function includes(searchElement /*, fromIndex*/)
     return false;
 }
 
-@globalPrivate
-function sortStringComparator(a, b)
-{
-    "use strict";
-
-    var aString = a.string;
-    var bString = b.string;
-
-    if (aString === bString)
-        return 0;
-
-    return aString > bString ? 1 : -1;
-}
-
-@globalPrivate
-function sortCompact(receiver, receiverLength, compacted, isStringSort)
-{
-    "use strict";
-
-    var undefinedCount = 0;
-    var compactedIndex = 0;
-
-    for (var i = 0; i < receiverLength; ++i) {
-        if (i in receiver) {
-            var value = receiver[i];
-            if (value === @undefined)
-                ++undefinedCount;
-            else {
-                @putByValDirect(compacted, compactedIndex,
-                    isStringSort ? {string: @toString(value), value} : value);
-                ++compactedIndex;
-            }
-        }
-    }
-
-    return undefinedCount;
-}
-
-@globalPrivate
-function sortCommit(receiver, receiverLength, sorted, undefinedCount)
-{
-    "use strict";
-
-    // Move undefineds and holes to the end of an array. Result is [values..., undefineds..., holes...].
-
-    @assert(@isJSArray(sorted));
-    var sortedLength = sorted.length;
-    @assert(sortedLength + undefinedCount <= receiverLength);
-
-    var i = 0;
-    if (@isJSArray(receiver) && sortedLength >= 64 && typeof sorted[0] !== "number") { // heuristic
-        @appendMemcpy(receiver, sorted, 0);
-        i = sortedLength;
-    } else {
-        for (; i < sortedLength; ++i)
-            receiver[i] = sorted[i];
-    }
-
-    for (; i < sortedLength + undefinedCount; ++i)
-        receiver[i] = @undefined;
-
-    for (; i < receiverLength; ++i)
-        delete receiver[i];
-}
-
-@globalPrivate
-function sortMerge(dst, src, srcIndex, srcEnd, width, comparator)
-{
-    "use strict";
-
-    var left = srcIndex;
-    var leftEnd = @min(left + width, srcEnd);
-    var right = leftEnd;
-    var rightEnd = @min(right + width, srcEnd);
-
-    for (var dstIndex = left; dstIndex < rightEnd; ++dstIndex) {
-        if (right < rightEnd) {
-            if (left >= leftEnd) {
-                @putByValDirect(dst, dstIndex, src[right]);
-                ++right;
-                continue;
-            }
-
-            // See https://bugs.webkit.org/show_bug.cgi?id=47825 on boolean special-casing
-            var comparisonResult = comparator(src[right], src[left]);
-            if (comparisonResult === false || comparisonResult < 0) {
-                @putByValDirect(dst, dstIndex, src[right]);
-                ++right;
-                continue;
-            }
-
-        }
-
-        @putByValDirect(dst, dstIndex, src[left]);
-        ++left;
-    }
-}
-
-@globalPrivate
-function sortMergeSort(array, comparator)
-{
-    "use strict";
-
-    var valueCount = array.length;
-    var buffer = @newArrayWithSize(valueCount);
-
-    var dst = buffer;
-    var src = array;
-    for (var width = 1; width < valueCount; width *= 2) {
-        for (var srcIndex = 0; srcIndex < valueCount; srcIndex += 2 * width)
-            @sortMerge(dst, src, srcIndex, valueCount, width, comparator);
-
-        var tmp = src;
-        src = dst;
-        dst = tmp;
-    }
-
-    return src;
-}
-
-@globalPrivate
-function sortBucketSort(array, dst, bucket, depth)
-{
-    "use strict";
-
-    if (bucket.length < 32 || depth > 32) {
-        var sorted = @sortMergeSort(bucket, @sortStringComparator);
-        for (var i = 0; i < sorted.length; ++i) {
-            @putByValDirect(array, dst, sorted[i].value);
-            ++dst;
-        }
-        return dst;
-    }
-
-    var buckets = [ ];
-    @setPrototypeDirect.@call(buckets, null);
-    for (var i = 0; i < bucket.length; ++i) {
-        var entry = bucket[i];
-        var string = entry.string;
-        if (string.length == depth) {
-            @putByValDirect(array, dst, entry.value);
-            ++dst;
-            continue;
-        }
-
-        var c = string.@charCodeAt(depth);
-        var cBucket = buckets[c];
-        if (cBucket)
-            @arrayPush(cBucket, entry);
-        else
-            @putByValDirect(buckets, c, [ entry ]);
-    }
-
-    for (var i = 0; i < buckets.length; ++i) {
-        if (!buckets[i])
-            continue;
-        dst = @sortBucketSort(array, dst, buckets[i], depth + 1);
-    }
-
-    return dst;
-}
-
-function sort(comparator)
-{
-    "use strict";
-
-    var isStringSort = false;
-    if (comparator === @undefined)
-        isStringSort = true;
-    else if (!@isCallable(comparator))
-        @throwTypeError("Array.prototype.sort requires the comparator argument to be a function or undefined");
-
-    var receiver = @toObject(this, "Array.prototype.sort requires that |this| not be null or undefined");
-    var receiverLength = @toLength(receiver.length);
-
-    // For compatibility with Firefox and Chrome, do nothing observable
-    // to the target array if it has 0 or 1 sortable properties.
-    if (receiverLength < 2)
-        return receiver;
-
-    var compacted = [ ];
-    var sorted = null;
-    var undefinedCount = @sortCompact(receiver, receiverLength, compacted, isStringSort);
-
-    if (isStringSort) {
-        sorted = @newArrayWithSize(compacted.length);
-        @sortBucketSort(sorted, 0, compacted, 0);
-    } else
-        sorted = @sortMergeSort(compacted, comparator);
-
-    @sortCommit(receiver, receiverLength, sorted, undefinedCount);
-    return receiver;
-}
-
-@globalPrivate
+@linkTimeConstant
 function concatSlowPath()
 {
     "use strict";
@@ -545,7 +352,7 @@ function concatSlowPath()
     var currentElement = @toObject(this, "Array.prototype.concat requires that |this| not be null or undefined");
     var argCount = arguments.length;
 
-    var result = @arraySpeciesCreate(currentElement, 0);
+    var result = @newArrayWithSpecies(0, currentElement);
     var resultIsArray = @isJSArray(result);
 
     var resultIndex = 0;
@@ -596,7 +403,7 @@ function concat(first)
     return @tailCallForwardArguments(@concatSlowPath, this);
 }
 
-@globalPrivate
+@linkTimeConstant
 function maxWithPositives(a, b)
 {
     "use strict";
@@ -604,7 +411,7 @@ function maxWithPositives(a, b)
     return (a < b) ? b : a;
 }
 
-@globalPrivate
+@linkTimeConstant
 function minWithMaybeNegativeZeroAndPositive(maybeNegativeZero, positive)
 {
     "use strict";
@@ -653,7 +460,7 @@ function copyWithin(target, start /*, end */)
     return array;
 }
 
-@globalPrivate
+@linkTimeConstant
 function flatIntoArray(target, source, sourceLength, targetIndex, depth)
 {
     "use strict";
@@ -686,13 +493,13 @@ function flat()
     if (depth !== @undefined)
         depthNum = @toIntegerOrInfinity(depth);
 
-    var result = @arraySpeciesCreate(array, 0);
+    var result = @newArrayWithSpecies(0, array);
 
     @flatIntoArray(result, array, length, 0, depthNum);
     return result;
 }
 
-@globalPrivate
+@linkTimeConstant
 function flatIntoArrayWithCallback(target, source, sourceLength, targetIndex, callback, thisArg)
 {
     "use strict";
@@ -725,7 +532,7 @@ function flatMap(callback)
 
     var thisArg = @argument(1);
 
-    var result = @arraySpeciesCreate(array, 0);
+    var result = @newArrayWithSpecies(0, array);
 
     return @flatIntoArrayWithCallback(result, array, length, 0, callback, thisArg);
 }
@@ -742,4 +549,160 @@ function at(index)
         k += length;
 
     return (k >= 0 && k < length) ? array[k] : @undefined;
+}
+
+function toReversed()
+{
+    "use strict";
+
+    // Step 1.
+    var array = @toObject(this, "Array.prototype.toReversed requires that |this| not be null or undefined");
+
+    // Step 2.
+    var length = @toLength(array.length);
+
+    // Step 3.
+    var result = @newArrayWithSize(length);
+
+    // Step 4-5.
+    for (var k = 0; k < length; k++) {
+        var fromValue = array[length - k - 1];
+        @putByValDirect(result, k, fromValue);
+    }
+
+    return result;
+}
+
+function toSorted(comparator)
+{
+    "use strict";
+
+    // Step 1.
+    if (comparator !== @undefined && !@isCallable(comparator))
+        @throwTypeError("Array.prototype.toSorted requires the comparator argument to be a function or undefined");
+
+    // Step 2.
+    var array = @toObject(this, "Array.prototype.toSorted requires that |this| not be null or undefined");
+
+    // Step 3.
+    var length = @toLength(array.length);
+
+    // Step 4.
+    var result = @newArrayWithSize(length);
+
+    // Step 8.
+    for (var k = 0; k < length; k++)
+        @putByValDirect(result, k, array[k]);
+
+    // Step 6.
+    @arraySort.@call(result, comparator);
+
+    return result;
+}
+
+function toSpliced(start, deleteCount /*, ...items */)
+{
+    "use strict"
+
+    // Step 1.
+    var array = @toObject(this, "Array.prototype.toSpliced requires that |this| not be null or undefined");
+
+    // Step 2.
+    var length = @toLength(array.length);
+
+    // Step 3.
+    var relativeStart = @toIntegerOrInfinity(start);
+
+    var actualStart;
+    // Step 4-6.
+    if (relativeStart === -@Infinity)
+        actualStart = 0;
+    else if (relativeStart < 0)
+        actualStart = length + relativeStart > 0 ? length + relativeStart : 0;
+    else
+        actualStart = @min(relativeStart, length);
+
+    // Step 7.
+    var insertCount = 0;
+    var actualDeleteCount;
+
+    // Step 8-10.
+    if (arguments.length === 0)
+        actualDeleteCount = 0;
+    else if (arguments.length === 1)
+        actualDeleteCount = length - actualStart;
+    else {
+        insertCount = arguments.length - 2;
+        var tempDeleteCount = @toIntegerOrInfinity(deleteCount);
+        tempDeleteCount = tempDeleteCount > 0 ? tempDeleteCount : 0;
+        actualDeleteCount = @min(tempDeleteCount, length - actualStart);
+    }
+
+    // Step 11.
+    var newLen = length + insertCount - actualDeleteCount;
+
+    // Step 12.
+    if (newLen >= @MAX_SAFE_INTEGER)
+        @throwTypeError("Array length exceeds 2**53 - 1");
+
+    // Step 13.
+    var result = @newArrayWithSize(newLen);
+
+    // Step 14.
+    var k = 0;
+
+    // Step 16.
+    for (; k < actualStart; k++)
+        @putByValDirect(result, k, array[k]);
+
+    // Step 17.
+    for (var i = 0; i < insertCount; i++, k++)
+        @putByValDirect(result, k, arguments[i + 2]);
+
+    // Step 18.
+    for (; k < newLen; k++) {
+        var from = k + actualDeleteCount - insertCount;
+        @putByValDirect(result, k, array[from]);
+    }
+
+    return result;
+
+}
+
+function with(index, value)
+{
+    "use strict";
+
+    // Step 1.
+    var array = @toObject(this, "Array.prototype.with requires that |this| not be null or undefined");
+
+    // Step 2.
+    var length = @toLength(array.length);
+
+    // Step 3.
+    var relativeIndex = @toIntegerOrInfinity(index);
+
+    // Step 4-5.
+    var actualIndex;
+    if (relativeIndex >= 0)
+        actualIndex = relativeIndex;
+    else
+        actualIndex = length + relativeIndex;
+
+    // Step 6.
+    if (actualIndex >= length || actualIndex < 0)
+        @throwRangeError("Array index out of Range");
+
+    // Step 7.
+    var result = @newArrayWithSize(length);
+
+    // Step 8-9
+    for (var k = 0; k < length; k++) {
+        if (k === actualIndex)
+            @putByValDirect(result, k, value);
+        else
+            @putByValDirect(result, k, array[k]);
+    }
+
+    return result;
 }

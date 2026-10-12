@@ -37,37 +37,38 @@ namespace WebCore {
 
 bool ResourceResponse::isAppendableHeader(const String &key)
 {
-    static const char* appendableHeaders[] = {
-        "access-control-allow-headers",
-        "access-control-allow-methods",
-        "access-control-allow-origin",
-        "access-control-expose-headers",
-        "allow",
-        "cache-control",
-        "connection",
-        "content-encoding",
-        "content-language",
-        "if-match",
-        "if-none-match",
-        "keep-alive",
-        "pragma",
-        "proxy-authenticate",
-        "public",
-        "server",
-        "set-cookie",
-        "te",
-        "trailer",
-        "transfer-encoding",
-        "upgrade",
-        "user-agent",
-        "vary",
-        "via",
-        "warning",
-        "www-authenticate"
+    static constexpr ASCIILiteral appendableHeaders[] = {
+        "access-control-allow-headers"_s,
+        "access-control-allow-methods"_s,
+        "access-control-allow-origin"_s,
+        "access-control-expose-headers"_s,
+        "allow"_s,
+        "cache-control"_s,
+        "connection"_s,
+        "content-encoding"_s,
+        "content-language"_s,
+        "if-match"_s,
+        "if-none-match"_s,
+        "keep-alive"_s,
+        "pragma"_s,
+        "proxy-authenticate"_s,
+        "public"_s,
+        "server"_s,
+        "set-cookie"_s,
+        "te"_s,
+        "timing-allow-origin"_s,
+        "trailer"_s,
+        "transfer-encoding"_s,
+        "upgrade"_s,
+        "user-agent"_s,
+        "vary"_s,
+        "via"_s,
+        "warning"_s,
+        "www-authenticate"_s
     };
 
     // Custom headers start with 'X-', and need no further checking.
-    if (startsWithLettersIgnoringASCIICase(key, "x-"))
+    if (startsWithLettersIgnoringASCIICase(key, "x-"_s))
         return true;
 
     for (const auto& header : appendableHeaders) {
@@ -78,7 +79,7 @@ bool ResourceResponse::isAppendableHeader(const String &key)
     return false;
 }
 
-ResourceResponse::ResourceResponse(const CurlResponse& response)
+ResourceResponse::ResourceResponse(CurlResponse& response)
     : ResourceResponseBase()
 {
     setURL(response.url);
@@ -90,13 +91,13 @@ ResourceResponse::ResourceResponse(const CurlResponse& response)
 
     switch (response.httpVersion) {
     case CURL_HTTP_VERSION_1_0:
-        setHTTPVersion("HTTP/1.0");
+        setHTTPVersion("HTTP/1.0"_s);
         break;
     case CURL_HTTP_VERSION_1_1:
-        setHTTPVersion("HTTP/1.1");
+        setHTTPVersion("HTTP/1.1"_s);
         break;
     case CURL_HTTP_VERSION_2_0:
-        setHTTPVersion("HTTP/2");
+        setHTTPVersion("HTTP/2"_s);
         break;
     case CURL_HTTP_VERSION_NONE:
     default:
@@ -105,10 +106,22 @@ ResourceResponse::ResourceResponse(const CurlResponse& response)
 
 	String mimeType = extractMIMETypeFromMediaType(httpHeaderField(HTTPHeaderName::ContentType)).convertToASCIILowercase();
 	if (mimeType.isEmpty()) {
-	    mimeType = MIMETypeRegistry::mimeTypeForPath(response.url.path().toString());
+        auto lastPathComponent = response.url.lastPathComponent();
+        size_t pos = lastPathComponent.reverseFind('.');
+        if (pos != notFound) {
+            auto extension = lastPathComponent.substring(pos + 1);
+            mimeType = MIMETypeRegistry::mimeTypeForExtension(extension);
+            // cache the content type, don't override if we're getting a response from cache anyway
+            // since in some cases the deduced mimetype may be wrong (if the server omitted content-type that
+            // mismatches the extension for a 304, like on a1k.org)
+            if (mimeType.length() && httpStatusCode() != 304) {
+                setHTTPHeaderField(HTTPHeaderName::ContentType, mimeType);
+            }
+        }
 	}
-    setMimeType(mimeType);
-    setTextEncodingName(extractCharsetFromMediaType(httpHeaderField(HTTPHeaderName::ContentType)));
+    setMimeType(mimeType.convertToASCIILowercase());
+    setTextEncodingName(extractCharsetFromMediaType(httpHeaderField(HTTPHeaderName::ContentType)).toString());
+    setCertificateInfo(WTFMove(response.certificateInfo));
     setSource(ResourceResponse::Source::Network);
 }
 
@@ -116,50 +129,48 @@ void ResourceResponse::appendHTTPHeaderField(const String& header)
 {
     auto splitPosition = header.find(':');
     if (splitPosition != notFound) {
-        auto key = header.left(splitPosition).stripWhiteSpace();
-        auto value = header.substring(splitPosition + 1).stripWhiteSpace();
+        auto key = header.left(splitPosition).trim(deprecatedIsSpaceOrNewline);
+        auto value = header.substring(splitPosition + 1).trim(deprecatedIsSpaceOrNewline);
 
         if (isAppendableHeader(key))
             addHTTPHeaderField(key, value);
         else
             setHTTPHeaderField(key, value);
-    } else if (startsWithLettersIgnoringASCIICase(header, "http")) {
+    } else if (startsWithLettersIgnoringASCIICase(header, "http"_s)) {
         // This is the first line of the response.
         setStatusLine(header);
     }
 }
 
-void ResourceResponse::setStatusLine(const String& header)
+void ResourceResponse::setStatusLine(StringView header)
 {
-    auto statusLine = header.stripWhiteSpace();
+    auto statusLine = header.trim(deprecatedIsSpaceOrNewline);
 
     auto httpVersionEndPosition = statusLine.find(' ');
     auto statusCodeEndPosition = notFound;
 
     // Extract the http version
     if (httpVersionEndPosition != notFound) {
-        statusLine = statusLine.substring(httpVersionEndPosition + 1).stripWhiteSpace();
+        statusLine = statusLine.substring(httpVersionEndPosition + 1).trim(deprecatedIsSpaceOrNewline);
         statusCodeEndPosition = statusLine.find(' ');
     }
 
     // Extract the http status text
     if (statusCodeEndPosition != notFound) {
-        auto statusText = statusLine.substring(statusCodeEndPosition + 1);
-        setHTTPStatusText(statusText.stripWhiteSpace());
+        auto statusText = statusLine.substring(statusCodeEndPosition + 1).trim(deprecatedIsSpaceOrNewline);
+        setHTTPStatusText(statusText.toString());
     }
-}
-
-void ResourceResponse::setCertificateInfo(CertificateInfo&& certificateInfo)
-{
-    m_certificateInfo = WTFMove(certificateInfo);
 }
 
 String ResourceResponse::platformSuggestedFilename() const
 {
-    return filenameFromHTTPContentDisposition(httpHeaderField(HTTPHeaderName::ContentDisposition));
+    StringView contentDisposition = filenameFromHTTPContentDisposition(httpHeaderField(HTTPHeaderName::ContentDisposition));
+    if (contentDisposition.is8Bit())
+        return String::fromUTF8WithLatin1Fallback(contentDisposition.span8());
+    return contentDisposition.toString();
 }
 
-bool ResourceResponse::shouldRedirect()
+bool ResourceResponse::shouldRedirect() const
 {
     auto statusCode = httpStatusCode();
     if (statusCode < 300 || 400 <= statusCode)

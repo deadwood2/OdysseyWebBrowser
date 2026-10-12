@@ -30,7 +30,6 @@
 #import "WKNSURL.h"
 #import <objc/runtime.h>
 #import <wtf/cf/CFURLExtras.h>
-#import <wtf/text/CString.h>
 
 static inline Class wkNSURLClass()
 {
@@ -45,16 +44,14 @@ static inline Class wkNSURLClass()
 WKURLRef WKURLCreateWithCFURL(CFURLRef cfURL)
 {
     if (!cfURL)
-        return 0;
+        return nullptr;
 
     // Since WKNSURL is an internal class with no subclasses, we can do a simple equality check.
     if (object_getClass((__bridge NSURL *)cfURL) == wkNSURLClass())
         return WebKit::toAPI(static_cast<API::URL*>(&[(WKNSURL *)(__bridge NSURL *)CFRetain(cfURL) _apiObject]));
 
-    CString urlBytes;
-    WTF::getURLBytes(cfURL, urlBytes);
-
-    return WebKit::toCopiedURLAPI(urlBytes.data());
+    // FIXME: Why is it OK to ignore the base URL in the CFURL here?
+    return WebKit::toCopiedURLAPI(bytesAsString(cfURL));
 }
 
 CFURLRef WKURLCopyCFURL(CFAllocatorRef allocatorRef, WKURLRef URLRef)
@@ -66,6 +63,7 @@ CFURLRef WKURLCopyCFURL(CFAllocatorRef allocatorRef, WKURLRef URLRef)
     // We first create a CString and then create the CFURL from it. This will ensure that the CFURL is stored in 
     // UTF-8 which uses less memory and is what WebKit clients might expect.
 
-    CString buffer = string.utf8();
-    return CFURLCreateAbsoluteURLWithBytes(nullptr, buffer.dataAsUInt8Ptr(), buffer.length(), kCFStringEncodingUTF8, nullptr, true);
+    auto buffer = string.utf8();
+    auto bufferSpan = buffer.span();
+    return CFURLCreateAbsoluteURLWithBytes(nullptr, bufferSpan.data(), bufferSpan.size(), kCFStringEncodingUTF8, nullptr, true);
 }

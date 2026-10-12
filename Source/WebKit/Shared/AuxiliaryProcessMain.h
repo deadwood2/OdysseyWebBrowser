@@ -30,12 +30,14 @@
 
 #include "AuxiliaryProcess.h"
 #include "WebKit2Initialize.h"
+#include <wtf/NeverDestroyed.h>
 #include <wtf/RunLoop.h>
 
 namespace WebKit {
 
 class AuxiliaryProcessMainCommon {
 public:
+    AuxiliaryProcessMainCommon();
     bool parseCommandLine(int argc, char** argv);
 
 protected:

@@ -9,7 +9,7 @@
 
 using namespace angle;
 
-class FenceNVTest : public ANGLETest
+class FenceNVTest : public ANGLETest<>
 {
   protected:
     FenceNVTest()
@@ -24,10 +24,10 @@ class FenceNVTest : public ANGLETest
     }
 };
 
-class FenceSyncTest : public ANGLETest
+class FenceSyncTest : public ANGLETest<>
 {
   public:
-    static constexpr uint32_t kSize = 1024;
+    static constexpr uint32_t kSize = 256;
 
   protected:
     FenceSyncTest()
@@ -227,6 +227,16 @@ TEST_P(FenceSyncTest, BasicQueries)
     EXPECT_EQ(0, value);
 }
 
+// Test usage of glGetSynciv with nullptr as length
+TEST_P(FenceSyncTest, NullLength)
+{
+    GLint value = 0;
+    GLsync sync = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+    glGetSynciv(sync, GL_SYNC_STATUS, 1, nullptr, &value);
+    glDeleteSync(sync);
+    EXPECT_GL_NO_ERROR();
+}
+
 // Test that basic usage works and doesn't generate errors or crash
 TEST_P(FenceSyncTest, BasicOperations)
 {
@@ -255,11 +265,26 @@ TEST_P(FenceSyncTest, BasicOperations)
 
     ASSERT_GLENUM_EQ(GL_SIGNALED, value);
 
+    ANGLE_GL_PROGRAM(greenProgram, essl1_shaders::vs::Simple(), essl1_shaders::fs::Green());
     for (size_t i = 0; i < 20; i++)
     {
         glClear(GL_COLOR_BUFFER_BIT);
-        glClientWaitSync(sync, GL_SYNC_FLUSH_COMMANDS_BIT, GL_TIMEOUT_IGNORED);
+        drawQuad(greenProgram, std::string(essl1_shaders::PositionAttrib()), 0.0f);
+        ASSERT_GL_NO_ERROR();
+
+        GLsync clientWaitSync = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+        ASSERT_GL_NO_ERROR();
+
+        // Don't wait forever to make sure the test terminates
+        constexpr GLuint64 kTimeout = 1'000'000'000;  // 1 second
+        GLenum clientWaitResult =
+            glClientWaitSync(clientWaitSync, GL_SYNC_FLUSH_COMMANDS_BIT, kTimeout);
         EXPECT_GL_NO_ERROR();
+        EXPECT_TRUE(clientWaitResult == GL_CONDITION_SATISFIED ||
+                    clientWaitResult == GL_ALREADY_SIGNALED);
+
+        glDeleteSync(clientWaitSync);
+        ASSERT_GL_NO_ERROR();
     }
 }
 
@@ -271,7 +296,7 @@ TEST_P(FenceSyncTest, MultipleFenceDraw)
 
     // Create a texture/FBO to draw to
     GLTexture texture;
-    glBindTexture(GL_TEXTURE_2D, texture.get());
+    glBindTexture(GL_TEXTURE_2D, texture);
     glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, kSize, kSize);
     ASSERT_GL_NO_ERROR();
     GLFramebuffer fbo;
@@ -292,18 +317,16 @@ TEST_P(FenceSyncTest, MultipleFenceDraw)
         {
             GLsync sync = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
             ASSERT_GL_NO_ERROR();
-            // Force the fence to be created
-            glFlush();
 
             drawGreen      = !drawGreen;
             GLuint program = 0;
             if (drawGreen)
             {
-                program = greenProgram.get();
+                program = greenProgram;
             }
             else
             {
-                program = redProgram.get();
+                program = redProgram;
             }
             drawQuad(program, std::string(essl1_shaders::PositionAttrib()), 0.0f);
             ASSERT_GL_NO_ERROR();
@@ -335,7 +358,7 @@ TEST_P(FenceSyncTest, MultipleFenceDraw)
     }
 }
 
-// Use this to select which configurations (e.g. which renderer, which GLES major version) these
-// tests should be run against.
 ANGLE_INSTANTIATE_TEST_ES2_AND_ES3(FenceNVTest);
+
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(FenceSyncTest);
 ANGLE_INSTANTIATE_TEST_ES3(FenceSyncTest);

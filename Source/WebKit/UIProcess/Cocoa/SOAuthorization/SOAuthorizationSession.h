@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019-2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2019-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,11 +30,12 @@
 #include <pal/spi/cocoa/AppSSOSPI.h>
 #include <wtf/Forward.h>
 #include <wtf/RetainPtr.h>
-#include <wtf/ThreadSafeRefCounted.h>
+#include <wtf/ThreadSafeWeakPtr.h>
 #include <wtf/WeakObjCPtr.h>
 #include <wtf/WeakPtr.h>
 
 OBJC_CLASS SOAuthorization;
+OBJC_CLASS WKSOAuthorizationDelegate;
 
 namespace API {
 class NavigationAction;
@@ -42,16 +43,17 @@ class NavigationAction;
 
 namespace WebCore {
 class ResourceResponse;
+class SecurityOrigin;
 }
 
 namespace WebKit {
 
 class WebPageProxy;
 
-enum class SOAuthorizationLoadPolicy : uint8_t;
+enum class SOAuthorizationLoadPolicy : bool;
 
 // A session will only be executed once.
-class SOAuthorizationSession : public ThreadSafeRefCounted<SOAuthorizationSession, WTF::DestructionThread::MainRunLoop>, public CanMakeWeakPtr<SOAuthorizationSession> {
+class SOAuthorizationSession : public ThreadSafeRefCountedAndCanMakeThreadSafeWeakPtr<SOAuthorizationSession, WTF::DestructionThread::MainRunLoop> {
 public:
     enum class InitiatingAction : uint8_t {
         Redirect,
@@ -87,13 +89,13 @@ protected:
         Completed
     };
 
-    SOAuthorizationSession(SOAuthorization *, Ref<API::NavigationAction>&&, WebPageProxy&, InitiatingAction);
+    SOAuthorizationSession(RetainPtr<WKSOAuthorizationDelegate>, Ref<API::NavigationAction>&&, WebPageProxy&, InitiatingAction);
 
     void start();
     WebPageProxy* page() const { return m_page.get(); }
     State state() const { return m_state; }
-    const char* stateString() const;
-    const char* initiatingActionString() const;
+    ASCIILiteral stateString() const;
+    ASCIILiteral initiatingActionString() const;
     void setState(State state) { m_state = state; }
     const API::NavigationAction* navigationAction() { return m_navigationAction.get(); }
     Ref<API::NavigationAction> releaseNavigationAction();
@@ -112,11 +114,13 @@ private:
     void continueStartAfterGetAuthorizationHints(const String&);
     void continueStartAfterDecidePolicy(const SOAuthorizationLoadPolicy&);
 
+    virtual bool shouldInterruptLoadForCSPFrameAncestorsOrXFrameOptions(const WebCore::ResourceResponse&) { return false; }
     State m_state  { State::Idle };
-    WeakObjCPtr<SOAuthorization *> m_soAuthorization;
+    RetainPtr<SOAuthorization> m_soAuthorization;
     RefPtr<API::NavigationAction> m_navigationAction;
     WeakPtr<WebPageProxy> m_page;
     InitiatingAction m_action;
+    bool m_isInDestructor { false };
 
     RetainPtr<SOAuthorizationViewController> m_viewController;
 #if PLATFORM(MAC)

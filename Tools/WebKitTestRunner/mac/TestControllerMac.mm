@@ -29,11 +29,12 @@
 #import "LayoutTestSpellChecker.h"
 #import "PlatformWebView.h"
 #import "PoseAsClass.h"
+#import "TestCommand.h"
 #import "TestInvocation.h"
 #import "TestRunnerWKWebView.h"
+#import "WPTFunctions.h"
 #import "WebKitTestRunnerPasteboard.h"
 #import <WebKit/WKContextPrivate.h>
-#import <WebKit/WKPageGroup.h>
 #import <WebKit/WKProcessPoolPrivate.h>
 #import <WebKit/WKStringCF.h>
 #import <WebKit/WKURLCF.h>
@@ -42,9 +43,12 @@
 #import <WebKit/WKWebViewConfiguration.h>
 #import <WebKit/WKWebViewConfigurationPrivate.h>
 #import <WebKit/WKWebViewPrivate.h>
-#import <WebKit/_WKUserContentExtensionStore.h>
-#import <WebKit/_WKUserContentExtensionStorePrivate.h>
 #import <mach-o/dyld.h>
+#import <pal/spi/mac/NSApplicationSPI.h>
+
+@interface NSMenu ()
+- (id)_menuImpl;
+@end
 
 @interface NSSound ()
 + (void)_setAlertType:(NSUInteger)alertType;
@@ -70,6 +74,17 @@ static PlatformWindow wtr_NSApplication_keyWindow(id self, SEL _cmd)
     return WTR::PlatformWebView::keyWindow();
 }
 
+static Class menuImplClass()
+{
+    static dispatch_once_t onceToken;
+    static Class menuImplClass;
+    dispatch_once(&onceToken, ^{
+        auto menu = adoptNS([NSMenu new]);
+        menuImplClass = [[menu _menuImpl] class];
+    });
+    return menuImplClass;
+}
+
 static __weak NSMenu *gCurrentPopUpMenu = nil;
 static void setSwizzledPopUpMenu(NSMenu *menu)
 {
@@ -86,8 +101,9 @@ static void setSwizzledPopUpMenu(NSMenu *menu)
     });
 }
 
-static void swizzledPopUpContextMenu(Class, SEL, NSMenu *menu, NSEvent *, NSView *)
+static void swizzledPopUpContextMenu(Class, SEL, NSMenu *menu, NSEvent *event, NSView *)
 {
+    ASSERT(event);
     setSwizzledPopUpMenu(menu);
 }
 
@@ -111,12 +127,15 @@ static void swizzledCancelTracking(NSMenu *menu, SEL)
     });
 }
 
-void TestController::platformInitialize()
+void TestController::platformInitialize(const Options& options)
 {
     poseAsClass("WebKitTestRunnerPasteboard", "NSPasteboard");
     poseAsClass("WebKitTestRunnerEvent", "NSEvent");
     
-    cocoaPlatformInitialize();
+    cocoaPlatformInitialize(options);
+
+    if (!m_defaultAppAccentColor)
+        m_defaultAppAccentColor = NSApp._effectiveAccentColor;
 
     [NSSound _setAlertType:0];
 
@@ -132,8 +151,8 @@ void TestController::platformInitialize()
 
     static InstanceMethodSwizzler cancelTrackingSwizzler { NSMenu.class, @selector(cancelTracking), reinterpret_cast<IMP>(swizzledCancelTracking) };
     static ClassMethodSwizzler menuPopUpSwizzler { NSMenu.class, @selector(popUpContextMenu:withEvent:forView:), reinterpret_cast<IMP>(swizzledPopUpContextMenu) };
-    static InstanceMethodSwizzler carbonMenuPopUpSwizzler {
-        NSClassFromString(@"NSCarbonMenuImpl"),
+    static InstanceMethodSwizzler menuImplPopUpSwizzler {
+        menuImplClass(),
         NSSelectorFromString(@"popUpMenu:atLocation:width:forView:withSelectedItem:withFont:withFlags:withOptions:"),
         reinterpret_cast<IMP>(swizzledPopUpMenu)
     };
@@ -157,9 +176,10 @@ void TestController::initializeTestPluginDirectory()
 
 bool TestController::platformResetStateToConsistentValues(const TestOptions& options)
 {
-    [LayoutTestSpellChecker uninstallAndReset];
-
     cocoaResetStateToConsistentValues(options);
+
+    if (m_defaultAppAccentColor && ![NSApp._effectiveAccentColor isEqual:m_defaultAppAccentColor.get()])
+        NSApp._accentColor = m_defaultAppAccentColor.get();
 
     while ([NSApp nextEventMatchingMask:NSEventMaskGesture | NSEventMaskScrollWheel untilDate:nil inMode:NSDefaultRunLoopMode dequeue:YES]) {
         // Clear out (and ignore) any pending gesture and scroll wheel events.
@@ -168,16 +188,24 @@ bool TestController::platformResetStateToConsistentValues(const TestOptions& opt
     return true;
 }
 
-TestFeatures TestController::platformSpecificFeatureDefaultsForTest(const TestCommand&) const
+static bool shouldEnableAsyncOverflowScrolling(const std::string& pathOrURL)
+{
+    return isWebPlatformTestURL({ { }, String::fromUTF8(pathOrURL.c_str()) });
+}
+
+TestFeatures TestController::platformSpecificFeatureDefaultsForTest(const TestCommand& command) const
 {
     TestFeatures features;
     features.boolTestRunnerFeatures.insert({ "useThreadedScrolling", true });
+    if (shouldEnableAsyncOverflowScrolling(command.pathOrURL))
+        features.boolWebPreferenceFeatures.insert({ "AsyncOverflowScrollingEnabled", true });
     return features;
 }
 
+#if ENABLE(CONTENT_EXTENSIONS)
 void TestController::configureContentExtensionForTest(const TestInvocation& test)
 {
-    if (!test.urlContains("contentextensions/"))
+    if (!test.urlContains("contentextensions/"_s))
         return;
 
     auto testURL = adoptCF(WKURLCopyCFURL(kCFAllocatorDefault, test.url()));
@@ -206,16 +234,17 @@ void TestController::configureContentExtensionForTest(const TestInvocation& test
     } else
         tempDir = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:@"ContentExtensions"] isDirectory:YES];
 
-    [[_WKUserContentExtensionStore storeWithURL:tempDir] compileContentExtensionForIdentifier:@"TestContentExtensions" encodedContentExtension:contentExtensionString.get() completionHandler:^(_WKUserContentFilter *filter, NSError *error)
+    [[WKContentRuleListStore storeWithURL:tempDir] compileContentRuleListForIdentifier:@"TestContentExtensions" encodedContentRuleList:contentExtensionString.get() completionHandler:^(WKContentRuleList *list, NSError *error)
     {
         if (!error)
-            [mainWebView()->platformView().configuration.userContentController _addUserContentFilter:filter];
+            [mainWebView()->platformView().configuration.userContentController addContentRuleList:list];
         else
             NSLog(@"%@", [error helpAnchor]);
         doneCompiling = true;
     }];
     platformRunUntil(doneCompiling, noTimeout);
 }
+#endif
 
 void TestController::platformConfigureViewForTest(const TestInvocation& test)
 {
@@ -331,6 +360,8 @@ static NSSet *allowedFontFamilySet()
         @"Songti TC",
         @"STFangsong",
         @"STHeiti",
+        @"STIX Two Math",
+        @"STIX Two Text",
         @"STIXGeneral",
         @"STIXSizeOneSym",
         @"STKaiti",

@@ -28,13 +28,13 @@
 #include "AudioBasicProcessorNode.h"
 #include "IIRFilterOptions.h"
 #include "IIRProcessor.h"
-#include <JavaScriptCore/Float32Array.h>
-#include <wtf/IsoMalloc.h>
+#include <JavaScriptCore/Forward.h>
+#include <wtf/TZoneMalloc.h>
 
 namespace WebCore {
 
 class IIRFilterNode final : public AudioBasicProcessorNode {
-    WTF_MAKE_ISO_ALLOCATED(IIRFilterNode);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(IIRFilterNode);
 public:
     static ExceptionOr<Ref<IIRFilterNode>> create(ScriptExecutionContext&, BaseAudioContext&, IIRFilterOptions&&);
 

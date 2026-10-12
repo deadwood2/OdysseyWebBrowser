@@ -33,45 +33,6 @@
 
 namespace WebKit {
 
-void LoadParameters::platformEncode(IPC::Encoder& encoder) const
-{
-    IPC::encode(encoder, dataDetectionContext.get());
-
-    encoder << networkExtensionSandboxExtensionHandles;
-#if PLATFORM(IOS)
-    encoder << contentFilterExtensionHandle;
-    encoder << frontboardServiceExtensionHandle;
-#endif
-}
-
-bool LoadParameters::platformDecode(IPC::Decoder& decoder, LoadParameters& parameters)
-{
-    if (!IPC::decode(decoder, parameters.dataDetectionContext))
-        return false;
-
-    std::optional<Vector<SandboxExtension::Handle>> networkExtensionSandboxExtensionHandles;
-    decoder >> networkExtensionSandboxExtensionHandles;
-    if (!networkExtensionSandboxExtensionHandles)
-        return false;
-    parameters.networkExtensionSandboxExtensionHandles = WTFMove(*networkExtensionSandboxExtensionHandles);
-    
-#if PLATFORM(IOS)
-    std::optional<std::optional<SandboxExtension::Handle>> contentFilterExtensionHandle;
-    decoder >> contentFilterExtensionHandle;
-    if (!contentFilterExtensionHandle)
-        return false;
-    parameters.contentFilterExtensionHandle = WTFMove(*contentFilterExtensionHandle);
-
-    std::optional<std::optional<SandboxExtension::Handle>> frontboardServiceExtensionHandle;
-    decoder >> frontboardServiceExtensionHandle;
-    if (!frontboardServiceExtensionHandle)
-        return false;
-    parameters.frontboardServiceExtensionHandle = WTFMove(*frontboardServiceExtensionHandle);
-#endif
-
-    return true;
-}
-
 } // namespace WebKit
 
 #endif

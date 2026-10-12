@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Copyright (C) 2021 Apple Inc. All rights reserved.
+# Copyright (C) 2021-2022 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -24,9 +24,10 @@
 
 import sys
 
-from webkitcorepy import Terminal
+from webkitcorepy import arguments, Terminal
 from webkitscmpy import local
 from webkitscmpy.program.command import FilteredCommand
+from webkitscmpy.program.show import Show
 
 
 class Log(FilteredCommand):
@@ -34,9 +35,42 @@ class Log(FilteredCommand):
     help = "Filter raw output of 'git log' or 'svn log' to replace native commit representation with identifiers"
 
     @classmethod
+    def parser(cls, parser, loggers=None):
+        Show.parser(parser, loggers=loggers)
+        parser.add_argument(
+            '--max-count', '-n', type=int,
+            help='Limit the number of commits to output.',
+            dest='max_count',
+            default=None,
+        )
+        parser.add_argument(
+            '--skip', type=int,
+            help='Skip number commits before starting to show the commit output.',
+            dest='skip',
+            default=None,
+        )
+
+    @classmethod
     def main(cls, args, repository, **kwargs):
         config = getattr(repository, 'config', lambda: {})()
         Terminal.colors = config.get('color.diff', config.get('color.ui', 'auto')) != 'false'
+
+        max_count = getattr(args, 'max_count', None)
+        if max_count:
+            args.args.insert(0, '--max-count={}'.format(max_count))
+        skip = getattr(args, 'skip', None)
+        if skip:
+            args.args.insert(0, '--skip={}'.format(skip))
+        pretty = getattr(args, 'pretty', None)
+        if pretty:
+            args.args.insert(0, '--pretty={}'.format(pretty))
+        abbrev_commit = getattr(args, 'abbrev_commit', None)
+        if abbrev_commit is not None:
+            args.args.insert(0, '--abbrev-commit' if abbrev_commit else '--no-abbrev-commit')
+        oneline = getattr(args, 'oneline', None)
+        if oneline is not None:
+            args.args.insert(0, '--oneline')
+
         return cls.pager(args, repository, file=__file__, **kwargs)
 
 

@@ -37,14 +37,13 @@ static GParamSpec* sObjProperties[N_PROPERTIES] = { nullptr, };
 using namespace WebCore;
 
 /**
- * SECTION: WebKitURIRequest
- * @Short_description: Represents a URI request
- * @Title: WebKitURIRequest
+ * WebKitURIRequest:
+ *
+ * Represents a URI request.
  *
  * A #WebKitURIRequest can be created with a URI using the
  * webkit_uri_request_new() method, and you can get the URI of an
  * existing request with the webkit_uri_request_get_uri() one.
- *
  */
 
 struct _WebKitURIRequestPrivate {
@@ -54,7 +53,7 @@ struct _WebKitURIRequestPrivate {
     GUniquePtr<SoupMessageHeaders> httpHeaders;
 };
 
-WEBKIT_DEFINE_TYPE(WebKitURIRequest, webkit_uri_request, G_TYPE_OBJECT)
+WEBKIT_DEFINE_FINAL_TYPE(WebKitURIRequest, webkit_uri_request, G_TYPE_OBJECT, GObject)
 
 static void webkitURIRequestGetProperty(GObject* object, guint propId, GValue* value, GParamSpec* paramSpec)
 {
@@ -96,8 +95,7 @@ static void webkit_uri_request_class_init(WebKitURIRequestClass* requestClass)
     sObjProperties[PROP_URI] =
         g_param_spec_string(
             "uri",
-            _("URI"),
-            _("The URI to which the request will be made."),
+            nullptr, nullptr,
             "about:blank",
             static_cast<GParamFlags>(WEBKIT_PARAM_READWRITE | G_PARAM_CONSTRUCT));
 
@@ -123,7 +121,9 @@ WebKitURIRequest* webkit_uri_request_new(const gchar* uri)
  * webkit_uri_request_get_uri:
  * @request: a #WebKitURIRequest
  *
- * Returns: the uri of the #WebKitURIRequest
+ * Obtains the request URI.
+ *
+ * Returns: request URI, as a string.
  */
 const gchar* webkit_uri_request_get_uri(WebKitURIRequest* request)
 {
@@ -145,7 +145,7 @@ void webkit_uri_request_set_uri(WebKitURIRequest* request, const char* uri)
     g_return_if_fail(WEBKIT_IS_URI_REQUEST(request));
     g_return_if_fail(uri);
 
-    URL url(URL(), uri);
+    URL url { String::fromLatin1(uri) };
     if (url == request->priv->resourceRequest.url())
         return;
 

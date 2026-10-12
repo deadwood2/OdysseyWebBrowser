@@ -4,7 +4,7 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2,1 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -54,7 +54,7 @@ public:
     }
 
     static gboolean showOptionMenuCallback(WebKitWebView* webView, WebKitOptionMenu* menu,
-#if PLATFORM(GTK)
+#if PLATFORM(GTK) && !USE(GTK4)
         GdkEvent* event,
 #endif
         PlatformRectangle* rect, OptionMenuTest* test)
@@ -62,6 +62,9 @@ public:
         g_assert_true(test->m_webView == webView);
         g_assert_nonnull(rect);
         g_assert_true(WEBKIT_IS_OPTION_MENU(menu));
+#if PLATFORM(GTK) && !USE(GTK4)
+        g_assert_true(webkit_option_menu_get_event(menu) == event);
+#endif
         test->assertObjectIsDeletedWhenTestFinishes(G_OBJECT(menu));
         test->showOptionMenu(menu, rect);
         return TRUE;
@@ -304,13 +307,10 @@ static void testOptionMenuSelect(OptionMenuTest* test, gconstpointer)
 
 void beforeAll()
 {
-#if !PLATFORM(GTK) || !USE(GTK4)
-    // FIXME: Rework option menu API in GTK4 to not expose GdkEvent.
     OptionMenuTest::add("WebKitWebView", "option-menu-simple", testOptionMenuSimple);
     OptionMenuTest::add("WebKitWebView", "option-menu-groups", testOptionMenuGroups);
     OptionMenuTest::add("WebKitWebView", "option-menu-activate", testOptionMenuActivate);
     OptionMenuTest::add("WebKitWebView", "option-menu-select", testOptionMenuSelect);
-#endif
 }
 
 void afterAll()

@@ -28,6 +28,7 @@
 
 #if ENABLE(DRAG_SUPPORT) && !USE(GTK4)
 
+#include "SandboxExtension.h"
 #include "WebKitWebViewBasePrivate.h"
 #include <WebCore/DragData.h>
 #include <WebCore/GRefPtrGtk.h>
@@ -51,7 +52,7 @@ DropTarget::DropTarget(GtkWidget* webView)
     gtk_target_list_add_uri_targets(list.get(), DropTargetType::URIList);
     gtk_target_list_add(list.get(), gdk_atom_intern_static_string("_NETSCAPE_URL"), 0, DropTargetType::NetscapeURL);
     gtk_target_list_add(list.get(), gdk_atom_intern_static_string("application/vnd.webkitgtk.smartpaste"), 0, DropTargetType::SmartPaste);
-    gtk_target_list_add(list.get(), gdk_atom_intern_static_string(PasteboardCustomData::gtkType()), 0, DropTargetType::Custom);
+    gtk_target_list_add(list.get(), gdk_atom_intern_static_string(PasteboardCustomData::gtkType().characters()), 0, DropTargetType::Custom);
     gtk_drag_dest_set(m_webView, static_cast<GtkDestDefaults>(0), nullptr, 0,
         static_cast<GdkDragAction>(GDK_ACTION_COPY | GDK_ACTION_MOVE | GDK_ACTION_LINK));
     gtk_drag_dest_set_target_list(m_webView, list.get());
@@ -180,9 +181,9 @@ void DropTarget::dataReceived(IntPoint&& position, GtkSelectionData* data, unsig
         if (length > 0) {
             // If data starts with UTF-16 BOM assume it's UTF-16, otherwise assume UTF-8.
             if (length >= 2 && reinterpret_cast<const UChar*>(markupData)[0] == 0xFEFF)
-                m_selectionData->setMarkup(String(reinterpret_cast<const UChar*>(markupData) + 1, (length / 2) - 1));
+                m_selectionData->setMarkup(String({ reinterpret_cast<const UChar*>(markupData) + 1, static_cast<size_t>((length / 2) - 1) }));
             else
-                m_selectionData->setMarkup(String::fromUTF8(markupData, length));
+                m_selectionData->setMarkup(String::fromUTF8(std::span(markupData, length)));
         }
         break;
     }
@@ -190,14 +191,14 @@ void DropTarget::dataReceived(IntPoint&& position, GtkSelectionData* data, unsig
         gint length;
         const auto* uriListData = gtk_selection_data_get_data_with_length(data, &length);
         if (length > 0)
-            m_selectionData->setURIList(String::fromUTF8(uriListData, length));
+            m_selectionData->setURIList(String::fromUTF8(std::span(uriListData, length)));
         break;
     }
     case DropTargetType::NetscapeURL: {
         gint length;
         const auto* urlData = gtk_selection_data_get_data_with_length(data, &length);
         if (length > 0) {
-            Vector<String> tokens = String::fromUTF8(urlData, length).split('\n');
+            Vector<String> tokens = String::fromUTF8(std::span(urlData, length)).split('\n');
             URL url({ }, tokens[0]);
             if (url.isValid())
                 m_selectionData->setURL(url, tokens.size() > 1 ? tokens[1] : String());
@@ -211,7 +212,7 @@ void DropTarget::dataReceived(IntPoint&& position, GtkSelectionData* data, unsig
         int length;
         const auto* customData = gtk_selection_data_get_data_with_length(data, &length);
         if (length > 0)
-            m_selectionData->setCustomData(SharedBuffer::create(customData, static_cast<size_t>(length)));
+            m_selectionData->setCustomData(SharedBuffer::create(std::span { customData, static_cast<size_t>(length) }));
         break;
     }
     }

@@ -32,9 +32,11 @@
 #if ENABLE(SCROLLING_THREAD)
 #include "ScrollingStateFrameScrollingNode.h"
 #endif
+#include "ScrollingEffectsController.h"
 #include "ScrollingStateScrollingNode.h"
 #include "ScrollingStateTree.h"
 #include "ScrollingTree.h"
+#include "ScrollingTreeScrollingNodeDelegate.h"
 #include <wtf/text/TextStream.h>
 
 namespace WebCore {
@@ -46,71 +48,80 @@ ScrollingTreeScrollingNode::ScrollingTreeScrollingNode(ScrollingTree& scrollingT
 
 ScrollingTreeScrollingNode::~ScrollingTreeScrollingNode() = default;
 
-void ScrollingTreeScrollingNode::commitStateBeforeChildren(const ScrollingStateNode& stateNode)
+bool ScrollingTreeScrollingNode::commitStateBeforeChildren(const ScrollingStateNode& stateNode)
 {
-    const ScrollingStateScrollingNode& state = downcast<ScrollingStateScrollingNode>(stateNode);
+    auto* state = dynamicDowncast<ScrollingStateScrollingNode>(stateNode);
+    if (!state)
+        return false;
 
-    if (state.hasChangedProperty(ScrollingStateNode::Property::ScrollableAreaSize))
-        m_scrollableAreaSize = state.scrollableAreaSize();
+    if (state->hasChangedProperty(ScrollingStateNode::Property::ScrollableAreaSize))
+        m_scrollableAreaSize = state->scrollableAreaSize();
 
-    if (state.hasChangedProperty(ScrollingStateNode::Property::TotalContentsSize)) {
+    if (state->hasChangedProperty(ScrollingStateNode::Property::TotalContentsSize)) {
         if (scrollingTree().isRubberBandInProgressForNode(scrollingNodeID()))
             m_totalContentsSizeForRubberBand = m_totalContentsSize;
         else
-            m_totalContentsSizeForRubberBand = state.totalContentsSize();
+            m_totalContentsSizeForRubberBand = state->totalContentsSize();
 
-        m_totalContentsSize = state.totalContentsSize();
+        m_totalContentsSize = state->totalContentsSize();
     }
 
-    if (state.hasChangedProperty(ScrollingStateNode::Property::ReachableContentsSize))
-        m_reachableContentsSize = state.reachableContentsSize();
+    if (state->hasChangedProperty(ScrollingStateNode::Property::ReachableContentsSize))
+        m_reachableContentsSize = state->reachableContentsSize();
 
-    if (state.hasChangedProperty(ScrollingStateNode::Property::ScrollPosition)) {
-        m_lastCommittedScrollPosition = state.scrollPosition();
-        if (m_isFirstCommit && !state.hasChangedProperty(ScrollingStateNode::Property::RequestedScrollPosition))
+    if (state->hasChangedProperty(ScrollingStateNode::Property::ScrollPosition)) {
+        m_lastCommittedScrollPosition = state->scrollPosition();
+        if (m_isFirstCommit && !state->hasScrollPositionRequest())
             m_currentScrollPosition = m_lastCommittedScrollPosition;
     }
 
-    if (state.hasChangedProperty(ScrollingStateNode::Property::ScrollOrigin))
-        m_scrollOrigin = state.scrollOrigin();
+    if (state->hasChangedProperty(ScrollingStateNode::Property::ScrollOrigin))
+        m_scrollOrigin = state->scrollOrigin();
 
-    if (state.hasChangedProperty(ScrollingStateNode::Property::SnapOffsetsInfo))
-        m_snapOffsetsInfo = state.snapOffsetsInfo();
+    if (state->hasChangedProperty(ScrollingStateNode::Property::SnapOffsetsInfo))
+        m_snapOffsetsInfo = state->snapOffsetsInfo();
 
-    if (state.hasChangedProperty(ScrollingStateNode::Property::CurrentHorizontalSnapOffsetIndex))
-        m_currentHorizontalSnapPointIndex = state.currentHorizontalSnapPointIndex();
+    if (state->hasChangedProperty(ScrollingStateNode::Property::CurrentHorizontalSnapOffsetIndex))
+        m_currentHorizontalSnapPointIndex = state->currentHorizontalSnapPointIndex();
 
-    if (state.hasChangedProperty(ScrollingStateNode::Property::CurrentVerticalSnapOffsetIndex))
-        m_currentVerticalSnapPointIndex = state.currentVerticalSnapPointIndex();
+    if (state->hasChangedProperty(ScrollingStateNode::Property::CurrentVerticalSnapOffsetIndex))
+        m_currentVerticalSnapPointIndex = state->currentVerticalSnapPointIndex();
 
-    if (state.hasChangedProperty(ScrollingStateNode::Property::ScrollableAreaParams))
-        m_scrollableAreaParameters = state.scrollableAreaParameters();
+    if (state->hasChangedProperty(ScrollingStateNode::Property::ScrollableAreaParams))
+        m_scrollableAreaParameters = state->scrollableAreaParameters();
 
 #if ENABLE(SCROLLING_THREAD)
-    if (state.hasChangedProperty(ScrollingStateNode::Property::ReasonsForSynchronousScrolling))
-        m_synchronousScrollingReasons = state.synchronousScrollingReasons();
+    if (state->hasChangedProperty(ScrollingStateNode::Property::ReasonsForSynchronousScrolling))
+        m_synchronousScrollingReasons = state->synchronousScrollingReasons();
 #endif
 
-    if (state.hasChangedProperty(ScrollingStateNode::Property::ScrollContainerLayer))
-        m_scrollContainerLayer = state.scrollContainerLayer();
+    if (state->hasChangedProperty(ScrollingStateNode::Property::ScrollContainerLayer))
+        m_scrollContainerLayer = state->scrollContainerLayer();
 
-    if (state.hasChangedProperty(ScrollingStateNode::Property::ScrolledContentsLayer))
-        m_scrolledContentsLayer = state.scrolledContentsLayer();
+    if (state->hasChangedProperty(ScrollingStateNode::Property::ScrolledContentsLayer))
+        m_scrolledContentsLayer = state->scrolledContentsLayer();
+
+    return true;
 }
 
-void ScrollingTreeScrollingNode::commitStateAfterChildren(const ScrollingStateNode& stateNode)
+bool ScrollingTreeScrollingNode::commitStateAfterChildren(const ScrollingStateNode& stateNode)
 {
-    const ScrollingStateScrollingNode& scrollingStateNode = downcast<ScrollingStateScrollingNode>(stateNode);
-    if (scrollingStateNode.hasChangedProperty(ScrollingStateNode::Property::RequestedScrollPosition)) {
-        const auto& requestedScrollData = scrollingStateNode.requestedScrollData();
-        scrollingTree().scrollingTreeNodeRequestsScroll(scrollingNodeID(), requestedScrollData.scrollPosition, requestedScrollData.scrollType, requestedScrollData.clamping);
-    }
+    auto* scrollingStateNode = dynamicDowncast<ScrollingStateScrollingNode>(stateNode);
+    if (!scrollingStateNode)
+        return false;
+
+    if (scrollingStateNode->hasChangedProperty(ScrollingStateNode::Property::RequestedScrollPosition))
+        handleScrollPositionRequest(scrollingStateNode->requestedScrollData());
+
+    if (scrollingStateNode->hasChangedProperty(ScrollingStateNode::Property::KeyboardScrollData))
+        requestKeyboardScroll(scrollingStateNode->keyboardScrollData());
 
     // This synthetic bit is added back in ScrollingTree::propagateSynchronousScrollingReasons().
 #if ENABLE(SCROLLING_THREAD)
     m_synchronousScrollingReasons.remove(SynchronousScrollingReason::DescendantScrollersHaveSynchronousScrolling);
 #endif
     m_isFirstCommit = false;
+    return true;
 }
 
 void ScrollingTreeScrollingNode::didCompleteCommitForNode()
@@ -123,6 +134,16 @@ bool ScrollingTreeScrollingNode::isLatchedNode() const
     return scrollingTree().latchedNodeID() == scrollingNodeID();
 }
 
+bool ScrollingTreeScrollingNode::shouldRubberBand(const PlatformWheelEvent& wheelEvent, EventTargeting eventTargeting) const
+{
+    // We always rubber-band the latched node, or the root node.
+    // The stateless wheel event doesn't trigger rubber-band.
+    // Also rubberband when we should block scroll propagation
+    // at this node, which has overscroll behavior that is not none.
+    auto scrollPropagationInfo = computeScrollPropagation(wheelEvent.delta());
+    return (isLatchedNode() || eventTargeting == EventTargeting::NodeOnly || (isRootNode() && !wheelEvent.isNonGestureEvent()) || ( scrollPropagationInfo.shouldBlockScrollPropagation && scrollPropagationInfo.isHandled && overscrollBehaviorAllowsRubberBand()));
+}
+
 bool ScrollingTreeScrollingNode::canHandleWheelEvent(const PlatformWheelEvent& wheelEvent, EventTargeting eventTargeting) const
 {
     if (!canHaveScrollbars())
@@ -132,9 +153,7 @@ bool ScrollingTreeScrollingNode::canHandleWheelEvent(const PlatformWheelEvent& w
     if (wheelEvent.phase() == PlatformWheelEventPhase::MayBegin)
         return true;
 
-    // We always rubber-band the latched node, or the root node.
-    // The stateless wheel event doesn't trigger rubber-band.
-    if (isLatchedNode() || eventTargeting == EventTargeting::NodeOnly || (isRootNode() && !wheelEvent.isNonGestureEvent()))
+    if (shouldRubberBand(wheelEvent, eventTargeting))
         return true;
 
     return eventCanScrollContents(wheelEvent);
@@ -165,10 +184,8 @@ FloatPoint ScrollingTreeScrollingNode::maximumScrollPosition() const
 
 bool ScrollingTreeScrollingNode::eventCanScrollContents(const PlatformWheelEvent& wheelEvent) const
 {
-#if PLATFORM(GTK)
-    // In case of GTK platform the end of momentum scroll events
-    // always have a delta of 0. More information in the documentation
-    // of the API gdk_event_is_scroll_stop_event.
+#if PLATFORM(WPE) || PLATFORM(GTK)
+    // In case of GTK and WPE the end of momentum scroll events always have a delta of 0.
     if (wheelEvent.isEndOfNonMomentumScroll())
         return true;
 #endif
@@ -207,7 +224,7 @@ RectEdges<bool> ScrollingTreeScrollingNode::edgePinnedState() const
     };
 }
 
-bool ScrollingTreeScrollingNode::isUserScrollProgress() const
+bool ScrollingTreeScrollingNode::isUserScrollInProgress() const
 {
     return scrollingTree().isUserScrollInProgressForNode(scrollingNodeID());
 }
@@ -227,12 +244,108 @@ void ScrollingTreeScrollingNode::setScrollSnapInProgress(bool isSnapping)
     scrollingTree().setNodeScrollSnapInProgress(scrollingNodeID(), isSnapping);
 }
 
+void ScrollingTreeScrollingNode::willStartAnimatedScroll()
+{
+    scrollingTree().scrollingTreeNodeWillStartAnimatedScroll(*this);
+}
+
+void ScrollingTreeScrollingNode::didStopAnimatedScroll()
+{
+    LOG_WITH_STREAM(Scrolling, stream << "ScrollingTreeScrollingNode " << scrollingNodeID() << " didStopAnimatedScroll");
+    scrollingTree().scrollingTreeNodeDidStopAnimatedScroll(*this);
+}
+
+void ScrollingTreeScrollingNode::willStartWheelEventScroll()
+{
+    scrollingTree().scrollingTreeNodeWillStartWheelEventScroll(*this);
+}
+
+void ScrollingTreeScrollingNode::didStopWheelEventScroll()
+{
+    scrollingTree().scrollingTreeNodeDidStopWheelEventScroll(*this);
+}
+
+bool ScrollingTreeScrollingNode::startAnimatedScrollToPosition(FloatPoint destinationPosition)
+{
+    return m_delegate ? m_delegate->startAnimatedScrollToPosition(destinationPosition) : false;
+}
+
+void ScrollingTreeScrollingNode::stopAnimatedScroll()
+{
+    if (m_delegate)
+        m_delegate->stopAnimatedScroll();
+}
+
+void ScrollingTreeScrollingNode::serviceScrollAnimation(MonotonicTime currentTime)
+{
+    if (m_delegate)
+        m_delegate->serviceScrollAnimation(currentTime);
+}
+
+void ScrollingTreeScrollingNode::setScrollAnimationInProgress(bool animationInProgress)
+{
+    scrollingTree().setScrollAnimationInProgressForNode(scrollingNodeID(), animationInProgress);
+}
+
+void ScrollingTreeScrollingNode::handleKeyboardScrollRequest(const RequestedKeyboardScrollData& scrollData)
+{
+    if (m_delegate)
+        m_delegate->handleKeyboardScrollRequest(scrollData);
+}
+
+void ScrollingTreeScrollingNode::requestKeyboardScroll(const RequestedKeyboardScrollData& scrollData)
+{
+    scrollingTree().scrollingTreeNodeRequestsKeyboardScroll(scrollingNodeID(), scrollData);
+}
+
+void ScrollingTreeScrollingNode::handleScrollPositionRequest(const RequestedScrollData& requestedScrollData)
+{
+    stopAnimatedScroll();
+
+    if (requestedScrollData.requestType == ScrollRequestType::CancelAnimatedScroll) {
+        ASSERT(!requestedScrollData.requestedDataBeforeAnimatedScroll);
+        LOG_WITH_STREAM(Scrolling, stream << "ScrollingTreeScrollingNode " << scrollingNodeID() << " handleScrollPositionRequest() - cancel animated scroll");
+        scrollingTree().removePendingScrollAnimationForNode(scrollingNodeID());
+        return;
+    }
+
+    if (scrollingTree().scrollingTreeNodeRequestsScroll(scrollingNodeID(), requestedScrollData))
+        return;
+
+    LOG_WITH_STREAM(Scrolling, stream << "ScrollingTreeScrollingNode " << scrollingNodeID() << " handleScrollPositionRequest() with data " << requestedScrollData);
+
+    if (requestedScrollData.requestedDataBeforeAnimatedScroll) {
+        auto& [requestType, positionOrDeltaBeforeAnimatedScroll, scrollType, clamping] = *requestedScrollData.requestedDataBeforeAnimatedScroll;
+
+        switch (requestType) {
+        case ScrollRequestType::PositionUpdate:
+        case ScrollRequestType::DeltaUpdate: {
+            auto intermediatePosition = RequestedScrollData::computeDestinationPosition(currentScrollPosition(), requestType, positionOrDeltaBeforeAnimatedScroll);
+            scrollTo(intermediatePosition, scrollType, clamping);
+            break;
+        }
+        case ScrollRequestType::CancelAnimatedScroll:
+            stopAnimatedScroll();
+            break;
+        }
+    }
+
+    auto destinationPosition = requestedScrollData.destinationPosition(currentScrollPosition());
+    if (requestedScrollData.animated == ScrollIsAnimated::Yes) {
+        startAnimatedScrollToPosition(destinationPosition);
+        return;
+    }
+
+    scrollTo(destinationPosition, requestedScrollData.scrollType, requestedScrollData.clamping);
+}
+
 FloatPoint ScrollingTreeScrollingNode::adjustedScrollPosition(const FloatPoint& scrollPosition, ScrollClamping clamping) const
 {
+    auto adjustedPosition = m_delegate ? m_delegate->adjustedScrollPosition(scrollPosition) : scrollPosition;
     if (clamping == ScrollClamping::Clamped)
-        return clampScrollPosition(scrollPosition);
+        return clampScrollPosition(adjustedPosition);
 
-    return scrollPosition;
+    return adjustedPosition;
 }
 
 void ScrollingTreeScrollingNode::scrollBy(const FloatSize& delta, ScrollClamping clamp)
@@ -295,7 +408,7 @@ void ScrollingTreeScrollingNode::wasScrolledByDelegatedScrolling(const FloatPoin
     scrollingTree().setNeedsApplyLayerPositionsAfterCommit();
 }
 
-void ScrollingTreeScrollingNode::dumpProperties(TextStream& ts, ScrollingStateTreeAsTextBehavior behavior) const
+void ScrollingTreeScrollingNode::dumpProperties(TextStream& ts, OptionSet<ScrollingStateTreeAsTextBehavior> behavior) const
 {
     ScrollingTreeNode::dumpProperties(ts, behavior);
     ts.dumpProperty("scrollable area size", m_scrollableAreaSize);
@@ -306,7 +419,10 @@ void ScrollingTreeScrollingNode::dumpProperties(TextStream& ts, ScrollingStateTr
         ts.dumpProperty("reachable content size", m_reachableContentsSize);
     ts.dumpProperty("last committed scroll position", m_lastCommittedScrollPosition);
 
-    if (m_scrollOrigin != IntPoint())
+    if (!m_currentScrollPosition.isZero())
+        ts.dumpProperty("scroll position", m_currentScrollPosition);
+
+    if (!m_scrollOrigin.isZero())
         ts.dumpProperty("scroll origin", m_scrollOrigin);
 
     if (m_snapOffsetsInfo.horizontalSnapOffsets.size())
@@ -352,6 +468,56 @@ void ScrollingTreeScrollingNode::setCurrentHorizontalSnapPointIndex(std::optiona
 void ScrollingTreeScrollingNode::setCurrentVerticalSnapPointIndex(std::optional<unsigned> index)
 {
     m_currentVerticalSnapPointIndex = index;
+}
+
+PlatformWheelEvent ScrollingTreeScrollingNode::eventForPropagation(const PlatformWheelEvent& wheelEvent) const
+{
+    auto filteredDelta = wheelEvent.delta();
+#if PLATFORM(MAC)
+    auto biasedDelta = ScrollingEffectsController::wheelDeltaBiasingTowardsVertical(wheelEvent.delta());
+#else
+    auto biasedDelta = wheelEvent.delta();
+#endif
+    if (horizontalOverscrollBehaviorPreventsPropagation() || verticalOverscrollBehaviorPreventsPropagation()) {
+        if(horizontalOverscrollBehaviorPreventsPropagation() || (verticalOverscrollBehaviorPreventsPropagation() && !biasedDelta.width()))
+           filteredDelta.setWidth(0);
+        if(verticalOverscrollBehaviorPreventsPropagation() || (horizontalOverscrollBehaviorPreventsPropagation() && !biasedDelta.height()))
+           filteredDelta.setHeight(0);
+        return wheelEvent.copyWithDeltaAndVelocity(filteredDelta, wheelEvent.scrollingVelocity());
+    }
+    return wheelEvent;
+}
+
+ScrollPropagationInfo ScrollingTreeScrollingNode::computeScrollPropagation(const FloatSize& delta) const
+{
+    ScrollPropagationInfo propagation;
+    if (!horizontalOverscrollBehaviorPreventsPropagation() && !verticalOverscrollBehaviorPreventsPropagation())
+        return propagation;
+    
+    // History swipe case
+    if (horizontalOverscrollBehaviorPreventsPropagation() && !delta.height() && delta.width()) {
+        propagation.shouldBlockScrollPropagation = true;
+        propagation.isHandled = false;
+        return propagation;
+    }
+
+    if ((horizontalOverscrollBehaviorPreventsPropagation() && verticalOverscrollBehaviorPreventsPropagation())
+        || (horizontalOverscrollBehaviorPreventsPropagation() && !delta.height())
+        || (verticalOverscrollBehaviorPreventsPropagation() && !delta.width())) {
+        propagation.shouldBlockScrollPropagation = true;
+        propagation.isHandled = true;
+    }
+    return propagation;
+}
+
+void ScrollingTreeScrollingNode::scrollbarVisibilityDidChange(ScrollbarOrientation orientation, bool isVisible)
+{
+    scrollingTree().scrollingTreeNodeScrollbarVisibilityDidChange(scrollingNodeID(), orientation, isVisible);
+}
+
+void ScrollingTreeScrollingNode::scrollbarMinimumThumbLengthDidChange(ScrollbarOrientation orientation, int minimumThumbLength)
+{
+    scrollingTree().scrollingTreeNodeScrollbarMinimumThumbLengthDidChange(scrollingNodeID(), orientation, minimumThumbLength);
 }
 
 } // namespace WebCore

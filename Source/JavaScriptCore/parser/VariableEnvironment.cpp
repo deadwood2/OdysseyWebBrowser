@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Apple Inc. All Rights Reserved.
+ * Copyright (C) 2015-2023 Apple Inc. All Rights Reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,9 +27,13 @@
 #include "VariableEnvironment.h"
 #include <wtf/CommaPrinter.h>
 #include <wtf/HexNumber.h>
+#include <wtf/TZoneMallocInlines.h>
 #include <wtf/text/UniquedStringImpl.h>
 
 namespace JSC {
+
+WTF_MAKE_TZONE_ALLOCATED_IMPL(CompactTDZEnvironment);
+WTF_MAKE_TZONE_ALLOCATED_IMPL(VariableEnvironment);
 
 void VariableEnvironmentEntry::dump(PrintStream& out) const
 {
@@ -204,9 +208,9 @@ bool VariableEnvironment::declarePrivateMethod(const RefPtr<UniquedStringImpl>& 
 
 void VariableEnvironment::dump(PrintStream& out) const
 {
-    CommaPrinter comma(", ");
+    CommaPrinter comma(", "_s);
     for (auto& pair : m_map)
-        out.print(comma, pair.key, " => ", pair.value);
+        out.print(comma, pair.key, " => "_s, pair.value);
 }
 
 void CompactTDZEnvironment::sortCompact(Compact& compact)
@@ -218,17 +222,14 @@ void CompactTDZEnvironment::sortCompact(Compact& compact)
 
 CompactTDZEnvironment::CompactTDZEnvironment(const TDZEnvironment& env)
 {
-    Compact compactVariables;
-    compactVariables.reserveCapacity(env.size());
-
     m_hash = 0; // Note: XOR is commutative so order doesn't matter here.
-    for (auto& key : env) {
-        compactVariables.append(key.get());
+    Compact variables = WTF::map(env, [this](auto& key) -> PackedRefPtr<UniquedStringImpl> {
         m_hash ^= key->hash();
-    }
+        return key.get();
+    });
 
-    sortCompact(compactVariables);
-    m_variables = WTFMove(compactVariables);
+    sortCompact(variables);
+    m_variables = WTFMove(variables);
 }
 
 bool CompactTDZEnvironment::operator==(const CompactTDZEnvironment& other) const
@@ -277,14 +278,14 @@ TDZEnvironment& CompactTDZEnvironment::toTDZEnvironmentSlow() const
 {
     Inflated inflated;
     {
-        auto& compact = WTF::get<Compact>(m_variables);
+        auto& compact = std::get<Compact>(m_variables);
         for (size_t i = 0; i < compact.size(); ++i) {
             auto addResult = inflated.add(compact[i]);
             ASSERT_UNUSED(addResult, addResult.isNewEntry);
         }
     }
     m_variables = Variables(WTFMove(inflated));
-    return const_cast<Inflated&>(WTF::get<Inflated>(m_variables));
+    return const_cast<Inflated&>(std::get<Inflated>(m_variables));
 }
 
 CompactTDZEnvironmentMap::Handle CompactTDZEnvironmentMap::get(const TDZEnvironment& env)

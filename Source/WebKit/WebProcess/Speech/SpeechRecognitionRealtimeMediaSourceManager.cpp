@@ -29,14 +29,17 @@
 #if ENABLE(MEDIA_STREAM)
 
 #include "Logging.h"
+#include "MessageSenderInlines.h"
 #include "SpeechRecognitionRealtimeMediaSourceManagerMessages.h"
 #include "SpeechRecognitionRemoteRealtimeMediaSourceManagerMessages.h"
 #include "WebProcess.h"
 #include <WebCore/RealtimeMediaSource.h>
 #include <WebCore/SpeechRecognitionCaptureSource.h>
+#include <wtf/CheckedRef.h>
+#include <wtf/TZoneMallocInlines.h>
 
 #if PLATFORM(COCOA)
-#include "SharedRingBufferStorage.h"
+#include "SharedCARingBuffer.h"
 #include <WebCore/CAAudioStreamDescription.h>
 #include <WebCore/WebAudioBufferList.h>
 #else
@@ -52,19 +55,18 @@ namespace WebKit {
 
 using namespace WebCore;
 
-class SpeechRecognitionRealtimeMediaSourceManager::Source
-    : private RealtimeMediaSource::Observer
+class SpeechRecognitionRealtimeMediaSourceManager::Source final
+    : private RealtimeMediaSourceObserver
     , private RealtimeMediaSource::AudioSampleObserver
+    , public CanMakeCheckedPtr<SpeechRecognitionRealtimeMediaSourceManager::Source>
 {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED_INLINE(SpeechRecognitionRealtimeMediaSourceManager);
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(Source);
 public:
     Source(RealtimeMediaSourceIdentifier identifier, Ref<RealtimeMediaSource>&& source, Ref<IPC::Connection>&& connection)
         : m_identifier(identifier)
         , m_source(WTFMove(source))
         , m_connection(WTFMove(connection))
-#if PLATFORM(COCOA)
-        , m_ringBuffer(makeUniqueRef<SharedRingBufferStorage>(std::bind(&Source::storageChanged, this, std::placeholders::_1)))
-#endif
     {
         m_source->addObserver(*this);
         m_source->addAudioSampleObserver(*this);
@@ -72,9 +74,6 @@ public:
 
     ~Source()
     {
-#if PLATFORM(COCOA)
-        storage().invalidate();
-#endif
         m_source->removeAudioSampleObserver(*this);
         m_source->removeObserver(*this);
     }
@@ -89,14 +88,13 @@ public:
         m_source->stop();
     }
 
-#if PLATFORM(COCOA)
-    SharedRingBufferStorage& storage()
-    {
-        return static_cast<SharedRingBufferStorage&>(m_ringBuffer.storage());
-    }
-#endif
-
 private:
+    // CheckedPtr interface
+    uint32_t ptrCount() const final { return CanMakeCheckedPtr::ptrCount(); }
+    uint32_t ptrCountWithoutThreadCheck() const final { return CanMakeCheckedPtr::ptrCountWithoutThreadCheck(); }
+    void incrementPtrCount() const final { CanMakeCheckedPtr::incrementPtrCount(); }
+    void decrementPtrCount() const final { CanMakeCheckedPtr::decrementPtrCount(); }
+
     void sourceStopped() final
     {
         if (m_source->captureDidFail()) {
@@ -112,14 +110,17 @@ private:
         DisableMallocRestrictionsForCurrentThreadScope scope;
         if (m_description != description) {
             ASSERT(description.platformDescription().type == PlatformDescription::CAAudioStreamBasicType);
-            m_description = *WTF::get<const AudioStreamBasicDescription*>(description.platformDescription().description);
-
-            m_numberOfFrames = m_description.sampleRate() * 2;
-            m_ringBuffer.allocate(m_description.streamDescription(), m_numberOfFrames);
+            m_description = *std::get<const AudioStreamBasicDescription*>(description.platformDescription().description);
+            size_t numberOfFrames = m_description->sampleRate() * 2;
+            auto& format = m_description->streamDescription();
+            auto result = ProducerSharedCARingBuffer::allocate(format, numberOfFrames);
+            RELEASE_ASSERT(result); // FIXME(https://bugs.webkit.org/show_bug.cgi?id=262690): Handle allocation failure.
+            auto [ringBuffer, handle] = WTFMove(*result);
+            m_ringBuffer = WTFMove(ringBuffer);
+            m_connection->send(Messages::SpeechRecognitionRemoteRealtimeMediaSourceManager::SetStorage(m_identifier, WTFMove(handle), format), 0);
         }
 
-        ASSERT(is<WebAudioBufferList>(audioData));
-        m_ringBuffer.store(downcast<WebAudioBufferList>(audioData).list(), numberOfFrames, time.timeValue());
+        m_ringBuffer->store(downcast<WebAudioBufferList>(audioData).list(), numberOfFrames, time.timeValue());
         m_connection->send(Messages::SpeechRecognitionRemoteRealtimeMediaSourceManager::RemoteAudioSamplesAvailable(m_identifier, time, numberOfFrames), 0);
 #else
         UNUSED_PARAM(time);
@@ -129,31 +130,13 @@ private:
 #endif
     }
 
-#if PLATFORM(COCOA)
-
-    void storageChanged(SharedMemory* storage)
-    {
-        DisableMallocRestrictionsForCurrentThreadScope scope;
-        SharedMemory::Handle handle;
-        if (storage)
-            storage->createHandle(handle, SharedMemory::Protection::ReadOnly);
-#if OS(DARWIN) || OS(WINDOWS)
-        uint64_t dataSize = handle.size();
-#else
-        uint64_t dataSize = 0;
-#endif
-        m_connection->send(Messages::SpeechRecognitionRemoteRealtimeMediaSourceManager::SetStorage(m_identifier, SharedMemory::IPCHandle { WTFMove(handle),  dataSize }, m_description, m_numberOfFrames), 0);
-    }
-
-#endif
-
     void audioUnitWillStart() final
     {
 #if USE(AUDIO_SESSION)
         auto bufferSize = AudioSession::sharedSession().sampleRate() / 50;
         if (AudioSession::sharedSession().preferredBufferSize() > bufferSize)
             AudioSession::sharedSession().setPreferredBufferSize(bufferSize);
-        AudioSession::sharedSession().setCategory(AudioSession::CategoryType::PlayAndRecord, RouteSharingPolicy::Default);
+        AudioSession::sharedSession().setCategory(AudioSession::CategoryType::PlayAndRecord, AudioSession::Mode::Default, RouteSharingPolicy::Default);
 #endif
     }
 
@@ -162,11 +145,12 @@ private:
     Ref<IPC::Connection> m_connection;
 
 #if PLATFORM(COCOA)
-    uint64_t m_numberOfFrames { 0 };
-    CARingBuffer m_ringBuffer;
-    CAAudioStreamDescription m_description { };
+    std::unique_ptr<ProducerSharedCARingBuffer> m_ringBuffer;
+    std::optional<CAAudioStreamDescription> m_description { };
 #endif
 };
+
+WTF_MAKE_TZONE_ALLOCATED_IMPL(SpeechRecognitionRealtimeMediaSourceManager);
 
 SpeechRecognitionRealtimeMediaSourceManager::SpeechRecognitionRealtimeMediaSourceManager(Ref<IPC::Connection>&& connection)
     : m_connection(WTFMove(connection))
@@ -179,41 +163,9 @@ SpeechRecognitionRealtimeMediaSourceManager::~SpeechRecognitionRealtimeMediaSour
     WebProcess::singleton().removeMessageReceiver(*this);
 }
 
-#if ENABLE(SANDBOX_EXTENSIONS)
-
-void SpeechRecognitionRealtimeMediaSourceManager::grantSandboxExtensions(SandboxExtension::Handle&& sandboxHandleForTCCD, SandboxExtension::Handle&& sandboxHandleForMicrophone)
+void SpeechRecognitionRealtimeMediaSourceManager::createSource(RealtimeMediaSourceIdentifier identifier, const CaptureDevice& device, PageIdentifier pageIdentifier)
 {
-    m_sandboxExtensionForTCCD = SandboxExtension::create(WTFMove(sandboxHandleForTCCD));
-    if (!m_sandboxExtensionForTCCD)
-        RELEASE_LOG_ERROR(Media, "Failed to create sandbox extension for tccd");
-    else
-        m_sandboxExtensionForTCCD->consume();
-
-    m_sandboxExtensionForMicrophone = SandboxExtension::create(WTFMove(sandboxHandleForMicrophone));
-    if (!m_sandboxExtensionForMicrophone)
-        RELEASE_LOG_ERROR(Media, "Failed to create sandbox extension for microphone");
-    else
-        m_sandboxExtensionForMicrophone->consume();
-}
-
-void SpeechRecognitionRealtimeMediaSourceManager::revokeSandboxExtensions()
-{
-    if (m_sandboxExtensionForTCCD) {
-        m_sandboxExtensionForTCCD->revoke();
-        m_sandboxExtensionForTCCD = nullptr;
-    }
-
-    if (m_sandboxExtensionForMicrophone) {
-        m_sandboxExtensionForMicrophone->revoke();
-        m_sandboxExtensionForMicrophone = nullptr;
-    }
-}
-
-#endif
-
-void SpeechRecognitionRealtimeMediaSourceManager::createSource(RealtimeMediaSourceIdentifier identifier, const CaptureDevice& device)
-{
-    auto result = SpeechRecognitionCaptureSource::createRealtimeMediaSource(device);
+    auto result = SpeechRecognitionCaptureSource::createRealtimeMediaSource(device, pageIdentifier);
     if (!result) {
         RELEASE_LOG_ERROR(Media, "Failed to create realtime source");
         send(Messages::SpeechRecognitionRemoteRealtimeMediaSourceManager::RemoteCaptureFailed(identifier), 0);
@@ -221,7 +173,7 @@ void SpeechRecognitionRealtimeMediaSourceManager::createSource(RealtimeMediaSour
     }
 
     ASSERT(!m_sources.contains(identifier));
-    m_sources.add(identifier, makeUnique<Source>(identifier, result.source(), makeRef(*messageSenderConnection())));
+    m_sources.add(identifier, makeUnique<Source>(identifier, result.source(), m_connection.copyRef()));
 }
 
 void SpeechRecognitionRealtimeMediaSourceManager::deleteSource(RealtimeMediaSourceIdentifier identifier)

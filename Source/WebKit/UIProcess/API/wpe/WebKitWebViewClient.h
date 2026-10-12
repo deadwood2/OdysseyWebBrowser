@@ -21,6 +21,7 @@
 
 #include "APIViewClient.h"
 #include <wtf/CompletionHandler.h>
+#include <wtf/TZoneMallocInlines.h>
 
 typedef struct _WebKitWebView WebKitWebView;
 
@@ -33,14 +34,14 @@ class IntRect;
 }
 
 namespace WebKit {
-class DownloadProxy;
 class WebKitPopupMenu;
+class WebKitWebResourceLoadManager;
 struct WebPopupItem;
 struct UserMessage;
 }
 
 class WebKitWebViewClient final : public API::ViewClient {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED_INLINE(WebKitWebViewClient);
 public:
     explicit WebKitWebViewClient(WebKitWebView*);
 
@@ -50,10 +51,15 @@ private:
     bool isGLibBasedAPI() override { return true; }
 
     void frameDisplayed(WKWPE::View&) override;
-    void handleDownloadRequest(WKWPE::View&, WebKit::DownloadProxy&) override;
     void willStartLoad(WKWPE::View&) override;
     void didChangePageID(WKWPE::View&) override;
     void didReceiveUserMessage(WKWPE::View&, WebKit::UserMessage&&, CompletionHandler<void(WebKit::UserMessage&&)>&&) override;
+    WebKit::WebKitWebResourceLoadManager* webResourceLoadManager() override;
+
+#if ENABLE(FULLSCREEN_API)
+    bool enterFullScreen(WKWPE::View&) override;
+    bool exitFullScreen(WKWPE::View&) override;
+#endif
 
     WebKitWebView* m_webView;
 };

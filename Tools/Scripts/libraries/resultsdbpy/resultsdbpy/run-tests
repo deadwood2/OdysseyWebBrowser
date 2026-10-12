@@ -30,6 +30,15 @@ import os
 import sys
 import unittest
 
+module_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+tools_dir = os.path.dirname(os.path.dirname(module_dir))
+if os.path.isdir(os.path.join(tools_dir, 'webkitpy')):
+    sys.path.insert(0, tools_dir)
+    import webkitpy
+sys.path.insert(0, module_dir)
+
+import resultsdbpy
+
 from cassandra.cqlengine.management import CQLENG_ALLOW_SCHEMA_MANAGEMENT
 
 def main():
@@ -42,7 +51,7 @@ def main():
                       help='Stop on first fail or error')
     parser.add_argument('modules_to_test', nargs='*',
                       help='Modules to be tested. By default, this is the database, flask_support, model and view modules',
-                      default=['controller', 'flask_support', 'model', 'view'])
+                      default=['controller', 'flask_support', 'model', 'view', 'bug_trackers'])
     parser.add_argument('-f', '--fast-tests',
                       default=False, action='store_true',
                       help='Some tests require a docker instance and are slow, optionally skip these')

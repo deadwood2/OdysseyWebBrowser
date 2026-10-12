@@ -25,8 +25,10 @@
 
 #pragma once
 
-#include <wtf/HashMethod.h>
-#include <wtf/StdUnorderedMap.h>
+#include "SourceID.h"
+#include <wtf/GenericHashKey.h>
+#include <wtf/HashMap.h>
+#include <wtf/HashTraits.h>
 #include <wtf/Vector.h>
 
 namespace JSC {
@@ -34,11 +36,14 @@ namespace JSC {
 class FunctionHasExecutedCache {
 public:
     struct FunctionRange {
+        struct Hash {
+            static unsigned hash(const FunctionRange& key) { return key.hash(); }
+            static bool equal(const FunctionRange& a, const FunctionRange& b) { return a == b; }
+            static constexpr bool safeToCompareToEmptyOrDeleted = false;
+        };
+
         FunctionRange() {}
-        bool operator==(const FunctionRange& other) const 
-        {
-            return m_start == other.m_start && m_end == other.m_end;
-        }
+        friend bool operator==(const FunctionRange&, const FunctionRange&) = default;
         unsigned hash() const
         {
             return m_start * m_end;
@@ -48,14 +53,14 @@ public:
         unsigned m_end;
     };
 
-    bool hasExecutedAtOffset(intptr_t id, unsigned offset);
-    void insertUnexecutedRange(intptr_t id, unsigned start, unsigned end);
-    void removeUnexecutedRange(intptr_t id, unsigned start, unsigned end);
-    Vector<std::tuple<bool, unsigned, unsigned>> getFunctionRanges(intptr_t id);
+    bool hasExecutedAtOffset(SourceID, unsigned offset);
+    void insertUnexecutedRange(SourceID, unsigned start, unsigned end);
+    void removeUnexecutedRange(SourceID, unsigned start, unsigned end);
+    Vector<std::tuple<bool, unsigned, unsigned>> getFunctionRanges(SourceID);
 
 private:
-    using RangeMap = StdUnorderedMap<FunctionRange, bool, HashMethod<FunctionRange>>;
-    using SourceIDToRangeMap = StdUnorderedMap<intptr_t, RangeMap>;
+    using RangeMap = HashMap<GenericHashKey<FunctionRange, FunctionRange::Hash>, bool>;
+    using SourceIDToRangeMap = HashMap<GenericHashKey<intptr_t>, RangeMap>;
     SourceIDToRangeMap m_rangeMap;
 };
 

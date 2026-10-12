@@ -31,6 +31,7 @@
  view. The preferences object associated with a web view is specified by
  its web view configuration.
  */
+WK_SWIFT_UI_ACTOR
 WK_CLASS_AVAILABLE(macos(10.10), ios(8.0))
 @interface WKPreferences : NSObject <NSSecureCoding>
 
@@ -51,18 +52,51 @@ WK_CLASS_AVAILABLE(macos(10.10), ios(8.0))
  */
 @property (nonatomic, getter=isFraudulentWebsiteWarningEnabled) BOOL fraudulentWebsiteWarningEnabled WK_API_AVAILABLE(macos(10.15), ios(13.0));
 
+/*! @abstract A Boolean value indicating whether the web view should include backgrounds when printing.
+ @discussion The default value is `NO`.
+ */
+@property (nonatomic) BOOL shouldPrintBackgrounds WK_API_AVAILABLE(macos(13.3), ios(16.4));
+
 #if !TARGET_OS_IPHONE
 /*!
  @property tabFocusesLinks
  @abstract If tabFocusesLinks is YES, the tab key will focus links and form controls.
  The Option key temporarily reverses this preference.
  */
-@property (nonatomic) BOOL tabFocusesLinks WK_API_AVAILABLE(macos(10.12.3));
+@property (nonatomic) BOOL tabFocusesLinks WK_API_AVAILABLE(macos(10.12.4));
 #endif
 
 /*! @abstract A Boolean value indicating whether text interaction is disabled.
 */
 @property (nonatomic, getter=isTextInteractionEnabled) BOOL textInteractionEnabled WK_API_AVAILABLE(macos(11.3), ios(14.5));
+
+/*! @abstract A Boolean value indicating whether WebKit will apply built-in workarounds (quirks)
+ to improve compatibility with certain known websites. You can disable site-specific quirks
+ to help test your website without these workarounds. Enabled by default.
+ */
+@property (nonatomic, getter=isSiteSpecificQuirksModeEnabled) BOOL siteSpecificQuirksModeEnabled WK_API_AVAILABLE(macos(12.3), ios(15.4));
+
+/*! @abstract A Boolean value indicating whether Fullscreen API is enabled.
+ @discussion The default value is NO. We can set it to YES to enable support for the fullscreen API.
+ */
+@property (nonatomic, getter=isElementFullscreenEnabled) BOOL elementFullscreenEnabled WK_API_AVAILABLE(macos(12.3), ios(15.4), tvos(17.0));
+
+/*
+@enum WKInactiveSchedulingPolicy
+@abstract An enum that represents the available options for scheduling behavior when a web view is idle and detached from all windows.
+@discussion The WKInactiveSchedulingSuspend case indicates that the web view should be fully suspended when idle. The WKInactiveSchedulingThrottle case indicates that the web view should be CPU-throttled when idle, but not fully suspended. The WKInactiveSchedulingNone case indicates that no special scheduling behavior should be applied, and the web view should continue running normally even when idle.
+*/
+typedef NS_ENUM(NSInteger, WKInactiveSchedulingPolicy) {
+    WKInactiveSchedulingPolicySuspend,
+    WKInactiveSchedulingPolicyThrottle,
+    WKInactiveSchedulingPolicyNone
+} NS_SWIFT_NAME(WKPreferences.InactiveSchedulingPolicy) WK_API_AVAILABLE(macos(14.0), ios(17.0));
+
+/*! @abstract Specify the scheduling policy for the web view when it is inactive
+ and detached from the view hierarchy. Web views are not considered idle when playing media or loading web pages.
+ A suspended web view will pause JavaScript execution and page layout.
+ */
+@property (nonatomic) WKInactiveSchedulingPolicy inactiveSchedulingPolicy WK_API_AVAILABLE(macos(14.0), ios(17.0));
 
 @end
 
@@ -73,6 +107,6 @@ WK_CLASS_AVAILABLE(macos(10.10), ios(8.0))
 @property (nonatomic) BOOL plugInsEnabled WK_API_DEPRECATED("Plug-ins are no longer supported", macos(10.10, 10.15));
 #endif
 
-@property (nonatomic) BOOL javaScriptEnabled WK_API_DEPRECATED("Use WKWebPagePreferences.allowsContentJavaScript to disable content JavaScript on a per-navigation basis", macos(10.10, 11.0), ios(8.0, 14.0));
+@property (nonatomic) BOOL javaScriptEnabled WK_API_DEPRECATED("Use WKWebpagePreferences.allowsContentJavaScript to disable content JavaScript on a per-navigation basis", macos(10.10, 11.0), ios(8.0, 14.0));
 
 @end

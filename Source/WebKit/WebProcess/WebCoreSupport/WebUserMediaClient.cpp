@@ -26,9 +26,12 @@
 #include "WebPage.h"
 #include <WebCore/UserMediaController.h>
 #include <WebCore/UserMediaRequest.h>
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebKit {
 using namespace WebCore;
+
+WTF_MAKE_TZONE_ALLOCATED_IMPL(WebUserMediaClient);
 
 WebUserMediaClient::WebUserMediaClient(WebPage& page)
     : m_page(page)
@@ -50,7 +53,7 @@ void WebUserMediaClient::cancelUserMediaAccessRequest(UserMediaRequest& request)
     m_page.userMediaPermissionRequestManager().cancelUserMediaRequest(request);
 }
 
-void WebUserMediaClient::enumerateMediaDevices(Document& document, CompletionHandler<void(const Vector<CaptureDevice>&, const String&)>&& completionHandler)
+void WebUserMediaClient::enumerateMediaDevices(Document& document, UserMediaClient::EnumerateDevicesCallback&& completionHandler)
 {
     m_page.userMediaPermissionRequestManager().enumerateMediaDevices(document, WTFMove(completionHandler));
 }

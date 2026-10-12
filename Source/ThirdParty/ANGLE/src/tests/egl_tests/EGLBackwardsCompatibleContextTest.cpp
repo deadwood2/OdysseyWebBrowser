@@ -26,7 +26,7 @@ std::pair<EGLint, EGLint> GetCurrentContextVersion()
 }
 }  // anonymous namespace
 
-class EGLBackwardsCompatibleContextTest : public ANGLETest
+class EGLBackwardsCompatibleContextTest : public ANGLETest<>
 {
   public:
     EGLBackwardsCompatibleContextTest() : mDisplay(0) {}
@@ -35,7 +35,7 @@ class EGLBackwardsCompatibleContextTest : public ANGLETest
     {
         EGLint dispattrs[] = {EGL_PLATFORM_ANGLE_TYPE_ANGLE, GetParam().getRenderer(), EGL_NONE};
         mDisplay           = eglGetPlatformDisplayEXT(
-            EGL_PLATFORM_ANGLE_ANGLE, reinterpret_cast<void *>(EGL_DEFAULT_DISPLAY), dispattrs);
+                      EGL_PLATFORM_ANGLE_ANGLE, reinterpret_cast<void *>(EGL_DEFAULT_DISPLAY), dispattrs);
         ASSERT_TRUE(mDisplay != EGL_NO_DISPLAY);
 
         ASSERT_EGL_TRUE(eglInitialize(mDisplay, nullptr, nullptr));
@@ -133,6 +133,7 @@ TEST_P(EGLBackwardsCompatibleContextTest, BackwardsCompatibleDisbled)
         auto contextVersion = GetCurrentContextVersion();
         EXPECT_EQ(version, contextVersion);
 
+        ASSERT_EGL_TRUE(eglMakeCurrent(mDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT));
         eglDestroyContext(mDisplay, context);
     }
 }
@@ -163,6 +164,7 @@ TEST_P(EGLBackwardsCompatibleContextTest, BackwardsCompatibleEnabledES3)
 
     ASSERT_EGL_TRUE(eglMakeCurrent(mDisplay, mPbuffer, mPbuffer, es2Context));
     auto es2ContextVersion = GetCurrentContextVersion();
+    ASSERT_EGL_TRUE(eglMakeCurrent(mDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT));
     eglDestroyContext(mDisplay, es2Context);
 
     EXPECT_EQ(es3ContextVersion, es2ContextVersion);
@@ -184,6 +186,7 @@ TEST_P(EGLBackwardsCompatibleContextTest, BackwardsCompatibleEnabledES1)
     ASSERT_EGL_TRUE(eglMakeCurrent(mDisplay, mPbuffer, mPbuffer, es11Context));
     auto es11ContextVersion = GetCurrentContextVersion();
     ASSERT_EQ(std::make_pair(1, 1), es11ContextVersion);
+    ASSERT_EGL_TRUE(eglMakeCurrent(mDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT));
     eglDestroyContext(mDisplay, es11Context);
 
     EGLint es10ContextAttribs[] = {
@@ -195,6 +198,7 @@ TEST_P(EGLBackwardsCompatibleContextTest, BackwardsCompatibleEnabledES1)
     ASSERT_EGL_TRUE(eglMakeCurrent(mDisplay, mPbuffer, mPbuffer, es10Context));
     auto es10ContextVersion = GetCurrentContextVersion();
     ASSERT_EQ(std::make_pair(1, 1), es10ContextVersion);
+    ASSERT_EGL_TRUE(eglMakeCurrent(mDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT));
     eglDestroyContext(mDisplay, es10Context);
 }
 

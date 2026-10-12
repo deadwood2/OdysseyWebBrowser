@@ -26,13 +26,11 @@
 #include "config.h"
 #include "AccessibilityObject.h"
 
-#if ENABLE(ACCESSIBILITY)
-
 #include "AXObjectCache.h"
 
 namespace WebCore {
 
-void AccessibilityObject::detachPlatformWrapper(AccessibilityDetachmentType detachmentType)
+void AccessibilityObject::detachPlatformWrapper(AccessibilityDetachmentType)
 {
     // On Windows, AccessibilityObjects are created when get_accChildCount is
     // called, but they are not wrapped until get_accChild is called, so this
@@ -55,5 +53,3 @@ AccessibilityObjectInclusion AccessibilityObject::accessibilityPlatformIncludesO
 }
 
 } // namespace WebCore
-
-#endif // ENABLE(ACCESSIBILITY)

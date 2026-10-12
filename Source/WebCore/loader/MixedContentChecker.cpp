@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2012 Google Inc. All rights reserved.
- * Copyright (C) 2013-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -32,111 +32,216 @@
 
 #include "ContentSecurityPolicy.h"
 #include "Document.h"
-#include "Frame.h"
+#include "DocumentInlines.h"
+#include "FrameDestructionObserverInlines.h"
 #include "FrameLoader.h"
-#include "FrameLoaderClient.h"
+#include "LegacySchemeRegistry.h"
+#include "LocalFrame.h"
+#include "LocalFrameLoaderClient.h"
+#include "Quirks.h"
 #include "SecurityOrigin.h"
-#include "Settings.h"
-#include <wtf/text/CString.h>
-#include <wtf/text/WTFString.h>
+#include <wtf/text/MakeString.h>
+
+#if PLATFORM(IOS_FAMILY)
+#include <wtf/cocoa/RuntimeApplicationChecksCocoa.h>
+#endif
 
 namespace WebCore {
 
-// static
-bool MixedContentChecker::isMixedContent(SecurityOrigin& securityOrigin, const URL& url)
+static bool isMixedContent(const Document& document, const URL& url)
 {
-    if (securityOrigin.protocol() != "https")
-        return false; // We only care about HTTPS security origins.
+    // FIXME: Use document.isSecureContext(), instead of comparing against "https" scheme, when all ports stop using loopback in LayoutTests
+    // sandboxed iframes have an opaque origin so we should perform the mixed content check considering the origin
+    // the iframe would have had if it were not sandboxed.
+    if (document.securityOrigin().protocol() == "https"_s || (document.securityOrigin().isOpaque() && document.url().protocolIs("https"_s)))
+        return !SecurityOrigin::isSecure(url);
 
-    // We're in a secure context, so |url| is mixed content if it's insecure.
-    return !SecurityOrigin::isSecure(url);
+    return false;
 }
 
-static void logWarning(const Frame& frame, bool allowed, const String& action, const URL& target)
+static bool foundMixedContentInFrameTree(const LocalFrame& frame, const URL& url)
 {
-    const char* errorString = allowed ? " was allowed to " : " was not allowed to ";
-    auto message = makeString((allowed ? String() : "[blocked] "), "The page at ", frame.document()->url().stringCenterEllipsizedToLength(), errorString, action, " insecure content from ", target.stringCenterEllipsizedToLength(), ".\n");
+    RefPtr document = frame.document();
+
+    while (document) {
+        if (isMixedContent(*document, url))
+            return true;
+
+        RefPtr frame = document->frame();
+        if (!frame || frame->isMainFrame())
+            break;
+
+        RefPtr abstractParentFrame = frame->tree().parent();
+        RELEASE_ASSERT_WITH_MESSAGE(abstractParentFrame, "Should never have a parentless non main frame");
+        if (auto* parentFrame = dynamicDowncast<LocalFrame>(abstractParentFrame.get()))
+            document = parentFrame->document();
+        else {
+            // FIXME: <rdar://116259764> Make mixed content checks work correctly with site isolated iframes.
+            document = nullptr;
+        }
+    }
+
+    return false;
+}
+
+static void logConsoleWarning(const LocalFrame& frame, bool allowed, ASCIILiteral action, const URL& target)
+{
+    auto errorString = allowed ? " was allowed to "_s : " was not allowed to "_s;
+    auto message = makeString((allowed ? ""_s : "[blocked] "_s), "The page at "_s, frame.document()->url().stringCenterEllipsizedToLength(), errorString, action, " insecure content from "_s, target.stringCenterEllipsizedToLength(), ".\n"_s);
+    frame.protectedDocument()->addConsoleMessage(MessageSource::Security, MessageLevel::Warning, message);
+}
+
+static void logConsoleWarningForUpgrade(const LocalFrame& frame, bool blocked, const URL& target, bool isUpgradingIPAddressAndLocalhostEnabled)
+{
+    auto isUpgradingLocalhostDisabled = !isUpgradingIPAddressAndLocalhostEnabled && SecurityOrigin::isLocalhostAddress(target.host());
+    ASCIILiteral errorString = [&] {
+    if (blocked)
+        return "blocked and must"_s;
+    if (isUpgradingLocalhostDisabled)
+        return "not upgraded to HTTPS and must be served from the local host."_s;
+    return "automatically upgraded and should"_s;
+    }();
+
+    auto message = makeString((!blocked ? ""_s : "[blocked] "_s), "The page at "_s, frame.document()->url().stringCenterEllipsizedToLength(), " requested insecure content from "_s, target.stringCenterEllipsizedToLength(), ". This content was "_s, errorString, !isUpgradingLocalhostDisabled ? " be served over HTTPS.\n"_s : "\n"_s);
     frame.document()->addConsoleMessage(MessageSource::Security, MessageLevel::Warning, message);
 }
 
-bool MixedContentChecker::canDisplayInsecureContent(Frame& frame, SecurityOrigin& securityOrigin, ContentType type, const URL& url, AlwaysDisplayInNonStrictMode alwaysDisplayInNonStrictMode)
+static bool isUpgradeMixedContentEnabled(Document& document)
 {
-    if (!isMixedContent(securityOrigin, url))
+#if PLATFORM(IOS_FAMILY)
+    static bool shouldBlockOptionallyBlockableMixedContent = linkedOnOrAfterSDKWithBehavior(SDKAlignedBehavior::BlockOptionallyBlockableMixedContent);
+    return shouldBlockOptionallyBlockableMixedContent && document.settings().upgradeMixedContentEnabled();
+#else
+    return document.settings().upgradeMixedContentEnabled();
+#endif
+}
+
+static bool frameAndAncestorsCanDisplayInsecureContent(LocalFrame& frame, MixedContentChecker::ContentType type, const URL& url)
+{
+    if (!frame.document() || isUpgradeMixedContentEnabled(*frame.document()))
         return true;
 
-    if (!frame.document()->contentSecurityPolicy()->allowRunningOrDisplayingInsecureContent(url))
+    if (!foundMixedContentInFrameTree(frame, url))
+        return true;
+
+    RefPtr document = frame.document();
+    if (!document->checkedContentSecurityPolicy()->allowRunningOrDisplayingInsecureContent(url))
         return false;
 
-    bool isStrictMode = frame.document()->isStrictMixedContentMode();
-    if (!isStrictMode && alwaysDisplayInNonStrictMode == AlwaysDisplayInNonStrictMode::Yes)
-        return true;
-
-    bool allowed = !isStrictMode && (frame.settings().allowDisplayOfInsecureContent() || type == ContentType::ActiveCanWarn) && !frame.document()->geolocationAccessed();
-    logWarning(frame, allowed, "display", url);
+    bool allowed = !document->isStrictMixedContentMode() && (frame.settings().allowDisplayOfInsecureContent() || type == MixedContentChecker::ContentType::ActiveCanWarn) && !frame.document()->geolocationAccessed();
+    logConsoleWarning(frame, allowed, "display"_s, url);
 
     if (allowed) {
-        frame.document()->setFoundMixedContent(SecurityContext::MixedContentType::Inactive);
-        frame.loader().client().didDisplayInsecureContent();
+        document->setFoundMixedContent(SecurityContext::MixedContentType::Inactive);
+        frame.checkedLoader()->client().didDisplayInsecureContent();
     }
 
     return allowed;
 }
 
-bool MixedContentChecker::canRunInsecureContent(Frame& frame, SecurityOrigin& securityOrigin, const URL& url)
+bool MixedContentChecker::frameAndAncestorsCanRunInsecureContent(LocalFrame& frame, SecurityOrigin& securityOrigin, const URL& url, ShouldLogWarning shouldLogWarning)
 {
-    if (!isMixedContent(securityOrigin, url))
+    if (!frame.document() || isUpgradeMixedContentEnabled(*frame.document()))
         return true;
 
-    if (!frame.document()->contentSecurityPolicy()->allowRunningOrDisplayingInsecureContent(url))
+    if (!foundMixedContentInFrameTree(frame, url))
+        return true;
+
+    RefPtr document = frame.document();
+    if (!document->checkedContentSecurityPolicy()->allowRunningOrDisplayingInsecureContent(url))
         return false;
 
-    bool allowed = !frame.document()->isStrictMixedContentMode() && frame.settings().allowRunningOfInsecureContent() && !frame.document()->geolocationAccessed() && !frame.document()->secureCookiesAccessed();
-    logWarning(frame, allowed, "run", url);
+    bool allowed = !document->isStrictMixedContentMode() && frame.settings().allowRunningOfInsecureContent() && !frame.document()->geolocationAccessed() && !frame.document()->secureCookiesAccessed();
+    if (LIKELY(shouldLogWarning == ShouldLogWarning::Yes))
+        logConsoleWarning(frame, allowed, "run"_s, url);
 
     if (allowed) {
-        frame.document()->setFoundMixedContent(SecurityContext::MixedContentType::Active);
-        frame.loader().client().didRunInsecureContent(securityOrigin, url);
+        document->setFoundMixedContent(SecurityContext::MixedContentType::Active);
+        frame.checkedLoader()->client().didRunInsecureContent(securityOrigin);
     }
 
     return allowed;
 }
 
-void MixedContentChecker::checkFormForMixedContent(Frame& frame, SecurityOrigin& securityOrigin, const URL& url)
+static bool destinationIsImageAudioOrVideo(FetchOptions::Destination destination)
+{
+    return destination == FetchOptions::Destination::Audio || destination == FetchOptions::Destination::Image || destination == FetchOptions::Destination::Video;
+}
+
+bool MixedContentChecker::shouldUpgradeInsecureContent(LocalFrame& frame, IsUpgradable isUpgradable, const URL& url, FetchOptions::Mode mode, FetchOptions::Destination destination, Initiator initiator)
+{
+    RefPtr document = frame.document();
+    if (!document || !isUpgradeMixedContentEnabled(*document) || isUpgradable != IsUpgradable::Yes)
+        return false;
+
+    // https://www.w3.org/TR/mixed-content/#upgrade-algorithm
+    // Editor’s Draft, 23 February 2023
+    // 4.1. Upgrade a mixed content request to a potentially trustworthy URL, if appropriate
+    //
+    // The request should not be upgraded if:
+    // 4.1.3 § 4.3 Does settings prohibit mixed security contexts? returns "Does Not Restrict Mixed Security Contents" when applied to request’s client.
+    if (!foundMixedContentInFrameTree(frame, url))
+        return false;
+
+    auto shouldUpgradeIPAddressAndLocalhostForTesting = document->settings().iPAddressAndLocalhostMixedContentUpgradeTestingEnabled();
+
+    // The request's URL is not upgraded in the following cases.
+    // 4.1.1 request’s URL is a potentially trustworthy URL.
+    if (url.protocolIs("https"_s)
+        // 4.1.2 request’s URL’s host is an IP address.
+        || (!shouldUpgradeIPAddressAndLocalhostForTesting && URL::hostIsIPAddress(url.host()))
+        // 4.1.4 request’s destination is not "image", "audio", or "video".
+        || (!destinationIsImageAudioOrVideo(destination))
+        // 4.1.5 request’s destination is "image" and request’s initiator is "imageset".
+        || (destination == FetchOptions::Destination::Image && initiator == Initiator::Imageset)
+        // and CORS is excluded
+        || (mode == FetchOptions::Mode::Cors && !(document->quirks().needsRelaxedCorsMixedContentCheckQuirk() && destinationIsImageAudioOrVideo(destination))))
+        return false;
+    logConsoleWarningForUpgrade(frame, /* blocked */ false, url, shouldUpgradeIPAddressAndLocalhostForTesting);
+    return true;
+}
+
+static bool shouldBlockInsecureContent(LocalFrame& frame, const URL& url, MixedContentChecker::IsUpgradable isUpgradable)
+{
+    RefPtr document = frame.document();
+    if (!document || !isUpgradeMixedContentEnabled(*document))
+        return false;
+    if (!foundMixedContentInFrameTree(frame, url))
+        return false;
+    if ((LegacySchemeRegistry::schemeIsHandledBySchemeHandler(url.protocol()) || SecurityOrigin::isLocalhostAddress(url.host())) && isUpgradable == MixedContentChecker::IsUpgradable::Yes)
+        return false;
+    logConsoleWarningForUpgrade(frame, /* blocked */ true, url, document->settings().iPAddressAndLocalhostMixedContentUpgradeTestingEnabled());
+    return true;
+}
+
+bool MixedContentChecker::shouldBlockRequestForDisplayableContent(LocalFrame& frame, const URL& url, ContentType type, IsUpgradable isUpgradable)
+{
+    if (shouldBlockInsecureContent(frame, url, isUpgradable))
+        return true;
+    return !frameAndAncestorsCanDisplayInsecureContent(frame, type, url);
+}
+
+bool MixedContentChecker::shouldBlockRequestForRunnableContent(LocalFrame& frame, SecurityOrigin& securityOrigin, const URL& url, ShouldLogWarning shouldLogWarning)
+{
+    if (shouldBlockInsecureContent(frame, url, IsUpgradable::No))
+        return true;
+    return !frameAndAncestorsCanRunInsecureContent(frame, securityOrigin, url, shouldLogWarning);
+}
+
+void MixedContentChecker::checkFormForMixedContent(LocalFrame& frame, const URL& url)
 {
     // Unconditionally allow javascript: URLs as form actions as some pages do this and it does not introduce
     // a mixed content issue.
     if (url.protocolIsJavaScript())
         return;
 
-    if (!isMixedContent(securityOrigin, url))
+    if (!isMixedContent(*frame.document(), url))
         return;
 
-    auto message = makeString("The page at ", frame.document()->url().stringCenterEllipsizedToLength(), " contains a form which targets an insecure URL ", url.stringCenterEllipsizedToLength(), ".\n");
-    frame.document()->addConsoleMessage(MessageSource::Security, MessageLevel::Warning, message);
+    auto message = makeString("The page at "_s, frame.document()->url().stringCenterEllipsizedToLength(), " contains a form which targets an insecure URL "_s, url.stringCenterEllipsizedToLength(), ".\n"_s);
+    frame.protectedDocument()->addConsoleMessage(MessageSource::Security, MessageLevel::Warning, message);
 
-    frame.loader().client().didDisplayInsecureContent();
-}
-
-std::optional<String> MixedContentChecker::checkForMixedContentInFrameTree(const Frame& frame, const URL& url)
-{
-    auto* document = frame.document();
-
-    while (document) {
-        RELEASE_ASSERT_WITH_MESSAGE(document->frame(), "An unparented document tried to connect to a websocket with url: %s", url.string().utf8().data());
-        
-        auto* frame = document->frame();
-        if (isMixedContent(document->securityOrigin(), url))
-            return makeString("The page at ", document->url().stringCenterEllipsizedToLength(), " was blocked from connecting insecurely to ", url.stringCenterEllipsizedToLength(), " either because the protocol is insecure or the page is embedded from an insecure page.");
-
-        if (frame->isMainFrame())
-            break;
-
-        frame = frame->tree().parent();
-        RELEASE_ASSERT_WITH_MESSAGE(frame, "Should never have a parentless non main frame");
-        document = frame->document();
-    }
-    
-    return std::nullopt;
+    frame.checkedLoader()->client().didDisplayInsecureContent();
 }
 
 } // namespace WebCore

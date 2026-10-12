@@ -26,19 +26,18 @@
 #include "config.h"
 #include "AccessibilityController.h"
 
-#if ENABLE(ACCESSIBILITY)
-
 #include "AccessibilityUIElement.h"
 #include "InjectedBundle.h"
 #include "InjectedBundlePage.h"
 #include "JSAccessibilityController.h"
-#if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
-#include <pal/spi/cocoa/AccessibilitySupportSPI.h>
-#include <pal/spi/mac/HIServicesSPI.h>
-#endif
 #include <WebKit/WKBundle.h>
+#include <WebKit/WKBundleFramePrivate.h>
 #include <WebKit/WKBundlePage.h>
 #include <WebKit/WKBundlePagePrivate.h>
+
+#if USE(ATSPI)
+#include "AccessibilityNotificationHandler.h"
+#endif
 
 namespace WTR {
 
@@ -49,10 +48,16 @@ Ref<AccessibilityController> AccessibilityController::create()
 
 AccessibilityController::AccessibilityController()
 {
+    platformInitialize();
 }
 
 AccessibilityController::~AccessibilityController()
 {
+}
+
+void AccessibilityController::setRetainedElement(AccessibilityUIElement* uiElement)
+{
+    m_retainedElement = uiElement;
 }
 
 void AccessibilityController::setIsolatedTreeMode(bool flag)
@@ -65,15 +70,15 @@ void AccessibilityController::setIsolatedTreeMode(bool flag)
 #endif
 }
 
-#if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
-void AccessibilityController::updateIsolatedTreeMode()
+void AccessibilityController::setForceDeferredSpellChecking(bool shouldForce)
 {
-    // Override to set identifier to VoiceOver so that requests are handled in isolated mode.
-    _AXSetClientIdentificationOverride(m_accessibilityIsolatedTreeMode ? (AXClientType)kAXClientTypeWebKitTesting : kAXClientTypeNoActiveRequestFound);
-    _AXSSetIsolatedTreeMode(m_accessibilityIsolatedTreeMode ? AXSIsolatedTreeModeMainThread : AXSIsolatedTreeModeOff);
-    m_useMockAXThread = WKAccessibilityCanUseSecondaryAXThread(InjectedBundle::singleton().page()->page());
+    WKAccessibilitySetForceDeferredSpellChecking(shouldForce);
 }
-#endif
+
+void AccessibilityController::setForceInitialFrameCaching(bool shouldForce)
+{
+    WKAccessibilitySetForceInitialFrameCaching(shouldForce);
+}
 
 void AccessibilityController::makeWindowObject(JSContextRef context)
 {
@@ -97,30 +102,28 @@ bool AccessibilityController::enhancedAccessibilityEnabled()
 
 #if PLATFORM(COCOA)
 
-Ref<AccessibilityUIElement> AccessibilityController::rootElement()
+Ref<AccessibilityUIElement> AccessibilityController::rootElement(JSContextRef context)
 {
-    auto page = InjectedBundle::singleton().page()->page();
-    PlatformUIElement root = static_cast<PlatformUIElement>(WKAccessibilityRootObject(page));
+    auto root = static_cast<PlatformUIElement>(WKAccessibilityRootObject(WKBundleFrameForJavaScriptContext(context)));
     return AccessibilityUIElement::create(root);
-}
-
-Ref<AccessibilityUIElement> AccessibilityController::focusedElement()
-{
-    auto page = InjectedBundle::singleton().page()->page();
-    PlatformUIElement focusedElement = static_cast<PlatformUIElement>(WKAccessibilityFocusedObject(page));
-    return AccessibilityUIElement::create(focusedElement);
 }
 
 void AccessibilityController::executeOnAXThreadAndWait(Function<void()>&& function)
 {
 #if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
-    if (m_useMockAXThread) {
-        AXThread::dispatch([&function, this] {
+    if (m_accessibilityIsolatedTreeMode) {
+        std::atomic<bool> complete = false;
+        AXThread::dispatch([&function, &complete] {
             function();
-            m_semaphore.signal();
+            complete = true;
         });
 
-        m_semaphore.wait();
+        // Spin the main run loop so that any required DOM processing can be
+        // executed in the main thread. That is the case of most parameterized
+        // attributes, where the attribute value has to be calculated back in
+        // the main thread.
+        while (!complete)
+            spinMainRunLoop();
     } else
 #endif
         function();
@@ -129,7 +132,7 @@ void AccessibilityController::executeOnAXThreadAndWait(Function<void()>&& functi
 void AccessibilityController::executeOnAXThread(Function<void()>&& function)
 {
 #if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
-    if (m_useMockAXThread) {
+    if (m_accessibilityIsolatedTreeMode) {
         AXThread::dispatch([function = WTFMove(function)] {
             function();
         });
@@ -149,13 +152,34 @@ void AccessibilityController::executeOnMainThread(Function<void()>&& function)
         function();
     });
 }
+
+#if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
+void AccessibilityController::spinMainRunLoop() const
+{
+    ASSERT(isMainThread());
+    CFRunLoopRunInMode(kCFRunLoopDefaultMode, .01, false);
+}
+#endif // ENABLE(ACCESSIBILITY_ISOLATED_TREE)
+
 #endif // PLATFORM(COCOA)
 
-RefPtr<AccessibilityUIElement> AccessibilityController::elementAtPoint(int x, int y)
+RefPtr<AccessibilityUIElement> AccessibilityController::elementAtPoint(JSContextRef context, int x, int y)
 {
-    auto uiElement = rootElement();
+    auto uiElement = rootElement(context);
     return uiElement->elementAtPoint(x, y);
 }
+
+void AccessibilityController::announce(JSStringRef message)
+{
+    auto page = InjectedBundle::singleton().page()->page();
+    WKAccessibilityAnnounce(page, toWK(message).get());
+}
+
+#if !PLATFORM(MAC)
+void AccessibilityController::platformInitialize()
+{
+}
+#endif
 
 #if PLATFORM(COCOA)
 
@@ -202,7 +226,7 @@ void AXThread::createThreadIfNeeded()
     Locker lock { m_initializeRunLoopMutex };
 
     if (!m_thread) {
-        m_thread = Thread::create("WKTR: AccessibilityController", [this] {
+        m_thread = Thread::create("WKTR: AccessibilityController"_s, [this] {
             WTF::Thread::setCurrentThreadIsUserInteractive();
             initializeRunLoop();
         });
@@ -254,5 +278,3 @@ void AXThread::threadRunLoopSourceCallback()
 #endif // PLATFORM(COCOA)
 
 } // namespace WTR
-#endif // ENABLE(ACCESSIBILITY)
-

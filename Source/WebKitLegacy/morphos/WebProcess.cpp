@@ -19,11 +19,11 @@
 #include <WebCore/CurlCacheManager.h>
 #include <WebCore/ProcessWarming.h>
 #include <WebCore/DocumentLoader.h>
-#include <WebCore/DOMWindow.h>
+#include <WebCore/LocalDOMWindow.h>
 #include <WebCore/FrameLoader.h>
-#include <WebCore/RuntimeEnabledFeatures.h>
 #include <WebCore/MediaPlayerMorphOS.h>
 #include <WebCore/FontCascade.h>
+#include <WebCore/PageDebugger.h>
 #include <wtf/Algorithms.h>
 #include <wtf/Language.h>
 #include <wtf/ProcessPrivilege.h>
@@ -39,24 +39,38 @@
 #include <WebCore/ResourceLoadInfo.h>
 #include <WebCore/CurlContext.h>
 #include <WebCore/HTMLMediaElement.h>
+#include <WebCore/FrameDestructionObserverInlines.h>
 #include <WebCore/Page.h>
+#include <WebCore/WebLockRegistry.h>
 #include "NetworkStorageSessionMap.h"
 #include "WebDatabaseProvider.h"
 #include "WebStorageNamespaceProvider.h"
 #include "WebPlatformStrategies.h"
 #include "WebFrameNetworkingContext.h"
+#include "storage/WebStorageTrackerClient.h"
+#if HAS_CACHE_STORAGE
+#include "cache/WebCacheStorageProvider.h"
+#include "cache/CacheStorageEngineConnection.h"
+#endif
+#include "StorageTracker.h"
 #include <WebCore/PageConsoleClient.h>
-#include <WebCore/RuntimeEnabledFeatures.h>
+#include <WebCore/DeprecatedGlobalSettings.h>
+#include <libraries/charsets.h>
+#include <proto/exec.h>
 #include "Gamepad.h"
 #if !MORPHOS_MINIMAL
 #include "WebDatabaseManager.h"
 #endif
 
-// bloody include shit
 extern "C" {
 LONG WaitSelect(LONG nfds, fd_set *readfds, fd_set *writefds, fd_set *exeptfds,
                 struct timeval *timeout, ULONG *maskp);
+
+double roundeven(double operand) { return __builtin_roundeven(operand); }
+float roundevenf(float operand) { return __builtin_roundevenf(operand); }
+
 }
+
 typedef uint32_t socklen_t;
 #if (!MORPHOS_MINIMAL)
 #include <pal/crypto/gcrypt/Initialization.h>
@@ -81,6 +95,10 @@ extern "C" {
 using namespace WebCore;
 using namespace WTF;
 using namespace JSC;
+
+namespace WebCore {
+    void setCookieJarPath(const String& path);
+}
 
 namespace WTF {
 	void scheduleDispatchFunctionsOnMainThread()
@@ -148,7 +166,11 @@ QUAD calculateMaxCacheSize(const char *path)
 
 WebProcess::WebProcess()
 	: m_sessionID(PAL::SessionID::defaultSessionID())
-	, m_cacheStorageProvider(CacheStorageProvider::create())
+#if HAS_CACHE_STORAGE
+	, m_cacheStorageProvider(WebCacheStorageProvider::create())
+    , m_cacheStorageEngineConnection(CacheStorageEngineConnection::create())
+#endif
+    , m_networkSession(NetworkSession::create())
 {
 }
 
@@ -187,7 +209,7 @@ void WebProcess::initialize(int sigbit)
 
 	D(dprintf("%s mask %u\n", __PRETTY_FUNCTION__, m_sigMask));
 
-	GCController::singleton().setJavaScriptGarbageCollectorTimerEnabled(true);
+//	GCController::singleton().setJavaScriptGarbageCollectorTimerEnabled(true);
 
 #if (!MORPHOS_MINIMAL)
 	PAL::GCrypt::initialize();
@@ -205,33 +227,20 @@ void WebProcess::initialize(int sigbit)
 	WebKitInitializeWebDatabasesIfNecessary();
 #endif
 
-#if 0 // removed 2.32
-	RuntimeEnabledFeatures::sharedFeatures().setWebAnimationsEnabled(true);
-	RuntimeEnabledFeatures::sharedFeatures().setWebAnimationsCSSIntegrationEnabled(false);
-	RuntimeEnabledFeatures::sharedFeatures().setWebAnimationsMutableTimelinesEnabled(true);
-	RuntimeEnabledFeatures::sharedFeatures().setWebAnimationsCompositeOperationsEnabled(true);
-#endif
-
-	RuntimeEnabledFeatures::sharedFeatures().setAccessibilityObjectModelEnabled(false);
-	RuntimeEnabledFeatures::sharedFeatures().setKeygenElementEnabled(true);
-	
-    RuntimeEnabledFeatures::sharedFeatures().setOffscreenCanvasEnabled(true);
-    RuntimeEnabledFeatures::sharedFeatures().setOffscreenCanvasInWorkersEnabled(true);
-    
     // WebKitGTK overrides this - fixes ligatures by enforcing harfbuzz runs
     // so replacements like 'home' -> home icon from a font work with this enabled
-    WebCore::FontCascade::setCodePath(WebCore::FontCascade::CodePath::Complex);
+    // MOVED to settings, using Complex by default can be very slow
+    //WebCore::FontCascade::setCodePath(WebCore::FontCascade::CodePath::Complex);
  
-	// TODO: implement workers!
-	//RuntimeEnabledFeatures::sharedFeatures().setServiceWorkerEnabled(true);
-
 	m_dummyNetworkingContext = DownloadsNetworkingContext::create();
 
-	WTF::FileSystemImpl::makeAllDirectories("PROGDIR:Cache/FavIcons");
+	WTF::FileSystemImpl::makeAllDirectories("PROGDIR:Cache/FavIcons"_s);
+
+    WebKit::StorageTracker::initializeTracker("PROGDIR:Cache/WebStorage"_s, WebStorageTrackerClient::sharedWebStorageTrackerClient());
 
 #if ENABLE(VIDEO)
 	MediaPlayerMorphOSSettings::settings().m_networkingContextForRequests = WebKit::WebProcess::singleton().networkingContext().get();
-//	RuntimeEnabledFeatures::sharedFeatures().setModernMediaControlsEnabled(false);
+//	DeprecatedGlobalSettings::setModernMediaControlsEnabled(false);
 
 	MediaPlayerMorphOSSettings::settings().m_supportMediaForHost = [this](WebCore::Page *page, const String &host) -> bool {
 		WebPage *wpage = WebPage::fromCorePage(page);
@@ -284,7 +293,7 @@ void WebProcess::initialize(int sigbit)
 		{
 			bool found = false;
 			webpage->corePage()->forEachMediaElement([player, &found](WebCore::HTMLMediaElement&e){
-				if (player == e.player().get())
+				if (player == e.player())
 				{
 					found = true;
 				}
@@ -307,7 +316,7 @@ void WebProcess::initialize(int sigbit)
 		{
 			bool found = false;
 			webpage->corePage()->forEachMediaElement([player, &found](WebCore::HTMLMediaElement&e){
-				if (player == e.player().get())
+				if (player == e.player())
 				{
 					found = true;
 				}
@@ -356,7 +365,7 @@ void WebProcess::initialize(int sigbit)
 			WebCore::Element* pElement;
 			bool found = false;
 			webpage->corePage()->forEachMediaElement([player, &found, &pElement](WebCore::HTMLMediaElement&e){
-				if (player == e.player().get())
+				if (player == e.player())
 				{
 					pElement = &e;
 					found = true;
@@ -369,7 +378,7 @@ void WebProcess::initialize(int sigbit)
 				{
 					// Wrap pElement into a ref - that way, the callback set on webpage holds a ref to the element
 					// This is cause we cannot use RefPtr<Element> in ObjC code
-					webpage->_fMediaSetOverlayCallback(player, pElement, [ref = makeRef(*pElement), cb = WTFMove(overlaycallback)](void *windowPtr, int scrollX, int scrollY, int left, int top, int right, int bottom, int width, int height) {
+					webpage->_fMediaSetOverlayCallback(player, pElement, [ref = Ref{*pElement}, cb = WTFMove(overlaycallback)](void *windowPtr, int scrollX, int scrollY, int left, int top, int right, int bottom, int width, int height) {
 							cb(windowPtr, scrollX, scrollY, left, top, right, bottom, width, height);
 						});
 				}
@@ -384,7 +393,7 @@ void WebProcess::initialize(int sigbit)
 			WebCore::Element* pElement;
 			bool found = false;
 			webpage->corePage()->forEachMediaElement([player, &found, &pElement](WebCore::HTMLMediaElement&e){
-				if (player == e.player().get())
+				if (player == e.player())
 				{
 					pElement = &e;
 					found = true;
@@ -405,9 +414,28 @@ void WebProcess::initialize(int sigbit)
 	GamepadProvider::setSharedProvider(GamepadProviderMorphOS::singleton());
 #endif
 
+// TODO: check this
+//    SharedWorkerProvider::setSharedProvider(WebSharedWorkerProvider::singleton());
+
+    WTF::RunLoop::setWakeUpCallback([&] {
+        signalMainThread();
+    });
+
 #if USE_ADFILTER
-	WTF::String easyListPath = "PROGDIR:Resources/easylist.txt";
-	WTF::String easyListSerializedPath = "PROGDIR:Resources/easylist.dat";
+	WTF::String easyListPath = "PROGDIR:Resources/easylist.txt"_s;
+	WTF::String easyListSerializedPath = "PROGDIR:Resources/easylist.dat"_s;
+
+    if (m_easyListPath.length())
+    {
+        StringBuilder builder;
+        builder.append(m_easyListPath);
+        builder.append(".txt"_s);
+        easyListPath = builder.toString();
+        builder.clear();
+        builder.append(m_easyListPath);
+        builder.append(".dat"_s);
+        easyListSerializedPath = builder.toString();
+    }
 
 	WTF::FileSystemImpl::PlatformFileHandle fh = WTF::FileSystemImpl::openFile(easyListSerializedPath, WTF::FileSystemImpl::FileOpenMode::Read);
 
@@ -417,10 +445,11 @@ void WebProcess::initialize(int sigbit)
 		if (size > 0ll)
 		{
 			m_urlFilterData.resize(size + 1);
-			if (size == WTF::FileSystemImpl::readFromFile(fh, &m_urlFilterData[0], int(size)))
+			if (size == WTF::FileSystemImpl::readFromFile(fh, std::span((unsigned char *)&m_urlFilterData[0], size)))
 			{
 				m_urlFilterData[size] = 0; // terminate just in case
 				m_urlFilter.deserialize(&m_urlFilterData[0]);
+                m_urlFilterInitialized = true;
 			}
 			else
 			{
@@ -442,17 +471,18 @@ void WebProcess::initialize(int sigbit)
 				char *buffer = (char *)malloc(size + 1);
 				if (buffer)
 				{
-					if (size == WTF::FileSystemImpl::readFromFile(fh, buffer, int(size)))
+					if (size == WTF::FileSystemImpl::readFromFile(fh, std::span((unsigned char *)buffer, int(size))))
 					{
 						buffer[size] = 0; // terminate, parser expects this to be a null-term string
 dprintf("Parsing easylist.txt; this will take a while... and will be faster on next launch!\n");
 						m_urlFilter.parse(buffer);
+                        m_urlFilterInitialized = true;
 						int ssize;
 						char *sbuffer = m_urlFilter.serialize(&ssize, false);
-						WTF::FileSystemImpl::PlatformFileHandle dfh = WTF::FileSystemImpl::openFile(easyListSerializedPath, WTF::FileSystemImpl::FileOpenMode::Write);
+						WTF::FileSystemImpl::PlatformFileHandle dfh = WTF::FileSystemImpl::openFile(easyListSerializedPath, WTF::FileSystemImpl::FileOpenMode::Truncate);
 						if (WTF::FileSystemImpl::invalidPlatformFileHandle != dfh)
 						{
-							if (ssize != WTF::FileSystemImpl::writeToFile(dfh, sbuffer, ssize))
+							if (ssize != WTF::FileSystemImpl::writeToFile(dfh, std::span((unsigned char *)sbuffer, ssize)))
 							{
 								WTF::FileSystemImpl::closeFile(dfh);
 								WTF::FileSystemImpl::deleteFile(easyListSerializedPath);
@@ -481,12 +511,14 @@ dprintf("Parsing easylist.txt; this will take a while... and will be faster on n
 void WebProcess::terminate()
 {
 	D(dprintf("%s\n", __PRETTY_FUNCTION__));
-	WebCore::DOMWindow::dispatchAllPendingUnloadEvents();
+	WebCore::LocalDOMWindow::dispatchAllPendingUnloadEvents();
 	WebCore::CurlContext::singleton().stopThread();
 	NetworkStorageSessionMap::destroyAllSessions();
 	WebStorageNamespaceProvider::closeLocalStorage();
 	CurlCacheManager::singleton().setStorageSizeLimit(0);
-	
+
+    m_networkSession->shutdown();
+
 	waitForThreads();
 
     GCController::singleton().garbageCollectNow();
@@ -507,7 +539,7 @@ void WebProcess::waitForThreads()
 	while (loops-- > 0)
 	{
 		{
-			LockHolder lock(Thread::allThreadsLock());
+			Locker lock(Thread::allThreadsLock());
 			auto& allThreads = Thread::allThreads();
 			auto count = allThreads.size();
 			if (0 == count)
@@ -521,15 +553,15 @@ void WebProcess::waitForThreads()
 				}
 			}
 		}
-		Delay(10);
-		WTF::RunLoop::iterate();
+		Delay(20);
+		RunLoop::current().iterate();
 	}
 	D(dprintf("..done waiting\n"));
 }
 
 void WebProcess::handleSignals(const uint32_t /* sigmask */)
 {
-	WTF::RunLoop::iterate();
+	RunLoop::current().iterate();
 }
 
 float WebProcess::timeToNextTimerEvent()
@@ -539,7 +571,7 @@ float WebProcess::timeToNextTimerEvent()
 
 void WebProcess::dispatchAllEvents()
 {
-	WebCore::DOMWindow::dispatchAllPendingBeforeUnloadEvents();
+	WebCore::LocalDOMWindow::dispatchAllPendingBeforeUnloadEvents();
 }
 
 WebPage* WebProcess::webPage(WebCore::PageIdentifier pageID) const
@@ -704,9 +736,9 @@ void WebProcess::dumpWebCoreStatistics()
     ss << "FastMallocFreeListBytes " << fastMallocStatistics.freeListBytes; ss.nextLine();;
 	
     // Gather font statistics.
-    auto& fontCache = FontCache::singleton();
-    ss << "CachedFontDataCount " << fontCache.fontCount(); ss.nextLine();;
-    ss << "CachedFontDataInactiveCount " << fontCache.inactiveFontCount(); ss.nextLine();;
+//    auto& fontCache = FontCache::singleton();
+//    ss << "CachedFontDataCount " << fontCache.fontCount(); ss.nextLine();;
+//    ss << "CachedFontDataInactiveCount " << fontCache.inactiveFontCount(); ss.nextLine();;
 	
     // Gather glyph page statistics.
 //    ss << "GlyphPageCount " << GlyphPage::count(); ss.nextLine();;
@@ -725,6 +757,18 @@ void reactOnMemoryPressureInWebKit()
 void WebProcess::garbageCollectJavaScriptObjects()
 {
     GCController::singleton().garbageCollectNow();
+}
+
+Ref<WebCore::LocalWebLockRegistry> WebProcess::getOrCreateWebLockRegistry(bool isPrivateBrowsingEnabled)
+{
+    static NeverDestroyed<WeakPtr<WebCore::LocalWebLockRegistry>> defaultRegistry;
+    static NeverDestroyed<WeakPtr<WebCore::LocalWebLockRegistry>> privateRegistry;
+    auto& existingRegistry = isPrivateBrowsingEnabled ? privateRegistry : defaultRegistry;
+    if (existingRegistry.get())
+        return *existingRegistry.get();
+    auto registry = WebCore::LocalWebLockRegistry::create();
+    existingRegistry.get() = registry;
+    return registry;
 }
 
 void WebProcess::clearResourceCaches()
@@ -781,8 +825,13 @@ void WebProcess::setDiskCacheSize(QUAD sizeMax)
 
 	if (wasUnset && (m_diskCacheSize > 0) && (m_diskCacheSize < ms_diskCacheSizeUninitialized))
 	{
-    	CurlCacheManager::singleton().setCacheDirectory(String("PROGDIR:Cache/Curl"));
+    	CurlCacheManager::singleton().setCacheDirectory("PROGDIR:Cache/Curl"_s);
 	}
+}
+
+void WebProcess::setCookieJarPath(const String& path)
+{
+    WebCore::setCookieJarPath(path);
 }
 
 void WebProcess::signalMainThread()
@@ -793,18 +842,18 @@ void WebProcess::signalMainThread()
 bool WebProcess::shouldAllowRequest(const char *url, const char *mainPageURL, WebCore::DocumentLoader& loader)
 {
 #if USE_ADFILTER
-	WebFrame *frame = WebFrame::fromCoreFrame(*loader.frame());
-	if (!frame)
-		return false;
-	WebPage *page = frame->page();
-	if (!page)
-		return false;
+    if (UNLIKELY(!m_urlFilterInitialized))
+        return true;
 
-	if (!page->adBlockingEnabled())
+	WebFrame *frame = WebFrame::fromCoreFrame(*loader.frame());
+    WebPage *page = frame ? frame->page() : nullptr;
+
+	if (LIKELY(page) && !page->adBlockingEnabled())
 		return true;
 
 	if (m_urlFilter.matches(url, ABP::FONoFilterOption, mainPageURL))
 	{
+        m_blockedRequests ++;
 		return false;
 	}
 #else
@@ -815,15 +864,32 @@ bool WebProcess::shouldAllowRequest(const char *url, const char *mainPageURL, We
 	return true;
 }
 
+WebCore::NetworkStorageSession* WebProcess::storageSession(PAL::SessionID) const
+{
+    return &NetworkStorageSessionMap::defaultStorageSession();
 }
+
+void WebProcess::setEasyListPath(const char *path)
+{
+    if (path && *path)
+    {
+        StringBuilder builder;
+        builder.append("PROGDIR:Resources/"_s);
+        builder.append(WTF::String(path, strlen(path), MIBENUM_SYSTEM));
+        m_easyListPath = builder.toString();
+    }
+    else
+    {
+        m_easyListPath = WTF::emptyString();
+    }
+}
+
+} // namespace WebKit
 
 RefPtr<WebCore::SharedBuffer> loadResourceIntoBuffer(const char* name);
 RefPtr<WebCore::SharedBuffer> loadResourceIntoBuffer(const char* name)
 {
-	WTF::String path = "PROGDIR:Resources/";
-	path.append(name);
-	path.append(".png");
-
+	WTF::String path = makeString("PROGDIR:Resources/"_s, StringView::fromLatin1(name), ".png"_s);
 	WTF::FileSystemImpl::PlatformFileHandle fh = WTF::FileSystemImpl::openFile(path, WTF::FileSystemImpl::FileOpenMode::Read);
 
 	if (WTF::FileSystemImpl::invalidPlatformFileHandle != fh)
@@ -832,10 +898,10 @@ RefPtr<WebCore::SharedBuffer> loadResourceIntoBuffer(const char* name)
 		if (size > 0ll && size < (512ll * 1024ll))
 		{
 			char buffer[size];
-			if (size == WTF::FileSystemImpl::readFromFile(fh, buffer, int(size)))
+			if (size == WTF::FileSystemImpl::readFromFile(fh, std::span((unsigned char *)buffer, int(size))))
 			{
 				WTF::FileSystemImpl::closeFile(fh);
-				return WebCore::SharedBuffer::create(reinterpret_cast<const char*>(buffer), size);
+				return WebCore::SharedBuffer::create(std::span(reinterpret_cast<const char*>(buffer), size));
 			}
 		}
 		WTF::FileSystemImpl::closeFile(fh);
@@ -848,10 +914,40 @@ bool shouldLoadResource(const WebCore::ContentExtensions::ResourceLoadInfo& info
 {
 #if USE_ADFILTER
 	static WebKit::WebProcess &instance = WebKit::WebProcess::singleton();
-	auto url = info.resourceURL.string().utf8();
-	auto mainurl = info.mainDocumentURL.string().utf8();
+	auto url = info.resourceURL.string().ascii();
+	auto mainurl = info.mainDocumentURL.string().ascii();
 	return instance.shouldAllowRequest(url.data(), mainurl.data(), loader);
 #else
+    auto frameLoader = loader.frameLoader();
+    if (LIKELY(frameLoader)) {
+        auto loaderClient = WebKit::toWebFrameLoaderClient(frameLoader->client());
+        if (LIKELY(loaderClient))
+        {
+            WebKit::WebPage *page = loaderClient->webFrame().page();
+
+            auto url = info.resourceURL.string().ascii();
+            auto mainurl = info.mainDocumentURL.string().ascii();
+
+            // dprintf("%s: url '%s' main '%s' ext? %d\n", __PRETTY_FUNCTION__, url.data(), mainurl.data(), page && page->externalNetworkRequestsEnabled());
+
+            if (LIKELY(page) && UNLIKELY(!page->externalNetworkRequestsEnabled())) {
+                if (0 == strncmp(url.data(), "data:", 5))
+                    return true; // treat as local resource
+                if (0 == strncmp(mainurl.data(), "file:", 5) && 0 != strncmp(url.data(), "file:", 5)) {
+                    return false;
+                }
+            }
+        }
+    }
 	return true;
 #endif
+}
+
+bool WebCore::PageDebugger::platformShouldContinueRunningEventLoopWhilePaused()
+{
+// TODO: this needs to smartly run the events pump somehow, but might be tricky with MUI
+// for now, returning false here means we won't busyloop forever in the Inspector
+    RunLoop::cycle();
+    return false;
+//    return RunLoop::cycle() != RunLoop::CycleResult::Stop;
 }

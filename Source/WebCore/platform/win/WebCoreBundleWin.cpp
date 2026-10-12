@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2011, 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2022 Sony Interactive Entertainment Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,41 +27,49 @@
 #include "config.h"
 #include "WebCoreBundleWin.h"
 
-#if USE(CF)
-
 #include "WebCoreInstanceHandle.h"
-#include <CoreFoundation/CFBundle.h>
 #include <windows.h>
+#include <wtf/FileSystem.h>
 #include <wtf/NeverDestroyed.h>
-#include <wtf/RetainPtr.h>
+#include <wtf/text/MakeString.h>
 
 namespace WebCore {
 
-static RetainPtr<CFBundleRef> createWebKitBundle()
+static String dllDirectory()
 {
-    if (CFBundleRef existingBundle = CFBundleGetBundleWithIdentifier(CFSTR("com.apple.WebKit")))
-        return existingBundle;
+    WCHAR buffer[MAX_PATH];
+    DWORD length = ::GetModuleFileNameW(WebCore::instanceHandle(), buffer, MAX_PATH);
+    if (!length || (length == MAX_PATH && GetLastError() == ERROR_INSUFFICIENT_BUFFER))
+        return emptyString();
 
-    wchar_t dllPathBuffer[MAX_PATH];
-    DWORD length = ::GetModuleFileNameW(WebCore::instanceHandle(), dllPathBuffer, WTF_ARRAY_LENGTH(dllPathBuffer));
-    ASSERT(length);
-    ASSERT(length < WTF_ARRAY_LENGTH(dllPathBuffer));
-
-    RetainPtr<CFStringRef> dllPath = adoptCF(CFStringCreateWithCharactersNoCopy(0, reinterpret_cast<const UniChar*>(dllPathBuffer), length, kCFAllocatorNull));
-    RetainPtr<CFURLRef> dllURL = adoptCF(CFURLCreateWithFileSystemPath(0, dllPath.get(), kCFURLWindowsPathStyle, false));
-    RetainPtr<CFURLRef> dllDirectoryURL = adoptCF(CFURLCreateCopyDeletingLastPathComponent(0, dllURL.get()));
-    RetainPtr<CFURLRef> resourcesDirectoryURL = adoptCF(CFURLCreateCopyAppendingPathComponent(0, dllDirectoryURL.get(), CFSTR("WebKit.resources"), true));
-
-    return adoptCF(CFBundleCreate(0, resourcesDirectoryURL.get()));
+    String path(buffer, length);
+    return FileSystem::parentPath(path);
 }
 
-CFBundleRef webKitBundle()
+String webKitBundlePath()
 {
-    static NeverDestroyed<RetainPtr<CFBundleRef>> bundle = createWebKitBundle();
-    ASSERT(bundle.get());
-    return bundle.get().get();
+    static NeverDestroyed<String> bundle = FileSystem::pathByAppendingComponent(dllDirectory(), "WebKit.resources"_s);
+    return bundle;
+}
+
+String webKitBundlePath(StringView path)
+{
+    auto resource = FileSystem::pathByAppendingComponent(webKitBundlePath(), path);
+    if (!FileSystem::fileExists(resource))
+        return nullString();
+
+    return resource;
+}
+
+String webKitBundlePath(StringView name, StringView type, StringView directory)
+{
+    auto fileName = makeString(name, '.', type);
+    return webKitBundlePath(FileSystem::pathByAppendingComponent(directory, fileName));
+}
+
+String webKitBundlePath(const Vector<StringView>& components)
+{
+    return webKitBundlePath(FileSystem::pathByAppendingComponents(emptyString(), components));
 }
 
 } // namespace WebCore
-
-#endif

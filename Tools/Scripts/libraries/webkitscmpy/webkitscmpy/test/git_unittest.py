@@ -1,4 +1,4 @@
-# Copyright (C) 2020, 2021 Apple Inc. All rights reserved.
+# Copyright (C) 2020-2023 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -21,6 +21,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import os
+import time
 
 from datetime import datetime
 from webkitcorepy import run, testing, LoggerCapture, OutputCapture
@@ -78,7 +79,7 @@ class TestGit(testing.PathTestCase):
         with mocks.local.Git(self.path):
             self.assertEqual(
                 local.Git(self.path).branches,
-                ['branch-a', 'branch-b', 'main'],
+                ['branch-a', 'branch-b', 'eng/squash-branch', 'main'],
             )
 
     def test_tags(self):
@@ -87,7 +88,12 @@ class TestGit(testing.PathTestCase):
             mock.tags['tag-2'] = mock.commits['branch-b'][-1]
 
             self.assertEqual(
-                local.Git(self.path).tags,
+                local.Git(self.path).tags(),
+                ['tag-1', 'tag-2'],
+            )
+
+            self.assertEqual(
+                local.Git(self.path).tags(remote='origin'),
                 ['tag-1', 'tag-2'],
             )
 
@@ -272,7 +278,7 @@ class TestGit(testing.PathTestCase):
 
     def test_alternative_default_branch(self):
         for mock in [mocks.local.Git(self.path), mocks.local.Git(self.path, git_svn=True)]:
-            with mock:
+            with mock, LoggerCapture():
                 self.assertEqual(str(local.Git(self.path).find('4@trunk')), '4@main')
                 self.assertEqual(str(local.Git(self.path).find('4@master')), '4@main')
 
@@ -295,7 +301,6 @@ class TestGit(testing.PathTestCase):
                     git.commit(hash='bae5d1e9'),
                     git.commit(hash='1abe25b4'),
                     git.commit(hash='fff83bb2'),
-                    git.commit(hash='9b8311f2'),
                 ]), Commit.Encoder().default(list(git.commits(begin=dict(hash='9b8311f2'), end=dict(hash='bae5d1e9')))))
 
     def test_commits_branch(self):
@@ -306,64 +311,56 @@ class TestGit(testing.PathTestCase):
                     git.commit(hash='621652ad'),
                     git.commit(hash='a30ce849'),
                     git.commit(hash='fff83bb2'),
-                    git.commit(hash='9b8311f2'),
                 ]), Commit.Encoder().default(list(git.commits(begin=dict(argument='9b8311f2'), end=dict(argument='621652ad')))))
 
     def test_log(self):
         with mocks.local.Git(self.path, git_svn=True):
             self.assertEqual(
                 run([
-                    local.Git.executable(), 'log', '--format=fuller', 'remotes/origin/main...1abe25b4',
+                    local.Git.executable(), 'log', '--format=fuller', '--no-decorate', '--date=unix', 'remotes/origin/main...1abe25b4',
                 ], cwd=self.path, capture_output=True, encoding='utf-8').stdout,
                 '''commit d8bce26fa65c6fc8f39c17927abb77f69fab82fc
 Author:     Jonathan Bedard <jbedard@apple.com>
-AuthorDate: Sat Oct 03 03:46:40 2020 +0000
+AuthorDate: {time_a}
 Commit:     Jonathan Bedard <jbedard@apple.com>
-CommitDate: Sat Oct 03 03:46:40 2020 +0000
+CommitDate: {time_a}
 
     Patch Series
     git-svn-id: https://svn.example.org/repository/repository/trunk@9 268f45cc-cd09-0410-ab3c-d52691b4dbfc
 
 commit bae5d1e90999d4f916a8a15810ccfa43f37a2fd6
 Author:     Jonathan Bedard <jbedard@apple.com>
-AuthorDate: Sat Oct 03 03:46:40 2020 +0000
+AuthorDate: {time_a}
 Commit:     Jonathan Bedard <jbedard@apple.com>
-CommitDate: Sat Oct 03 03:46:40 2020 +0000
+CommitDate: {time_a}
 
     8th commit
     git-svn-id: https://svn.example.org/repository/repository/trunk@8 268f45cc-cd09-0410-ab3c-d52691b4dbfc
-
-commit 1abe25b443e985f93b90d830e4a7e3731336af4d
-Author:     Jonathan Bedard <jbedard@apple.com>
-AuthorDate: Sat Oct 03 02:23:20 2020 +0000
-Commit:     Jonathan Bedard <jbedard@apple.com>
-CommitDate: Sat Oct 03 02:23:20 2020 +0000
-
-    4th commit
-    git-svn-id: https://svn.example.org/repository/repository/trunk@4 268f45cc-cd09-0410-ab3c-d52691b4dbfc
-'''
-            )
+'''.format(
+                time_a=1601668000,
+                time_b=1601663000,
+            ))
 
     def test_branch_log(self):
         with mocks.local.Git(self.path, git_svn=True):
             self.assertEqual(
                 run([
-                    local.Git.executable(), 'log', '--format=fuller', 'branch-b...main',
+                    local.Git.executable(), 'log', '--format=fuller', '--no-decorate', '--date=unix', 'main..branch-b',
                 ], cwd=self.path, capture_output=True, encoding='utf-8').stdout,
                 '''commit 790725a6d79e28db2ecdde29548d2262c0bd059d
 Author:     Jonathan Bedard <jbedard@apple.com>
-AuthorDate: Sat Oct 03 03:30:00 2020 +0000
+AuthorDate: {time_a}
 Commit:     Jonathan Bedard <jbedard@apple.com>
-CommitDate: Sat Oct 03 03:30:00 2020 +0000
+CommitDate: {time_a}
 
     7th commit
     git-svn-id: https://svn.example.org/repository/repository/trunk@7 268f45cc-cd09-0410-ab3c-d52691b4dbfc
 
 commit 3cd32e352410565bb543821fbf856a6d3caad1c4
 Author:     Jonathan Bedard <jbedard@apple.com>
-AuthorDate: Sat Oct 03 02:40:00 2020 +0000
+AuthorDate: {time_b}
 Commit:     Jonathan Bedard <jbedard@apple.com>
-CommitDate: Sat Oct 03 02:40:00 2020 +0000
+CommitDate: {time_b}
 
     5th commit
         Cherry pick
@@ -372,14 +369,17 @@ CommitDate: Sat Oct 03 02:40:00 2020 +0000
 
 commit a30ce8494bf1ac2807a69844f726be4a9843ca55
 Author:     Jonathan Bedard <jbedard@apple.com>
-AuthorDate: Sat Oct 03 02:06:40 2020 +0000
+AuthorDate: {time_c}
 Commit:     Jonathan Bedard <jbedard@apple.com>
-CommitDate: Sat Oct 03 02:06:40 2020 +0000
+CommitDate: {time_c}
 
     3rd commit
     git-svn-id: https://svn.example.org/repository/repository/trunk@3 268f45cc-cd09-0410-ab3c-d52691b4dbfc
-'''
-            )
+'''.format(
+                time_a=1601667000,
+                time_b=1601664000,
+                time_c=1601662000,
+            ))
 
     def test_cache(self):
         for mock in [mocks.local.Git(self.path), mocks.local.Git(self.path, git_svn=True)]:
@@ -413,14 +413,28 @@ CommitDate: Sat Oct 03 02:06:40 2020 +0000
 
             self.assertEqual(repo.config()['user.name'], 'Tim Apple')
             self.assertEqual(repo.config()['core.filemode'], 'true')
-            self.assertEqual(repo.config()['remote.origin.url'], 'git@example.org:/mock/repository')
+            self.assertEqual(repo.config()['remote.origin.url'], 'git@example.org:mock/repository')
             self.assertEqual(repo.config()['svn-remote.svn.url'], 'https://svn.example.org/repository/webkit')
             self.assertEqual(repo.config()['svn-remote.svn.fetch'], 'trunk:refs/remotes/origin/main')
+            self.assertEqual(repo.config()['webkitscmpy.history'], 'when-user-owned')
 
     def test_global_config(self):
         with mocks.local.Git(self.path, git_svn=True), OutputCapture():
             self.assertEqual(local.Git.config()['user.name'], 'Tim Apple')
             self.assertEqual(local.Git.config()['sendemail.transferencoding'], 'base64')
+
+    def test_project_config(self):
+        with mocks.local.Git(self.path, git_svn=True):
+            project_config = os.path.join(self.path, 'metadata', local.Git.GIT_CONFIG_EXTENSION)
+            os.mkdir(os.path.dirname(project_config))
+            with open(project_config, 'w') as f:
+                f.write('[webkitscmpy]\n')
+                f.write('    history = never\n')
+                f.write('    test = example\n')
+
+            repo = local.Git(self.path)
+            self.assertEqual(repo.config()['webkitscmpy.history'], 'never')
+            self.assertEqual(repo.config()['webkitscmpy.test'], 'example')
 
     def test_modified(self):
         with mocks.local.Git(self.path) as mrepo, OutputCapture():
@@ -470,6 +484,121 @@ CommitDate: Sat Oct 03 02:06:40 2020 +0000
             mrepo.staged['modified.txt'] = 'diff'
             self.assertEqual(repo.modified(staged=True), ['added.txt', 'modified.txt'])
 
+    def test_rebase(self):
+        with mocks.local.Git(self.path), OutputCapture():
+            repo = local.Git(self.path)
+            self.assertEqual(str(repo.commit(branch='branch-a')), '2.2@branch-a')
+            self.assertEqual(repo.rebase(target='main', base='main', head='branch-a', recommit=False), 0)
+            self.assertEqual(str(repo.commit(branch='branch-a')), '5.2@branch-a')
+
+    def test_diff(self):
+        with mocks.local.Git(self.path), OutputCapture():
+            repo = local.Git(self.path)
+            self.assertEqual(
+                ['--- a/ChangeLog', '+++ b/ChangeLog', '@@ -1,0 +1,0 @@', '+Patch Series'],
+                list(repo.diff(base='bae5d1e90999d4f916a8a15810ccfa43f37a2fd6'))
+            )
+
+    def test_diff_identifier(self):
+        with mocks.local.Git(self.path):
+            repo = local.Git(self.path)
+            self.assertEqual(
+                ['--- a/ChangeLog', '+++ b/ChangeLog', '@@ -1,0 +1,0 @@', '+8th commit'],
+                list(repo.diff(base='3@main', head='4@main'))
+            )
+
+    def test_diff_with_commit_message(self):
+        self.maxDiff = None
+        with mocks.local.Git(self.path), OutputCapture():
+            repo = local.Git(self.path)
+            self.assertEqual(
+                [
+                    'From bae5d1e90999d4f916a8a15810ccfa43f37a2fd6',
+                    'From: Jonathan Bedard <jbedard@apple.com>',
+                    'Date: {} +0000'.format(datetime.utcfromtimestamp(1601668000 + time.timezone).strftime('%a %b %d %H:%M:%S %Y')),
+                    'Subject: [PATCH] 8th commit',
+                    '---',
+                    'diff --git a/ChangeLog b/ChangeLog',
+                    '--- a/ChangeLog',
+                    '+++ b/ChangeLog',
+                    '@@ -1,0 +1,0 @@',
+                    '+8th commit',
+                ],
+                list(repo.diff(base='3@main', head='4@main', include_log=True))
+            )
+
+    def test_pull(self):
+        with mocks.local.Git(self.path) as mocked, OutputCapture():
+            mocked.staged['added.txt'] = 'added'
+            self.assertEqual(local.Git(self.path).pull(rebase=True), 0)
+
+    def test_pull_no_stash(self):
+        with mocks.local.Git(self.path) as mocked, OutputCapture():
+            mocked.staged['added.txt'] = 'added'
+            self.assertEqual(local.Git(self.path).pull(), 128)
+
+    def test_source_remotes_default(self):
+        with mocks.local.Git(self.path), OutputCapture():
+            self.assertEqual(local.Git(self.path).source_remotes(), ['origin'])
+
+    def test_source_remotes_single(self):
+        with mocks.local.Git(self.path, remotes={
+            'origin': 'git@github.example.com:WebKit/WebKit.git',
+            'fork': 'git@github.example.com:Contributor/WebKit.git',
+        }), OutputCapture():
+            project_config = os.path.join(self.path, 'metadata', local.Git.GIT_CONFIG_EXTENSION)
+            os.mkdir(os.path.dirname(project_config))
+            with open(project_config, 'w') as f:
+                f.write('[webkitscmpy "remotes.origin"]\n')
+                f.write('    url = git@github.example.com:WebKit/WebKit.git\n')
+                f.write('    security-level = 0\n')
+                f.write('[webkitscmpy "remotes.security"]\n')
+                f.write('    url = git@github.example.com:WebKit/WebKit-security.git\n')
+                f.write('    security-level = 1\n')
+
+            self.assertEqual(local.Git(self.path).source_remotes(), ['origin'])
+
+    def test_source_remotes_multiple(self):
+        with mocks.local.Git(self.path, remotes={
+            'origin': 'git@github.example.com:WebKit/WebKit.git',
+            'fork': 'git@github.example.com:Contributor/WebKit.git',
+            'security': 'git@github.example.com:WebKit/WebKit-security.git',
+            'security-fork': 'git@github.example.com:Contributor/WebKit-security.git',
+        }), OutputCapture():
+            project_config = os.path.join(self.path, 'metadata', local.Git.GIT_CONFIG_EXTENSION)
+            os.mkdir(os.path.dirname(project_config))
+            with open(project_config, 'w') as f:
+                f.write('[webkitscmpy "remotes.origin"]\n')
+                f.write('    url = git@github.example.com:WebKit/WebKit.git\n')
+                f.write('    security-level = 0\n')
+                f.write('[webkitscmpy "remotes.security"]\n')
+                f.write('    url = git@github.example.com:WebKit/WebKit-security.git\n')
+                f.write('    security-level = 1\n')
+
+            self.assertEqual(local.Git(self.path).source_remotes(), ['origin', 'security'])
+            self.assertEqual(
+                local.Git(self.path).source_remotes(personal=True),
+                ['origin', 'security', 'fork', 'security-fork'],
+            )
+
+    def test_files_changed(self):
+        with mocks.local.Git(self.path), OutputCapture():
+            self.assertEqual(
+                local.Git(self.path).files_changed('4@main'),
+                ['Source/main.cpp', 'Source/main.h'],
+            )
+
+    def test_merge_base(self):
+        with mocks.local.Git(self.path), OutputCapture():
+            self.assertEqual(
+                str(local.Git(self.path).merge_base('main', 'branch-b')),
+                '2@main',
+            )
+            self.assertEqual(
+                str(local.Git(self.path).merge_base('branch-a', 'branch-b')),
+                '2@main',
+            )
+
 
 class TestGitHub(testing.TestCase):
     remote = 'https://github.example.com/WebKit/WebKit'
@@ -484,7 +613,7 @@ class TestGitHub(testing.TestCase):
         with mocks.remote.GitHub():
             self.assertEqual(
                 remote.GitHub(self.remote).branches,
-                ['branch-a', 'branch-b', 'main'],
+                ['branch-a', 'branch-b', 'eng/squash-branch', 'main'],
             )
 
     def test_tags(self):
@@ -493,7 +622,7 @@ class TestGitHub(testing.TestCase):
             mock.tags['tag-2'] = mock.commits['branch-b'][-1]
 
             self.assertEqual(
-                remote.GitHub(self.remote).tags,
+                remote.GitHub(self.remote).tags(),
                 ['tag-1', 'tag-2'],
             )
 
@@ -622,6 +751,87 @@ class TestGitHub(testing.TestCase):
                 git.commit(hash='9b8311f2'),
             ]), Commit.Encoder().default(list(git.commits(begin=dict(argument='9b8311f2'), end=dict(argument='621652ad')))))
 
+    def test_commits_branch_ref(self):
+        with mocks.remote.GitHub():
+            git = remote.GitHub(self.remote)
+            self.assertEqual(
+                ['2.3@branch-b', '2.2@branch-b', '2.1@branch-b'],
+                [str(commit) for commit in git.commits(begin=dict(argument='a30ce849'), end=dict(argument='branch-b'))],
+            )
+
+    def test_files_changed(self):
+        with mocks.remote.GitHub():
+            self.assertEqual(
+                remote.GitHub(self.remote).files_changed('4@main'),
+                ['Source/main.cpp', 'Source/main.h'],
+            )
+
+    def test_files_changed_no_argument(self):
+        with mocks.remote.GitHub():
+            with self.assertRaises(ValueError):
+                remote.GitHub(self.remote).files_changed()
+
+    def test_checkout_url(self):
+        self.assertEqual(remote.GitHub(self.remote).checkout_url(), 'git@github.example.com:WebKit/WebKit.git')
+        self.assertEqual(remote.GitHub(self.remote).checkout_url(http=True), 'https://github.example.com/WebKit/WebKit.git')
+        self.assertEqual(remote.GitHub(self.remote).checkout_url(ssh=True), 'git@github.example.com:WebKit/WebKit.git')
+        with self.assertRaises(ValueError):
+            remote.GitHub(self.remote).checkout_url(http=True, ssh=True)
+
+    def test_diff(self):
+        with mocks.remote.GitHub():
+            repo = remote.GitHub(self.remote)
+            self.assertEqual([
+                'diff --git a/ChangeLog b/ChangeLog',
+                '--- a/ChangeLog',
+                '+++ b/ChangeLog',
+                '@@ -1,0 +1,0 @@',
+                '+Patch Series',
+            ], list(repo.diff(base='bae5d1e90999d4f916a8a15810ccfa43f37a2fd6')))
+
+    def test_diff_with_commit_message(self):
+        with mocks.remote.GitHub():
+            repo = remote.GitHub(self.remote)
+            self.assertEqual([
+                'From bae5d1e90999d4f916a8a15810ccfa43f37a2fd6',
+                'From: Jonathan Bedard <jbedard@apple.com>',
+                'Date: {}'.format(datetime.fromtimestamp(1601642800).strftime('%a %b %d %H:%M:%S %Y')),
+                'Subject: [PATCH] 8th commit',
+                '---',
+                'diff --git a/ChangeLog b/ChangeLog',
+                '--- a/ChangeLog',
+                '+++ b/ChangeLog',
+                '@@ -1,0 +1,0 @@',
+                '+8th commit',
+            ], list(repo.diff(base='3@main', head='4@main', include_log=True)))
+
+    def test_diff_with_commit_message_multiple(self):
+        self.maxDiff = None
+        with mocks.remote.GitHub():
+            repo = remote.GitHub(self.remote)
+            self.assertEqual([
+                'From bae5d1e90999d4f916a8a15810ccfa43f37a2fd6',
+                'From: Jonathan Bedard <jbedard@apple.com>',
+                'Date: {}'.format(datetime.fromtimestamp(1601642800).strftime('%a %b %d %H:%M:%S %Y')),
+                'Subject: [PATCH 1/2] 8th commit',
+                '---',
+                'diff --git a/ChangeLog b/ChangeLog',
+                '--- a/ChangeLog',
+                '+++ b/ChangeLog',
+                '@@ -1,0 +1,0 @@',
+                '+8th commit',
+                'From 1abe25b443e985f93b90d830e4a7e3731336af4d',
+                'From: Jonathan Bedard <jbedard@apple.com>',
+                'Date: {}'.format(datetime.fromtimestamp(1601637800).strftime('%a %b %d %H:%M:%S %Y')),
+                'Subject: [PATCH 2/2] 4th commit',
+                '---',
+                'diff --git a/ChangeLog b/ChangeLog',
+                '--- a/ChangeLog',
+                '+++ b/ChangeLog',
+                '@@ -1,0 +1,0 @@',
+                '+4th commit',
+            ], list(repo.diff(base='2@main', head='4@main', include_log=True)))
+
 
 class TestBitBucket(testing.TestCase):
     remote = 'https://bitbucket.example.com/projects/WEBKIT/repos/webkit'
@@ -636,7 +846,7 @@ class TestBitBucket(testing.TestCase):
         with mocks.remote.BitBucket():
             self.assertEqual(
                 remote.BitBucket(self.remote).branches,
-                ['branch-a', 'branch-b', 'main'],
+                ['branch-a', 'branch-b', 'eng/squash-branch', 'main'],
             )
 
     def test_tags(self):
@@ -645,7 +855,7 @@ class TestBitBucket(testing.TestCase):
             mock.tags['tag-2'] = mock.commits['branch-b'][-1]
 
             self.assertEqual(
-                remote.BitBucket(self.remote).tags,
+                remote.BitBucket(self.remote).tags(),
                 ['tag-1', 'tag-2'],
             )
 
@@ -753,3 +963,72 @@ class TestBitBucket(testing.TestCase):
 
     def test_id(self):
         self.assertEqual(remote.BitBucket(self.remote).id, 'webkit')
+
+    def test_files_changed(self):
+        with mocks.remote.BitBucket():
+            self.assertEqual(
+                remote.BitBucket(self.remote).files_changed('4@main'),
+                ['Source/main.cpp', 'Source/main.h'],
+            )
+
+    def test_files_changed_no_argument(self):
+        with mocks.remote.BitBucket():
+            with self.assertRaises(ValueError):
+                remote.BitBucket(self.remote).files_changed()
+
+    def test_checkout_url(self):
+        self.assertEqual(remote.BitBucket(self.remote).checkout_url(), 'git@bitbucket.example.com/WEBKIT/webkit.git')
+        self.assertEqual(remote.BitBucket(self.remote).checkout_url(http=True), 'https://bitbucket.example.com/scm/WEBKIT/webkit.git')
+        self.assertEqual(remote.BitBucket(self.remote).checkout_url(ssh=True), 'git@bitbucket.example.com/WEBKIT/webkit.git')
+        with self.assertRaises(ValueError):
+            remote.BitBucket(self.remote).checkout_url(http=True, ssh=True)
+
+    def test_diff(self):
+        with mocks.remote.BitBucket():
+            repo = remote.BitBucket(self.remote)
+            self.assertEqual([
+                '--- /dev/null',
+                '+++ b/ChangeLog',
+                '@@ -1,0 +1,0 @@',
+                '+Patch Series',
+            ], list(repo.diff(base='bae5d1e90999d4f916a8a15810ccfa43f37a2fd6')))
+
+    def test_diff_with_commit_message(self):
+        with mocks.remote.BitBucket():
+            repo = remote.BitBucket(self.remote)
+            self.assertEqual([
+                'From bae5d1e90999d4f916a8a15810ccfa43f37a2fd6',
+                'From: Jonathan Bedard <jbedard@apple.com>',
+                'Date: {}'.format(datetime.fromtimestamp(1601668000).strftime('%a %b %d %H:%M:%S %Y')),
+                'Subject: [PATCH] 8th commit',
+                '---',
+                '--- /dev/null',
+                '+++ b/ChangeLog',
+                '@@ -1,0 +1,0 @@',
+                '+8th commit',
+            ], list(repo.diff(base='3@main', head='4@main', include_log=True)))
+
+    def test_diff_with_commit_message_multiple(self):
+        self.maxDiff = None
+        with mocks.remote.BitBucket():
+            repo = remote.BitBucket(self.remote)
+            self.assertEqual([
+                'From bae5d1e90999d4f916a8a15810ccfa43f37a2fd6',
+                'From: Jonathan Bedard <jbedard@apple.com>',
+                'Date: {}'.format(datetime.fromtimestamp(1601668000).strftime('%a %b %d %H:%M:%S %Y')),
+                'Subject: [PATCH 1/2] 8th commit',
+                '---',
+                '--- /dev/null',
+                '+++ b/ChangeLog',
+                '@@ -1,0 +1,0 @@',
+                '+8th commit',
+                'From 1abe25b443e985f93b90d830e4a7e3731336af4d',
+                'From: Jonathan Bedard <jbedard@apple.com>',
+                'Date: {}'.format(datetime.fromtimestamp(1601663000).strftime('%a %b %d %H:%M:%S %Y')),
+                'Subject: [PATCH 2/2] 4th commit',
+                '---',
+                '--- /dev/null',
+                '+++ b/ChangeLog',
+                '@@ -1,0 +1,0 @@',
+                '+4th commit',
+            ], list(repo.diff(base='2@main', head='4@main', include_log=True)))

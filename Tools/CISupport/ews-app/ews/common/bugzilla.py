@@ -1,4 +1,4 @@
-# Copyright (C) 2018-2020 Apple Inc. All rights reserved.
+# Copyright (C) 2018-2022 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -27,11 +27,12 @@ import os
 import re
 import requests
 import socket
+import sys
 import time
 
 from datetime import datetime, timedelta
 
-from ews.models.patch import Patch
+from ews.models.patch import Change
 from ews.thirdparty.BeautifulSoup import BeautifulSoup, SoupStrainer
 import ews.common.util as util
 import ews.config as config
@@ -73,7 +74,7 @@ class Bugzilla():
 
     @classmethod
     def save_attachment(cls, attachment_id, attachment_data):
-        with open(Bugzilla.file_path_for_patch(attachment_id), 'w') as attachment_file:
+        with open(Bugzilla.file_path_for_patch(attachment_id), 'wb') as attachment_file:
             attachment_file.write(attachment_data)
 
     @classmethod
@@ -102,7 +103,7 @@ class Bugzilla():
 
     @classmethod
     def _fetch_attachment_json(cls, attachment_id):
-        if not Patch.is_valid_patch_id(attachment_id):
+        if not Change.is_valid_change_id(attachment_id):
             _log.warn('Invalid attachment id: "{}", skipping download.'.format(attachment_id))
             return None
 
@@ -213,8 +214,8 @@ class BugzillaBeautifulSoup():
     browser = property(_get_browser, _set_browser)
 
     def authenticate(self):
-        username = os.getenv('BUGZILLA_USERNAME', None)
-        password = os.getenv('BUGZILLA_PASSWORD', None)
+        username = util.load_password('BUGZILLA_USERNAME')
+        password = util.load_password('BUGZILLA_PASSWORD')
         if not username or not password:
             _log.warn('Bugzilla username/password not configured in environment variables. Skipping authentication.')
             return
@@ -228,17 +229,16 @@ class BugzillaBeautifulSoup():
             self.browser.select_form(name="login")
             self.browser['Bugzilla_login'] = username
             self.browser['Bugzilla_password'] = password
-            self.browser.find_control("Bugzilla_restrictlogin").items[0].selected = False
             try:
                 response = self.browser.submit()
             except:
                 _log.error('Unexpected error while authenticating to bugzilla.')
                 continue
 
-            match = re.search("<title>(.+?)</title>", response.read())
+            match = re.search(b"<title>(.+?)</title>", response.read())
             # If the resulting page has a title, and it contains the word
             # "invalid" assume it's the login failure page.
-            if match and re.search("Invalid", match.group(1), re.IGNORECASE):
+            if match and re.search(b"Invalid", match.group(1), re.IGNORECASE):
                 errorMessage = 'Bugzilla login failed: {}'.format(match.group(1))
                 if attempts >= 3:
                     # raise an exception only if this was the last attempt
@@ -290,6 +290,8 @@ class BugzillaBeautifulSoup():
                 continue
             patch_id = int(digits.search(patch_tag["href"]).group(0))
             date_tag = row.find("td", text=date_format)
+            if sys.version_info > (3, 0) and date_tag:
+                date_tag = date_tag.text
             if date_tag and datetime.strptime(date_format.search(date_tag).group(0), "%Y-%m-%d %H:%M") < since:
                 continue
             patch_ids.append(patch_id)

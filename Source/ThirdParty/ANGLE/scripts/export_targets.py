@@ -53,7 +53,7 @@ import subprocess
 import sys
 from typing import * # mypy annotations
 
-REPO_DIR = pathlib.Path.cwd()
+SCRIPT_DIR = os.path.dirname(__file__)
 
 GN_ENV = dict(os.environ)
 # We need to set DEPOT_TOOLS_WIN_TOOLCHAIN to 0 for non-Googlers, but otherwise
@@ -61,12 +61,8 @@ GN_ENV = dict(os.environ)
 # the Visual Studio files in depot_tools if DEPOT_TOOLS_WIN_TOOLCHAIN is not
 # explicitly set to 0.
 vs_found = False
-for directory in os.environ['PATH'].split(os.pathsep):
-    vs_dir = os.path.join(directory, 'win_toolchain', 'vs_files')
-    if os.path.exists(vs_dir):
-        vs_found = True
-        break
-if not vs_found:
+vs_dir = os.path.join(SCRIPT_DIR, '..', 'third_party', 'depot_tools', 'win_toolchain', 'vs_files')
+if not os.path.isdir(vs_dir):
     GN_ENV['DEPOT_TOOLS_WIN_TOOLCHAIN'] = '0'
 
 if len(sys.argv) < 3:
@@ -160,57 +156,71 @@ def flattened_target(target_name: str, descs: dict, stop_at_lib: bool =True) -> 
                     existing = flattened.get(k, [])
                     if isinstance(existing, str):
                       existing = [existing]
-                    flattened[k] = sortedi(set(existing + v))
+                    # Use temporary sets then sort them to avoid a bottleneck here
+                    if not isinstance(existing, set):
+                        flattened[k] = set(existing)
+                    flattened[k].update(v)
                 else:
                     #flattened.setdefault(k, v)
                     pass
         return (deps,)
 
     dag_traverse(descs[target_name]['deps'], pre)
+
+    for k, v in flattened.items():
+        if isinstance(v, set):
+            flattened[k] = sortedi(v)
     return flattened
 
 # ------------------------------------------------------------------------------
 # Check that includes are valid. (gn's version of this check doesn't seem to work!)
 
-INCLUDE_REGEX = re.compile(b'(?:^|\\n) *# *include +([<"])([^>"]+)[>"]')
-assert INCLUDE_REGEX.match(b'#include "foo"')
-assert INCLUDE_REGEX.match(b'\n#include "foo"')
+INCLUDE_REGEX = re.compile(b'^ *# *include +([<"])([^>"]+)[>"].*$', re.MULTILINE)
+assert INCLUDE_REGEX.findall(b' #  include <foo>  //comment\n#include "bar"') == [(b'<', b'foo'), (b'"', b'bar')]
 
 # Most of these are ignored because this script does not currently handle
 # #includes in #ifdefs properly, so they will erroneously be marked as being
 # included, but not part of the source list.
 IGNORED_INCLUDES = {
     b'absl/container/flat_hash_map.h',
-    b'compiler/translator/TranslatorESSL.h',
-    b'compiler/translator/TranslatorGLSL.h',
-    b'compiler/translator/TranslatorHLSL.h',
-    b'compiler/translator/TranslatorMetal.h',
-    b'compiler/translator/TranslatorVulkan.h',
+    b'absl/container/flat_hash_set.h',
+    b'compiler/translator/glsl/TranslatorESSL.h',
+    b'compiler/translator/glsl/TranslatorGLSL.h',
+    b'compiler/translator/hlsl/TranslatorHLSL.h',
+    b'compiler/translator/msl/TranslatorMSL.h',
+    b'compiler/translator/spirv/TranslatorSPIRV.h',
+    b'compiler/translator/wgsl/TranslatorWGSL.h',
     b'contrib/optimizations/slide_hash_neon.h',
     b'dirent_on_windows.h',
     b'dlopen_fuchsia.h',
     b'kernel/image.h',
+    b'libANGLE/renderer/d3d/d3d11/Device11.h',
     b'libANGLE/renderer/d3d/d3d11/winrt/NativeWindow11WinRT.h',
-    b'libANGLE/renderer/d3d/DeviceD3D.h',
     b'libANGLE/renderer/d3d/DisplayD3D.h',
     b'libANGLE/renderer/d3d/RenderTargetD3D.h',
-    b'libANGLE/renderer/gl/apple/DisplayApple_api.h',
     b'libANGLE/renderer/gl/cgl/DisplayCGL.h',
     b'libANGLE/renderer/gl/eagl/DisplayEAGL.h',
     b'libANGLE/renderer/gl/egl/android/DisplayAndroid.h',
     b'libANGLE/renderer/gl/egl/DisplayEGL.h',
     b'libANGLE/renderer/gl/egl/gbm/DisplayGbm.h',
     b'libANGLE/renderer/gl/glx/DisplayGLX.h',
+    b'libANGLE/renderer/gl/glx/DisplayGLX_api.h',
     b'libANGLE/renderer/gl/wgl/DisplayWGL.h',
     b'libANGLE/renderer/metal/DisplayMtl_api.h',
     b'libANGLE/renderer/null/DisplayNULL.h',
+    b'libANGLE/renderer/vulkan/android/AHBFunctions.h',
     b'libANGLE/renderer/vulkan/android/DisplayVkAndroid.h',
+    b'libANGLE/renderer/vulkan/DisplayVk_api.h',
     b'libANGLE/renderer/vulkan/fuchsia/DisplayVkFuchsia.h',
     b'libANGLE/renderer/vulkan/ggp/DisplayVkGGP.h',
     b'libANGLE/renderer/vulkan/mac/DisplayVkMac.h',
     b'libANGLE/renderer/vulkan/win32/DisplayVkWin32.h',
     b'libANGLE/renderer/vulkan/xcb/DisplayVkXcb.h',
+    b'libANGLE/renderer/vulkan/wayland/DisplayVkWayland.h',
     b'loader_cmake_config.h',
+    b'loader_linux.h',
+    b'loader_windows.h',
+    b'optick.h',
     b'spirv-tools/libspirv.h',
     b'third_party/volk/volk.h',
     b'vk_loader_extensions.c',
@@ -223,12 +233,39 @@ IGNORED_INCLUDES = {
     b'vulkan_ios.h',
     b'vulkan_macos.h',
     b'vulkan_metal.h',
+    b'vulkan_sci.h',
     b'vulkan_vi.h',
     b'vulkan_wayland.h',
     b'vulkan_win32.h',
     b'vulkan_xcb.h',
     b'vulkan_xlib.h',
     b'vulkan_xlib_xrandr.h',
+    # rapidjson adds these include stubs into their documentation
+    # comments. Since the script doesn't skip comments they are
+    # erroneously marked as valid includes
+    b'rapidjson/...',
+    # Validation layers support building with robin hood hashing, but we are not enabling that
+    # See http://anglebug.com/42264327
+    b'robin_hood.h',
+    # Validation layers optionally use mimalloc
+    b'mimalloc-new-delete.h',
+    # From the Vulkan-Loader
+    b'winres.h',
+    # From the ANGLE desktop GL frontend, since it is only enabled conditionally
+    b'libGLESv2/entry_points_gl_1_autogen.h',
+    b'libGLESv2/entry_points_gl_2_autogen.h',
+    b'libGLESv2/entry_points_gl_3_autogen.h',
+    b'libGLESv2/entry_points_gl_4_autogen.h',
+    b'libGLESv2/entry_points_wgl.h',
+    # From a comment in vulkan-validation-layers/src/layers/vk_mem_alloc.h
+    b'my_custom_assert.h',
+    b'my_custom_min.h',
+    # https://bugs.chromium.org/p/gn/issues/detail?id=311
+    b'spirv/unified1/spirv.hpp11',
+    # Behind #if defined(QAT_COMPRESSION_ENABLED) in third_party/zlib/deflate.c
+    b'contrib/qat/deflate_qat.h',
+    # Behind #if defined(TRACY_ENABLE) in third_party/vulkan-validation-layers/src/layers/vulkan/generated/chassis.cpp
+    b'profiling/profiling.h',
 }
 
 IGNORED_INCLUDE_PREFIXES = {
@@ -248,8 +285,10 @@ IGNORED_INCLUDE_PREFIXES = {
 
 IGNORED_DIRECTORIES = {
     '//buildtools/third_party/libc++',
+    '//third_party/libc++/src',
     '//third_party/abseil-cpp',
     '//third_party/SwiftShader',
+    '//third_party/dawn',
 }
 
 def has_all_includes(target_name: str, descs: dict) -> bool:
@@ -287,7 +326,7 @@ def has_all_includes(target_name: str, descs: dict) -> bool:
                 #print('  acceptable_sources:')
                 #for x in sorted(acceptable_sources):
                 #    print('   ', x)
-                print('Warning in {}: {}: Invalid include: {}'.format(target_name, cur_file, include), file=sys.stderr)
+                print('Warning in {}: {}: Included file must be listed in the GN target or its public dependency: {}'.format(target_name, cur_file, include), file=sys.stderr)
                 ret = False
             #print('Looks valid:', m.group())
             continue
@@ -330,8 +369,8 @@ for (k,desc) in out.items():
     for dep_name in set(desc['deps']):
         dep = descs[dep_name]
         if dep['type'] in LIBRARY_TYPES:
-            dep_libs.add(dep_name[3:])
-    desc['deps'] = sortedi(dep_libs)
+            dep_libs.add(dep_name)
+    desc['dep_libs'] = sortedi(dep_libs)
 
 json.dump(out, sys.stdout, indent='  ')
 exit(0)

@@ -25,11 +25,13 @@
 
 #import "config.h"
 
-#import "WTFStringUtilities.h"
+#import "Test.h"
+#import "WTFTestUtilities.h"
 #import <wtf/URL.h>
 #import <wtf/Vector.h>
 #import <wtf/cocoa/NSURLExtras.h>
 #import <wtf/cocoa/VectorCocoa.h>
+#import <wtf/text/MakeString.h>
 #import <wtf/text/WTFString.h>
 
 namespace TestWebKitAPI {
@@ -78,52 +80,97 @@ TEST(WTF_URLExtras, URLExtras)
     EXPECT_STREQ("-a.example.com", [WTF::decodeHostName(@"-a.example.com") UTF8String]);
     EXPECT_STREQ("a-.example.com", [WTF::decodeHostName(@"a-.example.com") UTF8String]);
     EXPECT_STREQ("ab--cd.example.com", [WTF::decodeHostName(@"ab--cd.example.com") UTF8String]);
+#if HAVE(NSURL_EMPTY_PUNYCODE_CHECK)
+    EXPECT_NULL([WTF::decodeHostName(@"xn--.example.com") UTF8String]);
+#else
     EXPECT_STREQ(".example.com", [WTF::decodeHostName(@"xn--.example.com") UTF8String]);
+#endif
     EXPECT_STREQ("a..example.com", [WTF::decodeHostName(@"a..example.com") UTF8String]);
 }
     
 TEST(WTF_URLExtras, URLExtras_Spoof)
 {
-    Vector<String> punycodedSpoofHosts = {
-        "xn--cfa45g", // U+0131, U+0307
-        "xn--tma03b", // U+0237, U+0307
-        "xn--tma03bxga", // U+0237, U+034F, U+034F, U+0307
-        "xn--tma03bl01e", // U+0237, U+200B, U+0307
-        "xn--a-egb", // a, U+034F
-        "xn--a-qgn", // a, U+200B
-        "xn--a-mgn", // a, U+2009
-        "xn--u7f", // U+1D04
-        "xn--57f", // U+1D0F
-        "xn--i38a", // U+A731
-        "xn--j8f", // U+1D1C
-        "xn--n8f", // U+1D20
-        "xn--o8f", // U+1D21
-        "xn--p8f", // U+1D22
-        "xn--0na", // U+0261
-        "xn--cn-ded", // U+054D
-        "xn--ews-nfe.org", // U+054D
-        "xn--yotube-qkh", // U+0578
-        "xn--cla-7fe.edu", // U+0578
-        "xn--rsa94l", // U+05D5 U+0307
-        "xn--hdb9c", // U+05D5 U+05B9
-        "xn--idb7c", // U+05D5 U+05BA
-        "xn--pdb3b", // U+05D5 U+05C1
-        "xn--qdb1b", // U+05D5 U+05C2
-        "xn--sdb7a", // U+05D5 U+05C4
-        "xn--2-zic", // U+0032 U+05E1
-        "xn--uoa", // U+027E
-        "xn--fja", // U+01C0
-        "xn--koa", // U+0274
-        "xn--tma", // U+0237
-        "xn--o-pdc", // U+0585 'o'
-        "xn--o-qdc", // 'o' U+0585
-        "xn--g-hdc", // U+0581 'g'
-        "xn--g-idc", // 'g' U+0581
-        "xn--o-00e", // U+0BE6 'o'
-        "xn--o-10e", // 'o' U+0BE6
+    Vector<ASCIILiteral> punycodedSpoofHosts = {
+        "xn--cfa45g"_s, // U+0131, U+0307
+        "xn--tma03b"_s, // U+0237, U+0307
+        "xn--tma03bxga"_s, // U+0237, U+034F, U+034F, U+0307
+        "xn--tma03bl01e"_s, // U+0237, U+200B, U+0307
+        "xn--a-egb"_s, // a, U+034F
+        "xn--a-qgn"_s, // a, U+200B
+        "xn--a-mgn"_s, // a, U+2009
+        "xn--u7f"_s, // U+1D04
+        "xn--57f"_s, // U+1D0F
+        "xn--i38a"_s, // U+A731
+        "xn--j8f"_s, // U+1D1C
+        "xn--n8f"_s, // U+1D20
+        "xn--o8f"_s, // U+1D21
+        "xn--p8f"_s, // U+1D22
+        "xn--0na"_s, // U+0261
+        "xn--cn-ded"_s, // U+054D
+        "xn--ews-nfe.org"_s, // U+054D
+        "xn--yotube-qkh"_s, // U+0578
+        "xn--cla-7fe.edu"_s, // U+0578
+        "xn--rsa94l"_s, // U+05D5 U+0307
+        "xn--hdb9c"_s, // U+05D5 U+05B9
+        "xn--idb7c"_s, // U+05D5 U+05BA
+        "xn--pdb3b"_s, // U+05D5 U+05C1
+        "xn--qdb1b"_s, // U+05D5 U+05C2
+        "xn--sdb7a"_s, // U+05D5 U+05C4
+        "xn--2-zic"_s, // U+0032 U+05E1
+        "xn--uoa"_s, // U+027E
+        "xn--fja"_s, // U+01C0
+        "xn--jna"_s, // U+0250
+        "xn--koa"_s, // U+0274
+        "xn--spa"_s, // U+029F
+        "xn--tma"_s, // U+0237
+        "xn--8pa"_s, // U+02AF
+        "xn--o-pdc"_s, // U+0585 'o'
+        "xn--o-qdc"_s, // 'o' U+0585
+        "xn--g-hdc"_s, // U+0581 'g'
+        "xn--g-idc"_s, // 'g' U+0581
+        "xn--o-00e"_s, // U+0BE6 'o'
+        "xn--o-10e"_s, // 'o' U+0BE6
+        "xn--a-53i"_s, // U+15AF 'a'
+        "xn--a-63i"_s, // 'a' U+15AF
+        "xn--a-g4i"_s, // U+15B4 'a'
+        "xn--a-h4i"_s, // 'a' U+15B4
+        "xn--a-80i"_s, // U+157C 'a'
+        "xn--a-90i"_s, // 'a' U+157C
+        "xn--a-0fj"_s, // U+166D 'a'
+        "xn--a-1fj"_s, // 'a' U+166D
+        "xn--a-2fj"_s, // U+166E 'a'
+        "xn--a-3fj"_s, // 'a' U+166E
+        "xn--a-rli"_s, // U+146D 'a'
+        "xn--a-sli"_s, // 'a' U+146D
+        "xn--a-vli"_s, // U+146F 'a'
+        "xn--a-wli"_s, // 'a' U+146F
+        "xn--a-1li"_s, // U+1472 'a'
+        "xn--a-2li"_s, // 'a' U+1472
+        "xn--a-8oi"_s, // U+14AA 'a'
+        "xn--a-9oi"_s, // 'a' U+14AA
+        "xn--a-v1i"_s, // U+1587 'a'
+        "xn--a-w1i"_s, // 'a' U+1587
+        "xn--a-f5i"_s, // U+15C5 'a'
+        "xn--a-g5i"_s, // 'a' U+15C5
+        "xn--a-u6i"_s, // U+15DE 'a'
+        "xn--a-v6i"_s, // 'a' U+15DE
+        "xn--a-h7i"_s, // U+15E9 'a'
+        "xn--a-i7i"_s, // 'a' U+15E9
+        "xn--a-x7i"_s, // U+15F1 'a'
+        "xn--a-y7i"_s, // 'a' U+15F1
+        "xn--a-37i"_s, // U+15F4 'a'
+        "xn--a-47i"_s, // 'a' U+15F4
+        "xn--n-twf"_s, // U+0E01 'n'
+        "xn--n-uwf"_s, // 'n' U+0E01
+        "xn--3hb112n"_s, // U+065B
+        "xn--a-ypc062v"_s, // 'a' U+065B
+        "xn--2j8c"_s, // U+1043D
+        "xn--ikg"_s, // U+1E9C
+        "xn--jkg"_s, // U+1E9D
+        "xn--cng"_s, // U+1EFE or U+1EFF
     };
-    for (const String& host : punycodedSpoofHosts) {
-        auto url = makeString("http://", host, "/").utf8();
+    for (auto& host : punycodedSpoofHosts) {
+        auto url = makeString("http://"_s, host, '/').utf8();
         EXPECT_STREQ(url.data(), userVisibleString(literalURL(url.data())));
     }
 }
@@ -147,6 +194,32 @@ TEST(WTF_URLExtras, URLExtras_NotSpoofed)
 
     // Tamil
     EXPECT_STREQ("https://\u0BE6\u0BE7\u0BE8\u0BE9count/", userVisibleString(literalURL("https://\u0BE6\u0BE7\u0BE8\u0BE9count/")));
+
+    // Canadian aboriginal
+    EXPECT_STREQ("https://\u146D\u1401abc/", userVisibleString(literalURL("https://\u146D\u1401abc/")));
+    EXPECT_STREQ("https://\u146F\u1401abc/", userVisibleString(literalURL("https://\u146F\u1401abc/")));
+    EXPECT_STREQ("https://\u1472\u1401abc/", userVisibleString(literalURL("https://\u1472\u1401abc/")));
+    EXPECT_STREQ("https://\u14AA\u1401abc/", userVisibleString(literalURL("https://\u14AA\u1401abc/")));
+    EXPECT_STREQ("https://\u157C\u1401abc/", userVisibleString(literalURL("https://\u157C\u1401abc/")));
+    EXPECT_STREQ("https://\u1587\u1401abc/", userVisibleString(literalURL("https://\u1587\u1401abc/")));
+    EXPECT_STREQ("https://\u15AF\u1401abc/", userVisibleString(literalURL("https://\u15AF\u1401abc/")));
+    EXPECT_STREQ("https://\u15B4\u1401abc/", userVisibleString(literalURL("https://\u15B4\u1401abc/")));
+    EXPECT_STREQ("https://\u15C5\u1401abc/", userVisibleString(literalURL("https://\u15C5\u1401abc/")));
+    EXPECT_STREQ("https://\u15DE\u1401abc/", userVisibleString(literalURL("https://\u15DE\u1401abc/")));
+    EXPECT_STREQ("https://\u15E9\u1401abc/", userVisibleString(literalURL("https://\u15E9\u1401abc/")));
+    EXPECT_STREQ("https://\u15F1\u1401abc/", userVisibleString(literalURL("https://\u15F1\u1401abc/")));
+    EXPECT_STREQ("https://\u15F4\u1401abc/", userVisibleString(literalURL("https://\u15F4\u1401abc/")));
+    EXPECT_STREQ("https://\u166D\u1401abc/", userVisibleString(literalURL("https://\u166D\u1401abc/")));
+    EXPECT_STREQ("https://\u166E\u1401abc/", userVisibleString(literalURL("https://\u166E\u1401abc/")));
+
+    // Thai
+    EXPECT_STREQ("https://\u0E01\u0E02abc/", userVisibleString(literalURL("https://\u0E01\u0E02abc/")));
+
+    // Arabic
+    EXPECT_STREQ("https://\u0620\u065Babc/", userVisibleString(literalURL("https://\u0620\u065Babc/")));
+
+    // Latin
+    EXPECT_STREQ("https://\u00ED\u00CDabc/", userVisibleString(literalURL("https://\u00ED\u00CDabc/")));
 }
 
 TEST(WTF_URLExtras, URLExtras_DivisionSign)
@@ -220,40 +293,40 @@ TEST(WTF_URLExtras, URLExtras_ParsingError)
     NSString *encodedHostName = WTF::encodeHostName(@"http://.com");
     EXPECT_TRUE(encodedHostName == nil);
 
-    WTF::URL url2(URL(), utf16String(u"http://\u2267\u222E\uFE63\u0661\u06F1"));
+    WTF::URL url2 { utf16String(u"http://\u2267\u222E\uFE63\u0661\u06F1") };
     EXPECT_STREQ([[url2 absoluteString] UTF8String], "http://%E2%89%A7%E2%88%AE%EF%B9%A3%D9%A1%DB%B1");
 
-    std::array<UChar, 3> utf16 { 0xC2, 0xB6, 0x00 };
-    WTF::URL url3(URL(), String(utf16.data()));
+    std::array<UChar, 2> utf16 { 0xC2, 0xB6 };
+    WTF::URL url3 { String(utf16) };
     EXPECT_FALSE(url3.string().is8Bit());
     EXPECT_FALSE(url3.isValid());
     EXPECT_STREQ([[url3 absoluteString] UTF8String], "%C3%82%C2%B6");
     
-    std::array<LChar, 3> latin1 { 0xC2, 0xB6, 0x00 };
-    WTF::URL url4(URL(), String(latin1.data()));
+    std::array<LChar, 2> latin1 { 0xC2, 0xB6 };
+    WTF::URL url4 { String(latin1) };
     EXPECT_FALSE(url4.isValid());
     EXPECT_TRUE(url4.string().is8Bit());
     EXPECT_STREQ([[url4 absoluteString] UTF8String], "%C3%82%C2%B6");
 
     char buffer[100];
     memset(buffer, 0, sizeof(buffer));
-    WTF::URL url5(URL(), "file:///A%C3%A7%C3%A3o.html"_s);
+    WTF::URL url5 { "file:///A%C3%A7%C3%A3o.html"_str };
     CFURLGetFileSystemRepresentation(url5.createCFURL().get(), false, reinterpret_cast<UInt8*>(buffer), sizeof(buffer));
     EXPECT_STREQ(buffer, "/Ação.html");
 }
 
 TEST(WTF_URLExtras, URLExtras_Nil)
 {
-    NSURL *url1 = WTF::URLWithUserTypedString(nil, nil);
+    NSURL *url1 = WTF::URLWithUserTypedString(nil);
     EXPECT_TRUE(url1 == nil);
 
-    NSURL *url2 = WTF::URLWithUserTypedStringDeprecated(nil, nil);
+    NSURL *url2 = WTF::URLWithUserTypedStringDeprecated(nil);
     EXPECT_TRUE(url2 == nil);
 }
 
 TEST(WTF_URLExtras, CreateNSArray)
 {
-    Vector<URL> urls { URL(URL(), "https://webkit.org/") };
+    Vector<URL> urls { URL { "https://webkit.org/"_str } };
     auto array = createNSArray(urls);
     EXPECT_TRUE([array.get()[0] isKindOfClass:NSURL.class]);
 }

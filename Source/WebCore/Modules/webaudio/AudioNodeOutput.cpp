@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2010, Google Inc. All rights reserved.
+ * Copyright (C) 2010-2014 Google Inc. All rights reserved.
+ * Copyright (C) 2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -174,6 +175,14 @@ void AudioNodeOutput::removeInput(AudioNodeInput* input)
     m_inputs.remove(input);
 }
 
+void AudioNodeOutput::forEachInputNode(Function<void(AudioNode&)>&& callback) const
+{
+    for (auto& node : m_inputs.values()) {
+        if (node)
+            callback(*node);
+    }
+}
+
 void AudioNodeOutput::disconnectAllInputs()
 {
     ASSERT(context().isGraphOwner());
@@ -229,9 +238,9 @@ void AudioNodeOutput::disable()
     ASSERT(context().isGraphOwner());
 
     if (m_isEnabled) {
+        m_isEnabled = false;
         for (auto& input : m_inputs.keys())
             input->disable(this);
-        m_isEnabled = false;
     }
 }
 
@@ -240,9 +249,9 @@ void AudioNodeOutput::enable()
     ASSERT(context().isGraphOwner());
 
     if (!m_isEnabled) {
+        m_isEnabled = true;
         for (auto& input : m_inputs.keys())
             input->enable(this);
-        m_isEnabled = true;
     }
 }
 

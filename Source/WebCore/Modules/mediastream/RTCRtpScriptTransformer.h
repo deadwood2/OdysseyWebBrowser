@@ -29,13 +29,17 @@
 
 #include "ActiveDOMObject.h"
 #include "ExceptionOr.h"
+#include "JSDOMPromiseDeferredForward.h"
 #include "RTCRtpTransformBackend.h"
 #include <JavaScriptCore/JSCJSValue.h>
+#include <wtf/Deque.h>
+#include <wtf/ObjectIdentifier.h>
 #include <wtf/RefCounted.h>
 #include <wtf/WeakPtr.h>
 
 namespace WebCore {
 
+class FrameRateMonitor;
 class MessagePort;
 class ReadableStream;
 class ScriptExecutionContext;
@@ -46,6 +50,9 @@ class WritableStream;
 
 struct MessageWithMessagePorts;
 
+enum class RTCRtpScriptTransformerIdentifierType { };
+using RTCRtpScriptTransformerIdentifier = LegacyNullableAtomicObjectIdentifier<RTCRtpScriptTransformerIdentifierType>;
+
 class RTCRtpScriptTransformer
     : public RefCounted<RTCRtpScriptTransformer>
     , public ActiveDOMObject
@@ -54,29 +61,35 @@ public:
     static ExceptionOr<Ref<RTCRtpScriptTransformer>> create(ScriptExecutionContext&, MessageWithMessagePorts&&);
     ~RTCRtpScriptTransformer();
 
+    // ActiveDOMObject.
+    void ref() const final { RefCounted::ref(); }
+    void deref() const final { RefCounted::deref(); }
+
     ReadableStream& readable();
     ExceptionOr<Ref<WritableStream>> writable();
     JSC::JSValue options(JSC::JSGlobalObject&);
 
-    ExceptionOr<void> requestKeyFrame();
+    void generateKeyFrame(Ref<DeferredPromise>&&);
+    void sendKeyFrameRequest(Ref<DeferredPromise>&&);
 
     void startPendingActivity() { m_pendingActivity = makePendingActivity(*this); }
     void start(Ref<RTCRtpTransformBackend>&&);
 
-    enum class ClearCallback { No, Yes};
+    enum class ClearCallback : bool { No, Yes };
     void clear(ClearCallback);
 
 private:
-    RTCRtpScriptTransformer(ScriptExecutionContext&, Ref<SerializedScriptValue>&&, Vector<RefPtr<MessagePort>>&&, Ref<ReadableStream>&&, Ref<SimpleReadableStreamSource>&&);
+    RTCRtpScriptTransformer(ScriptExecutionContext&, Ref<SerializedScriptValue>&&, Vector<Ref<MessagePort>>&&, Ref<ReadableStream>&&, Ref<SimpleReadableStreamSource>&&);
 
-    // ActiveDOMObject
-    const char* activeDOMObjectName() const final { return "RTCRtpScriptTransformer"; }
+    // ActiveDOMObject.
     void stop() final { stopPendingActivity(); }
 
     void stopPendingActivity() { auto pendingActivity = WTFMove(m_pendingActivity); }
 
+    void enqueueFrame(ScriptExecutionContext&, Ref<RTCRtpTransformableFrame>&&);
+
     Ref<SerializedScriptValue> m_options;
-    Vector<RefPtr<MessagePort>> m_ports;
+    Vector<Ref<MessagePort>> m_ports;
 
     Ref<SimpleReadableStreamSource> m_readableSource;
     Ref<ReadableStream> m_readable;
@@ -84,6 +97,15 @@ private:
 
     RefPtr<RTCRtpTransformBackend> m_backend;
     RefPtr<PendingActivity<RTCRtpScriptTransformer>> m_pendingActivity;
+
+    Deque<Ref<DeferredPromise>> m_pendingKeyFramePromises;
+
+#if !RELEASE_LOG_DISABLED
+    bool m_enableAdditionalLogging { false };
+    RTCRtpScriptTransformerIdentifier m_identifier;
+    std::unique_ptr<FrameRateMonitor> m_readableFrameRateMonitor;
+    std::unique_ptr<FrameRateMonitor> m_writableFrameRateMonitor;
+#endif
 };
 
 } // namespace WebCore

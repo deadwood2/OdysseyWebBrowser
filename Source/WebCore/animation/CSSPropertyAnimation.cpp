@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007, 2008, 2009, 2013, 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2007-2023 Apple Inc. All rights reserved.
  * Copyright (C) 2012, 2013 Adobe Systems Incorporated. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,54 +30,70 @@
 #include "config.h"
 #include "CSSPropertyAnimation.h"
 
+#include "AnimationMalloc.h"
 #include "AnimationUtilities.h"
-#include "CSSComputedStyleDeclaration.h"
-#include "CSSCrossfadeValue.h"
-#include "CSSFilterImageValue.h"
-#include "CSSImageGeneratorValue.h"
-#include "CSSImageValue.h"
+#include "CSSCustomPropertyValue.h"
 #include "CSSPrimitiveValue.h"
 #include "CSSPropertyBlendingClient.h"
 #include "CSSPropertyNames.h"
+#include "CSSRegisteredCustomProperty.h"
 #include "CachedImage.h"
 #include "CalculationValue.h"
-#include "ClipPathOperation.h"
 #include "ColorBlending.h"
+#include "ComputedStyleExtractor.h"
+#include "ContentData.h"
+#include "CustomPropertyRegistry.h"
+#include "Document.h"
 #include "FloatConversion.h"
 #include "FontCascade.h"
 #include "FontSelectionAlgorithm.h"
+#include "FontSelectionValueInlines.h"
 #include "FontTaggedSettings.h"
-#include "GapLength.h"
 #include "GridPositionsResolver.h"
 #include "IdentityTransformOperation.h"
 #include "LengthPoint.h"
 #include "Logging.h"
 #include "Matrix3DTransformOperation.h"
 #include "MatrixTransformOperation.h"
+#include "QuotesData.h"
 #include "RenderBox.h"
-#include "RenderStyle.h"
+#include "RenderStyleSetters.h"
+#include "SVGRenderStyle.h"
+#include "ScopedName.h"
+#include "ScrollbarGutter.h"
+#include "Settings.h"
 #include "StyleCachedImage.h"
-#include "StyleGeneratedImage.h"
+#include "StyleCrossfadeImage.h"
+#include "StyleFilterImage.h"
 #include "StylePropertyShorthand.h"
 #include "StyleResolver.h"
-#include "TabSize.h"
+#include "StyleTextEdge.h"
 #include <algorithm>
 #include <memory>
 #include <wtf/MathExtras.h>
 #include <wtf/NeverDestroyed.h>
-#include <wtf/Noncopyable.h>
 #include <wtf/PointerComparison.h>
-#include <wtf/RefCounted.h>
 #include <wtf/text/TextStream.h>
 
 namespace WebCore {
 
-struct CSSPropertyBlendingContext : BlendingContext {
-    const CSSPropertyBlendingClient* client { nullptr };
+#if !LOG_DISABLED
 
-    CSSPropertyBlendingContext(double progress, bool isDiscrete, const CSSPropertyBlendingClient* client)
-        : BlendingContext(progress, isDiscrete)
+static TextStream& operator<<(TextStream& stream, CSSPropertyID property)
+{
+    return stream << nameLiteral(property);
+}
+
+#endif
+
+struct CSSPropertyBlendingContext : BlendingContext {
+    const CSSPropertyBlendingClient& client;
+    AnimatableCSSProperty property;
+
+    CSSPropertyBlendingContext(double progress, bool isDiscrete, CompositeOperation compositeOperation, const CSSPropertyBlendingClient& client, const AnimatableCSSProperty& property, IterationCompositeOperation iterationCompositeOperation = IterationCompositeOperation::Replace, double currentIteration = 0)
+        : BlendingContext(progress, isDiscrete, compositeOperation, iterationCompositeOperation, currentIteration)
         , client(client)
+        , property(property)
     {
     }
 };
@@ -94,7 +110,15 @@ static inline double blendFunc(double from, double to, const CSSPropertyBlending
 
 static inline float blendFunc(float from, float to, const CSSPropertyBlendingContext& context)
 {
-    return narrowPrecisionToFloat(from + (to - from) * context.progress);
+    if (context.iterationCompositeOperation == IterationCompositeOperation::Accumulate && context.currentIteration) {
+        auto iterationIncrement = context.currentIteration * to;
+        from += iterationIncrement;
+        to += iterationIncrement;
+    }
+
+    if (context.compositeOperation == CompositeOperation::Replace)
+        return narrowPrecisionToFloat(from + (to - from) * context.progress);
+    return narrowPrecisionToFloat(from + from + (to - from) * context.progress);
 }
 
 static inline Color blendFunc(const Color& from, const Color& to, const CSSPropertyBlendingContext& context)
@@ -122,8 +146,7 @@ static inline TabSize blendFunc(const TabSize& from, const TabSize& to, const CS
 
 static inline LengthSize blendFunc(const LengthSize& from, const LengthSize& to, const CSSPropertyBlendingContext& context)
 {
-    return { blendFunc(from.width, to.width, context, ValueRange::NonNegative),
-        blendFunc(from.height, to.height, context, ValueRange::NonNegative) };
+    return blend(from, to, context, ValueRange::NonNegative);
 }
 
 static inline LengthPoint blendFunc(const LengthPoint& from, const LengthPoint& to, const CSSPropertyBlendingContext& context)
@@ -142,24 +165,47 @@ static inline ShadowStyle blendFunc(ShadowStyle from, ShadowStyle to, const CSSP
     return result > 0 ? ShadowStyle::Normal : ShadowStyle::Inset;
 }
 
-static inline std::unique_ptr<ShadowData> blendFunc(const ShadowData* from, const ShadowData* to, const CSSPropertyBlendingContext& context)
+static inline std::unique_ptr<ShadowData> blendFunc(const ShadowData* from, const ShadowData* to, const RenderStyle& fromStyle, const RenderStyle& toStyle, const CSSPropertyBlendingContext& context)
 {
     ASSERT(from && to);
     ASSERT(from->style() == to->style());
 
     return makeUnique<ShadowData>(blend(from->location(), to->location(), context),
-        std::max(0, blend(from->radius(), to->radius(), context)),
+        blend(from->radius(), to->radius(), context, ValueRange::NonNegative),
         blend(from->spread(), to->spread(), context),
         blendFunc(from->style(), to->style(), context),
         from->isWebkitBoxShadow(),
-        blend(from->color(), to->color(), context));
+        blend(fromStyle.colorResolvingCurrentColor(from->color()), toStyle.colorResolvingCurrentColor(to->color()), context));
 }
 
 static inline TransformOperations blendFunc(const TransformOperations& from, const TransformOperations& to, const CSSPropertyBlendingContext& context)
 {
-    if (context.client->transformFunctionListsMatch())
-        return to.blendByMatchingOperations(from, context);
-    return to.blendByUsingMatrixInterpolation(from, context, is<RenderBox>(context.client->renderer()) ? downcast<RenderBox>(*context.client->renderer()).borderBoxRect().size() : LayoutSize());
+    if (context.compositeOperation == CompositeOperation::Add) {
+        ASSERT(context.progress == 1.0);
+
+        Vector<Ref<TransformOperation>> operations;
+        operations.reserveInitialCapacity(from.size() + to.size());
+
+        operations.appendRange(from.begin(), from.end());
+        operations.appendRange(to.begin(), to.end());
+
+        return TransformOperations { WTFMove(operations) };
+    }
+
+    auto prefix = [&]() -> std::optional<unsigned> {
+        // We cannot use the pre-computed prefix when dealing with accumulation
+        // since the values used to accumulate may be different than those held
+        // in the initial keyframe list. We must do the same with any property
+        // other than "transform" since we only pre-compute the prefix for that
+        // property.
+        if (context.compositeOperation == CompositeOperation::Accumulate || std::holds_alternative<AtomString>(context.property) || std::get<CSSPropertyID>(context.property) != CSSPropertyTransform)
+            return std::nullopt;
+        return context.client.transformFunctionListPrefix();
+    };
+
+    auto* renderBox = dynamicDowncast<RenderBox>(context.client.renderer());
+    auto boxSize = renderBox ? renderBox->borderBoxRect().size() : LayoutSize();
+    return to.blend(from, context, boxSize, prefix());
 }
 
 static RefPtr<ScaleTransformOperation> blendFunc(ScaleTransformOperation* from, ScaleTransformOperation* to, const CSSPropertyBlendingContext& context)
@@ -181,20 +227,18 @@ static RefPtr<ScaleTransformOperation> blendFunc(ScaleTransformOperation* from, 
         RefPtr<ScaleTransformOperation> normalizedFrom;
         RefPtr<ScaleTransformOperation> normalizedTo;
         if (from->is3DOperation() || to->is3DOperation()) {
-            normalizedFrom = ScaleTransformOperation::create(from->x(), from->y(), from->z(), TransformOperation::SCALE_3D);
-            normalizedTo = ScaleTransformOperation::create(to->x(), to->y(), to->z(), TransformOperation::SCALE_3D);
+            normalizedFrom = ScaleTransformOperation::create(from->x(), from->y(), from->z(), TransformOperation::Type::Scale3D);
+            normalizedTo = ScaleTransformOperation::create(to->x(), to->y(), to->z(), TransformOperation::Type::Scale3D);
         } else {
-            normalizedFrom = ScaleTransformOperation::create(from->x(), from->y(), TransformOperation::SCALE);
-            normalizedTo = ScaleTransformOperation::create(to->x(), to->y(), TransformOperation::SCALE);
+            normalizedFrom = ScaleTransformOperation::create(from->x(), from->y(), TransformOperation::Type::Scale);
+            normalizedTo = ScaleTransformOperation::create(to->x(), to->y(), TransformOperation::Type::Scale);
         }
         return blendFunc(normalizedFrom.get(), normalizedTo.get(), context);
     }
 
     auto blendedOperation = to->blend(from, context);
-    if (is<ScaleTransformOperation>(blendedOperation.get())) {
-        auto& scale = downcast<ScaleTransformOperation>(blendedOperation.get());
-        return ScaleTransformOperation::create(scale.x(), scale.y(), scale.z(), scale.type());
-    }
+    if (auto* scale = dynamicDowncast<ScaleTransformOperation>(blendedOperation.get()))
+        return ScaleTransformOperation::create(scale->x(), scale->y(), scale->z(), scale->type());
     return nullptr;
 }
 
@@ -217,20 +261,18 @@ static RefPtr<RotateTransformOperation> blendFunc(RotateTransformOperation* from
         RefPtr<RotateTransformOperation> normalizedFrom;
         RefPtr<RotateTransformOperation> normalizedTo;
         if (from->is3DOperation() || to->is3DOperation()) {
-            normalizedFrom = RotateTransformOperation::create(from->x(), from->y(), from->z(), from->angle(), TransformOperation::ROTATE_3D);
-            normalizedTo = RotateTransformOperation::create(to->x(), to->y(), to->z(), to->angle(), TransformOperation::ROTATE_3D);
+            normalizedFrom = RotateTransformOperation::create(from->x(), from->y(), from->z(), from->angle(), TransformOperation::Type::Rotate3D);
+            normalizedTo = RotateTransformOperation::create(to->x(), to->y(), to->z(), to->angle(), TransformOperation::Type::Rotate3D);
         } else {
-            normalizedFrom = RotateTransformOperation::create(from->angle(), TransformOperation::ROTATE);
-            normalizedTo = RotateTransformOperation::create(to->angle(), TransformOperation::ROTATE);
+            normalizedFrom = RotateTransformOperation::create(from->angle(), TransformOperation::Type::Rotate);
+            normalizedTo = RotateTransformOperation::create(to->angle(), TransformOperation::Type::Rotate);
         }
         return blendFunc(normalizedFrom.get(), normalizedTo.get(), context);
     }
 
     auto blendedOperation = to->blend(from, context);
-    if (is<RotateTransformOperation>(blendedOperation.get())) {
-        auto& rotate = downcast<RotateTransformOperation>(blendedOperation.get());
-        return RotateTransformOperation::create(rotate.x(), rotate.y(), rotate.z(), rotate.angle(), rotate.type());
-    }
+    if (auto* rotate = dynamicDowncast<RotateTransformOperation>(blendedOperation.get()))
+        return RotateTransformOperation::create(rotate->x(), rotate->y(), rotate->z(), rotate->angle(), rotate->type());
     return nullptr;
 }
 
@@ -253,135 +295,80 @@ static RefPtr<TranslateTransformOperation> blendFunc(TranslateTransformOperation
         RefPtr<TranslateTransformOperation> normalizedFrom;
         RefPtr<TranslateTransformOperation> normalizedTo;
         if (from->is3DOperation() || to->is3DOperation()) {
-            normalizedFrom = TranslateTransformOperation::create(from->x(), from->y(), from->z(), TransformOperation::TRANSLATE_3D);
-            normalizedTo = TranslateTransformOperation::create(to->x(), to->y(), to->z(), TransformOperation::TRANSLATE_3D);
+            normalizedFrom = TranslateTransformOperation::create(from->x(), from->y(), from->z(), TransformOperation::Type::Translate3D);
+            normalizedTo = TranslateTransformOperation::create(to->x(), to->y(), to->z(), TransformOperation::Type::Translate3D);
         } else {
-            normalizedFrom = TranslateTransformOperation::create(from->x(), from->y(), TransformOperation::TRANSLATE);
-            normalizedTo = TranslateTransformOperation::create(to->x(), to->y(), TransformOperation::TRANSLATE);
+            normalizedFrom = TranslateTransformOperation::create(from->x(), from->y(), TransformOperation::Type::Translate);
+            normalizedTo = TranslateTransformOperation::create(to->x(), to->y(), TransformOperation::Type::Translate);
         }
         return blendFunc(normalizedFrom.get(), normalizedTo.get(), context);
     }
 
     Ref<TransformOperation> blendedOperation = to->blend(from, context);
-    if (is<TranslateTransformOperation>(blendedOperation.get())) {
-        TranslateTransformOperation& translate = downcast<TranslateTransformOperation>(blendedOperation.get());
-        return TranslateTransformOperation::create(translate.x(), translate.y(), translate.z(), translate.type());
-    }
+    if (auto* translate = dynamicDowncast<TranslateTransformOperation>(blendedOperation.get()))
+        return TranslateTransformOperation::create(translate->x(), translate->y(), translate->z(), translate->type());
     return nullptr;
 }
 
-static inline RefPtr<ClipPathOperation> blendFunc(ClipPathOperation* from, ClipPathOperation* to, const CSSPropertyBlendingContext& context)
+static Ref<TransformOperation> blendFunc(TransformOperation& from, TransformOperation& to, const CSSPropertyBlendingContext& context)
 {
-    if (!from || !to)
-        return to;
+    return to.blend(&from, context);
+}
 
-    // Other clip-path operations than BasicShapes can not be animated.
-    if (from->type() != ClipPathOperation::Shape || to->type() != ClipPathOperation::Shape)
-        return to;
+static inline RefPtr<PathOperation> blendFunc(PathOperation* from, PathOperation* to, const CSSPropertyBlendingContext& context)
+{
+    if (context.isDiscrete) {
+        ASSERT(!context.progress || context.progress == 1);
+        return context.progress ? to : from;
+    }
 
-    const BasicShape& fromShape = downcast<ShapeClipPathOperation>(*from).basicShape();
-    const BasicShape& toShape = downcast<ShapeClipPathOperation>(*to).basicShape();
-
-    if (!fromShape.canBlend(toShape))
-        return to;
-
-    return ShapeClipPathOperation::create(toShape.blend(fromShape, context));
+    ASSERT(from && to);
+    return from->blend(to, context);
 }
 
 static inline RefPtr<ShapeValue> blendFunc(ShapeValue* from, ShapeValue* to, const CSSPropertyBlendingContext& context)
 {
-    if (!context.progress)
-        return from;
-
-    if (context.progress == 1.0)
-        return to;
+    if (context.isDiscrete) {
+        ASSERT(!context.progress || context.progress == 1);
+        return context.progress ? to : from;
+    }
 
     ASSERT(from && to);
-    const BasicShape& fromShape = *from->shape();
-    const BasicShape& toShape = *to->shape();
-    return ShapeValue::create(toShape.blend(fromShape, context), to->cssBox());
+    return from->blend(*to, context);
 }
 
-static inline RefPtr<FilterOperation> blendFunc(FilterOperation* from, FilterOperation* to, const CSSPropertyBlendingContext& context, bool blendToPassthrough = false)
+static inline FilterOperations blendFunc(const FilterOperations& from, const FilterOperations& to, const CSSPropertyBlendingContext& context)
 {
-    ASSERT(to);
-    return to->blend(from, context, blendToPassthrough);
+    return from.blend(to, context);
 }
 
-static inline FilterOperations blendFilterOperations(const FilterOperations& from, const FilterOperations& to, const CSSPropertyBlendingContext& context)
+static inline RefPtr<StyleImage> blendFilter(RefPtr<StyleImage> inputImage, const FilterOperations& from, const FilterOperations& to, const CSSPropertyBlendingContext& context)
 {
-    FilterOperations result;
-    size_t fromSize = from.operations().size();
-    size_t toSize = to.operations().size();
-    size_t size = std::max(fromSize, toSize);
-    for (size_t i = 0; i < size; i++) {
-        RefPtr<FilterOperation> fromOp = (i < fromSize) ? from.operations()[i].get() : 0;
-        RefPtr<FilterOperation> toOp = (i < toSize) ? to.operations()[i].get() : 0;
-        RefPtr<FilterOperation> blendedOp = toOp ? blendFunc(fromOp.get(), toOp.get(), context) : (fromOp ? blendFunc(0, fromOp.get(), context, true) : 0);
-        if (blendedOp)
-            result.operations().append(blendedOp);
-        else {
-            auto identityOp = PassthroughFilterOperation::create();
-            if (context.progress > 0.5)
-                result.operations().append(toOp ? toOp : WTFMove(identityOp));
-            else
-                result.operations().append(fromOp ? fromOp : WTFMove(identityOp));
-        }
-    }
-    return result;
+    auto filterResult = from.blend(to, context);
+    return StyleFilterImage::create(WTFMove(inputImage), WTFMove(filterResult));
 }
 
-static inline FilterOperations blendFunc(const FilterOperations& from, const FilterOperations& to, const CSSPropertyBlendingContext& context, CSSPropertyID propertyID = CSSPropertyFilter)
+static inline ContentVisibility blendFunc(ContentVisibility from, ContentVisibility to, const CSSPropertyBlendingContext& context)
 {
-    FilterOperations result;
-
-    // If we have a filter function list, use that to do a per-function animation.
-    
-    bool listsMatch = false;
-    switch (propertyID) {
-    case CSSPropertyFilter:
-        listsMatch = context.client->filterFunctionListsMatch();
-        break;
-#if ENABLE(FILTERS_LEVEL_2)
-    case CSSPropertyWebkitBackdropFilter:
-        listsMatch = context.client->backdropFilterFunctionListsMatch();
-        break;
-#endif
-    case CSSPropertyAppleColorFilter:
-        listsMatch = context.client->colorFilterFunctionListsMatch();
-        break;
-    default:
-        break;
-    }
-    
-    if (listsMatch)
-        result = blendFilterOperations(from, to, context);
-    else {
-        // If the filter function lists don't match, we could try to cross-fade, but don't yet have a way to represent that in CSS.
-        // For now we'll just fail to animate.
-        result = to;
-    }
-
-    return result;
-}
-
-static inline RefPtr<StyleImage> blendFilter(CachedImage* image, const FilterOperations& from, const FilterOperations& to, const CSSPropertyBlendingContext& context)
-{
-    ASSERT(image);
-    FilterOperations filterResult = blendFilterOperations(from, to, context);
-
-    auto imageValue = CSSImageValue::create(*image);
-    auto filterValue = ComputedStyleExtractor::valueForFilter(context.client->currentStyle(), filterResult, DoNotAdjustPixelValues);
-
-    auto result = CSSFilterImageValue::create(WTFMove(imageValue), WTFMove(filterValue));
-    result.get().setFilterOperations(filterResult);
-    return StyleGeneratedImage::create(WTFMove(result));
+    // https://drafts.csswg.org/css-contain-3/#content-visibility-animation
+    // In general, the content-visibility property's animation type is discrete. However, similar to interpolation of
+    // visibility, during interpolation between hidden and any other content-visibility value, p values between 0 and 1
+    // map to the non-hidden value.
+    if (from != ContentVisibility::Hidden && to != ContentVisibility::Hidden)
+        return context.progress < 0.5 ? from : to;
+    if (context.progress <= 0)
+        return from;
+    if (context.progress >= 1)
+        return to;
+    return from == ContentVisibility::Hidden ? to : from;
 }
 
 static inline Visibility blendFunc(Visibility from, Visibility to, const CSSPropertyBlendingContext& context)
 {
-    if (from != Visibility::Visible && to != Visibility::Visible)
-        return context.progress < 0.5 ? from : to;
+    if (context.isDiscrete) {
+        ASSERT(!context.progress || context.progress == 1.0);
+        return context.progress ? to : from;
+    }
 
     // Any non-zero result means we consider the object to be visible. Only at 0 do we consider the object to be
     // invisible. The invisible value we use (Visibility::Hidden vs. Visibility::Collapse) depends on the specified from/to values.
@@ -389,8 +376,25 @@ static inline Visibility blendFunc(Visibility from, Visibility to, const CSSProp
     double toVal = to == Visibility::Visible ? 1. : 0.;
     if (fromVal == toVal)
         return to;
-    double result = blendFunc(fromVal, toVal, context);
+    // The composite operation here is irrelevant.
+    double result = blendFunc(fromVal, toVal, { context.progress, false, CompositeOperation::Replace, context.client, context.property });
     return result > 0. ? Visibility::Visible : (to != Visibility::Visible ? to : from);
+}
+
+static inline DisplayType blendFunc(DisplayType from, DisplayType to, const CSSPropertyBlendingContext& context)
+{
+    // https://drafts.csswg.org/css-display-4/#display-animation
+    // In general, the display property's animation type is discrete. However, similar to interpolation of
+    // visibility, during interpolation between none and any other display value, p values between 0 and 1
+    // map to the non-none value. Additionally, the element is inert as long as its display value would
+    // compute to none when ignoring the Transitions and Animations cascade origins.
+    if (from != DisplayType::None && to != DisplayType::None)
+        return context.progress < 0.5 ? from : to;
+    if (context.progress <= 0)
+        return from;
+    if (context.progress >= 1)
+        return to;
+    return from == DisplayType::None ? to : from;
 }
 
 static inline TextUnderlineOffset blendFunc(const TextUnderlineOffset& from, const TextUnderlineOffset& to, const CSSPropertyBlendingContext& context)
@@ -398,13 +402,6 @@ static inline TextUnderlineOffset blendFunc(const TextUnderlineOffset& from, con
     if (from.isLength() && to.isLength())
         return TextUnderlineOffset::createWithLength(blendFunc(from.lengthValue(), to.lengthValue(), context));
     return TextUnderlineOffset::createWithAuto();
-}
-
-static inline TextDecorationThickness blendFunc(const TextDecorationThickness& from, const TextDecorationThickness& to, const CSSPropertyBlendingContext& context)
-{
-    if (from.isLength() && to.isLength())
-        return TextDecorationThickness::createWithLength(blendFunc(from.lengthValue(), to.lengthValue(), context));
-    return TextDecorationThickness::createWithAuto();
 }
 
 static inline LengthBox blendFunc(const LengthBox& from, const LengthBox& to, const CSSPropertyBlendingContext& context, ValueRange valueRange = ValueRange::NonNegative)
@@ -440,23 +437,17 @@ static inline Vector<SVGLengthValue> blendFunc(const Vector<SVGLengthValue>& fro
     return result;
 }
 
-static inline RefPtr<StyleImage> crossfadeBlend(StyleCachedImage* fromStyleImage, StyleCachedImage* toStyleImage, const CSSPropertyBlendingContext& context)
+static inline RefPtr<StyleImage> crossfadeBlend(StyleCachedImage& fromStyleImage, StyleCachedImage& toStyleImage, const CSSPropertyBlendingContext& context)
 {
     // If progress is at one of the extremes, we want getComputedStyle to show the image,
     // not a completed cross-fade, so we hand back one of the existing images.
     if (!context.progress)
-        return fromStyleImage;
+        return &fromStyleImage;
     if (context.progress == 1)
-        return toStyleImage;
-    if (!fromStyleImage->cachedImage() || !toStyleImage->cachedImage())
-        return toStyleImage;
-
-    auto fromImageValue = CSSImageValue::create(*fromStyleImage->cachedImage());
-    auto toImageValue = CSSImageValue::create(*toStyleImage->cachedImage());
-    auto percentageValue = CSSPrimitiveValue::create(context.progress, CSSUnitType::CSS_NUMBER);
-
-    auto crossfadeValue = CSSCrossfadeValue::create(WTFMove(fromImageValue), WTFMove(toImageValue), WTFMove(percentageValue));
-    return StyleGeneratedImage::create(WTFMove(crossfadeValue));
+        return &toStyleImage;
+    if (!fromStyleImage.cachedImage() || !toStyleImage.cachedImage())
+        return &toStyleImage;
+    return StyleCrossfadeImage::create(&fromStyleImage, &toStyleImage, context.progress, false);
 }
 
 static inline RefPtr<StyleImage> blendFunc(StyleImage* from, StyleImage* to, const CSSPropertyBlendingContext& context)
@@ -476,52 +467,38 @@ static inline RefPtr<StyleImage> blendFunc(StyleImage* from, StyleImage* to, con
         return to;
 
     // Animation between two generated images. Cross fade for all other cases.
-    if (is<StyleGeneratedImage>(*from) && is<StyleGeneratedImage>(*to)) {
-        CSSImageGeneratorValue& fromGenerated = downcast<StyleGeneratedImage>(*from).imageValue();
-        CSSImageGeneratorValue& toGenerated = downcast<StyleGeneratedImage>(*to).imageValue();
+    if (auto [fromFilter, toFilter] = std::tuple { dynamicDowncast<StyleFilterImage>(*from), dynamicDowncast<StyleFilterImage>(*to) }; fromFilter && toFilter) {
+        // Animation of generated images just possible if input images are equal.
+        // Otherwise fall back to cross fade animation.
+        if (fromFilter->equalInputImages(*toFilter) && is<StyleCachedImage>(fromFilter->inputImage()))
+            return blendFilter(fromFilter->inputImage(), fromFilter->filterOperations(), toFilter->filterOperations(), context);
+    } else if (auto [fromCrossfade, toCrossfade] = std::tuple { dynamicDowncast<StyleCrossfadeImage>(*from), dynamicDowncast<StyleCrossfadeImage>(*to) }; fromCrossfade && toCrossfade) {
+        if (fromCrossfade->equalInputImages(*toCrossfade)) {
+            if (auto crossfadeBlend = toCrossfade->blend(*fromCrossfade, context))
+                return crossfadeBlend;
+        }
+    } else if (auto [fromFilter, toCachedImage] = std::tuple { dynamicDowncast<StyleFilterImage>(*from), dynamicDowncast<StyleCachedImage>(*to) }; fromFilter && toCachedImage) {
+        RefPtr fromFilterInputImage = dynamicDowncast<StyleCachedImage>(fromFilter->inputImage());
 
-        if (is<CSSFilterImageValue>(fromGenerated) && is<CSSFilterImageValue>(toGenerated)) {
-            // Animation of generated images just possible if input images are equal.
-            // Otherwise fall back to cross fade animation.
-            CSSFilterImageValue& fromFilter = downcast<CSSFilterImageValue>(fromGenerated);
-            CSSFilterImageValue& toFilter = downcast<CSSFilterImageValue>(toGenerated);
-            if (fromFilter.equalInputImages(toFilter) && fromFilter.cachedImage())
-                return blendFilter(fromFilter.cachedImage(), fromFilter.filterOperations(), toFilter.filterOperations(), context);
-        }
+        if (fromFilterInputImage && toCachedImage->equals(*fromFilterInputImage))
+            return blendFilter(WTFMove(fromFilterInputImage), fromFilter->filterOperations(), FilterOperations(), context);
+    } else if (auto [fromCachedImage, toFilter] = std::tuple { dynamicDowncast<StyleCachedImage>(*from), dynamicDowncast<StyleFilterImage>(*to) }; fromCachedImage && toFilter) {
+        RefPtr toFilterInputImage = dynamicDowncast<StyleCachedImage>(toFilter->inputImage());
 
-        if (is<CSSCrossfadeValue>(fromGenerated) && is<CSSCrossfadeValue>(toGenerated)) {
-            CSSCrossfadeValue& fromCrossfade = downcast<CSSCrossfadeValue>(fromGenerated);
-            CSSCrossfadeValue& toCrossfade = downcast<CSSCrossfadeValue>(toGenerated);
-            if (fromCrossfade.equalInputImages(toCrossfade)) {
-                if (auto crossfadeBlend = toCrossfade.blend(fromCrossfade, context))
-                    return StyleGeneratedImage::create(*crossfadeBlend);
-            }
-        }
-
-        // FIXME: Add support for animation between two *gradient() functions.
-        // https://bugs.webkit.org/show_bug.cgi?id=119956
-    } else if (is<StyleGeneratedImage>(*from) && is<StyleCachedImage>(*to)) {
-        CSSImageGeneratorValue& fromGenerated = downcast<StyleGeneratedImage>(*from).imageValue();
-        if (is<CSSFilterImageValue>(fromGenerated)) {
-            CSSFilterImageValue& fromFilter = downcast<CSSFilterImageValue>(fromGenerated);
-            if (fromFilter.cachedImage() && downcast<StyleCachedImage>(*to).cachedImage() == fromFilter.cachedImage())
-                return blendFilter(fromFilter.cachedImage(), fromFilter.filterOperations(), FilterOperations(), context);
-        }
-        // FIXME: Add interpolation between cross-fade and image source.
-    } else if (is<StyleCachedImage>(*from) && is<StyleGeneratedImage>(*to)) {
-        CSSImageGeneratorValue& toGenerated = downcast<StyleGeneratedImage>(*to).imageValue();
-        if (is<CSSFilterImageValue>(toGenerated)) {
-            CSSFilterImageValue& toFilter = downcast<CSSFilterImageValue>(toGenerated);
-            if (toFilter.cachedImage() && downcast<StyleCachedImage>(*from).cachedImage() == toFilter.cachedImage())
-                return blendFilter(toFilter.cachedImage(), FilterOperations(), toFilter.filterOperations(), context);
-        }
-        // FIXME: Add interpolation between image source and cross-fade.
+        if (toFilterInputImage && fromCachedImage->equals(*toFilterInputImage))
+            return blendFilter(WTFMove(toFilterInputImage), FilterOperations(), toFilter->filterOperations(), context);
     }
+
+    auto* fromCachedImage = dynamicDowncast<StyleCachedImage>(*from);
+    auto* toCachedImage = dynamicDowncast<StyleCachedImage>(*to);
+    if (fromCachedImage && toCachedImage)
+        return crossfadeBlend(*fromCachedImage, *toCachedImage, context);
+
+    // FIXME: Add support for animation between two *gradient() functions.
+    // https://bugs.webkit.org/show_bug.cgi?id=119956
 
     // FIXME: Add support cross fade between cached and generated images.
     // https://bugs.webkit.org/show_bug.cgi?id=78293
-    if (is<StyleCachedImage>(*from) && is<StyleCachedImage>(*to))
-        return crossfadeBlend(downcast<StyleCachedImage>(from), downcast<StyleCachedImage>(to), context);
 
     return to;
 }
@@ -533,27 +510,26 @@ static inline NinePieceImage blendFunc(const NinePieceImage& from, const NinePie
 
     // FIXME (74112): Support transitioning between NinePieceImages that differ by more than image content.
 
-    if (from.imageSlices() != to.imageSlices() || from.borderSlices() != to.borderSlices() || from.outset() != to.outset() || from.fill() != to.fill() || from.horizontalRule() != to.horizontalRule() || from.verticalRule() != to.verticalRule())
+    if (from.imageSlices() != to.imageSlices() || from.borderSlices() != to.borderSlices() || from.outset() != to.outset() || from.fill() != to.fill() || from.overridesBorderWidths() != to.overridesBorderWidths() || from.horizontalRule() != to.horizontalRule() || from.verticalRule() != to.verticalRule())
         return to;
 
-    if (auto* renderer = context.client->renderer()) {
+    if (auto* renderer = context.client.renderer()) {
         if (from.image()->imageSize(renderer, 1.0) != to.image()->imageSize(renderer, 1.0))
             return to;
     }
 
     return NinePieceImage(blendFunc(from.image(), to.image(), context),
-        from.imageSlices(), from.fill(), from.borderSlices(), from.outset(), from.horizontalRule(), from.verticalRule());
+        from.imageSlices(), from.fill(), from.borderSlices(), from.overridesBorderWidths(), from.outset(), from.horizontalRule(), from.verticalRule());
 }
 
 #if ENABLE(VARIATION_FONTS)
 
 static inline FontVariationSettings blendFunc(const FontVariationSettings& from, const FontVariationSettings& to, const CSSPropertyBlendingContext& context)
 {
-    if (!context.progress)
-        return from;
-
-    if (context.progress == 1.0)
-        return to;
+    if (context.isDiscrete) {
+        ASSERT(!context.progress || context.progress == 1.0);
+        return context.progress ? to : from;
+    }
 
     ASSERT(from.size() == to.size());
     FontVariationSettings result;
@@ -577,12 +553,154 @@ static inline FontSelectionValue blendFunc(FontSelectionValue from, FontSelectio
 
 static inline std::optional<FontSelectionValue> blendFunc(std::optional<FontSelectionValue> from, std::optional<FontSelectionValue> to, const CSSPropertyBlendingContext& context)
 {
-    return blendFunc(*from, *to, context);
+    if (!from && !to)
+        return std::nullopt;
+
+    auto valueOrDefault = [](std::optional<FontSelectionValue> fontSelectionValue) {
+        if (!fontSelectionValue)
+            return 0.0f;
+        return static_cast<float>(fontSelectionValue.value());
+    };
+
+    return normalizedFontItalicValue(blendFunc(valueOrDefault(from), valueOrDefault(to), context));
 }
+
+static inline bool canInterpolate(const GridTrackList& from, const GridTrackList& to)
+{
+    if (from.list.size() != to.list.size())
+        return false;
+
+    size_t i = 0;
+    auto visitor = WTF::makeVisitor([&](const GridTrackSize&) {
+        return std::holds_alternative<GridTrackSize>(to.list[i]);
+    }, [&](const Vector<String>&) {
+        return std::holds_alternative<Vector<String>>(to.list[i]);
+    }, [&](const GridTrackEntryRepeat& repeat) {
+        if (!std::holds_alternative<GridTrackEntryRepeat>(to.list[i]))
+            return false;
+        const auto& toEntry = std::get<GridTrackEntryRepeat>(to.list[i]);
+        return repeat.repeats == toEntry.repeats && repeat.list.size() == toEntry.list.size();
+    }, [](const GridTrackEntryAutoRepeat&) {
+        return false;
+    }, [](const GridTrackEntrySubgrid&) {
+        return false;
+    }, [](const GridTrackEntryMasonry&) {
+        return false;
+    });
+
+    for (i = 0; i < from.list.size(); i++) {
+        if (!std::visit(visitor, from.list[i]))
+            return false;
+    }
+
+    return true;
+}
+
+static inline GridLength blendFunc(const GridLength& from, const GridLength& to, const CSSPropertyBlendingContext& context)
+{
+    if (from.isFlex() != to.isFlex())
+        return context.progress < 0.5 ? from : to;
+
+    if (from.isFlex())
+        return GridLength(blend(from.flex(), to.flex(), context));
+
+    return GridLength(blendFunc(from.length(), to.length(), context));
+}
+
+static inline GridTrackSize blendFunc(const GridTrackSize& from, const GridTrackSize& to, const CSSPropertyBlendingContext& context)
+{
+    if (from.type() != to.type())
+        return context.progress < 0.5 ? from : to;
+
+    if (from.type() == LengthTrackSizing) {
+        auto length = blendFunc(from.minTrackBreadth(), to.minTrackBreadth(), context);
+        return GridTrackSize(length, LengthTrackSizing);
+    }
+    if (from.type() == MinMaxTrackSizing) {
+        auto minTrackBreadth = blendFunc(from.minTrackBreadth(), to.minTrackBreadth(), context);
+        auto maxTrackBreadth = blendFunc(from.maxTrackBreadth(), to.maxTrackBreadth(), context);
+        return GridTrackSize(minTrackBreadth, maxTrackBreadth);
+    }
+
+    auto fitContentBreadth = blendFunc(from.fitContentTrackBreadth(), to.fitContentTrackBreadth(), context);
+    return GridTrackSize(fitContentBreadth, FitContentTrackSizing);
+}
+
+static inline RepeatTrackList blendFunc(const RepeatTrackList& from, const RepeatTrackList& to, const CSSPropertyBlendingContext& context)
+{
+    RepeatTrackList result;
+    size_t i = 0;
+
+    auto visitor = WTF::makeVisitor([&](const GridTrackSize& size) {
+        result.append(blendFunc(size, std::get<GridTrackSize>(to[i]), context));
+    }, [&](const Vector<String>& names) {
+        if (context.progress < 0.5)
+            result.append(names);
+        else {
+            const Vector<String>& toNames = std::get<Vector<String>>(to[i]);
+            result.append(toNames);
+        }
+    });
+
+    for (i = 0; i < from.size(); i++)
+        std::visit(visitor, from[i]);
+
+    return result;
+}
+
+static inline GridTrackList blendFunc(const GridTrackList& from, const GridTrackList& to, const CSSPropertyBlendingContext& context)
+{
+    if (!canInterpolate(from, to))
+        return context.progress < 0.5 ? from : to;
+
+    GridTrackList result;
+    size_t i = 0;
+
+    auto visitor = WTF::makeVisitor([&](const GridTrackSize& size) {
+        result.list.append(blendFunc(size, std::get<GridTrackSize>(to.list[i]), context));
+    }, [&](const Vector<String>& names) {
+        if (context.progress < 0.5)
+            result.list.append(names);
+        else {
+            const Vector<String>& toNames = std::get<Vector<String>>(to.list[i]);
+            result.list.append(toNames);
+        }
+    }, [&](const GridTrackEntryRepeat& repeatFrom) {
+        auto& repeatTo = std::get<GridTrackEntryRepeat>(to.list[i]);
+        GridTrackEntryRepeat repeatResult;
+        repeatResult.repeats = repeatFrom.repeats;
+        repeatResult.list = blendFunc(repeatFrom.list, repeatTo.list, context);
+        result.list.append(WTFMove(repeatResult));
+    }, [&](const GridTrackEntryAutoRepeat& repeatFrom) {
+        auto& repeatTo = std::get<GridTrackEntryAutoRepeat>(to.list[i]);
+        GridTrackEntryAutoRepeat repeatResult;
+        repeatResult.type = repeatFrom.type;
+        repeatResult.list = blendFunc(repeatFrom.list, repeatTo.list, context);
+        result.list.append(WTFMove(repeatResult));
+    }, [](const GridTrackEntrySubgrid&) {
+    }, [](const GridTrackEntryMasonry&) {
+    });
+
+
+    for (i = 0; i < from.list.size(); i++)
+        std::visit(visitor, from.list[i]);
+
+    return result;
+}
+
+static inline RefPtr<BasicShapePath> blendFunc(BasicShapePath* from, BasicShapePath* to, const CSSPropertyBlendingContext& context)
+{
+    if (context.isDiscrete)
+        return context.progress < 0.5 ? from : to;
+    ASSERT(from && to);
+    auto blendedValue = to->blend(*from, context);
+    return &downcast<BasicShapePath>(blendedValue.leakRef());
+}
+
 
 class AnimationPropertyWrapperBase {
     WTF_MAKE_NONCOPYABLE(AnimationPropertyWrapperBase);
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
 public:
     explicit AnimationPropertyWrapperBase(CSSPropertyID property)
         : m_property(property)
@@ -591,17 +709,20 @@ public:
     virtual ~AnimationPropertyWrapperBase() = default;
 
     virtual bool isShorthandWrapper() const { return false; }
+    virtual bool isAdditiveOrCumulative() const { return true; }
+    virtual bool requiresBlendingForAccumulativeIteration(const RenderStyle&, const RenderStyle&) const { return false; }
     virtual bool equals(const RenderStyle&, const RenderStyle&) const = 0;
-    virtual bool canInterpolate(const RenderStyle&, const RenderStyle&) const { return true; }
+    virtual bool canInterpolate(const RenderStyle&, const RenderStyle&, CompositeOperation) const { return true; }
+    virtual bool normalizesProgressForDiscreteInterpolation() const { return true; }
     virtual void blend(RenderStyle&, const RenderStyle&, const RenderStyle&, const CSSPropertyBlendingContext&) const = 0;
-    
+
 #if !LOG_DISABLED
     virtual void logBlend(const RenderStyle&, const RenderStyle&, const RenderStyle&, double) const = 0;
 #endif
 
     CSSPropertyID property() const { return m_property; }
 
-    virtual bool animationIsAccelerated() const { return false; }
+    virtual bool animationIsAccelerated(const Settings&) const { return false; }
 
 private:
     CSSPropertyID m_property;
@@ -609,7 +730,7 @@ private:
 
 template <typename T>
 class PropertyWrapperGetter : public AnimationPropertyWrapperBase {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
 public:
     PropertyWrapperGetter(CSSPropertyID property, T (RenderStyle::*getter)() const)
         : AnimationPropertyWrapperBase(property)
@@ -632,7 +753,7 @@ public:
 #if !LOG_DISABLED
     void logBlend(const RenderStyle& from, const RenderStyle& to, const RenderStyle& destination, double progress) const final
     {
-        LOG_WITH_STREAM(Animations, stream << "  blending " << getPropertyName(property()) << " from " << value(from) << " to " << value(to) << " at " << TextStream::FormatNumberRespectingIntegers(progress) << " -> " << value(destination));
+        LOG_WITH_STREAM(Animations, stream << "  blending " << property() << " from " << value(from) << " to " << value(to) << " at " << TextStream::FormatNumberRespectingIntegers(progress) << " -> " << value(destination));
     }
 #endif
 
@@ -642,7 +763,7 @@ private:
 
 template <typename T>
 class PropertyWrapper : public PropertyWrapperGetter<T> {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
 public:
     PropertyWrapper(CSSPropertyID property, T (RenderStyle::*getter)() const, void (RenderStyle::*setter)(T))
         : PropertyWrapperGetter<T>(property, getter)
@@ -659,9 +780,40 @@ protected:
     void (RenderStyle::*m_setter)(T);
 };
 
+
+class OffsetRotateWrapper final : public PropertyWrapperGetter<OffsetRotation> {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
+public:
+    OffsetRotateWrapper()
+        : PropertyWrapperGetter(CSSPropertyOffsetRotate, &RenderStyle::offsetRotate)
+    {
+    }
+
+private:
+    bool animationIsAccelerated(const Settings& settings) const final
+    {
+#if ENABLE(THREADED_ANIMATION_RESOLUTION)
+        return settings.threadedAnimationResolutionEnabled();
+#else
+        UNUSED_PARAM(settings);
+        return false;
+#endif
+    }
+
+    bool canInterpolate(const RenderStyle& from, const RenderStyle& to, CompositeOperation) const final
+    {
+        return value(from).canBlend(value(to));
+    }
+
+    void blend(RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, const CSSPropertyBlendingContext& context) const final
+    {
+        destination.setOffsetRotate(value(from).blend(value(to), context));
+    }
+};
+
 template <typename T>
 class PositivePropertyWrapper final : public PropertyWrapper<T> {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
 public:
     PositivePropertyWrapper(CSSPropertyID property, T (RenderStyle::*getter)() const, void (RenderStyle::*setter)(T))
         : PropertyWrapper<T>(property, getter, setter)
@@ -677,8 +829,8 @@ private:
 };
 
 template <typename T>
-class DiscretePropertyWrapper final : public PropertyWrapperGetter<T> {
-    WTF_MAKE_FAST_ALLOCATED;
+class DiscretePropertyWrapper : public PropertyWrapperGetter<T> {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
 public:
     DiscretePropertyWrapper(CSSPropertyID property, T (RenderStyle::*getter)() const, void (RenderStyle::*setter)(T))
         : PropertyWrapperGetter<T>(property, getter)
@@ -686,98 +838,51 @@ public:
     {
     }
 
-    void blend(RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, const CSSPropertyBlendingContext& context) const final
+    void blend(RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, const CSSPropertyBlendingContext& context) const override
     {
         ASSERT(!context.progress || context.progress == 1.0);
         (destination.*this->m_setter)(this->value(context.progress ? to : from));
     }
 
 private:
-    bool canInterpolate(const RenderStyle&, const RenderStyle&) const final { return false; }
+    bool canInterpolate(const RenderStyle&, const RenderStyle&, CompositeOperation) const final { return false; }
 
     void (RenderStyle::*m_setter)(T);
 };
 
-template <GridTrackSizingDirection>
-class GridTemplateTracksWrapper : public AnimationPropertyWrapperBase {
-    WTF_MAKE_FAST_ALLOCATED;
+
+class GridTemplatePropertyWrapper final : public PropertyWrapper<const GridTrackList&> {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
 public:
-    GridTemplateTracksWrapper();
-
-private:
-    bool canInterpolate(const RenderStyle&, const RenderStyle&) const final { return false; }
-
-    bool equals(const RenderStyle& a, const RenderStyle& b) const override
+    GridTemplatePropertyWrapper(CSSPropertyID property, const GridTrackList& (RenderStyle::*getter)() const, void (RenderStyle::*setter)(const GridTrackList&))
+        : PropertyWrapper(property, getter, setter)
     {
-        return m_gridTracksWrapper.equals(a, b) && m_autoRepeatTracksWrapper.equals(a, b) && m_gridAutoRepeatTypeTracksWrapper.equals(a, b) && m_gridAutoRepeatInsertionPointTracksWrapper.equals(a, b) && m_orderedNamedGridLinesTracksWrapper.equals(a, b) && m_autoRepeatOrderedNamedGridLinesTracksWrapper.equals(a, b);
     }
 
+private:
     void blend(RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, const CSSPropertyBlendingContext& context) const final
     {
-        m_gridTracksWrapper.blend(destination, from, to, context);
-        m_autoRepeatTracksWrapper.blend(destination, from, to, context);
-        m_gridAutoRepeatTypeTracksWrapper.blend(destination, from, to, context);
-        m_gridAutoRepeatInsertionPointTracksWrapper.blend(destination, from, to, context);
-        m_orderedNamedGridLinesTracksWrapper.blend(destination, from, to, context);
-        m_autoRepeatOrderedNamedGridLinesTracksWrapper.blend(destination, from, to, context);
+        (destination.*m_setter)(blendFunc(this->value(from), this->value(to), context));
     }
 
-#if !LOG_DISABLED
-    void logBlend(const RenderStyle& from, const RenderStyle& to, const RenderStyle& destination, double progress) const final
+    bool canInterpolate(const RenderStyle& from, const RenderStyle& to, CompositeOperation) const final
     {
-        m_gridTracksWrapper.logBlend(from, to, destination, progress);
-        m_autoRepeatTracksWrapper.logBlend(from, to, destination, progress);
-        m_gridAutoRepeatTypeTracksWrapper.logBlend(from, to, destination, progress);
-        m_gridAutoRepeatInsertionPointTracksWrapper.logBlend(from, to, destination, progress);
-        m_orderedNamedGridLinesTracksWrapper.logBlend(from, to, destination, progress);
-        m_autoRepeatOrderedNamedGridLinesTracksWrapper.logBlend(from, to, destination, progress);
+        return WebCore::canInterpolate(this->value(from), this->value(to));
     }
-#endif
-
-    DiscretePropertyWrapper<const Vector<GridTrackSize>&> m_gridTracksWrapper;
-    DiscretePropertyWrapper<const Vector<GridTrackSize>&> m_autoRepeatTracksWrapper;
-    DiscretePropertyWrapper<AutoRepeatType> m_gridAutoRepeatTypeTracksWrapper;
-    DiscretePropertyWrapper<unsigned> m_gridAutoRepeatInsertionPointTracksWrapper;
-    DiscretePropertyWrapper<const OrderedNamedGridLinesMap&> m_orderedNamedGridLinesTracksWrapper;
-    DiscretePropertyWrapper<const OrderedNamedGridLinesMap&> m_autoRepeatOrderedNamedGridLinesTracksWrapper;
 };
 
-template <>
-GridTemplateTracksWrapper<ForColumns>::GridTemplateTracksWrapper()
-    : AnimationPropertyWrapperBase(CSSPropertyGridTemplateColumns)
-    , m_gridTracksWrapper(DiscretePropertyWrapper<const Vector<GridTrackSize>&>(CSSPropertyGridTemplateColumns, &RenderStyle::gridColumns, &RenderStyle::setGridColumns))
-    , m_autoRepeatTracksWrapper(DiscretePropertyWrapper<const Vector<GridTrackSize>&>(CSSPropertyGridTemplateColumns, &RenderStyle::gridAutoRepeatColumns, &RenderStyle::setGridAutoRepeatColumns))
-    , m_gridAutoRepeatTypeTracksWrapper(DiscretePropertyWrapper<AutoRepeatType>(CSSPropertyGridTemplateColumns, &RenderStyle::gridAutoRepeatColumnsType, &RenderStyle::setGridAutoRepeatColumnsType))
-    , m_gridAutoRepeatInsertionPointTracksWrapper(DiscretePropertyWrapper<unsigned>(CSSPropertyGridTemplateColumns, &RenderStyle::gridAutoRepeatColumnsInsertionPoint, &RenderStyle::setGridAutoRepeatColumnsInsertionPoint))
-    , m_orderedNamedGridLinesTracksWrapper(DiscretePropertyWrapper<const OrderedNamedGridLinesMap&>(CSSPropertyGridTemplateColumns, &RenderStyle::orderedNamedGridColumnLines, &RenderStyle::setOrderedNamedGridColumnLines))
-    , m_autoRepeatOrderedNamedGridLinesTracksWrapper(DiscretePropertyWrapper<const OrderedNamedGridLinesMap&>(CSSPropertyGridTemplateColumns, &RenderStyle::autoRepeatOrderedNamedGridColumnLines, &RenderStyle::setAutoRepeatOrderedNamedGridColumnLines))
-{
-}
-
-template <>
-GridTemplateTracksWrapper<ForRows>::GridTemplateTracksWrapper()
-    : AnimationPropertyWrapperBase(CSSPropertyGridTemplateRows)
-    , m_gridTracksWrapper(DiscretePropertyWrapper<const Vector<GridTrackSize>&>(CSSPropertyGridTemplateRows, &RenderStyle::gridRows, &RenderStyle::setGridRows))
-    , m_autoRepeatTracksWrapper(DiscretePropertyWrapper<const Vector<GridTrackSize>&>(CSSPropertyGridTemplateRows, &RenderStyle::gridAutoRepeatRows, &RenderStyle::setGridAutoRepeatRows))
-    , m_gridAutoRepeatTypeTracksWrapper(DiscretePropertyWrapper<AutoRepeatType>(CSSPropertyGridTemplateRows, &RenderStyle::gridAutoRepeatRowsType, &RenderStyle::setGridAutoRepeatRowsType))
-    , m_gridAutoRepeatInsertionPointTracksWrapper(DiscretePropertyWrapper<unsigned>(CSSPropertyGridTemplateRows, &RenderStyle::gridAutoRepeatRowsInsertionPoint, &RenderStyle::setGridAutoRepeatRowsInsertionPoint))
-    , m_orderedNamedGridLinesTracksWrapper(DiscretePropertyWrapper<const OrderedNamedGridLinesMap&>(CSSPropertyGridTemplateRows, &RenderStyle::orderedNamedGridRowLines, &RenderStyle::setOrderedNamedGridRowLines))
-    , m_autoRepeatOrderedNamedGridLinesTracksWrapper(DiscretePropertyWrapper<const OrderedNamedGridLinesMap&>(CSSPropertyGridTemplateRows, &RenderStyle::autoRepeatOrderedNamedGridRowLines, &RenderStyle::setAutoRepeatOrderedNamedGridRowLines))
-{
-}
-
-class BorderImageRepeatWrapper final : public AnimationPropertyWrapperBase {
-    WTF_MAKE_FAST_ALLOCATED;
+class NinePieceImageRepeatWrapper final : public AnimationPropertyWrapperBase {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
 public:
-    BorderImageRepeatWrapper()
-        : AnimationPropertyWrapperBase(CSSPropertyBorderImageRepeat)
-        , m_horizontalWrapper(DiscretePropertyWrapper<NinePieceImageRule>(CSSPropertyBorderImageRepeat, &RenderStyle::borderImageHorizontalRule, &RenderStyle::setBorderImageHorizontalRule))
-        , m_verticalWrapper(DiscretePropertyWrapper<NinePieceImageRule>(CSSPropertyBorderImageRepeat, &RenderStyle::borderImageVerticalRule, &RenderStyle::setBorderImageVerticalRule))
+    NinePieceImageRepeatWrapper(CSSPropertyID property, NinePieceImageRule (RenderStyle::*horizontalGetter)() const, void (RenderStyle::*horizontalSetter)(NinePieceImageRule), NinePieceImageRule (RenderStyle::*verticalGetter)() const, void (RenderStyle::*verticalSetter)(NinePieceImageRule))
+        : AnimationPropertyWrapperBase(property)
+        , m_horizontalWrapper(DiscretePropertyWrapper<NinePieceImageRule>(property, horizontalGetter, horizontalSetter))
+        , m_verticalWrapper(DiscretePropertyWrapper<NinePieceImageRule>(property, verticalGetter, verticalSetter))
     {
     }
 
 private:
-    bool canInterpolate(const RenderStyle&, const RenderStyle&) const final { return false; }
+    bool canInterpolate(const RenderStyle&, const RenderStyle&, CompositeOperation) const final { return false; }
 
     bool equals(const RenderStyle& a, const RenderStyle& b) const override
     {
@@ -804,7 +909,7 @@ private:
 
 template <typename T>
 class RefCountedPropertyWrapper : public PropertyWrapperGetter<T*> {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
 public:
     RefCountedPropertyWrapper(CSSPropertyID property, T* (RenderStyle::*getter)() const, void (RenderStyle::*setter)(RefPtr<T>&&))
         : PropertyWrapperGetter<T*>(property, getter)
@@ -836,27 +941,44 @@ static bool canInterpolateLengths(const Length& from, const Length& to, bool isL
             && from.isRelative() == to.isRelative();
     }
 
+    if (from.isCalculated())
+        return to.isFixed() || to.isPercentOrCalculated();
+    if (to.isCalculated())
+        return from.isFixed() || from.isPercentOrCalculated();
+
     return false;
 }
 
+static bool lengthsRequireBlendingForAccumulativeIteration(const Length& from, const Length& to)
+{
+    // If blending the values can yield a calc() value, we must go through the blending code for iterationComposite.
+    return from.isCalculated() || to.isCalculated() || from.type() != to.type();
+}
+
+
 class LengthPropertyWrapper : public PropertyWrapperGetter<const Length&> {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
 public:
     enum class Flags {
         IsLengthPercentage          = 1 << 0,
         NegativeLengthsAreInvalid   = 1 << 1,
     };
     LengthPropertyWrapper(CSSPropertyID property, const Length& (RenderStyle::*getter)() const, void (RenderStyle::*setter)(Length&&), OptionSet<Flags> flags = { })
-        : PropertyWrapperGetter<const Length&>(property, getter)
+        : PropertyWrapperGetter(property, getter)
         , m_setter(setter)
         , m_flags(flags)
     {
     }
 
 protected:
-    bool canInterpolate(const RenderStyle& from, const RenderStyle& to) const override
+    bool canInterpolate(const RenderStyle& from, const RenderStyle& to, CompositeOperation) const override
     {
         return canInterpolateLengths(value(from), value(to), m_flags.contains(Flags::IsLengthPercentage));
+    }
+
+    bool requiresBlendingForAccumulativeIteration(const RenderStyle& from, const RenderStyle& to) const final
+    {
+        return lengthsRequireBlendingForAccumulativeIteration(value(from), value(to));
     }
 
     void blend(RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, const CSSPropertyBlendingContext& context) const override
@@ -869,6 +991,7 @@ private:
     void (RenderStyle::*m_setter)(Length&&);
     OptionSet<Flags> m_flags;
 };
+
 
 static bool canInterpolateLengthVariants(const LengthSize& from, const LengthSize& to)
 {
@@ -885,27 +1008,89 @@ static bool canInterpolateLengthVariants(const GapLength& from, const GapLength&
     return canInterpolateLengths(from.length(), to.length(), isLengthPercentage);
 }
 
-class LengthPointPropertyWrapper final : public PropertyWrapperGetter<LengthPoint> {
-    WTF_MAKE_FAST_ALLOCATED;
+
+class LengthPointPropertyWrapper : public PropertyWrapperGetter<const LengthPoint&> {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
 public:
-    LengthPointPropertyWrapper(CSSPropertyID property, LengthPoint (RenderStyle::*getter)() const, void (RenderStyle::*setter)(LengthPoint&&))
-        : PropertyWrapperGetter<LengthPoint>(property, getter)
+    LengthPointPropertyWrapper(CSSPropertyID property, const LengthPoint& (RenderStyle::*getter)() const, void (RenderStyle::*setter)(LengthPoint))
+        : PropertyWrapperGetter(property, getter)
         , m_setter(setter)
     {
     }
 
 private:
+    bool requiresBlendingForAccumulativeIteration(const RenderStyle& from, const RenderStyle& to) const final
+    {
+        auto fromLengthPoint = value(from);
+        auto toLengthPoint = value(to);
+        return lengthsRequireBlendingForAccumulativeIteration(fromLengthPoint.x(), toLengthPoint.x())
+            || lengthsRequireBlendingForAccumulativeIteration(fromLengthPoint.y(), toLengthPoint.y());
+    }
+
     void blend(RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, const CSSPropertyBlendingContext& context) const final
     {
         (destination.*m_setter)(blendFunc(value(from), value(to), context));
     }
 
-    void (RenderStyle::*m_setter)(LengthPoint&&);
+    void (RenderStyle::*m_setter)(LengthPoint);
 };
+
+
+// This class extends LengthPointPropertyWrapper to accommodate `auto` or `normal` values expressed as
+// LengthPoint(Length(LengthType::Auto/Normal), Length(LengthType::Auto/Normal)). This is used for
+// offset-anchor and offset-position, which allows `auto` and `normal`, and is expressed like so.
+class LengthPointOrAutoPropertyWrapper : public LengthPointPropertyWrapper {
+public:
+    LengthPointOrAutoPropertyWrapper(CSSPropertyID property, const LengthPoint& (RenderStyle::*getter)() const, void (RenderStyle::*setter)(LengthPoint))
+        : LengthPointPropertyWrapper(property, getter, setter)
+    {
+    }
+
+private:
+    // Check if it's possible to interpolate between the from and to values. In particular,
+    // it's only possible if they're both not auto or normal.
+    bool canInterpolate(const RenderStyle& from, const RenderStyle& to, CompositeOperation) const final
+    {
+        auto valueFrom = value(from);
+        auto valueTo = value(to);
+
+        return !valueFrom.x().isAuto() && !valueTo.x().isAuto() && !valueFrom.x().isNormal() && !valueTo.x().isNormal();
+    }
+};
+
+class OffsetLengthPointWrapper final : public LengthPointOrAutoPropertyWrapper {
+public:
+    OffsetLengthPointWrapper(CSSPropertyID property, const LengthPoint& (RenderStyle::*getter)() const, void (RenderStyle::*setter)(LengthPoint))
+        : LengthPointOrAutoPropertyWrapper(property, getter, setter)
+    {
+    }
+
+private:
+    bool animationIsAccelerated(const Settings& settings) const final
+    {
+#if ENABLE(THREADED_ANIMATION_RESOLUTION)
+        return settings.threadedAnimationResolutionEnabled();
+#else
+        UNUSED_PARAM(settings);
+        return false;
+#endif
+    }
+};
+
+static bool lengthVariantRequiresBlendingForAccumulativeIteration(const LengthSize& from, const LengthSize& to)
+{
+    return lengthsRequireBlendingForAccumulativeIteration(from.width, to.width)
+        || lengthsRequireBlendingForAccumulativeIteration(from.height, to.height);
+}
+
+static bool lengthVariantRequiresBlendingForAccumulativeIteration(const GapLength& from, const GapLength& to)
+{
+    return from.isNormal() || to.isNormal() || lengthsRequireBlendingForAccumulativeIteration(from.length(), to.length());
+}
 
 template <typename T>
 class LengthVariantPropertyWrapper final : public PropertyWrapperGetter<const T&> {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
 public:
     LengthVariantPropertyWrapper(CSSPropertyID property, const T& (RenderStyle::*getter)() const, void (RenderStyle::*setter)(T&&))
         : PropertyWrapperGetter<const T&>(property, getter)
@@ -914,9 +1099,14 @@ public:
     }
 
 private:
-    bool canInterpolate(const RenderStyle& from, const RenderStyle& to) const final
+    bool canInterpolate(const RenderStyle& from, const RenderStyle& to, CompositeOperation) const final
     {
         return canInterpolateLengthVariants(this->value(from), this->value(to));
+    }
+
+    bool requiresBlendingForAccumulativeIteration(const RenderStyle& from, const RenderStyle& to) const final
+    {
+        return lengthVariantRequiresBlendingForAccumulativeIteration(this->value(from), this->value(to));
     }
 
     void blend(RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, const CSSPropertyBlendingContext& context) const final
@@ -927,39 +1117,149 @@ private:
     void (RenderStyle::*m_setter)(T&&);
 };
 
-class LengthBoxPropertyWrapper : public PropertyWrapperGetter<const LengthBox&> {
-    WTF_MAKE_FAST_ALLOCATED;
+
+class OptionalLengthPropertyWrapper : public PropertyWrapperGetter<std::optional<Length>> {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
+
 public:
     enum class Flags {
-        IsLengthPercentage      = 1 << 0,
-        UsesFillKeyword         = 1 << 1,
-        AllowsNegativeValues    = 1 << 2,
+        IsLengthPercentage = 1 << 0,
+        NegativeLengthsAreInvalid = 1 << 1,
     };
-    LengthBoxPropertyWrapper(CSSPropertyID property, const LengthBox& (RenderStyle::*getter)() const, void (RenderStyle::*setter)(LengthBox&&), OptionSet<Flags> flags = { })
-        : PropertyWrapperGetter<const LengthBox&>(property, getter)
+    OptionalLengthPropertyWrapper(CSSPropertyID property, std::optional<Length> (RenderStyle::*getter)() const, void (RenderStyle::*setter)(std::optional<Length>), OptionSet<Flags> flags = { })
+        : PropertyWrapperGetter<std::optional<Length>>(property, getter)
         , m_setter(setter)
         , m_flags(flags)
     {
     }
 
-    bool canInterpolate(const RenderStyle& from, const RenderStyle& to) const override
+protected:
+    bool canInterpolate(const RenderStyle& from, const RenderStyle& to, CompositeOperation) const override
     {
-        if (m_flags.contains(Flags::UsesFillKeyword) && from.borderImage().fill() != to.borderImage().fill())
+        if (!this->value(from) || !this->value(to))
             return false;
+
+        bool isLengthPercentage = m_flags.contains(Flags::IsLengthPercentage);
+        return canInterpolateLengths(*this->value(from), *this->value(to), isLengthPercentage);
+    }
+
+    void blend(RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, const CSSPropertyBlendingContext& context) const override
+    {
+        if (context.isDiscrete) {
+            ASSERT(!context.progress || context.progress == 1);
+            (destination.*m_setter)(context.progress ? this->value(to) : this->value(from));
+            return;
+        }
+
+        auto valueRange = m_flags.contains(Flags::NegativeLengthsAreInvalid) ? ValueRange::NonNegative : ValueRange::All;
+        (destination.*m_setter)(blendFunc(*this->value(from), *this->value(to), context, valueRange));
+    }
+
+private:
+    void (RenderStyle::*m_setter)(std::optional<Length>);
+    OptionSet<Flags> m_flags;
+};
+
+
+
+
+class ContainIntrinsicLengthPropertyWrapper final : public OptionalLengthPropertyWrapper {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
+public:
+    ContainIntrinsicLengthPropertyWrapper(CSSPropertyID property, std::optional<Length> (RenderStyle::*getter)() const, void (RenderStyle::*setter)(std::optional<Length>), ContainIntrinsicSizeType (RenderStyle::*typeGetter)() const, void (RenderStyle::*typeSetter)(ContainIntrinsicSizeType))
+        : OptionalLengthPropertyWrapper(property, getter, setter, { Flags::NegativeLengthsAreInvalid })
+        , m_containIntrinsicSizeTypeGetter(typeGetter)
+        , m_containIntrinsicSizeTypeSetter(typeSetter)
+    {
+    }
+
+private:
+    bool canInterpolate(const RenderStyle& from, const RenderStyle& to, CompositeOperation operation) const final
+    {
+        if ((from.*m_containIntrinsicSizeTypeGetter)() != (to.*m_containIntrinsicSizeTypeGetter)())
+            return false;
+        return OptionalLengthPropertyWrapper::canInterpolate(from, to, operation);
+    }
+
+    void blend(RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, const CSSPropertyBlendingContext& context) const final
+    {
+
+        auto type = context.progress < 0.5 ? (from.*m_containIntrinsicSizeTypeGetter)() : (to.*m_containIntrinsicSizeTypeGetter)();
+        (destination.*m_containIntrinsicSizeTypeSetter)(type);
+
+        OptionalLengthPropertyWrapper::blend(destination, from, to, context);
+    }
+
+    ContainIntrinsicSizeType (RenderStyle::*m_containIntrinsicSizeTypeGetter)() const;
+    void (RenderStyle::*m_containIntrinsicSizeTypeSetter)(ContainIntrinsicSizeType);
+};
+
+
+
+class LengthBoxPropertyWrapper : public PropertyWrapperGetter<const LengthBox&> {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
+public:
+    enum class Flags {
+        IsLengthPercentage      = 1 << 0,
+        UsesFillKeyword         = 1 << 1,
+        AllowsNegativeValues    = 1 << 2,
+        MayOverrideBorderWidths = 1 << 3,
+    };
+    LengthBoxPropertyWrapper(CSSPropertyID property, const LengthBox& (RenderStyle::*getter)() const, void (RenderStyle::*setter)(LengthBox&&), OptionSet<Flags> flags = { })
+        : PropertyWrapperGetter(property, getter)
+        , m_setter(setter)
+        , m_flags(flags)
+    {
+    }
+
+    bool canInterpolate(const RenderStyle& from, const RenderStyle& to, CompositeOperation) const override
+    {
+        if (m_flags.contains(Flags::UsesFillKeyword)) {
+            if (property() == CSSPropertyBorderImageSlice && from.borderImage().fill() != to.borderImage().fill())
+                return false;
+            if (property() == CSSPropertyMaskBorderSlice && from.maskBorder().fill() != to.maskBorder().fill())
+                return false;
+        }
+
+        bool isLengthPercentage = m_flags.contains(Flags::IsLengthPercentage);
+
+        if (m_flags.contains(Flags::MayOverrideBorderWidths)) {
+            bool overridesBorderWidths = from.borderImage().overridesBorderWidths();
+            if (overridesBorderWidths != to.borderImage().overridesBorderWidths())
+                return false;
+            // Even if this property accepts <length-percentage>, border widths can only be a <length>.
+            if (overridesBorderWidths)
+                isLengthPercentage = false;
+        }
 
         auto& fromLengthBox = value(from);
         auto& toLengthBox = value(to);
-        bool isLengthPercentage = m_flags.contains(Flags::IsLengthPercentage);
         return canInterpolateLengths(fromLengthBox.top(), toLengthBox.top(), isLengthPercentage)
             && canInterpolateLengths(fromLengthBox.right(), toLengthBox.right(), isLengthPercentage)
             && canInterpolateLengths(fromLengthBox.bottom(), toLengthBox.bottom(), isLengthPercentage)
             && canInterpolateLengths(fromLengthBox.left(), toLengthBox.left(), isLengthPercentage);
     }
 
+    bool requiresBlendingForAccumulativeIteration(const RenderStyle& from, const RenderStyle& to) const final
+    {
+        auto& fromLengthBox = value(from);
+        auto& toLengthBox = value(to);
+        return lengthsRequireBlendingForAccumulativeIteration(fromLengthBox.top(), toLengthBox.top())
+            && lengthsRequireBlendingForAccumulativeIteration(fromLengthBox.right(), toLengthBox.right())
+            && lengthsRequireBlendingForAccumulativeIteration(fromLengthBox.bottom(), toLengthBox.bottom())
+            && lengthsRequireBlendingForAccumulativeIteration(fromLengthBox.left(), toLengthBox.left());
+    }
+
     void blend(RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, const CSSPropertyBlendingContext& context) const override
     {
-        if (m_flags.contains(Flags::UsesFillKeyword))
-            destination.setBorderImageSliceFill((!context.progress || !context.isDiscrete ? from : to).borderImage().fill());
+        if (m_flags.contains(Flags::UsesFillKeyword)) {
+            if (property() == CSSPropertyBorderImageSlice)
+                destination.setBorderImageSliceFill((!context.progress || !context.isDiscrete ? from : to).borderImage().fill());
+            else if (property() == CSSPropertyMaskBorderSlice)
+                destination.setMaskBorderSliceFill((!context.progress || !context.isDiscrete ? from : to).maskBorder().fill());
+        }
+        if (m_flags.contains(Flags::MayOverrideBorderWidths))
+            destination.setBorderImageWidthOverridesBorderWidths((!context.progress || !context.isDiscrete ? from : to).borderImage().overridesBorderWidths());
         if (context.isDiscrete) {
             // It is important we have this non-interpolated shortcut because certain CSS properties
             // represented as a LengthBox, such as border-image-slice, don't know how to deal with
@@ -975,8 +1275,10 @@ public:
     OptionSet<Flags> m_flags;
 };
 
+
+
 class ClipWrapper final : public LengthBoxPropertyWrapper {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
 public:
     ClipWrapper()
         : LengthBoxPropertyWrapper(CSSPropertyClip, &RenderStyle::clip, &RenderStyle::setClip, { LengthBoxPropertyWrapper::Flags::AllowsNegativeValues })
@@ -984,9 +1286,9 @@ public:
     }
 
 private:
-    bool canInterpolate(const RenderStyle& from, const RenderStyle& to) const final
+    bool canInterpolate(const RenderStyle& from, const RenderStyle& to, CompositeOperation compositeOperation) const final
     {
-        return from.hasClip() && to.hasClip() && LengthBoxPropertyWrapper::canInterpolate(from, to);
+        return from.hasClip() && to.hasClip() && LengthBoxPropertyWrapper::canInterpolate(from, to, compositeOperation);
     }
 
     void blend(RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, const CSSPropertyBlendingContext& context) const final
@@ -996,15 +1298,24 @@ private:
     }
 };
 
-class PropertyWrapperClipPath final : public RefCountedPropertyWrapper<ClipPathOperation> {
-    WTF_MAKE_FAST_ALLOCATED;
+
+
+class PathOperationPropertyWrapper : public RefCountedPropertyWrapper<PathOperation> {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
 public:
-    PropertyWrapperClipPath(CSSPropertyID property, ClipPathOperation* (RenderStyle::*getter)() const, void (RenderStyle::*setter)(RefPtr<ClipPathOperation>&&))
-        : RefCountedPropertyWrapper<ClipPathOperation>(property, getter, setter)
+    PathOperationPropertyWrapper(CSSPropertyID property, PathOperation* (RenderStyle::*getter)() const, void (RenderStyle::*setter)(RefPtr<PathOperation>&&))
+        : RefCountedPropertyWrapper(property, getter, setter)
     {
     }
 
 private:
+    bool canInterpolate(const RenderStyle& from, const RenderStyle& to, CompositeOperation) const override
+    {
+        auto* fromPath = value(from);
+        auto* toPath = value(to);
+        return fromPath && toPath && fromPath->canBlend(*toPath);
+    }
+
     bool equals(const RenderStyle& a, const RenderStyle& b) const final
     {
         // If the style pointers are the same, don't bother doing the test.
@@ -1021,12 +1332,37 @@ private:
     }
 };
 
-#if ENABLE(VARIATION_FONTS)
-class PropertyWrapperFontVariationSettings final : public PropertyWrapper<FontVariationSettings> {
-    WTF_MAKE_FAST_ALLOCATED;
+
+
+class OffsetPathWrapper final : public PathOperationPropertyWrapper {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
 public:
-    PropertyWrapperFontVariationSettings(CSSPropertyID property, FontVariationSettings (RenderStyle::*getter)() const, void (RenderStyle::*setter)(FontVariationSettings))
-        : PropertyWrapper<FontVariationSettings>(property, getter, setter)
+    OffsetPathWrapper()
+        : PathOperationPropertyWrapper(CSSPropertyOffsetPath, &RenderStyle::offsetPath, &RenderStyle::setOffsetPath)
+    {
+    }
+
+private:
+    bool animationIsAccelerated(const Settings& settings) const final
+    {
+#if ENABLE(THREADED_ANIMATION_RESOLUTION)
+        return settings.threadedAnimationResolutionEnabled();
+#else
+        UNUSED_PARAM(settings);
+        return false;
+#endif
+    }
+};
+
+
+#if ENABLE(VARIATION_FONTS)
+
+
+class PropertyWrapperFontVariationSettings final : public PropertyWrapper<FontVariationSettings> {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
+public:
+    PropertyWrapperFontVariationSettings()
+        : PropertyWrapper(CSSPropertyFontVariationSettings, &RenderStyle::fontVariationSettings, &RenderStyle::setFontVariationSettings)
     {
     }
 
@@ -1039,7 +1375,7 @@ private:
         return value(a) == value(b);
     }
 
-    bool canInterpolate(const RenderStyle& from, const RenderStyle& to) const final
+    bool canInterpolate(const RenderStyle& from, const RenderStyle& to, CompositeOperation) const final
     {
         auto fromVariationSettings = value(from);
         auto toVariationSettings = value(to);
@@ -1056,13 +1392,16 @@ private:
         return true;
     }
 };
+
+
 #endif
 
+
 class PropertyWrapperShape final : public RefCountedPropertyWrapper<ShapeValue> {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
 public:
     PropertyWrapperShape(CSSPropertyID property, ShapeValue* (RenderStyle::*getter)() const, void (RenderStyle::*setter)(RefPtr<ShapeValue>&&))
-        : RefCountedPropertyWrapper<ShapeValue>(property, getter, setter)
+        : RefCountedPropertyWrapper(property, getter, setter)
     {
     }
 
@@ -1082,29 +1421,21 @@ private:
         return *shapeA == *shapeB;
     }
 
-    bool canInterpolate(const RenderStyle& from, const RenderStyle& to) const final
+    bool canInterpolate(const RenderStyle& from, const RenderStyle& to, CompositeOperation) const final
     {
         auto* fromShape = value(from);
         auto* toShape = value(to);
-
-        if (!fromShape || !toShape)
-            return false;
-
-        if (fromShape->type() != ShapeValue::Type::Shape || toShape->type() != ShapeValue::Type::Shape)
-            return false;
-
-        if (fromShape->cssBox() != toShape->cssBox())
-            return false;
-
-        return fromShape->shape()->canBlend(*toShape->shape());
+        return fromShape && toShape && fromShape->canBlend(*toShape);
     }
 };
 
+
+
 class StyleImagePropertyWrapper final : public RefCountedPropertyWrapper<StyleImage> {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
 public:
     StyleImagePropertyWrapper(CSSPropertyID property, StyleImage* (RenderStyle::*getter)() const, void (RenderStyle::*setter)(RefPtr<StyleImage>&&))
-        : RefCountedPropertyWrapper<StyleImage>(property, getter, setter)
+        : RefCountedPropertyWrapper(property, getter, setter)
     {
     }
 
@@ -1119,15 +1450,16 @@ private:
         return arePointingToEqualData(imageA, imageB);
     }
 
-    bool canInterpolate(const RenderStyle& from, const RenderStyle& to) const final
+    bool canInterpolate(const RenderStyle& from, const RenderStyle& to, CompositeOperation) const final
     {
         return value(from) && value(to);
     }
 };
 
+
 template <typename T>
 class AcceleratedPropertyWrapper final : public PropertyWrapper<T> {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
 public:
     AcceleratedPropertyWrapper(CSSPropertyID property, T (RenderStyle::*getter)() const, void (RenderStyle::*setter)(T))
         : PropertyWrapper<T>(property, getter, setter)
@@ -1135,12 +1467,38 @@ public:
     }
 
 private:
-    bool animationIsAccelerated() const final { return true; }
+    bool animationIsAccelerated(const Settings&) const final { return true; }
+    bool requiresBlendingForAccumulativeIteration(const RenderStyle&, const RenderStyle&) const final { return this->property() == CSSPropertyTransform; }
+};
+
+class AcceleratedTransformOperationsPropertyWrapper final : public PropertyWrapperGetter<const TransformOperations&> {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
+public:
+    AcceleratedTransformOperationsPropertyWrapper()
+        : PropertyWrapperGetter<const TransformOperations&>(CSSPropertyTransform, &RenderStyle::transform)
+    {
+    }
+
+    bool canInterpolate(const RenderStyle& from, const RenderStyle& to, CompositeOperation compositeOperation) const override
+    {
+        if (compositeOperation == CompositeOperation::Replace)
+            return !this->value(to).shouldFallBackToDiscreteAnimation(this->value(from), { });
+        return true;
+    }
+
+    void blend(RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, const CSSPropertyBlendingContext& context) const override
+    {
+        destination.setTransform(blendFunc(this->value(from), this->value(to), context));
+    }
+
+private:
+    bool animationIsAccelerated(const Settings&) const final { return true; }
+    bool requiresBlendingForAccumulativeIteration(const RenderStyle&, const RenderStyle&) const final { return true; }
 };
 
 template <typename T>
 class AcceleratedIndividualTransformPropertyWrapper final : public RefCountedPropertyWrapper<T> {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
 public:
     AcceleratedIndividualTransformPropertyWrapper(CSSPropertyID property, T* (RenderStyle::*getter)() const, void (RenderStyle::*setter)(RefPtr<T>&&))
         : RefCountedPropertyWrapper<T>(property, getter, setter)
@@ -1148,7 +1506,7 @@ public:
     }
 
 private:
-    bool animationIsAccelerated() const final { return true; }
+    bool animationIsAccelerated(const Settings&) const final { return true; }
 
     bool equals(const RenderStyle& a, const RenderStyle& b) const final
     {
@@ -1156,29 +1514,39 @@ private:
     }
 };
 
-class PropertyWrapperFilter final : public PropertyWrapper<const FilterOperations&> {
-    WTF_MAKE_FAST_ALLOCATED;
+
+class PropertyWrapperFilter final : public PropertyWrapperGetter<const FilterOperations&> {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
 public:
-    PropertyWrapperFilter(CSSPropertyID propertyID, const FilterOperations& (RenderStyle::*getter)() const, void (RenderStyle::*setter)(const FilterOperations&))
-        : PropertyWrapper<const FilterOperations&>(propertyID, getter, setter)
+    PropertyWrapperFilter(CSSPropertyID property, const FilterOperations& (RenderStyle::*getter)() const, void (RenderStyle::*setter)(FilterOperations&&))
+        : PropertyWrapperGetter<const FilterOperations&>(property, getter)
+        , m_setter(setter)
     {
     }
 
 private:
-    bool animationIsAccelerated() const final
+    bool animationIsAccelerated(const Settings&) const final
     {
         return property() == CSSPropertyFilter
-#if ENABLE(FILTERS_LEVEL_2)
-            || property() == CSSPropertyWebkitBackdropFilter
-#endif
-            ;
+            || property() == CSSPropertyBackdropFilter
+            || property() == CSSPropertyWebkitBackdropFilter;
+    }
+
+    bool requiresBlendingForAccumulativeIteration(const RenderStyle&, const RenderStyle&) const final { return true; }
+
+    bool canInterpolate(const RenderStyle& from, const RenderStyle& to, CompositeOperation compositeOperation) const final
+    {
+        return value(from).canInterpolate(value(to), compositeOperation);
     }
 
     void blend(RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, const CSSPropertyBlendingContext& context) const final
     {
-        (destination.*m_setter)(blendFunc(value(from), value(to), context, property()));
+        (destination.*m_setter)(blendFunc(value(from), value(to), context));
     }
+
+    void (RenderStyle::*m_setter)(FilterOperations&&);
 };
+
 
 static inline size_t shadowListLength(const ShadowData* shadow)
 {
@@ -1190,10 +1558,10 @@ static inline size_t shadowListLength(const ShadowData* shadow)
 
 static inline const ShadowData* shadowForBlending(const ShadowData* srcShadow, const ShadowData* otherShadow)
 {
-    static NeverDestroyed<ShadowData> defaultShadowData(LayoutPoint(), 0, 0, ShadowStyle::Normal, false, Color::transparentBlack);
-    static NeverDestroyed<ShadowData> defaultInsetShadowData(LayoutPoint(), 0, 0, ShadowStyle::Inset, false, Color::transparentBlack);
-    static NeverDestroyed<ShadowData> defaultWebKitBoxShadowData(LayoutPoint(), 0, 0, ShadowStyle::Normal, true, Color::transparentBlack);
-    static NeverDestroyed<ShadowData> defaultInsetWebKitBoxShadowData(LayoutPoint(), 0, 0, ShadowStyle::Inset, true, Color::transparentBlack);
+    static NeverDestroyed<ShadowData> defaultShadowData(LengthPoint(Length(LengthType::Fixed), Length(LengthType::Fixed)), Length(LengthType::Fixed), Length(LengthType::Fixed), ShadowStyle::Normal, false, Color::transparentBlack);
+    static NeverDestroyed<ShadowData> defaultInsetShadowData(LengthPoint(Length(LengthType::Fixed), Length(LengthType::Fixed)), Length(LengthType::Fixed), Length(LengthType::Fixed), ShadowStyle::Inset, false, Color::transparentBlack);
+    static NeverDestroyed<ShadowData> defaultWebKitBoxShadowData(LengthPoint(Length(LengthType::Fixed), Length(LengthType::Fixed)), Length(LengthType::Fixed), Length(LengthType::Fixed), ShadowStyle::Normal, true, Color::transparentBlack);
+    static NeverDestroyed<ShadowData> defaultInsetWebKitBoxShadowData(LengthPoint(Length(LengthType::Fixed), Length(LengthType::Fixed)), Length(LengthType::Fixed), Length(LengthType::Fixed), ShadowStyle::Inset, true, Color::transparentBlack);
 
     if (srcShadow)
         return srcShadow;
@@ -1204,8 +1572,9 @@ static inline const ShadowData* shadowForBlending(const ShadowData* srcShadow, c
     return otherShadow->isWebkitBoxShadow() ? &defaultWebKitBoxShadowData.get() : &defaultShadowData.get();
 }
 
+
 class PropertyWrapperShadow final : public AnimationPropertyWrapperBase {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
 public:
     PropertyWrapperShadow(CSSPropertyID property, const ShadowData* (RenderStyle::*getter)() const, void (RenderStyle::*setter)(std::unique_ptr<ShadowData>, bool))
         : AnimationPropertyWrapperBase(property)
@@ -1215,6 +1584,8 @@ public:
     }
 
 private:
+    bool requiresBlendingForAccumulativeIteration(const RenderStyle&, const RenderStyle&) const final { return true; }
+
     bool equals(const RenderStyle& a, const RenderStyle& b) const final
     {
         if (&a == &b)
@@ -1242,8 +1613,11 @@ private:
         return true;
     }
 
-    bool canInterpolate(const RenderStyle& from, const RenderStyle& to) const final
+    bool canInterpolate(const RenderStyle& from, const RenderStyle& to, CompositeOperation compositeOperation) const final
     {
+        if (compositeOperation != CompositeOperation::Replace)
+            return true;
+
         const ShadowData* fromShadow = (from.*m_getter)();
         const ShadowData* toShadow = (to.*m_getter)();
 
@@ -1274,11 +1648,11 @@ private:
         int toLength = shadowListLength(toShadow);
 
         if (fromLength == toLength || (fromLength <= 1 && toLength <= 1)) {
-            (destination.*m_setter)(blendSimpleOrMatchedShadowLists(fromShadow, toShadow, context), false);
+            (destination.*m_setter)(blendSimpleOrMatchedShadowLists(fromShadow, toShadow, from, to, context), false);
             return;
         }
 
-        (destination.*m_setter)(blendMismatchedShadowLists(fromShadow, toShadow, fromLength, toLength, context), false);
+        (destination.*m_setter)(blendMismatchedShadowLists(fromShadow, toShadow, fromLength, toLength, from, to, context), false);
     }
 
 #if !LOG_DISABLED
@@ -1289,16 +1663,42 @@ private:
     }
 #endif
 
-    std::unique_ptr<ShadowData> blendSimpleOrMatchedShadowLists(const ShadowData* shadowA, const ShadowData* shadowB, const CSSPropertyBlendingContext& context) const
+    std::unique_ptr<ShadowData> addShadowLists(const ShadowData* shadowA, const ShadowData* shadowB) const
     {
         std::unique_ptr<ShadowData> newShadowData;
-        ShadowData* lastShadow = 0;
+        ShadowData* lastShadow = nullptr;
+        auto addShadows = [&](const ShadowData* shadow) {
+            while (shadow) {
+                auto blendedShadow = makeUnique<ShadowData>(*shadow);
+                auto* blendedShadowPtr = blendedShadow.get();
+                if (!lastShadow)
+                    newShadowData = WTFMove(blendedShadow);
+                else
+                    lastShadow->setNext(WTFMove(blendedShadow));
+
+                lastShadow = blendedShadowPtr;
+                shadow = shadow ? shadow->next() : nullptr;
+            }
+        };
+        addShadows(shadowB);
+        addShadows(shadowA);
+        return newShadowData;
+    }
+
+    std::unique_ptr<ShadowData> blendSimpleOrMatchedShadowLists(const ShadowData* shadowA, const ShadowData* shadowB, const RenderStyle& styleA, const RenderStyle& styleB, const CSSPropertyBlendingContext& context) const
+    {
+        // from or to might be null in which case we don't want to do additivity, but do replace instead.
+        if (shadowA && shadowB && context.compositeOperation == CompositeOperation::Add)
+            return addShadowLists(shadowA, shadowB);
+
+        std::unique_ptr<ShadowData> newShadowData;
+        ShadowData* lastShadow = nullptr;
 
         while (shadowA || shadowB) {
             const ShadowData* srcShadow = shadowForBlending(shadowA, shadowB);
             const ShadowData* dstShadow = shadowForBlending(shadowB, shadowA);
 
-            std::unique_ptr<ShadowData> blendedShadow = blendFunc(srcShadow, dstShadow, context);
+            std::unique_ptr<ShadowData> blendedShadow = blendFunc(srcShadow, dstShadow, styleA, styleB, context);
             ShadowData* blendedShadowPtr = blendedShadow.get();
 
             if (!lastShadow)
@@ -1315,8 +1715,11 @@ private:
         return newShadowData;
     }
 
-    std::unique_ptr<ShadowData> blendMismatchedShadowLists(const ShadowData* shadowA, const ShadowData* shadowB, int fromLength, int toLength, const CSSPropertyBlendingContext& context) const
+    std::unique_ptr<ShadowData> blendMismatchedShadowLists(const ShadowData* shadowA, const ShadowData* shadowB, int fromLength, int toLength, const RenderStyle& styleA, const RenderStyle& styleB, const CSSPropertyBlendingContext& context) const
     {
+        if (shadowA && shadowB && context.compositeOperation != CompositeOperation::Replace)
+            return addShadowLists(shadowA, shadowB);
+
         // The shadows in ShadowData are stored in reverse order, so when animating mismatched lists,
         // reverse them and match from the end.
         Vector<const ShadowData*, 4> fromShadows(fromLength);
@@ -1341,7 +1744,7 @@ private:
             const ShadowData* srcShadow = shadowForBlending(fromShadow, toShadow);
             const ShadowData* dstShadow = shadowForBlending(toShadow, fromShadow);
 
-            std::unique_ptr<ShadowData> blendedShadow = blendFunc(srcShadow, dstShadow, context);
+            std::unique_ptr<ShadowData> blendedShadow = blendFunc(srcShadow, dstShadow, styleA, styleB, context);
             // Insert at the start of the list to preserve the order.
             blendedShadow->setNext(WTFMove(newShadowData));
             newShadowData = WTFMove(blendedShadow);
@@ -1354,87 +1757,184 @@ private:
     void (RenderStyle::*m_setter)(std::unique_ptr<ShadowData>, bool);
 };
 
-class PropertyWrapperMaybeInvalidColor final : public AnimationPropertyWrapperBase {
-    WTF_MAKE_FAST_ALLOCATED;
+
+
+class PropertyWrapperStyleColor : public AnimationPropertyWrapperBase {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
 public:
-    PropertyWrapperMaybeInvalidColor(CSSPropertyID property, const Color& (RenderStyle::*getter)() const, void (RenderStyle::*setter)(const Color&))
+    PropertyWrapperStyleColor(CSSPropertyID property, const StyleColor& (RenderStyle::*getter)() const, void (RenderStyle::*setter)(const StyleColor&))
         : AnimationPropertyWrapperBase(property)
         , m_getter(getter)
         , m_setter(setter)
     {
     }
 
-private:
-    bool equals(const RenderStyle& a, const RenderStyle& b) const final
+    bool equals(const RenderStyle& a, const RenderStyle& b) const override
     {
         if (&a == &b)
             return true;
-
-        Color fromColor = value(a);
-        Color toColor = value(b);
-
-        if (!fromColor.isValid() && !toColor.isValid())
+        
+        auto& fromStyleColor = value(a);
+        auto& toStyleColor = value(b);
+        
+        if (fromStyleColor.isCurrentColor() && toStyleColor.isCurrentColor())
             return true;
+        
+        if (fromStyleColor.isAbsoluteColor() && toStyleColor.isAbsoluteColor())
+            return fromStyleColor.absoluteColor() == toStyleColor.absoluteColor();
 
-        if (!fromColor.isValid())
-            fromColor = a.color();
-        if (!toColor.isValid())
-            toColor = b.color();
-
-        return fromColor == toColor;
+        return a.colorResolvingCurrentColor(fromStyleColor) == b.colorResolvingCurrentColor(toStyleColor);
     }
 
-    void blend(RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, const CSSPropertyBlendingContext& context) const final
+    void blend(RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, const CSSPropertyBlendingContext& context) const override
     {
-        Color fromColor = value(from);
-        Color toColor = value(to);
+        auto& fromStyleColor = value(from);
+        auto& toStyleColor = value(to);
 
-        if (!fromColor.isValid() && !toColor.isValid())
+        // We don't animate on currentcolor-only transition.
+        // https://github.com/WebKit/WebKit/blob/main/LayoutTests/imported/w3c/web-platform-tests/css/css-transitions/currentcolor-animation-001.html#L27
+        if (fromStyleColor.isCurrentColor() && toStyleColor.isCurrentColor())
             return;
 
-        if (!fromColor.isValid())
-            fromColor = from.color();
-        if (!toColor.isValid())
-            toColor = to.color();
-        (destination.*m_setter)(blendFunc(fromColor, toColor, context));
-    }
+        auto fromColor = from.colorResolvingCurrentColor(fromStyleColor);
+        auto toColor = to.colorResolvingCurrentColor(toStyleColor);
 
-    Color value(const RenderStyle& style) const
-    {
-        return (style.*m_getter)();
+        auto result = blendFunc(fromColor, toColor, context);
+        (destination.*m_setter)(WTFMove(result));
     }
 
 #if !LOG_DISABLED
     void logBlend(const RenderStyle& from, const RenderStyle& to, const RenderStyle& destination, double progress) const final
     {
         // FIXME: better logging.
-        LOG_WITH_STREAM(Animations, stream << "  blending " << getPropertyName(property()) << " from " << value(from) << " to " << value(to) << " at " << TextStream::FormatNumberRespectingIntegers(progress) << " -> " << value(destination));
+        LOG_WITH_STREAM(Animations, stream << "  blending " << property() << " from " << value(from) << " to " << value(to) << " at " << TextStream::FormatNumberRespectingIntegers(progress) << " -> " << value(destination));
     }
 #endif
+private:
+    const StyleColor& value(const RenderStyle& style) const
+    {
+        return (style.*m_getter)();
+    }
+
+    const StyleColor& (RenderStyle::*m_getter)() const;
+    void (RenderStyle::*m_setter)(const StyleColor&);
+};
+
+
+
+class PropertyWrapperColor : public AnimationPropertyWrapperBase {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
+public:
+    PropertyWrapperColor(CSSPropertyID property, const Color& (RenderStyle::*getter)() const, void (RenderStyle::*setter)(const Color&))
+        : AnimationPropertyWrapperBase(property)
+        , m_getter(getter)
+        , m_setter(setter)
+    {
+    }
+
+    bool equals(const RenderStyle& a, const RenderStyle& b) const override
+    {
+        if (&a == &b)
+            return true;
+
+        return value(a) == value(b);
+    }
+
+    void blend(RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, const CSSPropertyBlendingContext& context) const override
+    {
+        auto result = blendFunc(value(from), value(to), context);
+        (destination.*m_setter)(WTFMove(result));
+    }
+
+#if !LOG_DISABLED
+    void logBlend(const RenderStyle& from, const RenderStyle& to, const RenderStyle& destination, double progress) const final
+    {
+        // FIXME: better logging.
+        LOG_WITH_STREAM(Animations, stream << "  blending " << property() << " from " << value(from) << " to " << value(to) << " at " << TextStream::FormatNumberRespectingIntegers(progress) << " -> " << value(destination));
+    }
+#endif
+
+private:
+    const Color& value(const RenderStyle& style) const
+    {
+        return (style.*m_getter)();
+    }
 
     const Color& (RenderStyle::*m_getter)() const;
     void (RenderStyle::*m_setter)(const Color&);
 };
 
 
-enum MaybeInvalidColorTag { MaybeInvalidColor };
-class PropertyWrapperVisitedAffectedColor : public AnimationPropertyWrapperBase {
-    WTF_MAKE_FAST_ALLOCATED;
+
+class ScrollbarColorPropertyWrapper final : public AnimationPropertyWrapperBase {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
 public:
-    PropertyWrapperVisitedAffectedColor(CSSPropertyID property, const Color& (RenderStyle::*getter)() const, void (RenderStyle::*setter)(const Color&), const Color& (RenderStyle::*visitedGetter)() const, void (RenderStyle::*visitedSetter)(const Color&))
-        : AnimationPropertyWrapperBase(property)
-        , m_wrapper(makeUnique<PropertyWrapper<const Color&>>(property, getter, setter))
-        , m_visitedWrapper(makeUnique<PropertyWrapper<const Color&>>(property, visitedGetter, visitedSetter))
+    ScrollbarColorPropertyWrapper()
+        : AnimationPropertyWrapperBase(CSSPropertyScrollbarColor)
+        , m_thumbWrapper(makeUnique<PropertyWrapperStyleColor>(CSSPropertyScrollbarColor, &RenderStyle::scrollbarThumbColor, &RenderStyle::setScrollbarThumbColor))
+        , m_trackWrapper(makeUnique<PropertyWrapperStyleColor>(CSSPropertyScrollbarColor, &RenderStyle::scrollbarTrackColor, &RenderStyle::setScrollbarTrackColor))
     {
     }
-    PropertyWrapperVisitedAffectedColor(CSSPropertyID property, MaybeInvalidColorTag, const Color& (RenderStyle::*getter)() const, void (RenderStyle::*setter)(const Color&), const Color& (RenderStyle::*visitedGetter)() const, void (RenderStyle::*visitedSetter)(const Color&))
+
+private:
+    bool equals(const RenderStyle& a, const RenderStyle& b) const final
+    {
+        bool aAuto = !a.scrollbarColor().has_value();
+        bool bAuto = !b.scrollbarColor().has_value();
+
+        if (aAuto || bAuto)
+            return aAuto == bAuto;
+
+        return m_thumbWrapper->equals(a, b) && m_trackWrapper->equals(a, b);
+    }
+
+    bool canInterpolate(const RenderStyle& from, const RenderStyle& to, CompositeOperation) const final
+    {
+        return from.scrollbarColor().has_value() && to.scrollbarColor().has_value();
+    }
+
+    void blend(RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, const CSSPropertyBlendingContext& context) const final
+    {
+        if (canInterpolate(from, to, context.compositeOperation)) {
+            destination.setScrollbarColor(from.scrollbarColor().value());
+            m_thumbWrapper->blend(destination, from, to, context);
+            m_trackWrapper->blend(destination, from, to, context);
+            return;
+        }
+
+        ASSERT(!context.progress || context.progress == 1.0);
+        auto& blendingRenderStyle = context.progress ? to : from;
+        destination.setScrollbarColor(blendingRenderStyle.scrollbarColor());
+    }
+
+    std::unique_ptr<PropertyWrapperStyleColor> m_thumbWrapper;
+    std::unique_ptr<PropertyWrapperStyleColor> m_trackWrapper;
+
+#if !LOG_DISABLED
+    void logBlend(const RenderStyle& from, const RenderStyle& to, const RenderStyle& destination, double progress) const final
+    {
+        m_thumbWrapper->logBlend(from, to, destination, progress);
+        m_trackWrapper->logBlend(from, to, destination, progress);
+    }
+#endif
+};
+
+
+
+
+class PropertyWrapperVisitedAffectedStyleColor : public AnimationPropertyWrapperBase {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
+public:
+    PropertyWrapperVisitedAffectedStyleColor(CSSPropertyID property, const StyleColor& (RenderStyle::*getter)() const, void (RenderStyle::*setter)(const StyleColor&), const StyleColor& (RenderStyle::*visitedGetter)() const, void (RenderStyle::*visitedSetter)(const StyleColor&))
         : AnimationPropertyWrapperBase(property)
-        , m_wrapper(makeUnique<PropertyWrapperMaybeInvalidColor>(property, getter, setter))
-        , m_visitedWrapper(makeUnique<PropertyWrapperMaybeInvalidColor>(property, visitedGetter, visitedSetter))
+        , m_wrapper(makeUnique<PropertyWrapperStyleColor>(property, getter, setter))
+        , m_visitedWrapper(makeUnique<PropertyWrapperStyleColor>(property, visitedGetter, visitedSetter))
     {
     }
 
 protected:
+    bool requiresBlendingForAccumulativeIteration(const RenderStyle&, const RenderStyle&) const final { return true; }
+
     bool equals(const RenderStyle& a, const RenderStyle& b) const override
     {
         return m_wrapper->equals(a, b) && m_visitedWrapper->equals(a, b);
@@ -1446,8 +1946,8 @@ protected:
         m_visitedWrapper->blend(destination, from, to, context);
     }
 
-    std::unique_ptr<AnimationPropertyWrapperBase> m_wrapper;
-    std::unique_ptr<AnimationPropertyWrapperBase> m_visitedWrapper;
+    std::unique_ptr<PropertyWrapperStyleColor> m_wrapper;
+    std::unique_ptr<PropertyWrapperStyleColor> m_visitedWrapper;
 
 private:
 #if !LOG_DISABLED
@@ -1459,6 +1959,84 @@ private:
 #endif
 };
 
+
+
+class PropertyWrapperVisitedAffectedColor : public AnimationPropertyWrapperBase {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
+public:
+    PropertyWrapperVisitedAffectedColor(CSSPropertyID property, const Color& (RenderStyle::*getter)() const, void (RenderStyle::*setter)(const Color&), const Color& (RenderStyle::*visitedGetter)() const, void (RenderStyle::*visitedSetter)(const Color&))
+        : AnimationPropertyWrapperBase(property)
+        , m_wrapper(makeUnique<PropertyWrapperColor>(property, getter, setter))
+        , m_visitedWrapper(makeUnique<PropertyWrapperColor>(property, visitedGetter, visitedSetter))
+    {
+    }
+
+protected:
+    bool requiresBlendingForAccumulativeIteration(const RenderStyle&, const RenderStyle&) const final { return true; }
+
+    bool equals(const RenderStyle& a, const RenderStyle& b) const override
+    {
+        return m_wrapper->equals(a, b) && m_visitedWrapper->equals(a, b);
+    }
+
+    void blend(RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, const CSSPropertyBlendingContext& context) const override
+    {
+        m_wrapper->blend(destination, from, to, context);
+        m_visitedWrapper->blend(destination, from, to, context);
+    }
+
+    std::unique_ptr<PropertyWrapperColor> m_wrapper;
+    std::unique_ptr<PropertyWrapperColor> m_visitedWrapper;
+
+private:
+#if !LOG_DISABLED
+    void logBlend(const RenderStyle& from, const RenderStyle& to, const RenderStyle& destination, double progress) const final
+    {
+        m_wrapper->logBlend(from, to, destination, progress);
+        m_visitedWrapper->logBlend(from, to, destination, progress);
+    }
+#endif
+};
+
+
+
+class AccentColorPropertyWrapper final : public PropertyWrapperStyleColor {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
+public:
+    AccentColorPropertyWrapper()
+        : PropertyWrapperStyleColor(CSSPropertyAccentColor, &RenderStyle::accentColor, &RenderStyle::setAccentColor)
+    {
+    }
+
+private:
+    bool equals(const RenderStyle& a, const RenderStyle& b) const final
+    {
+        return a.hasAutoAccentColor() == b.hasAutoAccentColor()
+            && PropertyWrapperStyleColor::equals(a, b);
+    }
+
+    bool canInterpolate(const RenderStyle& from, const RenderStyle& to, CompositeOperation) const final
+    {
+        return !from.hasAutoAccentColor() && !to.hasAutoAccentColor();
+    }
+
+    void blend(RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, const CSSPropertyBlendingContext& context) const final
+    {
+        if (canInterpolate(from, to, context.compositeOperation)) {
+            PropertyWrapperStyleColor::blend(destination, from, to, context);
+            return;
+        }
+
+        ASSERT(!context.progress || context.progress == 1.0);
+        auto& blendingRenderStyle = context.progress ? to : from;
+        if (blendingRenderStyle.hasAutoAccentColor())
+            destination.setHasAutoAccentColor();
+        else
+            destination.setAccentColor(blendingRenderStyle.accentColor());
+    }
+};
+
+
 static bool canInterpolateCaretColor(const RenderStyle& from, const RenderStyle& to, bool visited)
 {
     if (visited)
@@ -1466,11 +2044,12 @@ static bool canInterpolateCaretColor(const RenderStyle& from, const RenderStyle&
     return !from.hasAutoCaretColor() && !to.hasAutoCaretColor();
 }
 
-class CaretColorPropertyWrapper final : public PropertyWrapperVisitedAffectedColor {
-    WTF_MAKE_FAST_ALLOCATED;
+
+class CaretColorPropertyWrapper final : public PropertyWrapperVisitedAffectedStyleColor {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
 public:
     CaretColorPropertyWrapper()
-        : PropertyWrapperVisitedAffectedColor(CSSPropertyCaretColor, MaybeInvalidColor, &RenderStyle::caretColor, &RenderStyle::setCaretColor, &RenderStyle::visitedLinkCaretColor, &RenderStyle::setVisitedLinkCaretColor)
+        : PropertyWrapperVisitedAffectedStyleColor(CSSPropertyCaretColor, &RenderStyle::caretColor, &RenderStyle::setCaretColor, &RenderStyle::visitedLinkCaretColor, &RenderStyle::setVisitedLinkCaretColor)
     {
     }
 
@@ -1479,10 +2058,10 @@ private:
     {
         return a.hasAutoCaretColor() == b.hasAutoCaretColor()
             && a.hasVisitedLinkAutoCaretColor() == b.hasVisitedLinkAutoCaretColor()
-            && PropertyWrapperVisitedAffectedColor::equals(a, b);
+            && PropertyWrapperVisitedAffectedStyleColor::equals(a, b);
     }
 
-    bool canInterpolate(const RenderStyle& from, const RenderStyle& to) const final
+    bool canInterpolate(const RenderStyle& from, const RenderStyle& to, CompositeOperation) const final
     {
         return canInterpolateCaretColor(from, to, false) || canInterpolateCaretColor(from, to, true);
     }
@@ -1511,9 +2090,12 @@ private:
     }
 };
 
+
 // Wrapper base class for an animatable property in a FillLayer
+
+
 class FillLayerAnimationPropertyWrapperBase {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
 public:
     FillLayerAnimationPropertyWrapperBase(CSSPropertyID property)
         : m_property(property)
@@ -1535,9 +2117,10 @@ private:
     CSSPropertyID m_property;
 };
 
+
 template <typename T>
 class FillLayerPropertyWrapperGetter : public FillLayerAnimationPropertyWrapperBase {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
     WTF_MAKE_NONCOPYABLE(FillLayerPropertyWrapperGetter);
 public:
     FillLayerPropertyWrapperGetter(CSSPropertyID property, T (FillLayer::*getter)() const)
@@ -1564,7 +2147,7 @@ protected:
 #if !LOG_DISABLED
     void logBlend(const FillLayer* destination, const FillLayer* from, const FillLayer* to, double progress) const override
     {
-        LOG_WITH_STREAM(Animations, stream << "  blending " << getPropertyName(property()) << " from " << value(from) << " to " << value(to) << " at " << TextStream::FormatNumberRespectingIntegers(progress) << " -> " << value(destination));
+        LOG_WITH_STREAM(Animations, stream << "  blending " << property() << " from " << value(from) << " to " << value(to) << " at " << TextStream::FormatNumberRespectingIntegers(progress) << " -> " << value(destination));
     }
 #endif
 
@@ -1574,7 +2157,7 @@ private:
 
 template <typename T>
 class FillLayerPropertyWrapper final : public FillLayerPropertyWrapperGetter<const T&> {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
 public:
     FillLayerPropertyWrapper(CSSPropertyID property, const T& (FillLayer::*getter)() const, void (FillLayer::*setter)(T))
         : FillLayerPropertyWrapperGetter<const T&>(property, getter)
@@ -1596,7 +2179,7 @@ private:
 #if !LOG_DISABLED
     void logBlend(const FillLayer* destination, const FillLayer* from, const FillLayer* to, double progress) const final
     {
-        LOG_WITH_STREAM(Animations, stream << "  blending " << getPropertyName(FillLayerPropertyWrapperGetter<const T&>::property())
+        LOG_WITH_STREAM(Animations, stream << "  blending " << FillLayerPropertyWrapperGetter<const T&>::property()
             << " from " << FillLayerPropertyWrapperGetter<const T&>::value(from)
             << " to " << FillLayerPropertyWrapperGetter<const T&>::value(to)
             << " at " << TextStream::FormatNumberRespectingIntegers(progress) << " -> " << FillLayerPropertyWrapperGetter<const T&>::value(destination));
@@ -1606,11 +2189,12 @@ private:
     void (FillLayer::*m_setter)(T);
 };
 
+
 class FillLayerPositionPropertyWrapper final : public FillLayerPropertyWrapperGetter<const Length&> {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
 public:
     FillLayerPositionPropertyWrapper(CSSPropertyID property, const Length& (FillLayer::*lengthGetter)() const, void (FillLayer::*lengthSetter)(Length), Edge (FillLayer::*originGetter)() const, void (FillLayer::*originSetter)(Edge), Edge farEdge)
-        : FillLayerPropertyWrapperGetter<const Length&>(property, lengthGetter)
+        : FillLayerPropertyWrapperGetter(property, lengthGetter)
         , m_lengthSetter(lengthSetter)
         , m_originGetter(originGetter)
         , m_originSetter(originSetter)
@@ -1661,7 +2245,7 @@ private:
 #if !LOG_DISABLED
     void logBlend(const FillLayer* destination, const FillLayer* from, const FillLayer* to, double progress) const final
     {
-        LOG_WITH_STREAM(Animations, stream << "  blending " << getPropertyName(property()) << " from " << value(from) << " to " << value(to) << " at " << TextStream::FormatNumberRespectingIntegers(progress) << " -> " << value(destination));
+        LOG_WITH_STREAM(Animations, stream << "  blending " << property() << " from " << value(from) << " to " << value(to) << " at " << TextStream::FormatNumberRespectingIntegers(progress) << " -> " << value(destination));
     }
 #endif
 
@@ -1671,9 +2255,10 @@ private:
     Edge m_farEdge;
 };
 
+
 template <typename T>
 class FillLayerRefCountedPropertyWrapper : public FillLayerPropertyWrapperGetter<T*> {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
 public:
     FillLayerRefCountedPropertyWrapper(CSSPropertyID property, T* (FillLayer::*getter)() const, void (FillLayer::*setter)(RefPtr<T>&&))
         : FillLayerPropertyWrapperGetter<T*>(property, getter)
@@ -1690,7 +2275,7 @@ private:
 #if !LOG_DISABLED
     void logBlend(const FillLayer* destination, const FillLayer* from, const FillLayer* to, double progress) const override
     {
-        LOG_WITH_STREAM(Animations, stream << "  blending " << getPropertyName(FillLayerPropertyWrapperGetter<T*>::property())
+        LOG_WITH_STREAM(Animations, stream << "  blending " << FillLayerPropertyWrapperGetter<T*>::property()
             << " from " << FillLayerPropertyWrapperGetter<T*>::value(from)
             << " to " << FillLayerPropertyWrapperGetter<T*>::value(to)
             << " at " << TextStream::FormatNumberRespectingIntegers(progress) << " -> " << FillLayerPropertyWrapperGetter<T*>::value(destination));
@@ -1700,11 +2285,12 @@ private:
     void (FillLayer::*m_setter)(RefPtr<T>&&);
 };
 
+
 class FillLayerStyleImagePropertyWrapper final : public FillLayerRefCountedPropertyWrapper<StyleImage> {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
 public:
     FillLayerStyleImagePropertyWrapper(CSSPropertyID property, StyleImage* (FillLayer::*getter)() const, void (FillLayer::*setter)(RefPtr<StyleImage>&&))
-        : FillLayerRefCountedPropertyWrapper<StyleImage>(property, getter, setter)
+        : FillLayerRefCountedPropertyWrapper(property, getter, setter)
     {
     }
 
@@ -1720,19 +2306,59 @@ private:
 
     bool canInterpolate(const FillLayer* from, const FillLayer* to) const final
     {
+        if (property() == CSSPropertyMaskImage)
+            return false;
         return value(from) && value(to);
     }
 
 #if !LOG_DISABLED
     void logBlend(const FillLayer* destination, const FillLayer* from, const FillLayer* to, double progress) const final
     {
-        LOG_WITH_STREAM(Animations, stream << "  blending " << getPropertyName(this->property()) << " from " << this->value(from) << " to " << this->value(to) << " at " << TextStream::FormatNumberRespectingIntegers(progress) << " -> " << value(destination));
+        LOG_WITH_STREAM(Animations, stream << "  blending " << property() << " from " << this->value(from) << " to " << this->value(to) << " at " << TextStream::FormatNumberRespectingIntegers(progress) << " -> " << value(destination));
     }
 #endif
 };
 
+
+template <typename T>
+class DiscreteFillLayerPropertyWrapper final : public FillLayerAnimationPropertyWrapperBase {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
+public:
+    DiscreteFillLayerPropertyWrapper(CSSPropertyID property, T (FillLayer::*getter)() const, void (FillLayer::*setter)(T))
+        : FillLayerAnimationPropertyWrapperBase(property)
+        , m_getter(getter)
+        , m_setter(setter)
+    {
+    }
+
+private:
+    bool equals(const FillLayer* a, const FillLayer* b) const final
+    {
+        return (a->*m_getter)() == (b->*m_getter)();
+    }
+
+    bool canInterpolate(const FillLayer*, const FillLayer*) const final { return false; }
+
+#if !LOG_DISABLED
+    void logBlend(const FillLayer* destination, const FillLayer* from, const FillLayer* to, double progress) const final
+    {
+        LOG_WITH_STREAM(Animations, stream << "  blending " << property() << " from " << (from->*m_getter)() << " to " << (to->*m_getter)() << " at " << TextStream::FormatNumberRespectingIntegers(progress) << " -> " << (destination->*m_getter)());
+    }
+#endif
+
+    void blend(FillLayer* destination, const FillLayer* from, const FillLayer* to, const CSSPropertyBlendingContext& context) const final
+    {
+        ASSERT(!context.progress || context.progress == 1.0);
+        (destination->*m_setter)(((context.progress ? to : from)->*m_getter)());
+    }
+
+    T (FillLayer::*m_getter)() const;
+    void (FillLayer::*m_setter)(T);
+};
+
+
 class FillLayersPropertyWrapper final : public AnimationPropertyWrapperBase {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
 public:
     typedef const FillLayer& (RenderStyle::*LayersGetter)() const;
     typedef FillLayer& (RenderStyle::*LayersAccessor)();
@@ -1753,11 +2379,24 @@ public:
             break;
         case CSSPropertyBackgroundSize:
         case CSSPropertyWebkitBackgroundSize:
-        case CSSPropertyWebkitMaskSize:
+        case CSSPropertyMaskSize:
             m_fillLayerPropertyWrapper = makeUnique<FillLayerPropertyWrapper<LengthSize>>(property, &FillLayer::sizeLength, &FillLayer::setSizeLength);
             break;
         case CSSPropertyBackgroundImage:
+        case CSSPropertyMaskImage:
             m_fillLayerPropertyWrapper = makeUnique<FillLayerStyleImagePropertyWrapper>(property, &FillLayer::image, &FillLayer::setImage);
+            break;
+        case CSSPropertyMaskClip:
+            m_fillLayerPropertyWrapper = makeUnique<DiscreteFillLayerPropertyWrapper<FillBox>>(property, &FillLayer::clip, &FillLayer::setClip);
+            break;
+        case CSSPropertyMaskOrigin:
+            m_fillLayerPropertyWrapper = makeUnique<DiscreteFillLayerPropertyWrapper<FillBox>>(property, &FillLayer::origin, &FillLayer::setOrigin);
+            break;
+        case CSSPropertyMaskComposite:
+            m_fillLayerPropertyWrapper = makeUnique<DiscreteFillLayerPropertyWrapper<CompositeOperator>>(property, &FillLayer::composite, &FillLayer::setComposite);
+            break;
+        case CSSPropertyMaskMode:
+            m_fillLayerPropertyWrapper = makeUnique<DiscreteFillLayerPropertyWrapper<MaskMode>>(property, &FillLayer::maskMode, &FillLayer::setMaskMode);
             break;
         default:
             break;
@@ -1784,7 +2423,7 @@ private:
         return true;
     }
 
-    bool canInterpolate(const RenderStyle& from, const RenderStyle& to) const final
+    bool canInterpolate(const RenderStyle& from, const RenderStyle& to, CompositeOperation) const final
     {
         auto* fromLayer = &(from.*m_layersGetter)();
         auto* toLayer = &(to.*m_layersGetter)();
@@ -1809,12 +2448,34 @@ private:
         auto* toLayer = &(to.*m_layersGetter)();
         auto* dstLayer = &(destination.*m_layersAccessor)();
 
-        while (fromLayer && toLayer && dstLayer) {
+        if (context.isDiscrete) {
+            ASSERT(!context.progress || context.progress == 1.0);
+            auto* layer = context.progress ? toLayer : fromLayer;
+            fromLayer = layer;
+            toLayer = layer;
+        }
+
+        size_t layerCount = 0;
+        Vector<FillLayer*> previousDstLayers;
+        FillLayer* previousDstLayer = nullptr;
+        while (fromLayer && toLayer) {
+            if (dstLayer)
+                previousDstLayers.append(dstLayer);
+            else {
+                ASSERT(!previousDstLayers.isEmpty());
+                auto* layerToCopy = previousDstLayers[layerCount % previousDstLayers.size()];
+                previousDstLayer->setNext(layerToCopy->copy());
+                dstLayer = previousDstLayer->next();
+            }
+
             dstLayer->setSizeType((context.progress ? toLayer : fromLayer)->sizeType());
             m_fillLayerPropertyWrapper->blend(dstLayer, fromLayer, toLayer, context);
             fromLayer = fromLayer->next();
             toLayer = toLayer->next();
+
+            previousDstLayer = dstLayer;
             dstLayer = dstLayer->next();
+            layerCount++;
         }
     }
 
@@ -1839,8 +2500,10 @@ private:
     LayersAccessor m_layersAccessor;
 };
 
+
+
 class ShorthandPropertyWrapper final : public AnimationPropertyWrapperBase {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
 public:
     ShorthandPropertyWrapper(CSSPropertyID property, Vector<AnimationPropertyWrapperBase*> longhandWrappers)
         : AnimationPropertyWrapperBase(property)
@@ -1882,8 +2545,10 @@ private:
     Vector<AnimationPropertyWrapperBase*> m_propertyWrappers;
 };
 
+
+
 class PropertyWrapperFlex final : public AnimationPropertyWrapperBase {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
 public:
     PropertyWrapperFlex()
         : AnimationPropertyWrapperBase(CSSPropertyFlex)
@@ -1899,7 +2564,7 @@ private:
         return a.flexBasis() == b.flexBasis() && a.flexGrow() == b.flexGrow() && a.flexShrink() == b.flexShrink();
     }
 
-    bool canInterpolate(const RenderStyle& from, const RenderStyle& to) const final
+    bool canInterpolate(const RenderStyle& from, const RenderStyle& to, CompositeOperation) const final
     {
         return from.flexGrow() != to.flexGrow() && from.flexShrink() != to.flexShrink() && canInterpolateLengths(from.flexBasis(), to.flexBasis(), false);
     }
@@ -1920,10 +2585,12 @@ private:
 #endif
 };
 
+
+
 class PropertyWrapperSVGPaint final : public AnimationPropertyWrapperBase {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
 public:
-    PropertyWrapperSVGPaint(CSSPropertyID property, SVGPaintType (RenderStyle::*paintTypeGetter)() const, Color (RenderStyle::*getter)() const, void (RenderStyle::*setter)(const Color&))
+    PropertyWrapperSVGPaint(CSSPropertyID property, SVGPaintType (RenderStyle::*paintTypeGetter)() const, const StyleColor& (RenderStyle::*getter)() const, void (RenderStyle::*setter)(const StyleColor&))
         : AnimationPropertyWrapperBase(property)
         , m_paintTypeGetter(paintTypeGetter)
         , m_getter(getter)
@@ -1931,7 +2598,6 @@ public:
     {
     }
 
-private:
     bool equals(const RenderStyle& a, const RenderStyle& b) const final
     {
         if (&a == &b)
@@ -1944,38 +2610,37 @@ private:
         // For everything else we must return true for this method, otherwise
         // we will try to animate between values forever.
         if ((a.*m_paintTypeGetter)() == SVGPaintType::RGBColor) {
-            Color fromColor = (a.*m_getter)();
-            Color toColor = (b.*m_getter)();
+            auto fromStyleColor = (a.*m_getter)();
+            auto toStyleColor = (b.*m_getter)();
+            
+            // We don't animate when both are currentcolor
+            auto fromColor = a.colorResolvingCurrentColor(fromStyleColor);
+            auto toColor = b.colorResolvingCurrentColor(toStyleColor);
 
-            if (!fromColor.isValid() && !toColor.isValid())
-                return true;
-
-            if (!fromColor.isValid())
-                fromColor = Color();
-            if (!toColor.isValid())
-                toColor = Color();
-
-            return fromColor == toColor;
+            return (fromStyleColor.isCurrentColor() && toStyleColor.isCurrentColor()) || fromColor == toColor;
         }
         return true;
     }
 
     void blend(RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, const CSSPropertyBlendingContext& context) const final
     {
-        if ((from.*m_paintTypeGetter)() != SVGPaintType::RGBColor
-            || (to.*m_paintTypeGetter)() != SVGPaintType::RGBColor)
+        auto isValidPaintType = [](SVGPaintType paintType) {
+            return paintType == SVGPaintType::RGBColor || paintType == SVGPaintType::CurrentColor;
+        };
+
+        if (!isValidPaintType((from.*m_paintTypeGetter)()) || !isValidPaintType((to.*m_paintTypeGetter)()))
             return;
 
-        Color fromColor = (from.*m_getter)();
-        Color toColor = (to.*m_getter)();
+        auto fromStyleColor = (from.*m_getter)();
+        auto toStyleColor = (to.*m_getter)();
 
-        if (!fromColor.isValid() && !toColor.isValid())
+        // We don't animate when both are currentcolor
+        if (fromStyleColor.isCurrentColor() && toStyleColor.isCurrentColor())
             return;
 
-        if (!fromColor.isValid())
-            fromColor = Color();
-        if (!toColor.isValid())
-            toColor = Color();
+        auto fromColor = from.colorResolvingCurrentColor(fromStyleColor);
+        auto toColor = to.colorResolvingCurrentColor(toStyleColor);
+
         (destination.*m_setter)(blendFunc(fromColor, toColor, context));
     }
 
@@ -1987,23 +2652,81 @@ private:
     }
 #endif
 
+private:
     SVGPaintType (RenderStyle::*m_paintTypeGetter)() const;
-    Color (RenderStyle::*m_getter)() const;
-    void (RenderStyle::*m_setter)(const Color&);
+    const StyleColor& (RenderStyle::*m_getter)() const;
+    void (RenderStyle::*m_setter)(const StyleColor&);
 };
 
-class PropertyWrapperFontStyle final : public PropertyWrapper<std::optional<FontSelectionValue>> {
-    WTF_MAKE_FAST_ALLOCATED;
+
+
+class PropertyWrapperVisitedAffectedSVGPaint : public AnimationPropertyWrapperBase {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
 public:
-    PropertyWrapperFontStyle()
-        : PropertyWrapper<std::optional<FontSelectionValue>>(CSSPropertyFontStyle, &RenderStyle::fontItalic, &RenderStyle::setFontItalic)
+    PropertyWrapperVisitedAffectedSVGPaint(CSSPropertyID property, SVGPaintType (RenderStyle::*paintTypeGetter)() const, const StyleColor& (RenderStyle::*getter)() const, void (RenderStyle::*setter)(const StyleColor&), SVGPaintType (RenderStyle::*visitedPaintTypeGetter)() const, const StyleColor& (RenderStyle::*visitedGetter)() const, void (RenderStyle::*visitedSetter)(const StyleColor&))
+        : AnimationPropertyWrapperBase(property)
+        , m_wrapper(makeUnique<PropertyWrapperSVGPaint>(property, paintTypeGetter, getter, setter))
+        , m_visitedWrapper(makeUnique<PropertyWrapperSVGPaint>(property, visitedPaintTypeGetter, visitedGetter, visitedSetter))
+    {
+    }
+
+protected:
+    bool equals(const RenderStyle& a, const RenderStyle& b) const override
+    {
+        return m_wrapper->equals(a, b) && m_visitedWrapper->equals(a, b);
+    }
+
+    void blend(RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, const CSSPropertyBlendingContext& context) const override
+    {
+        m_wrapper->blend(destination, from, to, context);
+        m_visitedWrapper->blend(destination, from, to, context);
+    }
+
+    std::unique_ptr<PropertyWrapperSVGPaint> m_wrapper;
+    std::unique_ptr<PropertyWrapperSVGPaint> m_visitedWrapper;
+
+private:
+#if !LOG_DISABLED
+    void logBlend(const RenderStyle& from, const RenderStyle& to, const RenderStyle& destination, double progress) const final
+    {
+        m_wrapper->logBlend(from, to, destination, progress);
+        m_visitedWrapper->logBlend(from, to, destination, progress);
+    }
+#endif
+};
+
+
+
+class PropertyWrapperFontWeight final : public PropertyWrapper<FontSelectionValue> {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
+public:
+    PropertyWrapperFontWeight()
+        : PropertyWrapper(CSSPropertyFontWeight, &RenderStyle::fontWeight, &RenderStyle::setFontWeight)
     {
     }
 
 private:
-    bool canInterpolate(const RenderStyle& from, const RenderStyle& to) const final
+
+    void blend(RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, const CSSPropertyBlendingContext& context) const final
     {
-        return from.fontItalic() && to.fontItalic() && from.fontDescription().fontStyleAxis() == FontStyleAxis::slnt && to.fontDescription().fontStyleAxis() == FontStyleAxis::slnt;
+        (destination.*m_setter)(FontSelectionValue(std::clamp(blendFunc(static_cast<float>(this->value(from)), static_cast<float>(this->value(to)), context), 1.0f, 1000.0f)));
+    }
+};
+
+
+
+class PropertyWrapperFontStyle final : public PropertyWrapper<std::optional<FontSelectionValue>> {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
+public:
+    PropertyWrapperFontStyle()
+        : PropertyWrapper(CSSPropertyFontStyle, &RenderStyle::fontItalic, &RenderStyle::setFontItalic)
+    {
+    }
+
+private:
+    bool canInterpolate(const RenderStyle& from, const RenderStyle& to, CompositeOperation) const final
+    {
+        return from.fontDescription().fontStyleAxis() == FontStyleAxis::slnt && to.fontDescription().fontStyleAxis() == FontStyleAxis::slnt;
     }
 
     void blend(RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, const CSSPropertyBlendingContext& context) const final
@@ -2027,9 +2750,118 @@ private:
     }
 };
 
+
+
+class PropertyWrapperFontSizeAdjust final : public PropertyWrapperGetter<FontSizeAdjust> {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
+public:
+    PropertyWrapperFontSizeAdjust()
+        : PropertyWrapperGetter(CSSPropertyFontSizeAdjust, &RenderStyle::fontSizeAdjust)
+    {
+    }
+
+private:
+    bool canInterpolate(const RenderStyle& from, const RenderStyle& to, CompositeOperation) const final
+    {
+        auto fromFontSizeAdjust = from.fontSizeAdjust();
+        auto toFontSizeAdjust = to.fontSizeAdjust();
+        return fromFontSizeAdjust.metric == toFontSizeAdjust.metric
+            && fromFontSizeAdjust.value && toFontSizeAdjust.value;
+    }
+
+    void blend(RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, const CSSPropertyBlendingContext& context) const final
+    {
+        auto blendedFontSizeAdjust = [&]() -> FontSizeAdjust {
+            if (context.isDiscrete)
+                return (!context.progress ? from : to).fontSizeAdjust();
+
+            ASSERT(from.fontSizeAdjust().value && to.fontSizeAdjust().value);
+            auto blendedAdjust = blendFunc(*from.fontSizeAdjust().value, *to.fontSizeAdjust().value, context);
+
+            ASSERT(from.fontSizeAdjust().metric == to.fontSizeAdjust().metric);
+            return { to.fontSizeAdjust().metric, FontSizeAdjust::ValueType::Number, std::max(blendedAdjust, 0.0f) };
+        };
+
+        destination.setFontSizeAdjust(blendedFontSizeAdjust());
+    }
+};
+
+
+
+class PropertyWrapperBaselineShift final : public PropertyWrapper<SVGLengthValue> {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
+public:
+    PropertyWrapperBaselineShift()
+        : PropertyWrapper(CSSPropertyBaselineShift, &RenderStyle::baselineShiftValue, &RenderStyle::setBaselineShiftValue)
+    {
+    }
+
+private:
+    bool equals(const RenderStyle& a, const RenderStyle& b) const final
+    {
+        return a.svgStyle().baselineShift() == b.svgStyle().baselineShift() && PropertyWrapper::equals(a, b);
+    }
+
+    bool canInterpolate(const RenderStyle& from, const RenderStyle& to, CompositeOperation compositeOperation) const final
+    {
+        return from.svgStyle().baselineShift() == to.svgStyle().baselineShift() && PropertyWrapper::canInterpolate(from, to, compositeOperation);
+    }
+
+    void blend(RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, const CSSPropertyBlendingContext& context) const final
+    {
+        auto& srcSVGStyle = !context.progress ? from.svgStyle() : to.svgStyle();
+        destination.accessSVGStyle().setBaselineShift(srcSVGStyle.baselineShift());
+        PropertyWrapper::blend(destination, from, to, context);
+    }
+};
+
+
+
+class PropertyWrapperTextDecorationThickness final : public PropertyWrapperGetter<TextDecorationThickness> {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
+public:
+    PropertyWrapperTextDecorationThickness()
+        : PropertyWrapperGetter(CSSPropertyTextDecorationThickness, &RenderStyle::textDecorationThickness)
+    {
+    }
+
+private:
+    bool canInterpolate(const RenderStyle& from, const RenderStyle& to, CompositeOperation) const final
+    {
+        auto fromTextDecorationThickness = from.textDecorationThickness();
+        auto toTextDecorationThickness = to.textDecorationThickness();
+        if (fromTextDecorationThickness.isAuto() || toTextDecorationThickness.isAuto())
+            return false;
+
+        auto fromValue = fromTextDecorationThickness.resolve(from.computedFontSize(), from.metricsOfPrimaryFont());
+        auto toValue = toTextDecorationThickness.resolve(to.computedFontSize(), to.metricsOfPrimaryFont());
+        return fromValue != toValue;
+    }
+
+    void blend(RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, const CSSPropertyBlendingContext& context) const final
+    {
+        auto blendedTextDecorationThickness = [&]() -> TextDecorationThickness {
+            if (context.isDiscrete)
+                return (!context.progress ? from : to).textDecorationThickness();
+
+            auto fromTextDecorationThickness = from.textDecorationThickness();
+            auto toTextDecorationThickness = to.textDecorationThickness();
+
+            auto fromValue = fromTextDecorationThickness.resolve(from.computedFontSize(), from.metricsOfPrimaryFont());
+            auto toValue = toTextDecorationThickness.resolve(to.computedFontSize(), to.metricsOfPrimaryFont());
+
+            auto blendedValue = blendFunc(fromValue, toValue, context);
+            return TextDecorationThickness::createWithLength(Length(clampTo<float>(blendedValue, minValueForCssLength, static_cast<float>(maxValueForCssLength)), LengthType::Fixed));
+        };
+
+        destination.setTextDecorationThickness(blendedTextDecorationThickness());
+    }
+};
+
+
 template <typename T>
 class AutoPropertyWrapper final : public PropertyWrapper<T> {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
 public:
     AutoPropertyWrapper(CSSPropertyID property, T (RenderStyle::*getter)() const, void (RenderStyle::*setter)(T), bool (RenderStyle::*autoGetter)() const, void (RenderStyle::*autoSetter)(), std::optional<T> minValue = std::nullopt)
         : PropertyWrapper<T>(property, getter, setter)
@@ -2040,7 +2872,7 @@ public:
     }
 
 private:
-    bool canInterpolate(const RenderStyle& from, const RenderStyle& to) const final
+    bool canInterpolate(const RenderStyle& from, const RenderStyle& to, CompositeOperation) const final
     {
         return !(from.*m_autoGetter)() && !(to.*m_autoGetter)();
     }
@@ -2070,11 +2902,19 @@ private:
     std::optional<T> m_minValue;
 };
 
-class NonNegativeFloatPropertyWrapper : public PropertyWrapper<float> {
-    WTF_MAKE_FAST_ALLOCATED;
+
+
+class FloatPropertyWrapper : public PropertyWrapper<float> {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
 public:
-    NonNegativeFloatPropertyWrapper(CSSPropertyID property, float (RenderStyle::*getter)() const, void (RenderStyle::*setter)(float))
-        : PropertyWrapper<float>(property, getter, setter)
+    enum class ValueRange : uint8_t {
+        All,
+        NonNegative,
+        Positive
+    };
+    FloatPropertyWrapper(CSSPropertyID property, float (RenderStyle::*getter)() const, void (RenderStyle::*setter)(float), ValueRange valueRange = ValueRange::All)
+        : PropertyWrapper(property, getter, setter)
+        , m_valueRange(valueRange)
     {
     }
 
@@ -2082,12 +2922,51 @@ protected:
     void blend(RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, const CSSPropertyBlendingContext& context) const override
     {
         auto blendedValue = blendFunc(value(from), value(to), context);
-        (destination.*m_setter)(blendedValue > 0 ? blendedValue : 0);
+        if (m_valueRange == ValueRange::NonNegative && blendedValue <= 0)
+            blendedValue = 0;
+        else if (m_valueRange == ValueRange::Positive && blendedValue < 0)
+            blendedValue = std::numeric_limits<float>::epsilon();
+        (destination.*m_setter)(blendedValue);
+    }
+
+private:
+    ValueRange m_valueRange;
+};
+
+
+
+class LineHeightWrapper final : public LengthPropertyWrapper {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
+public:
+    LineHeightWrapper()
+        : LengthPropertyWrapper(CSSPropertyLineHeight, &RenderStyle::specifiedLineHeight, &RenderStyle::setLineHeight)
+    {
+    }
+
+private:
+    bool canInterpolate(const RenderStyle& from, const RenderStyle& to, CompositeOperation compositeOperation) const final
+    {
+        // We must account for how BuilderConverter::convertLineHeight() deals with line-height values:
+        // - "normal" is converted to LengthType::Percent with a -100 value
+        // - <number> values are converted to LengthType::Percent
+        // - <length-percentage> values are converted to LengthType::Fixed
+        // This means that animating between "normal" and a "<number>" would work with LengthPropertyWrapper::canInterpolate()
+        // since it would see two LengthType::Percent values. So if either value is "normal" we cannot interpolate since those
+        // values are either equal or of incompatible types.
+        auto normalLineHeight = RenderStyle::initialLineHeight();
+        if (value(from) == normalLineHeight || value(to) == normalLineHeight)
+            return false;
+
+        // The default logic will now apply since <number> and <length-percentage> values
+        // are converted to different LengthType values.
+        return LengthPropertyWrapper::canInterpolate(from, to, compositeOperation);
     }
 };
 
+
+
 class VerticalAlignWrapper final : public LengthPropertyWrapper {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
 public:
     VerticalAlignWrapper()
         : LengthPropertyWrapper(CSSPropertyVerticalAlign, &RenderStyle::verticalAlignLength, &RenderStyle::setVerticalAlignLength, LengthPropertyWrapper::Flags::IsLengthPercentage)
@@ -2095,9 +2974,9 @@ public:
     }
 
 private:
-    bool canInterpolate(const RenderStyle& from, const RenderStyle& to) const final
+    bool canInterpolate(const RenderStyle& from, const RenderStyle& to, CompositeOperation compositeOperation) const final
     {
-        return from.verticalAlign() == VerticalAlign::Length && to.verticalAlign() == VerticalAlign::Length && LengthPropertyWrapper::canInterpolate(from, to);
+        return from.verticalAlign() == VerticalAlign::Length && to.verticalAlign() == VerticalAlign::Length && LengthPropertyWrapper::canInterpolate(from, to, compositeOperation);
     }
 
     void blend(RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, const CSSPropertyBlendingContext& context) const final
@@ -2108,8 +2987,10 @@ private:
     }
 };
 
+
+
 class TextIndentWrapper final : public LengthPropertyWrapper {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
 public:
     TextIndentWrapper()
         : LengthPropertyWrapper(CSSPropertyTextIndent, &RenderStyle::textIndent, &RenderStyle::setTextIndent, LengthPropertyWrapper::Flags::IsLengthPercentage)
@@ -2117,13 +2998,22 @@ public:
     }
 
 private:
-    bool canInterpolate(const RenderStyle& from, const RenderStyle& to) const final
+    bool equals(const RenderStyle& a, const RenderStyle& b) const final
+    {
+        if (a.textIndentLine() != b.textIndentLine())
+            return false;
+        if (a.textIndentType() != b.textIndentType())
+            return false;
+        return LengthPropertyWrapper::equals(a, b);
+    }
+
+    bool canInterpolate(const RenderStyle& from, const RenderStyle& to, CompositeOperation compositeOperation) const final
     {
         if (from.textIndentLine() != to.textIndentLine())
             return false;
         if (from.textIndentType() != to.textIndentType())
             return false;
-        return LengthPropertyWrapper::canInterpolate(from, to);
+        return LengthPropertyWrapper::canInterpolate(from, to, compositeOperation);
     }
 
     void blend(RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, const CSSPropertyBlendingContext& context) const final
@@ -2135,20 +3025,44 @@ private:
     }
 };
 
-class PerspectiveWrapper final : public NonNegativeFloatPropertyWrapper {
-    WTF_MAKE_FAST_ALLOCATED;
+
+
+class OffsetDistanceWrapper final : public LengthPropertyWrapper {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
 public:
-    PerspectiveWrapper()
-        : NonNegativeFloatPropertyWrapper(CSSPropertyPerspective, &RenderStyle::perspective, &RenderStyle::setPerspective)
+    OffsetDistanceWrapper()
+        : LengthPropertyWrapper(CSSPropertyOffsetDistance, &RenderStyle::offsetDistance, &RenderStyle::setOffsetDistance, LengthPropertyWrapper::Flags::IsLengthPercentage)
     {
     }
 
 private:
-    bool canInterpolate(const RenderStyle& from, const RenderStyle& to) const final
+    bool animationIsAccelerated(const Settings& settings) const final
+    {
+#if ENABLE(THREADED_ANIMATION_RESOLUTION)
+        return settings.threadedAnimationResolutionEnabled();
+#else
+        UNUSED_PARAM(settings);
+        return false;
+#endif
+    }
+};
+
+
+
+class PerspectiveWrapper final : public FloatPropertyWrapper {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
+public:
+    PerspectiveWrapper()
+        : FloatPropertyWrapper(CSSPropertyPerspective, &RenderStyle::perspective, &RenderStyle::setPerspective, FloatPropertyWrapper::ValueRange::NonNegative)
+    {
+    }
+
+private:
+    bool canInterpolate(const RenderStyle& from, const RenderStyle& to, CompositeOperation compositeOperation) const final
     {
         if (!from.hasPerspective() || !to.hasPerspective())
             return false;
-        return NonNegativeFloatPropertyWrapper::canInterpolate(from, to);
+        return FloatPropertyWrapper::canInterpolate(from, to, compositeOperation);
     }
 
     void blend(RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, const CSSPropertyBlendingContext& context) const final
@@ -2156,20 +3070,22 @@ private:
         if (context.isDiscrete)
             (destination.*m_setter)(context.progress ? value(to) : value(from));
         else
-            NonNegativeFloatPropertyWrapper::blend(destination, from, to, context);
+            FloatPropertyWrapper::blend(destination, from, to, context);
     }
 };
 
+
+
 class TabSizePropertyWrapper final : public PropertyWrapper<const TabSize&> {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
 public:
     TabSizePropertyWrapper()
-        : PropertyWrapper<const TabSize&>(CSSPropertyTabSize, &RenderStyle::tabSize, &RenderStyle::setTabSize)
+        : PropertyWrapper(CSSPropertyTabSize, &RenderStyle::tabSize, &RenderStyle::setTabSize)
     {
     }
 
 private:
-    bool canInterpolate(const RenderStyle& from, const RenderStyle& to) const final
+    bool canInterpolate(const RenderStyle& from, const RenderStyle& to, CompositeOperation) const final
     {
         return value(from).isSpaces() == value(to).isSpaces();
     }
@@ -2183,8 +3099,10 @@ private:
     }
 };
 
+
+
 class PropertyWrapperAspectRatio final : public AnimationPropertyWrapperBase {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
 public:
     PropertyWrapperAspectRatio()
         : AnimationPropertyWrapperBase(CSSPropertyAspectRatio)
@@ -2199,7 +3117,7 @@ public:
         return a.aspectRatioType() == b.aspectRatioType() && a.aspectRatioWidth() == b.aspectRatioWidth() && a.aspectRatioHeight() == b.aspectRatioHeight();
     }
 
-    bool canInterpolate(const RenderStyle& from, const RenderStyle& to) const final
+    bool canInterpolate(const RenderStyle& from, const RenderStyle& to, CompositeOperation) const final
     {
         return (from.aspectRatioType() == AspectRatioType::Ratio && to.aspectRatioType() == AspectRatioType::Ratio) || (from.aspectRatioType() == AspectRatioType::AutoAndRatio && to.aspectRatioType() == AspectRatioType::AutoAndRatio);
     }
@@ -2207,7 +3125,7 @@ public:
 #if !LOG_DISABLED
     void logBlend(const RenderStyle& from, const RenderStyle& to, const RenderStyle& destination, double progress) const final
     {
-        LOG_WITH_STREAM(Animations, stream << "  blending " << getPropertyName(property()) << " from " << from.logicalAspectRatio() << " to " << to.logicalAspectRatio() << " at " << TextStream::FormatNumberRespectingIntegers(progress) << " -> " << destination.logicalAspectRatio());
+        LOG_WITH_STREAM(Animations, stream << "  blending " << property() << " from " << from.logicalAspectRatio() << " to " << to.logicalAspectRatio() << " at " << TextStream::FormatNumberRespectingIntegers(progress) << " -> " << destination.logicalAspectRatio());
     }
 #endif
 
@@ -2227,8 +3145,510 @@ public:
     }
 };
 
+
+
+class StrokeDasharrayPropertyWrapper final : public PropertyWrapper<Vector<SVGLengthValue>> {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
+public:
+    StrokeDasharrayPropertyWrapper()
+        : PropertyWrapper(CSSPropertyStrokeDasharray, &RenderStyle::strokeDashArray, &RenderStyle::setStrokeDashArray)
+    {
+    }
+
+private:
+    bool isAdditiveOrCumulative() const final
+    {
+        return false;
+    }
+};
+
+
+
+class PropertyWrapperContent final : public AnimationPropertyWrapperBase {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
+public:
+    PropertyWrapperContent()
+        : AnimationPropertyWrapperBase(CSSPropertyContent)
+    {
+    }
+
+    bool canInterpolate(const RenderStyle&, const RenderStyle&, CompositeOperation) const final { return false; }
+
+    bool equals(const RenderStyle& a, const RenderStyle& b) const final
+    {
+        if (!a.hasContent() && !b.hasContent())
+            return true;
+        if (a.hasContent() && b.hasContent())
+            return *a.contentData() == *b.contentData();
+        return false;
+    }
+
+#if !LOG_DISABLED
+    void logBlend(const RenderStyle&, const RenderStyle&, const RenderStyle&, double progress) const final
+    {
+        LOG_WITH_STREAM(Animations, stream << " blending content at " << TextStream::FormatNumberRespectingIntegers(progress) << ".");
+    }
+#endif
+
+    void blend(RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, const CSSPropertyBlendingContext& context) const final
+    {
+        ASSERT(context.isDiscrete);
+        ASSERT(!context.progress || context.progress == 1);
+
+        auto& style = context.progress ? to : from;
+        if (auto* content = style.contentData())
+            destination.setContent(content->clone(), false);
+        else
+            destination.clearContent();
+    }
+};
+
+
+
+class TextEmphasisStyleWrapper final : public DiscretePropertyWrapper<TextEmphasisMark> {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
+public:
+    TextEmphasisStyleWrapper()
+        : DiscretePropertyWrapper(CSSPropertyTextEmphasisStyle, &RenderStyle::textEmphasisMark, &RenderStyle::setTextEmphasisMark)
+    {
+    }
+
+private:
+    void blend(RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, const CSSPropertyBlendingContext& context) const final
+    {
+        destination.setTextEmphasisFill((context.progress > 0.5 ? to : from).textEmphasisFill());
+        DiscretePropertyWrapper::blend(destination, from, to, context);
+    }
+};
+
+
+
+class DiscreteFontDescriptionWrapper : public AnimationPropertyWrapperBase {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
+public:
+    DiscreteFontDescriptionWrapper(CSSPropertyID property)
+        : AnimationPropertyWrapperBase(property)
+    {
+    }
+
+protected:
+    virtual bool propertiesInFontDescriptionAreEqual(const FontCascadeDescription&, const FontCascadeDescription&) const { return false; }
+    virtual void setPropertiesInFontDescription(const FontCascadeDescription&, FontCascadeDescription&) const { }
+
+private:
+    bool canInterpolate(const RenderStyle&, const RenderStyle&, CompositeOperation) const override { return false; }
+
+    bool equals(const RenderStyle& a, const RenderStyle& b) const override
+    {
+        return propertiesInFontDescriptionAreEqual(a.fontDescription(), b.fontDescription());
+    }
+
+    void blend(RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, const CSSPropertyBlendingContext& context) const override
+    {
+        ASSERT(!context.progress || context.progress == 1.0);
+        FontSelector* currentFontSelector = destination.fontCascade().fontSelector();
+        auto destinationDescription = destination.fontDescription();
+        auto& sourceDescription = (context.progress ? to : from).fontDescription();
+        setPropertiesInFontDescription(sourceDescription, destinationDescription);
+        destination.setFontDescription(WTFMove(destinationDescription));
+        destination.fontCascade().update(currentFontSelector);
+    }
+
+#if !LOG_DISABLED
+    void logBlend(const RenderStyle&, const RenderStyle&, const RenderStyle&, double) const override
+    {
+    }
+#endif
+};
+
+
+template <typename T>
+class DiscreteFontDescriptionTypedWrapper : public DiscreteFontDescriptionWrapper {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
+public:
+    DiscreteFontDescriptionTypedWrapper(CSSPropertyID property, T (FontCascadeDescription::*getter)() const, void (FontCascadeDescription::*setter)(T))
+        : DiscreteFontDescriptionWrapper(property)
+        , m_getter(getter)
+        , m_setter(setter)
+    {
+    }
+
+private:
+    bool propertiesInFontDescriptionAreEqual(const FontCascadeDescription& a, const FontCascadeDescription& b) const override
+    {
+        return this->value(a) == this->value(b);
+    }
+
+    void setPropertiesInFontDescription(const FontCascadeDescription& source, FontCascadeDescription& destination) const override
+    {
+        (destination.*this->m_setter)(this->value(source));
+    }
+
+    T value(const FontCascadeDescription& description) const
+    {
+        return (description.*this->m_getter)();
+    }
+
+    T (FontCascadeDescription::*m_getter)() const;
+    void (FontCascadeDescription::*m_setter)(T);
+};
+
+
+class FontFamilyWrapper final : public DiscreteFontDescriptionWrapper {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
+public:
+    FontFamilyWrapper()
+        : DiscreteFontDescriptionWrapper(CSSPropertyFontFamily)
+    {
+    }
+
+private:
+    bool propertiesInFontDescriptionAreEqual(const FontCascadeDescription& a, const FontCascadeDescription& b) const override
+    {
+        return a.families() == b.families();
+    }
+
+    void setPropertiesInFontDescription(const FontCascadeDescription& source, FontCascadeDescription& destination) const override
+    {
+        destination.setFamilies(source.families());
+    }
+};
+
+
+
+class CounterWrapper final : public AnimationPropertyWrapperBase {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
+public:
+    CounterWrapper(CSSPropertyID property)
+        : AnimationPropertyWrapperBase(property)
+    {
+        ASSERT(property == CSSPropertyCounterIncrement || property == CSSPropertyCounterReset || property == CSSPropertyCounterSet);
+    }
+
+    bool canInterpolate(const RenderStyle&, const RenderStyle&, CompositeOperation) const override { return false; }
+
+    bool equals(const RenderStyle& a, const RenderStyle& b) const final
+    {
+        auto& mapA = a.counterDirectives().map;
+        auto& mapB = b.counterDirectives().map;
+        if (mapA.size() != mapB.size())
+            return false;
+        for (auto& [key, aDirective] : mapA) {
+            auto it = mapB.find(key);
+            if (it == mapB.end())
+                return false;
+            auto& bDirective = it->value;
+            if ((property() == CSSPropertyCounterIncrement && aDirective.incrementValue != bDirective.incrementValue)
+                || (property() == CSSPropertyCounterReset && aDirective.resetValue != bDirective.resetValue)
+                || (property() == CSSPropertyCounterSet && aDirective.setValue != bDirective.setValue))
+                return false;
+        }
+        return true;
+    }
+
+#if !LOG_DISABLED
+    void logBlend(const RenderStyle&, const RenderStyle&, const RenderStyle&, double progress) const final
+    {
+        LOG_WITH_STREAM(Animations, stream << " blending " << property() << " at " << TextStream::FormatNumberRespectingIntegers(progress) << ".");
+    }
+#endif
+
+    void blend(RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, const CSSPropertyBlendingContext& context) const final
+    {
+        ASSERT(context.isDiscrete);
+        ASSERT(!context.progress || context.progress == 1);
+
+        // Clear all existing values in the existing set of directives.
+        for (auto& [key, directive] : destination.accessCounterDirectives().map) {
+            if (property() == CSSPropertyCounterIncrement)
+                directive.incrementValue = std::nullopt;
+            else if (property() == CSSPropertyCounterReset)
+                directive.resetValue = std::nullopt;
+            else
+                directive.setValue = std::nullopt;
+        }
+
+        auto& style = context.progress ? to : from;
+        auto& targetDirectives = destination.accessCounterDirectives().map;
+        for (auto& [key, directive] : style.counterDirectives().map) {
+            auto updateDirective = [&](CounterDirectives& target, const CounterDirectives& source) {
+                if (property() == CSSPropertyCounterIncrement)
+                    target.incrementValue = source.incrementValue;
+                else if (property() == CSSPropertyCounterReset)
+                    target.resetValue = source.resetValue;
+                else
+                    target.setValue = source.setValue;
+            };
+            auto it = targetDirectives.find(key);
+            if (it == targetDirectives.end())
+                updateDirective(targetDirectives.add(key, CounterDirectives { }).iterator->value, directive);
+            else
+                updateDirective(it->value, directive);
+        }
+    }
+};
+
+
+
+class FontFeatureSettingsWrapper final : public DiscreteFontDescriptionWrapper {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
+public:
+    FontFeatureSettingsWrapper()
+        : DiscreteFontDescriptionWrapper(CSSPropertyFontFeatureSettings)
+    {
+    }
+
+private:
+    bool propertiesInFontDescriptionAreEqual(const FontCascadeDescription& a, const FontCascadeDescription& b) const override
+    {
+        return a.featureSettings() == b.featureSettings();
+    }
+
+    void setPropertiesInFontDescription(const FontCascadeDescription& source, FontCascadeDescription& destination) const override
+    {
+        destination.setFeatureSettings(FontFeatureSettings(source.featureSettings()));
+    }
+};
+
+
+
+class FontVariantEastAsianWrapper final : public DiscreteFontDescriptionWrapper {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
+public:
+    FontVariantEastAsianWrapper()
+        : DiscreteFontDescriptionWrapper(CSSPropertyFontVariantEastAsian)
+    {
+    }
+
+private:
+    bool propertiesInFontDescriptionAreEqual(const FontCascadeDescription& a, const FontCascadeDescription& b) const override
+    {
+        return a.variantEastAsianVariant() == b.variantEastAsianVariant()
+            && a.variantEastAsianWidth() == b.variantEastAsianWidth()
+            && a.variantEastAsianRuby() == b.variantEastAsianRuby();
+    }
+
+    void setPropertiesInFontDescription(const FontCascadeDescription& source, FontCascadeDescription& destination) const override
+    {
+        destination.setVariantEastAsianVariant(source.variantEastAsianVariant());
+        destination.setVariantEastAsianWidth(source.variantEastAsianWidth());
+        destination.setVariantEastAsianRuby(source.variantEastAsianRuby());
+    }
+};
+
+
+
+class FontVariantLigaturesWrapper final : public DiscreteFontDescriptionWrapper {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
+public:
+    FontVariantLigaturesWrapper()
+        : DiscreteFontDescriptionWrapper(CSSPropertyFontVariantLigatures)
+    {
+    }
+
+private:
+    bool propertiesInFontDescriptionAreEqual(const FontCascadeDescription& a, const FontCascadeDescription& b) const override
+    {
+        return a.variantCommonLigatures() == b.variantCommonLigatures()
+            && a.variantDiscretionaryLigatures() == b.variantDiscretionaryLigatures()
+            && a.variantHistoricalLigatures() == b.variantHistoricalLigatures()
+            && a.variantContextualAlternates() == b.variantContextualAlternates();
+    }
+
+    void setPropertiesInFontDescription(const FontCascadeDescription& source, FontCascadeDescription& destination) const override
+    {
+        destination.setVariantCommonLigatures(source.variantCommonLigatures());
+        destination.setVariantDiscretionaryLigatures(source.variantDiscretionaryLigatures());
+        destination.setVariantHistoricalLigatures(source.variantHistoricalLigatures());
+        destination.setVariantContextualAlternates(source.variantContextualAlternates());
+    }
+};
+
+
+
+class GridTemplateAreasWrapper final : public AnimationPropertyWrapperBase {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
+public:
+    GridTemplateAreasWrapper()
+        : AnimationPropertyWrapperBase(CSSPropertyGridTemplateAreas)
+    {
+    }
+
+    bool canInterpolate(const RenderStyle&, const RenderStyle&, CompositeOperation) const override { return false; }
+
+    bool equals(const RenderStyle& a, const RenderStyle& b) const final
+    {
+        return a.implicitNamedGridColumnLines().map == b.implicitNamedGridColumnLines().map
+            && a.implicitNamedGridRowLines().map == b.implicitNamedGridRowLines().map
+            && a.namedGridArea().map == b.namedGridArea().map
+            && a.namedGridAreaRowCount() == b.namedGridAreaRowCount()
+            && a.namedGridAreaColumnCount() == b.namedGridAreaColumnCount();
+    }
+
+#if !LOG_DISABLED
+    void logBlend(const RenderStyle&, const RenderStyle&, const RenderStyle&, double progress) const final
+    {
+        LOG_WITH_STREAM(Animations, stream << " blending " << property() << " at " << TextStream::FormatNumberRespectingIntegers(progress) << ".");
+    }
+#endif
+
+    void blend(RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, const CSSPropertyBlendingContext& context) const final
+    {
+        ASSERT(context.isDiscrete);
+        ASSERT(!context.progress || context.progress == 1);
+
+        auto& source = context.progress ? to : from;
+        destination.setImplicitNamedGridColumnLines(source.implicitNamedGridColumnLines());
+        destination.setImplicitNamedGridRowLines(source.implicitNamedGridRowLines());
+        destination.setNamedGridArea(source.namedGridArea());
+        destination.setNamedGridAreaRowCount(source.namedGridAreaRowCount());
+        destination.setNamedGridAreaColumnCount(source.namedGridAreaColumnCount());
+    }
+};
+
+
+
+class FontVariantNumericWrapper final : public DiscreteFontDescriptionWrapper {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
+public:
+    FontVariantNumericWrapper()
+        : DiscreteFontDescriptionWrapper(CSSPropertyFontVariantNumeric)
+    {
+    }
+
+private:
+    bool propertiesInFontDescriptionAreEqual(const FontCascadeDescription& a, const FontCascadeDescription& b) const override
+    {
+        return a.variantNumericFigure() == b.variantNumericFigure()
+            && a.variantNumericSpacing() == b.variantNumericSpacing()
+            && a.variantNumericFraction() == b.variantNumericFraction()
+            && a.variantNumericOrdinal() == b.variantNumericOrdinal()
+            && a.variantNumericSlashedZero() == b.variantNumericSlashedZero();
+    }
+
+    void setPropertiesInFontDescription(const FontCascadeDescription& source, FontCascadeDescription& destination) const override
+    {
+        destination.setVariantNumericFigure(source.variantNumericFigure());
+        destination.setVariantNumericSpacing(source.variantNumericSpacing());
+        destination.setVariantNumericFraction(source.variantNumericFraction());
+        destination.setVariantNumericOrdinal(source.variantNumericOrdinal());
+        destination.setVariantNumericSlashedZero(source.variantNumericSlashedZero());
+    }
+};
+
+
+
+class QuotesWrapper final : public AnimationPropertyWrapperBase {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
+public:
+    QuotesWrapper()
+        : AnimationPropertyWrapperBase(CSSPropertyQuotes)
+    {
+    }
+
+private:
+    bool canInterpolate(const RenderStyle&, const RenderStyle&, CompositeOperation) const override { return false; }
+
+    bool equals(const RenderStyle& a, const RenderStyle& b) const override
+    {
+        return a.quotes() == b.quotes();
+    }
+
+    void blend(RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, const CSSPropertyBlendingContext& context) const override
+    {
+        ASSERT(!context.progress || context.progress == 1.0);
+        destination.setQuotes((context.progress ? to : from).quotes());
+    }
+
+#if !LOG_DISABLED
+    void logBlend(const RenderStyle&, const RenderStyle&, const RenderStyle&, double) const override
+    {
+    }
+#endif
+};
+
+
+
+class VisibilityWrapper final : public PropertyWrapper<Visibility> {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
+public:
+    VisibilityWrapper()
+        : PropertyWrapper(CSSPropertyVisibility, &RenderStyle::visibility, &RenderStyle::setVisibility)
+    {
+    }
+
+private:
+    bool canInterpolate(const RenderStyle& from, const RenderStyle& to, CompositeOperation) const final
+    {
+        // https://drafts.csswg.org/web-animations-1/#animating-visibility
+        // If neither value is visible, then discrete animation is used.
+        return value(from) == Visibility::Visible || value(to) == Visibility::Visible;
+    }
+};
+
+
+template <typename T>
+class DiscreteSVGPropertyWrapper final : public AnimationPropertyWrapperBase {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
+public:
+    DiscreteSVGPropertyWrapper(CSSPropertyID property, T (SVGRenderStyle::*getter)() const, void (SVGRenderStyle::*setter)(T))
+        : AnimationPropertyWrapperBase(property)
+        , m_getter(getter)
+        , m_setter(setter)
+    {
+    }
+
+private:
+    bool canInterpolate(const RenderStyle&, const RenderStyle&, CompositeOperation) const final { return false; }
+
+    bool equals(const RenderStyle& a, const RenderStyle& b) const override
+    {
+        return this->value(a) == this->value(b);
+    }
+
+    void blend(RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, const CSSPropertyBlendingContext& context) const override
+    {
+        ASSERT(!context.progress || context.progress == 1.0);
+        (destination.accessSVGStyle().*this->m_setter)(this->value(context.progress ? to : from));
+    }
+
+#if !LOG_DISABLED
+    void logBlend(const RenderStyle&, const RenderStyle&, const RenderStyle&, double) const override
+    {
+    }
+#endif
+
+    T value(const RenderStyle& style) const
+    {
+        return (style.svgStyle().*this->m_getter)();
+    }
+
+    T (SVGRenderStyle::*m_getter)() const;
+    void (SVGRenderStyle::*m_setter)(T);
+};
+
+
+class DWrapper final : public RefCountedPropertyWrapper<BasicShapePath> {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
+public:
+    DWrapper()
+        : RefCountedPropertyWrapper(CSSPropertyD, &RenderStyle::d, &RenderStyle::setD)
+    {
+    }
+
+private:
+    bool canInterpolate(const RenderStyle& from, const RenderStyle& to, CompositeOperation) const final
+    {
+        auto* fromValue = value(from);
+        auto* toValue = value(to);
+        return fromValue && toValue && fromValue->canBlend(*toValue);
+    }
+};
+
+
+
 class CSSPropertyAnimationWrapperMap final {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
 public:
     static CSSPropertyAnimationWrapperMap& singleton()
     {
@@ -2239,7 +3659,7 @@ public:
 
     AnimationPropertyWrapperBase* wrapperForProperty(CSSPropertyID propertyID)
     {
-        if (propertyID < firstCSSProperty || propertyID > lastCSSProperty)
+        if (propertyID < firstCSSProperty || propertyID - firstCSSProperty >= numCSSProperties)
             return nullptr;
 
         unsigned wrapperIndex = indexFromPropertyID(propertyID);
@@ -2264,18 +3684,35 @@ private:
     CSSPropertyAnimationWrapperMap();
     ~CSSPropertyAnimationWrapperMap() = delete;
 
-    unsigned char& indexFromPropertyID(CSSPropertyID propertyID)
+    unsigned short& indexFromPropertyID(CSSPropertyID propertyID)
     {
         return m_propertyToIdMap[propertyID - firstCSSProperty];
     }
 
     Vector<std::unique_ptr<AnimationPropertyWrapperBase>> m_propertyWrappers;
-    unsigned char m_propertyToIdMap[numCSSProperties];
+    unsigned short m_propertyToIdMap[numCSSProperties];
 
-    static const unsigned char cInvalidPropertyWrapperIndex = UCHAR_MAX;
+    static const unsigned short cInvalidPropertyWrapperIndex = std::numeric_limits<unsigned short>::max();
 
     friend class WTF::NeverDestroyed<CSSPropertyAnimationWrapperMap>;
 };
+
+
+
+template <typename T>
+class NonNormalizedDiscretePropertyWrapper final : public PropertyWrapper<T> {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
+public:
+    NonNormalizedDiscretePropertyWrapper(CSSPropertyID property, T (RenderStyle::*getter)() const, void (RenderStyle::*setter)(T))
+        : PropertyWrapper<T>(property, getter, setter)
+    {
+    }
+
+private:
+    bool canInterpolate(const RenderStyle&, const RenderStyle&, CompositeOperation) const final { return false; }
+    bool normalizesProgressForDiscreteInterpolation() const final { return false; }
+};
+
 
 CSSPropertyAnimationWrapperMap::CSSPropertyAnimationWrapperMap()
 {
@@ -2294,47 +3731,63 @@ CSSPropertyAnimationWrapperMap::CSSPropertyAnimationWrapperMap()
         new LengthPropertyWrapper(CSSPropertyMinHeight, &RenderStyle::minHeight, &RenderStyle::setMinHeight, { LengthPropertyWrapper::Flags::IsLengthPercentage, LengthPropertyWrapper::Flags::NegativeLengthsAreInvalid }),
         new LengthPropertyWrapper(CSSPropertyMaxHeight, &RenderStyle::maxHeight, &RenderStyle::setMaxHeight, { LengthPropertyWrapper::Flags::IsLengthPercentage, LengthPropertyWrapper::Flags::NegativeLengthsAreInvalid }),
 
-        new PropertyWrapperFlex(),
+        new PropertyWrapperFlex,
 
-        new NonNegativeFloatPropertyWrapper(CSSPropertyBorderLeftWidth, &RenderStyle::borderLeftWidth, &RenderStyle::setBorderLeftWidth),
-        new NonNegativeFloatPropertyWrapper(CSSPropertyBorderRightWidth, &RenderStyle::borderRightWidth, &RenderStyle::setBorderRightWidth),
-        new NonNegativeFloatPropertyWrapper(CSSPropertyBorderTopWidth, &RenderStyle::borderTopWidth, &RenderStyle::setBorderTopWidth),
-        new NonNegativeFloatPropertyWrapper(CSSPropertyBorderBottomWidth, &RenderStyle::borderBottomWidth, &RenderStyle::setBorderBottomWidth),
-        new LengthPropertyWrapper(CSSPropertyMarginLeft, &RenderStyle::marginLeft, &RenderStyle::setMarginLeft),
-        new LengthPropertyWrapper(CSSPropertyMarginRight, &RenderStyle::marginRight, &RenderStyle::setMarginRight),
-        new LengthPropertyWrapper(CSSPropertyMarginTop, &RenderStyle::marginTop, &RenderStyle::setMarginTop),
-        new LengthPropertyWrapper(CSSPropertyMarginBottom, &RenderStyle::marginBottom, &RenderStyle::setMarginBottom),
-        new LengthPropertyWrapper(CSSPropertyPaddingLeft, &RenderStyle::paddingLeft, &RenderStyle::setPaddingLeft, { LengthPropertyWrapper::Flags::NegativeLengthsAreInvalid }),
-        new LengthPropertyWrapper(CSSPropertyPaddingRight, &RenderStyle::paddingRight, &RenderStyle::setPaddingRight, { LengthPropertyWrapper::Flags::NegativeLengthsAreInvalid }),
-        new LengthPropertyWrapper(CSSPropertyPaddingTop, &RenderStyle::paddingTop, &RenderStyle::setPaddingTop, { LengthPropertyWrapper::Flags::NegativeLengthsAreInvalid }),
-        new LengthPropertyWrapper(CSSPropertyPaddingBottom, &RenderStyle::paddingBottom, &RenderStyle::setPaddingBottom, { LengthPropertyWrapper::Flags::NegativeLengthsAreInvalid }),
+        new FloatPropertyWrapper(CSSPropertyBorderLeftWidth, &RenderStyle::borderLeftWidth, &RenderStyle::setBorderLeftWidth, FloatPropertyWrapper::ValueRange::NonNegative),
+        new FloatPropertyWrapper(CSSPropertyBorderRightWidth, &RenderStyle::borderRightWidth, &RenderStyle::setBorderRightWidth, FloatPropertyWrapper::ValueRange::NonNegative),
+        new FloatPropertyWrapper(CSSPropertyBorderTopWidth, &RenderStyle::borderTopWidth, &RenderStyle::setBorderTopWidth, FloatPropertyWrapper::ValueRange::NonNegative),
+        new FloatPropertyWrapper(CSSPropertyBorderBottomWidth, &RenderStyle::borderBottomWidth, &RenderStyle::setBorderBottomWidth, FloatPropertyWrapper::ValueRange::NonNegative),
+        new LengthPropertyWrapper(CSSPropertyMarginLeft, &RenderStyle::marginLeft, &RenderStyle::setMarginLeft, { LengthPropertyWrapper::Flags::IsLengthPercentage }),
+        new LengthPropertyWrapper(CSSPropertyMarginRight, &RenderStyle::marginRight, &RenderStyle::setMarginRight, { LengthPropertyWrapper::Flags::IsLengthPercentage }),
+        new LengthPropertyWrapper(CSSPropertyMarginTop, &RenderStyle::marginTop, &RenderStyle::setMarginTop, { LengthPropertyWrapper::Flags::IsLengthPercentage }),
+        new LengthPropertyWrapper(CSSPropertyMarginBottom, &RenderStyle::marginBottom, &RenderStyle::setMarginBottom, { LengthPropertyWrapper::Flags::IsLengthPercentage }),
+        new DiscretePropertyWrapper<OptionSet<MarginTrimType>>(CSSPropertyMarginTrim, &RenderStyle::marginTrim, &RenderStyle::setMarginTrim),
+        new LengthPropertyWrapper(CSSPropertyPaddingLeft, &RenderStyle::paddingLeft, &RenderStyle::setPaddingLeft, { LengthPropertyWrapper::Flags::IsLengthPercentage, LengthPropertyWrapper::Flags::NegativeLengthsAreInvalid }),
+        new LengthPropertyWrapper(CSSPropertyPaddingRight, &RenderStyle::paddingRight, &RenderStyle::setPaddingRight, { LengthPropertyWrapper::Flags::IsLengthPercentage, LengthPropertyWrapper::Flags::NegativeLengthsAreInvalid }),
+        new LengthPropertyWrapper(CSSPropertyPaddingTop, &RenderStyle::paddingTop, &RenderStyle::setPaddingTop, { LengthPropertyWrapper::Flags::IsLengthPercentage, LengthPropertyWrapper::Flags::NegativeLengthsAreInvalid }),
+        new LengthPropertyWrapper(CSSPropertyPaddingBottom, &RenderStyle::paddingBottom, &RenderStyle::setPaddingBottom, { LengthPropertyWrapper::Flags::IsLengthPercentage, LengthPropertyWrapper::Flags::NegativeLengthsAreInvalid }),
+
+        new AccentColorPropertyWrapper,
 
         new CaretColorPropertyWrapper,
 
+        new ScrollbarColorPropertyWrapper,
+
         new PropertyWrapperVisitedAffectedColor(CSSPropertyColor, &RenderStyle::color, &RenderStyle::setColor, &RenderStyle::visitedLinkColor, &RenderStyle::setVisitedLinkColor),
 
-        new PropertyWrapperVisitedAffectedColor(CSSPropertyBackgroundColor, MaybeInvalidColor, &RenderStyle::backgroundColor, &RenderStyle::setBackgroundColor, &RenderStyle::visitedLinkBackgroundColor, &RenderStyle::setVisitedLinkBackgroundColor),
+        new PropertyWrapperVisitedAffectedStyleColor(CSSPropertyBackgroundColor, &RenderStyle::backgroundColor, &RenderStyle::setBackgroundColor, &RenderStyle::visitedLinkBackgroundColor, &RenderStyle::setVisitedLinkBackgroundColor),
 
         new FillLayersPropertyWrapper(CSSPropertyBackgroundImage, &RenderStyle::backgroundLayers, &RenderStyle::ensureBackgroundLayers),
         new StyleImagePropertyWrapper(CSSPropertyListStyleImage, &RenderStyle::listStyleImage, &RenderStyle::setListStyleImage),
-        new StyleImagePropertyWrapper(CSSPropertyWebkitMaskImage, &RenderStyle::maskImage, &RenderStyle::setMaskImage),
+        new FillLayersPropertyWrapper(CSSPropertyMaskImage, &RenderStyle::maskLayers, &RenderStyle::ensureMaskLayers),
 
         new StyleImagePropertyWrapper(CSSPropertyBorderImageSource, &RenderStyle::borderImageSource, &RenderStyle::setBorderImageSource),
         new LengthBoxPropertyWrapper(CSSPropertyBorderImageSlice, &RenderStyle::borderImageSlices, &RenderStyle::setBorderImageSlices, { LengthBoxPropertyWrapper::Flags::UsesFillKeyword }),
-        new LengthBoxPropertyWrapper(CSSPropertyBorderImageWidth, &RenderStyle::borderImageWidth, &RenderStyle::setBorderImageWidth, { LengthBoxPropertyWrapper::Flags::IsLengthPercentage }),
+        new LengthBoxPropertyWrapper(CSSPropertyBorderImageWidth, &RenderStyle::borderImageWidth, &RenderStyle::setBorderImageWidth, { LengthBoxPropertyWrapper::Flags::IsLengthPercentage, LengthBoxPropertyWrapper::Flags::MayOverrideBorderWidths }),
         new LengthBoxPropertyWrapper(CSSPropertyBorderImageOutset, &RenderStyle::borderImageOutset, &RenderStyle::setBorderImageOutset),
+        new NinePieceImageRepeatWrapper(CSSPropertyBorderImageRepeat, &RenderStyle::borderImageHorizontalRule, &RenderStyle::setBorderImageHorizontalRule, &RenderStyle::borderImageVerticalRule, &RenderStyle::setBorderImageVerticalRule),
 
-        new StyleImagePropertyWrapper(CSSPropertyWebkitMaskBoxImageSource, &RenderStyle::maskBoxImageSource, &RenderStyle::setMaskBoxImageSource),
-        new PropertyWrapper<const NinePieceImage&>(CSSPropertyWebkitMaskBoxImage, &RenderStyle::maskBoxImage, &RenderStyle::setMaskBoxImage),
+        new StyleImagePropertyWrapper(CSSPropertyMaskBorderSource, &RenderStyle::maskBorderSource, &RenderStyle::setMaskBorderSource),
+        new LengthBoxPropertyWrapper(CSSPropertyMaskBorderSlice, &RenderStyle::maskBorderSlices, &RenderStyle::setMaskBorderSlices, { LengthBoxPropertyWrapper::Flags::UsesFillKeyword }),
+        new LengthBoxPropertyWrapper(CSSPropertyMaskBorderWidth, &RenderStyle::maskBorderWidth, &RenderStyle::setMaskBorderWidth, { LengthBoxPropertyWrapper::Flags::IsLengthPercentage }),
+        new LengthBoxPropertyWrapper(CSSPropertyMaskBorderOutset, &RenderStyle::maskBorderOutset, &RenderStyle::setMaskBorderOutset),
+        new NinePieceImageRepeatWrapper(CSSPropertyMaskBorderRepeat, &RenderStyle::maskBorderHorizontalRule, &RenderStyle::setMaskBorderHorizontalRule, &RenderStyle::maskBorderVerticalRule, &RenderStyle::setMaskBorderVerticalRule),
+        new PropertyWrapper<const NinePieceImage&>(CSSPropertyWebkitMaskBoxImage, &RenderStyle::maskBorder, &RenderStyle::setMaskBorder),
 
         new FillLayersPropertyWrapper(CSSPropertyBackgroundPositionX, &RenderStyle::backgroundLayers, &RenderStyle::ensureBackgroundLayers),
         new FillLayersPropertyWrapper(CSSPropertyBackgroundPositionY, &RenderStyle::backgroundLayers, &RenderStyle::ensureBackgroundLayers),
         new FillLayersPropertyWrapper(CSSPropertyBackgroundSize, &RenderStyle::backgroundLayers, &RenderStyle::ensureBackgroundLayers),
         new FillLayersPropertyWrapper(CSSPropertyWebkitBackgroundSize, &RenderStyle::backgroundLayers, &RenderStyle::ensureBackgroundLayers),
 
+        new FillLayersPropertyWrapper(CSSPropertyMaskClip, &RenderStyle::maskLayers, &RenderStyle::ensureMaskLayers),
+        new FillLayersPropertyWrapper(CSSPropertyMaskComposite, &RenderStyle::maskLayers, &RenderStyle::ensureMaskLayers),
+        new FillLayersPropertyWrapper(CSSPropertyMaskMode, &RenderStyle::maskLayers, &RenderStyle::ensureMaskLayers),
+        new FillLayersPropertyWrapper(CSSPropertyMaskOrigin, &RenderStyle::maskLayers, &RenderStyle::ensureMaskLayers),
         new FillLayersPropertyWrapper(CSSPropertyWebkitMaskPositionX, &RenderStyle::maskLayers, &RenderStyle::ensureMaskLayers),
         new FillLayersPropertyWrapper(CSSPropertyWebkitMaskPositionY, &RenderStyle::maskLayers, &RenderStyle::ensureMaskLayers),
-        new FillLayersPropertyWrapper(CSSPropertyWebkitMaskSize, &RenderStyle::maskLayers, &RenderStyle::ensureMaskLayers),
+        new FillLayersPropertyWrapper(CSSPropertyMaskSize, &RenderStyle::maskLayers, &RenderStyle::ensureMaskLayers),
+
+        new DiscretePropertyWrapper<FillRepeatXY>(CSSPropertyMaskRepeat, &RenderStyle::maskRepeat, &RenderStyle::setMaskRepeat),
 
         new LengthPointPropertyWrapper(CSSPropertyObjectPosition, &RenderStyle::objectPosition, &RenderStyle::setObjectPosition),
 
@@ -2344,16 +3797,16 @@ CSSPropertyAnimationWrapperMap::CSSPropertyAnimationWrapperMap()
         new LengthVariantPropertyWrapper<GapLength>(CSSPropertyRowGap, &RenderStyle::rowGap, &RenderStyle::setRowGap),
         new AutoPropertyWrapper<unsigned short>(CSSPropertyColumnCount, &RenderStyle::columnCount, &RenderStyle::setColumnCount, &RenderStyle::hasAutoColumnCount, &RenderStyle::setHasAutoColumnCount, 1),
         new AutoPropertyWrapper<float>(CSSPropertyColumnWidth, &RenderStyle::columnWidth, &RenderStyle::setColumnWidth, &RenderStyle::hasAutoColumnWidth, &RenderStyle::setHasAutoColumnWidth, 0),
-        new NonNegativeFloatPropertyWrapper(CSSPropertyWebkitBorderHorizontalSpacing, &RenderStyle::horizontalBorderSpacing, &RenderStyle::setHorizontalBorderSpacing),
-        new NonNegativeFloatPropertyWrapper(CSSPropertyWebkitBorderVerticalSpacing, &RenderStyle::verticalBorderSpacing, &RenderStyle::setVerticalBorderSpacing),
+        new FloatPropertyWrapper(CSSPropertyWebkitBorderHorizontalSpacing, &RenderStyle::horizontalBorderSpacing, &RenderStyle::setHorizontalBorderSpacing, FloatPropertyWrapper::ValueRange::NonNegative),
+        new FloatPropertyWrapper(CSSPropertyWebkitBorderVerticalSpacing, &RenderStyle::verticalBorderSpacing, &RenderStyle::setVerticalBorderSpacing, FloatPropertyWrapper::ValueRange::NonNegative),
         new AutoPropertyWrapper<int>(CSSPropertyZIndex, &RenderStyle::specifiedZIndex, &RenderStyle::setSpecifiedZIndex, &RenderStyle::hasAutoSpecifiedZIndex, &RenderStyle::setHasAutoSpecifiedZIndex),
         new PositivePropertyWrapper<unsigned short>(CSSPropertyOrphans, &RenderStyle::orphans, &RenderStyle::setOrphans),
         new PositivePropertyWrapper<unsigned short>(CSSPropertyWidows, &RenderStyle::widows, &RenderStyle::setWidows),
-        new LengthPropertyWrapper(CSSPropertyLineHeight, &RenderStyle::specifiedLineHeight, &RenderStyle::setLineHeight),
+        new LineHeightWrapper,
         new PropertyWrapper<float>(CSSPropertyOutlineOffset, &RenderStyle::outlineOffset, &RenderStyle::setOutlineOffset),
-        new NonNegativeFloatPropertyWrapper(CSSPropertyOutlineWidth, &RenderStyle::outlineWidth, &RenderStyle::setOutlineWidth),
-        new PropertyWrapper<float>(CSSPropertyLetterSpacing, &RenderStyle::letterSpacing, &RenderStyle::setLetterSpacing),
-        new LengthPropertyWrapper(CSSPropertyWordSpacing, &RenderStyle::wordSpacing, &RenderStyle::setWordSpacing),
+        new FloatPropertyWrapper(CSSPropertyOutlineWidth, &RenderStyle::outlineWidth, &RenderStyle::setOutlineWidth, FloatPropertyWrapper::ValueRange::NonNegative),
+        new LengthPropertyWrapper(CSSPropertyLetterSpacing, &RenderStyle::computedLetterSpacing, &RenderStyle::setLetterSpacing, LengthPropertyWrapper::Flags::IsLengthPercentage),
+        new LengthPropertyWrapper(CSSPropertyWordSpacing, &RenderStyle::computedWordSpacing, &RenderStyle::setWordSpacing, LengthPropertyWrapper::Flags::IsLengthPercentage),
         new TextIndentWrapper,
         new VerticalAlignWrapper,
 
@@ -2367,49 +3820,47 @@ CSSPropertyAnimationWrapperMap::CSSPropertyAnimationWrapperMap()
         new LengthVariantPropertyWrapper<LengthSize>(CSSPropertyBorderTopRightRadius, &RenderStyle::borderTopRightRadius, &RenderStyle::setBorderTopRightRadius),
         new LengthVariantPropertyWrapper<LengthSize>(CSSPropertyBorderBottomLeftRadius, &RenderStyle::borderBottomLeftRadius, &RenderStyle::setBorderBottomLeftRadius),
         new LengthVariantPropertyWrapper<LengthSize>(CSSPropertyBorderBottomRightRadius, &RenderStyle::borderBottomRightRadius, &RenderStyle::setBorderBottomRightRadius),
-        new PropertyWrapper<Visibility>(CSSPropertyVisibility, &RenderStyle::visibility, &RenderStyle::setVisibility),
-        new PropertyWrapper<float>(CSSPropertyZoom, &RenderStyle::zoom, &RenderStyle::setZoomWithoutReturnValue),
+        new VisibilityWrapper,
+        new NonNormalizedDiscretePropertyWrapper<DisplayType>(CSSPropertyDisplay, &RenderStyle::display, &RenderStyle::setDisplay),
 
         new ClipWrapper,
 
         new AcceleratedPropertyWrapper<float>(CSSPropertyOpacity, &RenderStyle::opacity, &RenderStyle::setOpacity),
-        new AcceleratedPropertyWrapper<const TransformOperations&>(CSSPropertyTransform, &RenderStyle::transform, &RenderStyle::setTransform),
-
+        new AcceleratedTransformOperationsPropertyWrapper,
         new AcceleratedIndividualTransformPropertyWrapper<ScaleTransformOperation>(CSSPropertyScale, &RenderStyle::scale, &RenderStyle::setScale),
         new AcceleratedIndividualTransformPropertyWrapper<RotateTransformOperation>(CSSPropertyRotate, &RenderStyle::rotate, &RenderStyle::setRotate),
         new AcceleratedIndividualTransformPropertyWrapper<TranslateTransformOperation>(CSSPropertyTranslate, &RenderStyle::translate, &RenderStyle::setTranslate),
 
         new PropertyWrapperFilter(CSSPropertyFilter, &RenderStyle::filter, &RenderStyle::setFilter),
-#if ENABLE(FILTERS_LEVEL_2)
+        new PropertyWrapperFilter(CSSPropertyBackdropFilter, &RenderStyle::backdropFilter, &RenderStyle::setBackdropFilter),
         new PropertyWrapperFilter(CSSPropertyWebkitBackdropFilter, &RenderStyle::backdropFilter, &RenderStyle::setBackdropFilter),
-#endif
         new PropertyWrapperFilter(CSSPropertyAppleColorFilter, &RenderStyle::appleColorFilter, &RenderStyle::setAppleColorFilter),
 
-        new PropertyWrapperClipPath(CSSPropertyClipPath, &RenderStyle::clipPath, &RenderStyle::setClipPath),
+        new PathOperationPropertyWrapper(CSSPropertyClipPath, &RenderStyle::clipPath, &RenderStyle::setClipPath),
 
         new PropertyWrapperShape(CSSPropertyShapeOutside, &RenderStyle::shapeOutside, &RenderStyle::setShapeOutside),
-        new LengthPropertyWrapper(CSSPropertyShapeMargin, &RenderStyle::shapeMargin, &RenderStyle::setShapeMargin, { LengthPropertyWrapper::Flags::NegativeLengthsAreInvalid }),
+        new LengthPropertyWrapper(CSSPropertyShapeMargin, &RenderStyle::shapeMargin, &RenderStyle::setShapeMargin, { LengthPropertyWrapper::Flags::IsLengthPercentage, LengthPropertyWrapper::Flags::NegativeLengthsAreInvalid }),
         new PropertyWrapper<float>(CSSPropertyShapeImageThreshold, &RenderStyle::shapeImageThreshold, &RenderStyle::setShapeImageThreshold),
 
-        new PropertyWrapperVisitedAffectedColor(CSSPropertyColumnRuleColor, MaybeInvalidColor, &RenderStyle::columnRuleColor, &RenderStyle::setColumnRuleColor, &RenderStyle::visitedLinkColumnRuleColor, &RenderStyle::setVisitedLinkColumnRuleColor),
-        new PropertyWrapperVisitedAffectedColor(CSSPropertyWebkitTextStrokeColor, MaybeInvalidColor, &RenderStyle::textStrokeColor, &RenderStyle::setTextStrokeColor, &RenderStyle::visitedLinkTextStrokeColor, &RenderStyle::setVisitedLinkTextStrokeColor),
-        new PropertyWrapperVisitedAffectedColor(CSSPropertyWebkitTextFillColor, MaybeInvalidColor, &RenderStyle::textFillColor, &RenderStyle::setTextFillColor, &RenderStyle::visitedLinkTextFillColor, &RenderStyle::setVisitedLinkTextFillColor),
-        new PropertyWrapperVisitedAffectedColor(CSSPropertyBorderLeftColor, MaybeInvalidColor, &RenderStyle::borderLeftColor, &RenderStyle::setBorderLeftColor, &RenderStyle::visitedLinkBorderLeftColor, &RenderStyle::setVisitedLinkBorderLeftColor),
-        new PropertyWrapperVisitedAffectedColor(CSSPropertyBorderRightColor, MaybeInvalidColor, &RenderStyle::borderRightColor, &RenderStyle::setBorderRightColor, &RenderStyle::visitedLinkBorderRightColor, &RenderStyle::setVisitedLinkBorderRightColor),
-        new PropertyWrapperVisitedAffectedColor(CSSPropertyBorderTopColor, MaybeInvalidColor, &RenderStyle::borderTopColor, &RenderStyle::setBorderTopColor, &RenderStyle::visitedLinkBorderTopColor, &RenderStyle::setVisitedLinkBorderTopColor),
-        new PropertyWrapperVisitedAffectedColor(CSSPropertyBorderBottomColor, MaybeInvalidColor, &RenderStyle::borderBottomColor, &RenderStyle::setBorderBottomColor, &RenderStyle::visitedLinkBorderBottomColor, &RenderStyle::setVisitedLinkBorderBottomColor),
-        new PropertyWrapperVisitedAffectedColor(CSSPropertyOutlineColor, MaybeInvalidColor, &RenderStyle::outlineColor, &RenderStyle::setOutlineColor, &RenderStyle::visitedLinkOutlineColor, &RenderStyle::setVisitedLinkOutlineColor),
+        new PropertyWrapperVisitedAffectedStyleColor(CSSPropertyColumnRuleColor, &RenderStyle::columnRuleColor, &RenderStyle::setColumnRuleColor, &RenderStyle::visitedLinkColumnRuleColor, &RenderStyle::setVisitedLinkColumnRuleColor),
+        new PropertyWrapperVisitedAffectedStyleColor(CSSPropertyWebkitTextStrokeColor, &RenderStyle::textStrokeColor, &RenderStyle::setTextStrokeColor, &RenderStyle::visitedLinkTextStrokeColor, &RenderStyle::setVisitedLinkTextStrokeColor),
+        new PropertyWrapperVisitedAffectedStyleColor(CSSPropertyWebkitTextFillColor, &RenderStyle::textFillColor, &RenderStyle::setTextFillColor, &RenderStyle::visitedLinkTextFillColor, &RenderStyle::setVisitedLinkTextFillColor),
+        new PropertyWrapperVisitedAffectedStyleColor(CSSPropertyBorderLeftColor, &RenderStyle::borderLeftColor, &RenderStyle::setBorderLeftColor, &RenderStyle::visitedLinkBorderLeftColor, &RenderStyle::setVisitedLinkBorderLeftColor),
+        new PropertyWrapperVisitedAffectedStyleColor(CSSPropertyBorderRightColor, &RenderStyle::borderRightColor, &RenderStyle::setBorderRightColor, &RenderStyle::visitedLinkBorderRightColor, &RenderStyle::setVisitedLinkBorderRightColor),
+        new PropertyWrapperVisitedAffectedStyleColor(CSSPropertyBorderTopColor, &RenderStyle::borderTopColor, &RenderStyle::setBorderTopColor, &RenderStyle::visitedLinkBorderTopColor, &RenderStyle::setVisitedLinkBorderTopColor),
+        new PropertyWrapperVisitedAffectedStyleColor(CSSPropertyBorderBottomColor, &RenderStyle::borderBottomColor, &RenderStyle::setBorderBottomColor, &RenderStyle::visitedLinkBorderBottomColor, &RenderStyle::setVisitedLinkBorderBottomColor),
+        new PropertyWrapperVisitedAffectedStyleColor(CSSPropertyOutlineColor, &RenderStyle::outlineColor, &RenderStyle::setOutlineColor, &RenderStyle::visitedLinkOutlineColor, &RenderStyle::setVisitedLinkOutlineColor),
 
         new PropertyWrapperShadow(CSSPropertyBoxShadow, &RenderStyle::boxShadow, &RenderStyle::setBoxShadow),
         new PropertyWrapperShadow(CSSPropertyWebkitBoxShadow, &RenderStyle::boxShadow, &RenderStyle::setBoxShadow),
         new PropertyWrapperShadow(CSSPropertyTextShadow, &RenderStyle::textShadow, &RenderStyle::setTextShadow),
 
-        new PropertyWrapperSVGPaint(CSSPropertyFill, &RenderStyle::fillPaintType, &RenderStyle::fillPaintColor, &RenderStyle::setFillPaintColor),
+        new PropertyWrapperVisitedAffectedSVGPaint(CSSPropertyFill, &RenderStyle::fillPaintType, &RenderStyle::fillPaintColor, &RenderStyle::setFillPaintColor, &RenderStyle::visitedFillPaintType, &RenderStyle::visitedFillPaintColor, &RenderStyle::setVisitedFillPaintColor),
         new PropertyWrapper<float>(CSSPropertyFillOpacity, &RenderStyle::fillOpacity, &RenderStyle::setFillOpacity),
 
-        new PropertyWrapperSVGPaint(CSSPropertyStroke, &RenderStyle::strokePaintType, &RenderStyle::strokePaintColor, &RenderStyle::setStrokePaintColor),
+        new PropertyWrapperVisitedAffectedSVGPaint(CSSPropertyStroke, &RenderStyle::strokePaintType, &RenderStyle::strokePaintColor, &RenderStyle::setStrokePaintColor, &RenderStyle::visitedStrokePaintType, &RenderStyle::visitedStrokePaintColor, &RenderStyle::setVisitedStrokePaintColor),
         new PropertyWrapper<float>(CSSPropertyStrokeOpacity, &RenderStyle::strokeOpacity, &RenderStyle::setStrokeOpacity),
-        new PropertyWrapper<Vector<SVGLengthValue>>(CSSPropertyStrokeDasharray, &RenderStyle::strokeDashArray, &RenderStyle::setStrokeDashArray),
+        new StrokeDasharrayPropertyWrapper,
         new PropertyWrapper<float>(CSSPropertyStrokeMiterlimit, &RenderStyle::strokeMiterLimit, &RenderStyle::setStrokeMiterLimit),
 
         new LengthPropertyWrapper(CSSPropertyCx, &RenderStyle::cx, &RenderStyle::setCx),
@@ -2422,43 +3873,44 @@ CSSPropertyAnimationWrapperMap::CSSPropertyAnimationWrapperMap()
         new LengthPropertyWrapper(CSSPropertyX, &RenderStyle::x, &RenderStyle::setX),
         new LengthPropertyWrapper(CSSPropertyY, &RenderStyle::y, &RenderStyle::setY),
 
+        new DWrapper,
+
         new PropertyWrapper<float>(CSSPropertyFloodOpacity, &RenderStyle::floodOpacity, &RenderStyle::setFloodOpacity),
-        new PropertyWrapperMaybeInvalidColor(CSSPropertyFloodColor, &RenderStyle::floodColor, &RenderStyle::setFloodColor),
+        new PropertyWrapperStyleColor(CSSPropertyFloodColor, &RenderStyle::floodColor, &RenderStyle::setFloodColor),
 
         new PropertyWrapper<float>(CSSPropertyStopOpacity, &RenderStyle::stopOpacity, &RenderStyle::setStopOpacity),
-        new PropertyWrapperMaybeInvalidColor(CSSPropertyStopColor, &RenderStyle::stopColor, &RenderStyle::setStopColor),
+        new PropertyWrapperStyleColor(CSSPropertyStopColor, &RenderStyle::stopColor, &RenderStyle::setStopColor),
 
-        new PropertyWrapperMaybeInvalidColor(CSSPropertyLightingColor, &RenderStyle::lightingColor, &RenderStyle::setLightingColor),
+        new PropertyWrapperStyleColor(CSSPropertyLightingColor, &RenderStyle::lightingColor, &RenderStyle::setLightingColor),
+        new PropertyWrapperStyleColor(CSSPropertyStrokeColor, &RenderStyle::strokeColor, &RenderStyle::setStrokeColor),
 
-        new PropertyWrapper<SVGLengthValue>(CSSPropertyBaselineShift, &RenderStyle::baselineShiftValue, &RenderStyle::setBaselineShiftValue),
+        new PropertyWrapperBaselineShift,
         new PropertyWrapper<SVGLengthValue>(CSSPropertyKerning, &RenderStyle::kerning, &RenderStyle::setKerning),
 #if ENABLE(VARIATION_FONTS)
-        new PropertyWrapperFontVariationSettings(CSSPropertyFontVariationSettings, &RenderStyle::fontVariationSettings, &RenderStyle::setFontVariationSettings),
+        new DiscretePropertyWrapper<FontOpticalSizing>(CSSPropertyFontOpticalSizing, &RenderStyle::fontOpticalSizing, &RenderStyle::setFontOpticalSizing),
+        new PropertyWrapperFontVariationSettings,
 #endif
-        new PropertyWrapper<FontSelectionValue>(CSSPropertyFontWeight, &RenderStyle::fontWeight, &RenderStyle::setFontWeight),
+        new PropertyWrapperFontSizeAdjust,
+        new PropertyWrapperFontWeight,
         new PropertyWrapper<FontSelectionValue>(CSSPropertyFontStretch, &RenderStyle::fontStretch, &RenderStyle::setFontStretch),
-        new PropertyWrapperFontStyle(),
-        new PropertyWrapper<TextDecorationThickness>(CSSPropertyTextDecorationThickness, &RenderStyle::textDecorationThickness, &RenderStyle::setTextDecorationThickness),
+        new PropertyWrapperFontStyle,
+        new PropertyWrapperTextDecorationThickness,
         new PropertyWrapper<TextUnderlineOffset>(CSSPropertyTextUnderlineOffset, &RenderStyle::textUnderlineOffset, &RenderStyle::setTextUnderlineOffset),
-        new PropertyWrapperVisitedAffectedColor(CSSPropertyTextDecorationColor, &RenderStyle::textDecorationColor, &RenderStyle::setTextDecorationColor, &RenderStyle::visitedLinkTextDecorationColor, &RenderStyle::setVisitedLinkTextDecorationColor),
+        new PropertyWrapperVisitedAffectedStyleColor(CSSPropertyTextDecorationColor, &RenderStyle::textDecorationColor, &RenderStyle::setTextDecorationColor, &RenderStyle::visitedLinkTextDecorationColor, &RenderStyle::setVisitedLinkTextDecorationColor),
 
-        new LengthPropertyWrapper(CSSPropertyFlexBasis, &RenderStyle::flexBasis, &RenderStyle::setFlexBasis, { LengthPropertyWrapper::Flags::NegativeLengthsAreInvalid }),
-        new NonNegativeFloatPropertyWrapper(CSSPropertyFlexGrow, &RenderStyle::flexGrow, &RenderStyle::setFlexGrow),
-        new NonNegativeFloatPropertyWrapper(CSSPropertyFlexShrink, &RenderStyle::flexShrink, &RenderStyle::setFlexShrink),
+        new LengthPropertyWrapper(CSSPropertyFlexBasis, &RenderStyle::flexBasis, &RenderStyle::setFlexBasis, { LengthPropertyWrapper::Flags::IsLengthPercentage, LengthPropertyWrapper::Flags::NegativeLengthsAreInvalid }),
+        new FloatPropertyWrapper(CSSPropertyFlexGrow, &RenderStyle::flexGrow, &RenderStyle::setFlexGrow, FloatPropertyWrapper::ValueRange::NonNegative),
+        new FloatPropertyWrapper(CSSPropertyFlexShrink, &RenderStyle::flexShrink, &RenderStyle::setFlexShrink, FloatPropertyWrapper::ValueRange::NonNegative),
         new PropertyWrapper<int>(CSSPropertyOrder, &RenderStyle::order, &RenderStyle::setOrder),
 
         new TabSizePropertyWrapper,
 
-        // FIXME: The following properties are currently not animatable but should be:
-        // background-blend-mode, clip-rule, color-interpolation,
-        // color-interpolation-filters, counter-increment, counter-reset, dominant-baseline,
-        // fill-rule, font-family, font-feature-settings, font-kerning, font-language-override,
-        // font-synthesis, font-variant-alternates, font-variant-caps, font-variant-east-asian,
-        // font-variant-ligatures, font-variant-numeric, font-variant-position, grid-template-areas,
-        // ime-mode, marker-end, marker-mid, marker-start, mask, mask-clip, mask-composite, mask-image,
-        // mask-mode, mask-origin, mask-repeat, mask-type, offset-distance, perspective-origin, quotes,
-        // ruby-align, scroll-behavior, shape-rendering, stroke-linecap, stroke-linejoin, text-align-last,
-        // text-anchor, text-emphasis-style, text-rendering, vector-effect
+        new DiscretePropertyWrapper<BlockStepInsert>(CSSPropertyBlockStepInsert, &RenderStyle::blockStepInsert, &RenderStyle::setBlockStepInsert),
+        new OptionalLengthPropertyWrapper(CSSPropertyBlockStepSize, &RenderStyle::blockStepSize, &RenderStyle::setBlockStepSize, { OptionalLengthPropertyWrapper::Flags::NegativeLengthsAreInvalid }),
+
+        new ContainIntrinsicLengthPropertyWrapper(CSSPropertyContainIntrinsicWidth, &RenderStyle::containIntrinsicWidth, &RenderStyle::setContainIntrinsicWidth, &RenderStyle::containIntrinsicWidthType, &RenderStyle::setContainIntrinsicWidthType),
+        new ContainIntrinsicLengthPropertyWrapper(CSSPropertyContainIntrinsicHeight, &RenderStyle::containIntrinsicHeight, &RenderStyle::setContainIntrinsicHeight, &RenderStyle::containIntrinsicHeightType, &RenderStyle::setContainIntrinsicHeightType),
+
         new DiscretePropertyWrapper<const StyleContentAlignmentData&>(CSSPropertyAlignContent, &RenderStyle::alignContent, &RenderStyle::setAlignContent),
         new DiscretePropertyWrapper<const StyleSelfAlignmentData&>(CSSPropertyAlignItems, &RenderStyle::alignItems, &RenderStyle::setAlignItems),
         new DiscretePropertyWrapper<const StyleSelfAlignmentData&>(CSSPropertyAlignSelf, &RenderStyle::alignSelf, &RenderStyle::setAlignSelf),
@@ -2466,21 +3918,23 @@ CSSPropertyAnimationWrapperMap::CSSPropertyAnimationWrapperMap()
         new DiscretePropertyWrapper<FillAttachment>(CSSPropertyBackgroundAttachment, &RenderStyle::backgroundAttachment, &RenderStyle::setBackgroundAttachment),
         new DiscretePropertyWrapper<FillBox>(CSSPropertyBackgroundClip, &RenderStyle::backgroundClip, &RenderStyle::setBackgroundClip),
         new DiscretePropertyWrapper<FillBox>(CSSPropertyBackgroundOrigin, &RenderStyle::backgroundOrigin, &RenderStyle::setBackgroundOrigin),
-        new DiscretePropertyWrapper<FillRepeat>(CSSPropertyBackgroundRepeatX, &RenderStyle::backgroundRepeatX, &RenderStyle::setBackgroundRepeatX),
-        new DiscretePropertyWrapper<FillRepeat>(CSSPropertyBackgroundRepeatY, &RenderStyle::backgroundRepeatY, &RenderStyle::setBackgroundRepeatY),
+        new DiscretePropertyWrapper<FillRepeatXY>(CSSPropertyBackgroundRepeat, &RenderStyle::backgroundRepeat, &RenderStyle::setBackgroundRepeat),
         new DiscretePropertyWrapper<BorderStyle>(CSSPropertyBorderBottomStyle, &RenderStyle::borderBottomStyle, &RenderStyle::setBorderBottomStyle),
         new DiscretePropertyWrapper<BorderCollapse>(CSSPropertyBorderCollapse, &RenderStyle::borderCollapse, &RenderStyle::setBorderCollapse),
-        new BorderImageRepeatWrapper,
         new DiscretePropertyWrapper<BorderStyle>(CSSPropertyBorderLeftStyle, &RenderStyle::borderLeftStyle, &RenderStyle::setBorderLeftStyle),
         new DiscretePropertyWrapper<BorderStyle>(CSSPropertyBorderRightStyle, &RenderStyle::borderRightStyle, &RenderStyle::setBorderRightStyle),
         new DiscretePropertyWrapper<BorderStyle>(CSSPropertyBorderTopStyle, &RenderStyle::borderTopStyle, &RenderStyle::setBorderTopStyle),
         new DiscretePropertyWrapper<BoxSizing>(CSSPropertyBoxSizing, &RenderStyle::boxSizing, &RenderStyle::setBoxSizing),
         new DiscretePropertyWrapper<CaptionSide>(CSSPropertyCaptionSide, &RenderStyle::captionSide, &RenderStyle::setCaptionSide),
         new DiscretePropertyWrapper<Clear>(CSSPropertyClear, &RenderStyle::clear, &RenderStyle::setClear),
-        new DiscretePropertyWrapper<PrintColorAdjust>(CSSPropertyWebkitPrintColorAdjust, &RenderStyle::printColorAdjust, &RenderStyle::setPrintColorAdjust),
+        new DiscretePropertyWrapper<TextEdge>(CSSPropertyTextBoxEdge, &RenderStyle::textBoxEdge, &RenderStyle::setTextBoxEdge),
+        new DiscretePropertyWrapper<TextEdge>(CSSPropertyLineFitEdge, &RenderStyle::lineFitEdge, &RenderStyle::setLineFitEdge),
+        new DiscretePropertyWrapper<TextBoxTrim>(CSSPropertyTextBoxTrim, &RenderStyle::textBoxTrim, &RenderStyle::setTextBoxTrim),
+        new DiscretePropertyWrapper<PrintColorAdjust>(CSSPropertyPrintColorAdjust, &RenderStyle::printColorAdjust, &RenderStyle::setPrintColorAdjust),
         new DiscretePropertyWrapper<ColumnFill>(CSSPropertyColumnFill, &RenderStyle::columnFill, &RenderStyle::setColumnFill),
+        new DiscretePropertyWrapper<ColumnSpan>(CSSPropertyColumnSpan, &RenderStyle::columnSpan, &RenderStyle::setColumnSpan),
         new DiscretePropertyWrapper<BorderStyle>(CSSPropertyColumnRuleStyle, &RenderStyle::columnRuleStyle, &RenderStyle::setColumnRuleStyle),
-        new DiscretePropertyWrapper<BorderStyle>(CSSPropertyColumnRuleStyle, &RenderStyle::columnRuleStyle, &RenderStyle::setColumnRuleStyle),
+        new NonNormalizedDiscretePropertyWrapper<ContentVisibility>(CSSPropertyContentVisibility, &RenderStyle::contentVisibility, &RenderStyle::setContentVisibility),
         new DiscretePropertyWrapper<CursorType>(CSSPropertyCursor, &RenderStyle::cursor, &RenderStyle::setCursor),
         new DiscretePropertyWrapper<EmptyCell>(CSSPropertyEmptyCells, &RenderStyle::emptyCells, &RenderStyle::setEmptyCells),
         new DiscretePropertyWrapper<FlexDirection>(CSSPropertyFlexDirection, &RenderStyle::flexDirection, &RenderStyle::setFlexDirection),
@@ -2489,18 +3943,22 @@ CSSPropertyAnimationWrapperMap::CSSPropertyAnimationWrapperMap()
         new DiscretePropertyWrapper<const Vector<GridTrackSize>&>(CSSPropertyGridAutoColumns, &RenderStyle::gridAutoColumns, &RenderStyle::setGridAutoColumns),
         new DiscretePropertyWrapper<GridAutoFlow>(CSSPropertyGridAutoFlow, &RenderStyle::gridAutoFlow, &RenderStyle::setGridAutoFlow),
         new DiscretePropertyWrapper<const Vector<GridTrackSize>&>(CSSPropertyGridAutoRows, &RenderStyle::gridAutoRows, &RenderStyle::setGridAutoRows),
-        new GridTemplateTracksWrapper<ForColumns>,
-        new GridTemplateTracksWrapper<ForRows>,
+        new GridTemplatePropertyWrapper(CSSPropertyGridTemplateRows, &RenderStyle::gridRowList, &RenderStyle::setGridRowList),
+        new GridTemplatePropertyWrapper(CSSPropertyGridTemplateColumns, &RenderStyle::gridColumnList, &RenderStyle::setGridColumnList),
         new DiscretePropertyWrapper<const GridPosition&>(CSSPropertyGridColumnEnd, &RenderStyle::gridItemColumnEnd, &RenderStyle::setGridItemColumnEnd),
         new DiscretePropertyWrapper<const GridPosition&>(CSSPropertyGridColumnStart, &RenderStyle::gridItemColumnStart, &RenderStyle::setGridItemColumnStart),
         new DiscretePropertyWrapper<const GridPosition&>(CSSPropertyGridRowEnd, &RenderStyle::gridItemRowEnd, &RenderStyle::setGridItemRowEnd),
         new DiscretePropertyWrapper<const GridPosition&>(CSSPropertyGridRowStart, &RenderStyle::gridItemRowStart, &RenderStyle::setGridItemRowStart),
-        new DiscretePropertyWrapper<Hyphens>(CSSPropertyWebkitHyphens, &RenderStyle::hyphens, &RenderStyle::setHyphens),
+        new DiscretePropertyWrapper<OptionSet<HangingPunctuation>>(CSSPropertyHangingPunctuation, &RenderStyle::hangingPunctuation, &RenderStyle::setHangingPunctuation),
+        new DiscretePropertyWrapper<Hyphens>(CSSPropertyHyphens, &RenderStyle::hyphens, &RenderStyle::setHyphens),
+        new DiscretePropertyWrapper<const AtomString&>(CSSPropertyHyphenateCharacter, &RenderStyle::hyphenationString, &RenderStyle::setHyphenationString),
         new DiscretePropertyWrapper<ImageOrientation>(CSSPropertyImageOrientation, &RenderStyle::imageOrientation, &RenderStyle::setImageOrientation),
+        new DiscretePropertyWrapper<ImageRendering>(CSSPropertyImageRendering, &RenderStyle::imageRendering, &RenderStyle::setImageRendering),
         new DiscretePropertyWrapper<const IntSize&>(CSSPropertyWebkitInitialLetter, &RenderStyle::initialLetter, &RenderStyle::setInitialLetter),
         new DiscretePropertyWrapper<const StyleContentAlignmentData&>(CSSPropertyJustifyContent, &RenderStyle::justifyContent, &RenderStyle::setJustifyContent),
         new DiscretePropertyWrapper<const StyleSelfAlignmentData&>(CSSPropertyJustifyItems, &RenderStyle::justifyItems, &RenderStyle::setJustifyItems),
         new DiscretePropertyWrapper<const StyleSelfAlignmentData&>(CSSPropertyJustifySelf, &RenderStyle::justifySelf, &RenderStyle::setJustifySelf),
+        new DiscretePropertyWrapper<LineBreak>(CSSPropertyLineBreak, &RenderStyle::lineBreak, &RenderStyle::setLineBreak),
         new DiscretePropertyWrapper<ListStylePosition>(CSSPropertyListStylePosition, &RenderStyle::listStylePosition, &RenderStyle::setListStylePosition),
         new DiscretePropertyWrapper<ListStyleType>(CSSPropertyListStyleType, &RenderStyle::listStyleType, &RenderStyle::setListStyleType),
         new DiscretePropertyWrapper<ObjectFit>(CSSPropertyObjectFit, &RenderStyle::objectFit, &RenderStyle::setObjectFit),
@@ -2515,85 +3973,175 @@ CSSPropertyAnimationWrapperMap::CSSPropertyAnimationWrapperMap()
         new DiscretePropertyWrapper<PointerEvents>(CSSPropertyPointerEvents, &RenderStyle::pointerEvents, &RenderStyle::setPointerEvents),
         new DiscretePropertyWrapper<PositionType>(CSSPropertyPosition, &RenderStyle::position, &RenderStyle::setPosition),
         new DiscretePropertyWrapper<Resize>(CSSPropertyResize, &RenderStyle::resize, &RenderStyle::setResize),
-        new DiscretePropertyWrapper<RubyPosition>(CSSPropertyWebkitRubyPosition, &RenderStyle::rubyPosition, &RenderStyle::setRubyPosition),
+        new DiscretePropertyWrapper<RubyPosition>(CSSPropertyRubyPosition, &RenderStyle::rubyPosition, &RenderStyle::setRubyPosition),
+        new DiscretePropertyWrapper<RubyAlign>(CSSPropertyRubyAlign, &RenderStyle::rubyAlign, &RenderStyle::setRubyAlign),
         new DiscretePropertyWrapper<TableLayoutType>(CSSPropertyTableLayout, &RenderStyle::tableLayout, &RenderStyle::setTableLayout),
         new DiscretePropertyWrapper<TextAlignMode>(CSSPropertyTextAlign, &RenderStyle::textAlign, &RenderStyle::setTextAlign),
-        new DiscretePropertyWrapper<OptionSet<TextDecoration>>(CSSPropertyTextDecorationLine, &RenderStyle::textDecoration, &RenderStyle::setTextDecoration),
+        new DiscretePropertyWrapper<TextAlignLast>(CSSPropertyTextAlignLast, &RenderStyle::textAlignLast, &RenderStyle::setTextAlignLast),
+        new DiscretePropertyWrapper<OptionSet<TextDecorationLine>>(CSSPropertyTextDecorationLine, &RenderStyle::textDecorationLine, &RenderStyle::setTextDecorationLine),
         new DiscretePropertyWrapper<TextDecorationStyle>(CSSPropertyTextDecorationStyle, &RenderStyle::textDecorationStyle, &RenderStyle::setTextDecorationStyle),
-        new DiscretePropertyWrapper<const Color&>(CSSPropertyWebkitTextEmphasisColor, &RenderStyle::textEmphasisColor, &RenderStyle::setTextEmphasisColor),
-        new DiscretePropertyWrapper<OptionSet<TextEmphasisPosition>>(CSSPropertyWebkitTextEmphasisPosition, &RenderStyle::textEmphasisPosition, &RenderStyle::setTextEmphasisPosition),
+        new PropertyWrapperVisitedAffectedStyleColor(CSSPropertyTextEmphasisColor, &RenderStyle::textEmphasisColor, &RenderStyle::setTextEmphasisColor, &RenderStyle::visitedLinkTextEmphasisColor, &RenderStyle::setVisitedLinkTextEmphasisColor),
+        new DiscretePropertyWrapper<OptionSet<TextEmphasisPosition>>(CSSPropertyTextEmphasisPosition, &RenderStyle::textEmphasisPosition, &RenderStyle::setTextEmphasisPosition),
+        new TextEmphasisStyleWrapper,
+        new DiscretePropertyWrapper<TextGroupAlign>(CSSPropertyTextGroupAlign, &RenderStyle::textGroupAlign, &RenderStyle::setTextGroupAlign),
+        new DiscretePropertyWrapper<TextJustify>(CSSPropertyTextJustify, &RenderStyle::textJustify, &RenderStyle::setTextJustify),
         new DiscretePropertyWrapper<TextOverflow>(CSSPropertyTextOverflow, &RenderStyle::textOverflow, &RenderStyle::setTextOverflow),
         new DiscretePropertyWrapper<OptionSet<TouchAction>>(CSSPropertyTouchAction, &RenderStyle::touchActions, &RenderStyle::setTouchActions),
-        new DiscretePropertyWrapper<TextTransform>(CSSPropertyTextTransform, &RenderStyle::textTransform, &RenderStyle::setTextTransform),
+        new DiscretePropertyWrapper<OptionSet<TextTransform>>(CSSPropertyTextTransform, &RenderStyle::textTransform, &RenderStyle::setTextTransform),
+        new DiscretePropertyWrapper<WhiteSpaceCollapse>(CSSPropertyWhiteSpaceCollapse, &RenderStyle::whiteSpaceCollapse, &RenderStyle::setWhiteSpaceCollapse),
+        new DiscretePropertyWrapper<TextWrapMode>(CSSPropertyTextWrapMode, &RenderStyle::textWrapMode, &RenderStyle::setTextWrapMode),
+        new DiscretePropertyWrapper<TextWrapStyle>(CSSPropertyTextWrapStyle, &RenderStyle::textWrapStyle, &RenderStyle::setTextWrapStyle),
         new DiscretePropertyWrapper<TransformBox>(CSSPropertyTransformBox, &RenderStyle::transformBox, &RenderStyle::setTransformBox),
         new DiscretePropertyWrapper<TransformStyle3D>(CSSPropertyTransformStyle, &RenderStyle::transformStyle3D, &RenderStyle::setTransformStyle3D),
-        new DiscretePropertyWrapper<WhiteSpace>(CSSPropertyWhiteSpace, &RenderStyle::whiteSpace, &RenderStyle::setWhiteSpace),
         new DiscretePropertyWrapper<WordBreak>(CSSPropertyWordBreak, &RenderStyle::wordBreak, &RenderStyle::setWordBreak),
+        new DiscretePropertyWrapper<OverflowAnchor>(CSSPropertyOverflowAnchor, &RenderStyle::overflowAnchor, &RenderStyle::setOverflowAnchor),
+        new DiscretePropertyWrapper<TextSpacingTrim>(CSSPropertyTextSpacingTrim, &RenderStyle::textSpacingTrim, &RenderStyle::setTextSpacingTrim),
+        new DiscretePropertyWrapper<TextAutospace>(CSSPropertyTextAutospace, &RenderStyle::textAutospace, &RenderStyle::setTextAutospace),
+        new DiscretePropertyWrapper<OptionSet<TextUnderlinePosition>>(CSSPropertyTextUnderlinePosition, &RenderStyle::textUnderlinePosition, &RenderStyle::setTextUnderlinePosition),
 
-#if ENABLE(CSS_BOX_DECORATION_BREAK)
         new DiscretePropertyWrapper<BoxDecorationBreak>(CSSPropertyWebkitBoxDecorationBreak, &RenderStyle::boxDecorationBreak, &RenderStyle::setBoxDecorationBreak),
-#endif
-#if ENABLE(CSS_COMPOSITING)
         new DiscretePropertyWrapper<Isolation>(CSSPropertyIsolation, &RenderStyle::isolation, &RenderStyle::setIsolation),
         new DiscretePropertyWrapper<BlendMode>(CSSPropertyMixBlendMode, &RenderStyle::blendMode, &RenderStyle::setBlendMode),
+        new DiscretePropertyWrapper<BlendMode>(CSSPropertyBackgroundBlendMode, &RenderStyle::backgroundBlendMode, &RenderStyle::setBackgroundBlendMode),
+        new DiscretePropertyWrapper<StyleAppearance>(CSSPropertyAppearance, &RenderStyle::appearance, &RenderStyle::setAppearance),
+#if ENABLE(DARK_MODE_CSS)
+        new DiscretePropertyWrapper<StyleColorScheme>(CSSPropertyColorScheme, &RenderStyle::colorScheme, &RenderStyle::setColorScheme),
 #endif
         new PropertyWrapperAspectRatio,
+        new DiscretePropertyWrapper<const FontPalette&>(CSSPropertyFontPalette, &RenderStyle::fontPalette, &RenderStyle::setFontPalette),
+
+        new OffsetPathWrapper,
+        new OffsetDistanceWrapper,
+        new OffsetLengthPointWrapper(CSSPropertyOffsetPosition, &RenderStyle::offsetPosition, &RenderStyle::setOffsetPosition),
+        new OffsetLengthPointWrapper(CSSPropertyOffsetAnchor, &RenderStyle::offsetAnchor, &RenderStyle::setOffsetAnchor),
+        new OffsetRotateWrapper,
+
+        new PropertyWrapperContent,
+        new DiscretePropertyWrapper<TextDecorationSkipInk>(CSSPropertyTextDecorationSkipInk, &RenderStyle::textDecorationSkipInk, &RenderStyle::setTextDecorationSkipInk),
+        new DiscreteSVGPropertyWrapper<ColorInterpolation>(CSSPropertyColorInterpolation, &SVGRenderStyle::colorInterpolation, &SVGRenderStyle::setColorInterpolation),
+        new DiscreteFontDescriptionTypedWrapper<Kerning>(CSSPropertyFontKerning, &FontCascadeDescription::kerning, &FontCascadeDescription::setKerning),
+        new FontFeatureSettingsWrapper,
+        new FontFamilyWrapper,
+        new DiscreteSVGPropertyWrapper<AlignmentBaseline>(CSSPropertyAlignmentBaseline, &SVGRenderStyle::alignmentBaseline, &SVGRenderStyle::setAlignmentBaseline),
+        new DiscreteSVGPropertyWrapper<BufferedRendering>(CSSPropertyBufferedRendering, &SVGRenderStyle::bufferedRendering, &SVGRenderStyle::setBufferedRendering),
+        new DiscreteSVGPropertyWrapper<WindRule>(CSSPropertyClipRule, &SVGRenderStyle::clipRule, &SVGRenderStyle::setClipRule),
+        new DiscreteSVGPropertyWrapper<ColorInterpolation>(CSSPropertyColorInterpolationFilters, &SVGRenderStyle::colorInterpolationFilters, &SVGRenderStyle::setColorInterpolationFilters),
+        new DiscreteSVGPropertyWrapper<DominantBaseline>(CSSPropertyDominantBaseline, &SVGRenderStyle::dominantBaseline, &SVGRenderStyle::setDominantBaseline),
+        new CounterWrapper(CSSPropertyCounterIncrement),
+        new CounterWrapper(CSSPropertyCounterReset),
+        new CounterWrapper(CSSPropertyCounterSet),
+        new DiscreteSVGPropertyWrapper<WindRule>(CSSPropertyFillRule, &SVGRenderStyle::fillRule, &SVGRenderStyle::setFillRule),
+        new DiscreteFontDescriptionTypedWrapper<FontSynthesisLonghandValue>(CSSPropertyFontSynthesisWeight, &FontCascadeDescription::fontSynthesisWeight, &FontCascadeDescription::setFontSynthesisWeight),
+        new DiscreteFontDescriptionTypedWrapper<FontSynthesisLonghandValue>(CSSPropertyFontSynthesisStyle, &FontCascadeDescription::fontSynthesisStyle, &FontCascadeDescription::setFontSynthesisStyle),
+        new DiscreteFontDescriptionTypedWrapper<FontSynthesisLonghandValue>(CSSPropertyFontSynthesisSmallCaps, &FontCascadeDescription::fontSynthesisSmallCaps, &FontCascadeDescription::setFontSynthesisSmallCaps),
+        new DiscreteFontDescriptionTypedWrapper<const FontVariantAlternates&>(CSSPropertyFontVariantAlternates, &FontCascadeDescription::variantAlternates, &FontCascadeDescription::setVariantAlternates),
+        new FontVariantEastAsianWrapper,
+        new FontVariantLigaturesWrapper,
+        new FontVariantNumericWrapper,
+        new DiscreteFontDescriptionTypedWrapper<FontVariantPosition>(CSSPropertyFontVariantPosition, &FontCascadeDescription::variantPosition, &FontCascadeDescription::setVariantPosition),
+        new DiscreteFontDescriptionTypedWrapper<FontVariantCaps>(CSSPropertyFontVariantCaps, &FontCascadeDescription::variantCaps, &FontCascadeDescription::setVariantCaps),
+        new DiscreteFontDescriptionTypedWrapper<FontVariantEmoji>(CSSPropertyFontVariantEmoji, &FontCascadeDescription::variantEmoji, &FontCascadeDescription::setVariantEmoji),
+        new GridTemplateAreasWrapper,
+        new QuotesWrapper,
+        new DiscretePropertyWrapper<bool>(CSSPropertyScrollBehavior, &RenderStyle::useSmoothScrolling, &RenderStyle::setUseSmoothScrolling),
+        new DiscreteFontDescriptionTypedWrapper<TextRenderingMode>(CSSPropertyTextRendering, &FontCascadeDescription::textRenderingMode, &FontCascadeDescription::setTextRenderingMode),
+        new DiscreteSVGPropertyWrapper<MaskType>(CSSPropertyMaskType, &SVGRenderStyle::maskType, &SVGRenderStyle::setMaskType),
+        new DiscretePropertyWrapper<LineCap>(CSSPropertyStrokeLinecap, &RenderStyle::capStyle, &RenderStyle::setCapStyle),
+        new DiscretePropertyWrapper<LineJoin>(CSSPropertyStrokeLinejoin, &RenderStyle::joinStyle, &RenderStyle::setJoinStyle),
+        new DiscreteSVGPropertyWrapper<TextAnchor>(CSSPropertyTextAnchor, &SVGRenderStyle::textAnchor, &SVGRenderStyle::setTextAnchor),
+        new DiscreteSVGPropertyWrapper<VectorEffect>(CSSPropertyVectorEffect, &SVGRenderStyle::vectorEffect, &SVGRenderStyle::setVectorEffect),
+        new DiscreteSVGPropertyWrapper<ShapeRendering>(CSSPropertyShapeRendering, &SVGRenderStyle::shapeRendering, &SVGRenderStyle::setShapeRendering),
+        new DiscreteSVGPropertyWrapper<const String&>(CSSPropertyMarkerEnd, &SVGRenderStyle::markerEndResource, &SVGRenderStyle::setMarkerEndResource),
+        new DiscreteSVGPropertyWrapper<const String&>(CSSPropertyMarkerMid, &SVGRenderStyle::markerMidResource, &SVGRenderStyle::setMarkerMidResource),
+        new DiscreteSVGPropertyWrapper<const String&>(CSSPropertyMarkerStart, &SVGRenderStyle::markerStartResource, &SVGRenderStyle::setMarkerStartResource),
+        new DiscretePropertyWrapper<ScrollbarGutter>(CSSPropertyScrollbarGutter, &RenderStyle::scrollbarGutter, &RenderStyle::setScrollbarGutter),
+        new DiscretePropertyWrapper<ScrollbarWidth>(CSSPropertyScrollbarWidth, &RenderStyle::scrollbarWidth, &RenderStyle::setScrollbarWidth),
+        new DiscretePropertyWrapper<const ScrollSnapAlign&>(CSSPropertyScrollSnapAlign, &RenderStyle::scrollSnapAlign, &RenderStyle::setScrollSnapAlign),
+        new DiscretePropertyWrapper<ScrollSnapStop>(CSSPropertyScrollSnapStop, &RenderStyle::scrollSnapStop, &RenderStyle::setScrollSnapStop),
+        new DiscretePropertyWrapper<ScrollSnapType>(CSSPropertyScrollSnapType, &RenderStyle::scrollSnapType, &RenderStyle::setScrollSnapType),
+        new DiscretePropertyWrapper<const Vector<Style::ScopedName>&>(CSSPropertyViewTransitionClass, &RenderStyle::viewTransitionClasses, &RenderStyle::setViewTransitionClasses),
+        new DiscretePropertyWrapper<std::optional<Style::ScopedName>>(CSSPropertyViewTransitionName, &RenderStyle::viewTransitionName, &RenderStyle::setViewTransitionName),
+        new DiscretePropertyWrapper<FieldSizing>(CSSPropertyFieldSizing, &RenderStyle::fieldSizing, &RenderStyle::setFieldSizing),
+        new DiscretePropertyWrapper<const Vector<AtomString>&>(CSSPropertyAnchorName, &RenderStyle::anchorNames, &RenderStyle::setAnchorNames),
+        new DiscretePropertyWrapper<const AtomString&>(CSSPropertyPositionAnchor, &RenderStyle::positionAnchor, &RenderStyle::setPositionAnchor)
     };
-    const unsigned animatableLonghandPropertiesCount = WTF_ARRAY_LENGTH(animatableLonghandPropertyWrappers);
+    const unsigned animatableLonghandPropertiesCount = std::size(animatableLonghandPropertyWrappers);
 
     static const CSSPropertyID animatableShorthandProperties[] = {
+        CSSPropertyAll,
         CSSPropertyBackground, // for background-color, background-position, background-image
         CSSPropertyBackgroundPosition,
-        CSSPropertyBackgroundRepeat,
         CSSPropertyFont, // for font-size, font-weight
+        CSSPropertyMask, // for mask-position
         CSSPropertyWebkitMask, // for mask-position
+        CSSPropertyMaskPosition,
         CSSPropertyWebkitMaskPosition,
         CSSPropertyBorderTop, CSSPropertyBorderRight, CSSPropertyBorderBottom, CSSPropertyBorderLeft,
+        CSSPropertyBorderBlockStart, CSSPropertyBorderBlockEnd, CSSPropertyBorderInlineStart, CSSPropertyBorderInlineEnd,
         CSSPropertyBorderColor,
         CSSPropertyBorderRadius,
         CSSPropertyBorderWidth,
         CSSPropertyBorder,
         CSSPropertyBorderImage,
         CSSPropertyBorderSpacing,
+        CSSPropertyColumns,
+        CSSPropertyFlex,
+        CSSPropertyFlexFlow,
+        CSSPropertyGap,
+        CSSPropertyGrid,
+        CSSPropertyGridArea,
+        CSSPropertyGridColumn,
+        CSSPropertyGridRow,
+        CSSPropertyGridTemplate,
         CSSPropertyListStyle, // for list-style-image
         CSSPropertyMargin,
+        CSSPropertyMarginBlock, // logical shorthand
+        CSSPropertyMarginInline, // logical shorthand
+        CSSPropertyMarker,
+        CSSPropertyMaskBorder,
         CSSPropertyOutline,
         CSSPropertyPadding,
+        CSSPropertyPaddingBlock,
+        CSSPropertyPaddingInline,
         CSSPropertyPageBreakAfter,
         CSSPropertyPageBreakBefore,
         CSSPropertyPageBreakInside,
+        CSSPropertyPlaceContent,
+        CSSPropertyPlaceItems,
+        CSSPropertyPlaceSelf,
         CSSPropertyWebkitTextStroke,
         CSSPropertyColumnRule,
         CSSPropertyWebkitBorderRadius,
+        CSSPropertyTextDecoration,
+        CSSPropertyTextDecorationSkip,
         CSSPropertyTransformOrigin,
-        CSSPropertyPerspectiveOrigin
+        CSSPropertyPerspectiveOrigin,
+        CSSPropertyOffset,
+        CSSPropertyOverflow,
+        CSSPropertyTextEmphasis,
+        CSSPropertyFontVariant,
+        CSSPropertyFontSynthesis,
+        CSSPropertyContainIntrinsicSize,
+        CSSPropertyTextBox,
+        CSSPropertyTextWrap,
+        CSSPropertyWhiteSpace
     };
-    const unsigned animatableShorthandPropertiesCount = WTF_ARRAY_LENGTH(animatableShorthandProperties);
-
-    // TODO:
-    //
-    //  CSSPropertyVerticalAlign
-    //
-    // Compound properties that have components that should be animatable:
-    //
-    //  CSSPropertyColumns
-    //  CSSPropertyWebkitBoxReflect
+    const unsigned animatableShorthandPropertiesCount = std::size(animatableShorthandProperties);
 
     // Make sure unused slots have a value
     for (int i = 0; i < numCSSProperties; ++i)
         m_propertyToIdMap[i] = cInvalidPropertyWrapperIndex;
 
-    COMPILE_ASSERT(animatableLonghandPropertiesCount + animatableShorthandPropertiesCount < UCHAR_MAX, numberOfAnimatablePropertiesMustBeLessThanUCharMax);
+    static_assert(animatableLonghandPropertiesCount + animatableShorthandPropertiesCount < std::numeric_limits<unsigned short>::max(), "number of AnimatableProperties must be less than UShrtMax");
     m_propertyWrappers.reserveInitialCapacity(animatableLonghandPropertiesCount + animatableShorthandPropertiesCount);
 
     // First we put the non-shorthand property wrappers into the map, so the shorthand-building
     // code can find them.
-
-    for (unsigned i = 0; i < animatableLonghandPropertiesCount; ++i) {
-        AnimationPropertyWrapperBase* wrapper = animatableLonghandPropertyWrappers[i];
-        m_propertyWrappers.uncheckedAppend(std::unique_ptr<AnimationPropertyWrapperBase>(wrapper));
-        indexFromPropertyID(wrapper->property()) = i;
-    }
+    unsigned index = 0;
+    m_propertyWrappers.appendContainerWithMapping(animatableLonghandPropertyWrappers, [&](auto* wrapper) {
+        indexFromPropertyID(wrapper->property()) = index++;
+        return std::unique_ptr<AnimationPropertyWrapperBase>(wrapper);
+    });
 
     for (size_t i = 0; i < animatableShorthandPropertiesCount; ++i) {
         CSSPropertyID propertyID = animatableShorthandProperties[i];
@@ -2601,95 +4149,537 @@ CSSPropertyAnimationWrapperMap::CSSPropertyAnimationWrapperMap()
         if (!shorthand.length())
             continue;
 
-        Vector<AnimationPropertyWrapperBase*> longhandWrappers;
-        longhandWrappers.reserveInitialCapacity(shorthand.length());
-        for (auto longhand : shorthand) {
+        auto longhandWrappers = WTF::compactMap(shorthand, [&](auto longhand) -> std::optional<AnimationPropertyWrapperBase*> {
             unsigned wrapperIndex = indexFromPropertyID(longhand);
             if (wrapperIndex == cInvalidPropertyWrapperIndex)
-                continue;
+                return std::nullopt;
             ASSERT(m_propertyWrappers[wrapperIndex]);
-            longhandWrappers.uncheckedAppend(m_propertyWrappers[wrapperIndex].get());
-        }
+            return m_propertyWrappers[wrapperIndex].get();
+        });
 
-        m_propertyWrappers.uncheckedAppend(makeUnique<ShorthandPropertyWrapper>(propertyID, WTFMove(longhandWrappers)));
+        m_propertyWrappers.append(makeUnique<ShorthandPropertyWrapper>(propertyID, WTFMove(longhandWrappers)));
         indexFromPropertyID(propertyID) = animatableLonghandPropertiesCount + i;
     }
-}
 
-static bool gatherEnclosingShorthandProperties(CSSPropertyID property, AnimationPropertyWrapperBase* wrapper, HashSet<CSSPropertyID>& propertySet)
-{
-    if (!wrapper->isShorthandWrapper())
-        return false;
+#ifndef NDEBUG
+    for (auto property : allCSSProperties()) {
+        switch (property) {
+        // If a property is not animatable per spec, add it to this list of cases.
+        // When adding a new property, you should make sure it belongs in this list
+        // or provide a wrapper for it above. If you are adding to this list but the
+        // property should be animatable, make sure to file a bug.
 
-    ShorthandPropertyWrapper* shorthandWrapper = static_cast<ShorthandPropertyWrapper*>(wrapper);
-    bool contained = false;
-    for (auto& currWrapper : shorthandWrapper->propertyWrappers()) {
-        if (gatherEnclosingShorthandProperties(property, currWrapper, propertySet) || currWrapper->property() == property)
-            contained = true;
+        // To be fixed / untriaged:
+        case CSSPropertyBorderBlock: // logical shorthand
+        case CSSPropertyBorderBlockColor: // logical shorthand
+        case CSSPropertyBorderBlockStyle: // logical shorthand
+        case CSSPropertyBorderBlockWidth: // logical shorthand
+        case CSSPropertyBorderInline: // logical shorthand
+        case CSSPropertyBorderInlineColor: // logical shorthand
+        case CSSPropertyBorderInlineStyle: // logical shorthand
+        case CSSPropertyBorderInlineWidth: // logical shorthand
+        case CSSPropertyBorderStyle:
+        case CSSPropertyInlineSize:
+        case CSSPropertyInputSecurity:
+        case CSSPropertyInset:
+        case CSSPropertyInsetBlock:
+        case CSSPropertyInsetBlockEnd:
+        case CSSPropertyInsetBlockStart:
+        case CSSPropertyInsetInline:
+        case CSSPropertyInsetInlineEnd:
+        case CSSPropertyInsetInlineStart:
+        case CSSPropertyMasonryAutoFlow:
+        case CSSPropertyOverscrollBehavior:
+        case CSSPropertyOverscrollBehaviorBlock:
+        case CSSPropertyOverscrollBehaviorInline:
+        case CSSPropertyOverscrollBehaviorX:
+        case CSSPropertyOverscrollBehaviorY:
+        case CSSPropertyPage:
+        case CSSPropertyScrollMargin:
+        case CSSPropertyScrollMarginBlock:
+        case CSSPropertyScrollMarginBlockEnd:
+        case CSSPropertyScrollMarginBlockStart:
+        case CSSPropertyScrollMarginBottom:
+        case CSSPropertyScrollMarginInline:
+        case CSSPropertyScrollMarginInlineEnd:
+        case CSSPropertyScrollMarginInlineStart:
+        case CSSPropertyScrollMarginLeft:
+        case CSSPropertyScrollMarginRight:
+        case CSSPropertyScrollMarginTop:
+        case CSSPropertyScrollPadding:
+        case CSSPropertyScrollPaddingBlock:
+        case CSSPropertyScrollPaddingBlockEnd:
+        case CSSPropertyScrollPaddingBlockStart:
+        case CSSPropertyScrollPaddingBottom:
+        case CSSPropertyScrollPaddingInline:
+        case CSSPropertyScrollPaddingInlineEnd:
+        case CSSPropertyScrollPaddingInlineStart:
+        case CSSPropertyScrollPaddingLeft:
+        case CSSPropertyScrollPaddingRight:
+        case CSSPropertyScrollPaddingTop:
+#if ENABLE(TEXT_AUTOSIZING)
+        case CSSPropertyWebkitTextSizeAdjust:
+#endif
+        case CSSPropertyViewTimeline:
+        case CSSPropertyViewTimelineInset: // FIXME: view-timeline-inset should be animatable (bug 265690)
+        case CSSPropertyWebkitUserSelect:
+
+        // Not animatable per-spec:
+        case CSSPropertyAnimation:
+        case CSSPropertyAnimationComposition:
+        case CSSPropertyAnimationDelay:
+        case CSSPropertyAnimationDirection:
+        case CSSPropertyAnimationDuration:
+        case CSSPropertyAnimationFillMode:
+        case CSSPropertyAnimationIterationCount:
+        case CSSPropertyAnimationName:
+        case CSSPropertyAnimationPlayState:
+        case CSSPropertyAnimationTimeline:
+        case CSSPropertyAnimationTimingFunction:
+        case CSSPropertyContain:
+        case CSSPropertyContainer:
+        case CSSPropertyContainerName:
+        case CSSPropertyContainerType:
+        case CSSPropertyDirection:
+        case CSSPropertyGlyphOrientationHorizontal:
+        case CSSPropertyGlyphOrientationVertical:
+        case CSSPropertyMathStyle:
+        case CSSPropertyScrollTimeline:
+        case CSSPropertyScrollTimelineAxis:
+        case CSSPropertyScrollTimelineName:
+        case CSSPropertySpeakAs:
+        case CSSPropertyTextCombineUpright:
+        case CSSPropertyTextOrientation:
+        case CSSPropertyTransition:
+        case CSSPropertyTransitionBehavior:
+        case CSSPropertyTransitionDelay:
+        case CSSPropertyTransitionDuration:
+        case CSSPropertyTransitionProperty:
+        case CSSPropertyTransitionTimingFunction:
+        case CSSPropertyUnicodeBidi:
+        case CSSPropertyViewTimelineAxis:
+        case CSSPropertyViewTimelineName:
+        case CSSPropertyWillChange:
+        case CSSPropertyWritingMode:
+        case CSSPropertyZoom:
+
+        // FIXME: This is a descriptor, not a CSS property:
+        case CSSPropertySize:
+
+        // Legacy -webkit- properties.
+#if ENABLE(APPLE_PAY)
+        case CSSPropertyApplePayButtonStyle:
+        case CSSPropertyApplePayButtonType:
+#endif
+        case CSSPropertyWebkitBackgroundClip:
+        case CSSPropertyWebkitBackgroundOrigin:
+        case CSSPropertyWebkitBorderImage:
+        case CSSPropertyWebkitBoxAlign:
+        case CSSPropertyWebkitBoxDirection:
+        case CSSPropertyWebkitBoxFlex:
+        case CSSPropertyWebkitBoxFlexGroup:
+        case CSSPropertyWebkitBoxLines:
+        case CSSPropertyWebkitBoxOrdinalGroup:
+        case CSSPropertyWebkitBoxOrient:
+        case CSSPropertyWebkitBoxPack:
+        case CSSPropertyWebkitBoxReflect:
+        case CSSPropertyWebkitColumnAxis:
+        case CSSPropertyWebkitColumnBreakAfter:
+        case CSSPropertyWebkitColumnBreakBefore:
+        case CSSPropertyWebkitColumnBreakInside:
+        case CSSPropertyWebkitColumnProgression:
+#if ENABLE(CURSOR_VISIBILITY)
+        case CSSPropertyWebkitCursorVisibility:
+#endif
+        case CSSPropertyWebkitFontSizeDelta:
+        case CSSPropertyWebkitFontSmoothing:
+        case CSSPropertyWebkitHyphenateLimitAfter:
+        case CSSPropertyWebkitHyphenateLimitBefore:
+        case CSSPropertyWebkitHyphenateLimitLines:
+        case CSSPropertyWebkitLineAlign:
+        case CSSPropertyWebkitLineBoxContain:
+        case CSSPropertyWebkitLineClamp:
+        case CSSPropertyWebkitLineGrid:
+        case CSSPropertyWebkitLineSnap:
+        case CSSPropertyWebkitLocale:
+        case CSSPropertyWebkitMarqueeDirection:
+        case CSSPropertyWebkitMarqueeIncrement:
+        case CSSPropertyWebkitMarqueeRepetition:
+        case CSSPropertyWebkitMarqueeSpeed:
+        case CSSPropertyWebkitMarqueeStyle:
+        case CSSPropertyWebkitMaskClip:
+        case CSSPropertyWebkitMaskComposite:
+        case CSSPropertyWebkitMaskSourceType:
+        case CSSPropertyWebkitNbspMode:
+        case CSSPropertyWebkitPerspective:
+        case CSSPropertyWebkitRubyPosition:
+#if ENABLE(OVERFLOW_SCROLLING_TOUCH)
+        case CSSPropertyWebkitOverflowScrolling:
+#endif
+        case CSSPropertyWebkitRtlOrdering:
+#if ENABLE(TOUCH_EVENTS)
+        case CSSPropertyWebkitTapHighlightColor:
+#endif
+        case CSSPropertyWebkitTextCombine:
+        case CSSPropertyWebkitTextDecoration:
+        case CSSPropertyWebkitTextDecorationsInEffect:
+        case CSSPropertyWebkitTextOrientation:
+        case CSSPropertyWebkitTextSecurity:
+#if ENABLE(TEXT_AUTOSIZING)
+        case CSSPropertyInternalTextAutosizingStatus:
+#endif
+        case CSSPropertyWebkitTextStroke:
+        case CSSPropertyWebkitTextStrokeWidth:
+        case CSSPropertyWebkitTextZoom:
+#if PLATFORM(IOS_FAMILY)
+        case CSSPropertyWebkitTouchCallout:
+#endif
+        case CSSPropertyWebkitUserDrag:
+        case CSSPropertyWebkitUserModify:
+            continue;
+        default:
+            if (CSSProperty::isDescriptorOnly(property))
+                continue;
+
+            auto resolvedProperty = CSSProperty::resolveDirectionAwareProperty(property, RenderStyle::initialDirection(), RenderStyle::initialWritingMode());
+            ASSERT_UNUSED(resolvedProperty, wrapperForProperty(resolvedProperty));
+            break;
+        }
     }
-
-    if (contained)
-        propertySet.add(wrapper->property());
-
-    return contained;
+#endif
 }
 
-void CSSPropertyAnimation::blendProperties(const CSSPropertyBlendingClient* client, CSSPropertyID property, RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, double progress)
+static void blendStandardProperty(const CSSPropertyBlendingClient& client, CSSPropertyID property, RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, double progress, CompositeOperation compositeOperation, IterationCompositeOperation iterationCompositeOperation, double currentIteration)
 {
-    ASSERT(property != CSSPropertyInvalid);
+    ASSERT(property != CSSPropertyInvalid && property != CSSPropertyCustom);
 
     AnimationPropertyWrapperBase* wrapper = CSSPropertyAnimationWrapperMap::singleton().wrapperForProperty(property);
     if (wrapper) {
-        // https://drafts.csswg.org/web-animations-1/#discrete
-        // The property's values cannot be meaningfully combined, thus it is not additive and
-        // interpolation swaps from Va to Vb at 50% (p=0.5).
-        auto isDiscrete = !wrapper->canInterpolate(from, to);
-        if (isDiscrete)
-            progress = progress < 0.5 ? 0 : 1;
-        wrapper->blend(destination, from, to, { progress, isDiscrete, client });
+        auto isDiscrete = !wrapper->canInterpolate(from, to, compositeOperation);
+        CSSPropertyBlendingContext context { progress, isDiscrete, compositeOperation, client, property, iterationCompositeOperation, currentIteration };
+        if (wrapper->normalizesProgressForDiscreteInterpolation())
+            context.normalizeProgress();
+        wrapper->blend(destination, from, to, context);
 #if !LOG_DISABLED
         wrapper->logBlend(from, to, destination, progress);
 #endif
     }
 }
 
-bool CSSPropertyAnimation::isPropertyAnimatable(CSSPropertyID property)
+static CSSCustomPropertyValue::NumericSyntaxValue blendFunc(const CSSCustomPropertyValue::NumericSyntaxValue& from, const CSSCustomPropertyValue::NumericSyntaxValue& to, const CSSPropertyBlendingContext& blendingContext)
 {
-    return CSSPropertyAnimationWrapperMap::singleton().wrapperForProperty(property);
+    ASSERT(from.unitType == to.unitType);
+    return { blendFunc(from.value, to.value, blendingContext), from.unitType };
 }
 
-bool CSSPropertyAnimation::animationOfPropertyIsAccelerated(CSSPropertyID property)
+static std::optional<CSSCustomPropertyValue::SyntaxValue> blendSyntaxValues(const RenderStyle& fromStyle, const RenderStyle& toStyle, const CSSCustomPropertyValue::SyntaxValue& from, const CSSCustomPropertyValue::SyntaxValue& to, const CSSPropertyBlendingContext& blendingContext)
 {
-    AnimationPropertyWrapperBase* wrapper = CSSPropertyAnimationWrapperMap::singleton().wrapperForProperty(property);
-    return wrapper ? wrapper->animationIsAccelerated() : false;
+    if (std::holds_alternative<Length>(from) && std::holds_alternative<Length>(to))
+        return blendFunc(std::get<Length>(from), std::get<Length>(to), blendingContext);
+
+    if (std::holds_alternative<StyleColor>(from) && std::holds_alternative<StyleColor>(to)) {
+        auto& fromStyleColor = std::get<StyleColor>(from);
+        auto& toStyleColor = std::get<StyleColor>(to);
+        if (!fromStyleColor.isCurrentColor() || !toStyleColor.isCurrentColor())
+            return blendFunc(fromStyle.colorResolvingCurrentColor(fromStyleColor), toStyle.colorResolvingCurrentColor(toStyleColor), blendingContext);
+    }
+
+    if (std::holds_alternative<CSSCustomPropertyValue::NumericSyntaxValue>(from) && std::holds_alternative<CSSCustomPropertyValue::NumericSyntaxValue>(to)) {
+        auto& fromNumeric = std::get<CSSCustomPropertyValue::NumericSyntaxValue>(from);
+        auto& toNumeric = std::get<CSSCustomPropertyValue::NumericSyntaxValue>(to);
+        if (fromNumeric.unitType == toNumeric.unitType)
+            return blendFunc(fromNumeric, toNumeric, blendingContext);
+    }
+
+    if (std::holds_alternative<CSSCustomPropertyValue::TransformSyntaxValue>(from) && std::holds_alternative<CSSCustomPropertyValue::TransformSyntaxValue>(to)) {
+        auto& fromTransformOperation = std::get<CSSCustomPropertyValue::TransformSyntaxValue>(from).transform;
+        auto& toTransformOperation = std::get<CSSCustomPropertyValue::TransformSyntaxValue>(to).transform;
+        return CSSCustomPropertyValue::TransformSyntaxValue { blendFunc(fromTransformOperation, toTransformOperation, blendingContext) };
+    }
+
+    return std::nullopt;
 }
 
-// Note: this is inefficient. It's only called from pauseTransitionAtTime().
-HashSet<CSSPropertyID> CSSPropertyAnimation::animatableShorthandsAffectingProperty(CSSPropertyID property)
+static std::optional<CSSCustomPropertyValue::SyntaxValue> firstValueInSyntaxValueLists(const CSSCustomPropertyValue::SyntaxValueList& a, const CSSCustomPropertyValue::SyntaxValueList& b)
 {
-    CSSPropertyAnimationWrapperMap& map = CSSPropertyAnimationWrapperMap::singleton();
-
-    HashSet<CSSPropertyID> foundProperties;
-    for (unsigned i = 0; i < map.size(); ++i)
-        gatherEnclosingShorthandProperties(property, map.wrapperForIndex(i), foundProperties);
-
-    return foundProperties;
+    if (!a.values.isEmpty())
+        return a.values[0];
+    if (!b.values.isEmpty())
+        return b.values[0];
+    return std::nullopt;
 }
 
-bool CSSPropertyAnimation::propertiesEqual(CSSPropertyID property, const RenderStyle& a, const RenderStyle& b)
+static std::optional<CSSCustomPropertyValue::SyntaxValueList> blendSyntaxValueLists(const RenderStyle& fromStyle, const RenderStyle& toStyle, const CSSCustomPropertyValue::SyntaxValueList& from, const CSSCustomPropertyValue::SyntaxValueList& to, const CSSPropertyBlendingContext& blendingContext)
 {
-    AnimationPropertyWrapperBase* wrapper = CSSPropertyAnimationWrapperMap::singleton().wrapperForProperty(property);
-    if (wrapper)
-        return wrapper->equals(a, b);
-    return true;
+    // We should only attempt to blend lists containing the same types. Since we know all items in a
+    // list are of the same type, it is sufficient to check the first value from each list.
+    if (from.values.size() && to.values.size() && from.values.first().index() != to.values.first().index())
+        return std::nullopt;
+
+    // https://drafts.css-houdini.org/css-properties-values-api-1/#animation-behavior-of-custom-properties
+    auto firstValue = firstValueInSyntaxValueLists(from, to);
+
+    if (!firstValue)
+        return std::nullopt;
+
+    // <transform-function> lists are special in that they don't require matching numbers of items.
+    if (std::holds_alternative<CSSCustomPropertyValue::TransformSyntaxValue>(*firstValue)) {
+        auto transformOperationsFromSyntaxValueList = [](const CSSCustomPropertyValue::SyntaxValueList& list) {
+            return TransformOperations {
+                list.values.map([](auto& syntaxValue) {
+                    ASSERT(std::holds_alternative<CSSCustomPropertyValue::TransformSyntaxValue>(syntaxValue));
+                    return std::get<CSSCustomPropertyValue::TransformSyntaxValue>(syntaxValue).transform.copyRef();
+                })
+            };
+        };
+
+        auto fromTransformOperations = transformOperationsFromSyntaxValueList(from);
+        auto toTransformOperations = transformOperationsFromSyntaxValueList(to);
+        auto blendedTransformOperations = blendFunc(fromTransformOperations, toTransformOperations, blendingContext);
+
+        auto blendedSyntaxValues = WTF::map(blendedTransformOperations, [](auto& transformOperation) -> CSSCustomPropertyValue::SyntaxValue {
+            return CSSCustomPropertyValue::TransformSyntaxValue { transformOperation.copyRef() };
+        });
+
+        return CSSCustomPropertyValue::SyntaxValueList { WTFMove(blendedSyntaxValues), from.separator };
+    }
+
+    // Other lists must have matching sizes.
+    if (from.values.size() != to.values.size())
+        return std::nullopt;
+
+    Vector<CSSCustomPropertyValue::SyntaxValue> blendedSyntaxValues;
+    for (size_t i = 0; i < from.values.size(); ++i) {
+        auto blendedSyntaxValue = blendSyntaxValues(fromStyle, toStyle, from.values[i], to.values[i], blendingContext);
+        if (!blendedSyntaxValue)
+            return std::nullopt;
+        blendedSyntaxValues.append(*blendedSyntaxValue);
+    }
+
+    return CSSCustomPropertyValue::SyntaxValueList { blendedSyntaxValues, from.separator };
 }
 
-bool CSSPropertyAnimation::canPropertyBeInterpolated(CSSPropertyID property, const RenderStyle& from, const RenderStyle& to)
+static Ref<const CSSCustomPropertyValue> blendedCSSCustomPropertyValue(const RenderStyle& fromStyle, const RenderStyle& toStyle, const CSSCustomPropertyValue& from, const CSSCustomPropertyValue& to, const CSSPropertyBlendingContext& blendingContext)
 {
-    AnimationPropertyWrapperBase* wrapper = CSSPropertyAnimationWrapperMap::singleton().wrapperForProperty(property);
-    if (wrapper)
-        return wrapper->canInterpolate(from, to);
-    return false;
+    if (std::holds_alternative<CSSCustomPropertyValue::SyntaxValue>(from.value()) && std::holds_alternative<CSSCustomPropertyValue::SyntaxValue>(to.value())) {
+        auto& fromSyntaxValue = std::get<CSSCustomPropertyValue::SyntaxValue>(from.value());
+        auto& toSyntaxValue = std::get<CSSCustomPropertyValue::SyntaxValue>(to.value());
+        if (auto blendedSyntaxValue = blendSyntaxValues(fromStyle, toStyle, fromSyntaxValue, toSyntaxValue, blendingContext))
+            return CSSCustomPropertyValue::createForSyntaxValue(from.name(), WTFMove(*blendedSyntaxValue));
+    }
+
+    if (std::holds_alternative<CSSCustomPropertyValue::SyntaxValueList>(from.value()) && std::holds_alternative<CSSCustomPropertyValue::SyntaxValueList>(to.value())) {
+        auto& fromSyntaxValueList = std::get<CSSCustomPropertyValue::SyntaxValueList>(from.value());
+        auto& toSyntaxValueList = std::get<CSSCustomPropertyValue::SyntaxValueList>(to.value());
+        if (auto blendedSyntaxValueList = blendSyntaxValueLists(fromStyle, toStyle, fromSyntaxValueList, toSyntaxValueList, blendingContext))
+            return CSSCustomPropertyValue::createForSyntaxValueList(from.name(), WTFMove(*blendedSyntaxValueList));
+    }
+
+    // Use a discrete interpolation for all other cases.
+    return blendingContext.progress < 0.5 ? from : to;
+}
+
+static std::pair<const CSSCustomPropertyValue*, const CSSCustomPropertyValue*> customPropertyValuesForBlending(const AtomString& customProperty, const RenderStyle& fromStyle, const RenderStyle& toStyle)
+{
+    return {
+        fromStyle.customPropertyValue(customProperty),
+        toStyle.customPropertyValue(customProperty)
+    };
+}
+
+static void blendCustomProperty(const CSSPropertyBlendingClient& client, const AtomString& customProperty, RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, double progress, CompositeOperation compositeOperation, IterationCompositeOperation iterationCompositeOperation, double currentIteration)
+{
+    CSSPropertyBlendingContext blendingContext { progress, false, compositeOperation, client, customProperty, iterationCompositeOperation, currentIteration };
+
+    auto [fromValue, toValue] = customPropertyValuesForBlending(customProperty, from, to);
+    if (!fromValue || !toValue)
+        return;
+
+    bool isInherited = client.document()->customPropertyRegistry().isInherited(customProperty);
+    destination.setCustomPropertyValue(blendedCSSCustomPropertyValue(from, to, *fromValue, *toValue, blendingContext), isInherited);
+}
+
+void CSSPropertyAnimation::blendProperty(const CSSPropertyBlendingClient& client, const AnimatableCSSProperty& property, RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, double progress, CompositeOperation compositeOperation, IterationCompositeOperation iterationCompositeOperation, double currentIteration)
+{
+    WTF::switchOn(property,
+        [&] (CSSPropertyID propertyId) {
+            blendStandardProperty(client, propertyId, destination, from, to, progress, compositeOperation, iterationCompositeOperation, currentIteration);
+        }, [&] (const AtomString& customProperty) {
+            blendCustomProperty(client, customProperty, destination, from, to, progress, compositeOperation, iterationCompositeOperation, currentIteration);
+        }
+    );
+}
+
+bool CSSPropertyAnimation::isPropertyAnimatable(const AnimatableCSSProperty& property)
+{
+    return WTF::switchOn(property,
+        [] (CSSPropertyID propertyId) {
+            return propertyId == CSSPropertyCustom || !!CSSPropertyAnimationWrapperMap::singleton().wrapperForProperty(propertyId);
+        },
+        [] (const AtomString&) {
+            // FIXME: this should only be true for property that are registered custom properties.
+            return true;
+        }
+    );
+}
+
+bool CSSPropertyAnimation::isPropertyAdditiveOrCumulative(const AnimatableCSSProperty& property)
+{
+    return WTF::switchOn(property,
+        [] (CSSPropertyID propertyId) {
+            if (auto* wrapper = CSSPropertyAnimationWrapperMap::singleton().wrapperForProperty(propertyId))
+                return wrapper->isAdditiveOrCumulative();
+            return false;
+        }, [] (const AtomString&) { return true; }
+    );
+}
+
+static bool syntaxValuesRequireBlendingForAccumulativeIteration(const CSSCustomPropertyValue::SyntaxValue& a, const CSSCustomPropertyValue::SyntaxValue& b, bool isList)
+{
+    return WTF::switchOn(a, [b, isList](const Length& aLength) {
+        ASSERT(std::holds_alternative<Length>(b));
+        return !isList && lengthsRequireBlendingForAccumulativeIteration(aLength, std::get<Length>(b));
+    }, [] (const RefPtr<TransformOperation>&) {
+        return true;
+    }, [] (const StyleColor&) {
+        return true;
+    }, [] (auto&) {
+        return false;
+    });
+}
+
+bool CSSPropertyAnimation::propertyRequiresBlendingForAccumulativeIteration(const CSSPropertyBlendingClient&, const AnimatableCSSProperty& property, const RenderStyle& a, const RenderStyle& b)
+{
+    return WTF::switchOn(property,
+        [&] (CSSPropertyID propertyId) {
+            if (auto* wrapper = CSSPropertyAnimationWrapperMap::singleton().wrapperForProperty(propertyId))
+                return wrapper->requiresBlendingForAccumulativeIteration(a, b);
+            return false;
+        }, [&] (const AtomString& customProperty) {
+            auto [from, to] = customPropertyValuesForBlending(customProperty, a, b);
+            if (!from || !to)
+                return false;
+
+            if (std::holds_alternative<CSSCustomPropertyValue::SyntaxValueList>(from->value()) && std::holds_alternative<CSSCustomPropertyValue::SyntaxValueList>(to->value())) {
+                auto& fromSyntaxValues = std::get<CSSCustomPropertyValue::SyntaxValueList>(from->value()).values;
+                auto& toSyntaxValues = std::get<CSSCustomPropertyValue::SyntaxValueList>(to->value()).values;
+                if (fromSyntaxValues.size() == toSyntaxValues.size()) {
+                    for (size_t i = 0; i < fromSyntaxValues.size(); ++i) {
+                        if (!syntaxValuesRequireBlendingForAccumulativeIteration(fromSyntaxValues[i], toSyntaxValues[i], true))
+                            return false;
+                    }
+                    return true;
+                }
+            }
+
+            if (std::holds_alternative<CSSCustomPropertyValue::SyntaxValue>(from->value()) && std::holds_alternative<CSSCustomPropertyValue::SyntaxValue>(to->value())) {
+                auto& fromSyntaxValue = std::get<CSSCustomPropertyValue::SyntaxValue>(from->value());
+                auto& toSyntaxValue = std::get<CSSCustomPropertyValue::SyntaxValue>(to->value());
+                return syntaxValuesRequireBlendingForAccumulativeIteration(fromSyntaxValue, toSyntaxValue, false);
+            }
+
+            return false;
+        }
+    );
+}
+
+bool CSSPropertyAnimation::animationOfPropertyIsAccelerated(const AnimatableCSSProperty& property, const Settings& settings)
+{
+    return WTF::switchOn(property,
+        [&] (CSSPropertyID cssProperty) {
+            if (auto* wrapper = CSSPropertyAnimationWrapperMap::singleton().wrapperForProperty(cssProperty))
+                return wrapper->animationIsAccelerated(settings);
+            return false;
+        }, [] (const AtomString&) { return false; }
+    );
+}
+
+bool CSSPropertyAnimation::propertiesEqual(const AnimatableCSSProperty& property, const RenderStyle& a, const RenderStyle& b, const Document&)
+{
+    return WTF::switchOn(property,
+        [&] (CSSPropertyID propertyId) {
+            if (auto* wrapper = CSSPropertyAnimationWrapperMap::singleton().wrapperForProperty(propertyId))
+                return wrapper->equals(a, b);
+            return true;
+        }, [&] (const AtomString& customProperty) {
+            auto [aCustomPropertyValue, bCustomPropertyValue] = customPropertyValuesForBlending(customProperty, a, b);
+            if (!aCustomPropertyValue && !bCustomPropertyValue)
+                return true;
+            if (!aCustomPropertyValue || !bCustomPropertyValue)
+                return false;
+            if (std::holds_alternative<CSSCustomPropertyValue::SyntaxValueList>(aCustomPropertyValue->value()) && std::holds_alternative<CSSCustomPropertyValue::SyntaxValueList>(bCustomPropertyValue->value()))
+                return aCustomPropertyValue->equals(*bCustomPropertyValue);
+            if (std::holds_alternative<CSSCustomPropertyValue::SyntaxValue>(aCustomPropertyValue->value()) && std::holds_alternative<CSSCustomPropertyValue::SyntaxValue>(bCustomPropertyValue->value()))
+                return aCustomPropertyValue->equals(*bCustomPropertyValue);
+            return false;
+        }
+    );
+}
+
+static bool typeOfSyntaxValueCanBeInterpolated(const CSSCustomPropertyValue::SyntaxValue& syntaxValue)
+{
+    return WTF::switchOn(syntaxValue,
+        [] (const Length&) {
+            return true;
+        },
+        [] (const StyleColor&) {
+            return true;
+        },
+        [] (CSSCustomPropertyValue::NumericSyntaxValue) {
+            return true;
+        },
+        [] (const CSSCustomPropertyValue::TransformSyntaxValue&) {
+            return true;
+        },
+        [] (RefPtr<StyleImage>) {
+            return false;
+        },
+        [] (auto&) {
+            return false;
+        }
+    );
+}
+
+bool CSSPropertyAnimation::canPropertyBeInterpolated(const AnimatableCSSProperty& property, const RenderStyle& a, const RenderStyle& b, const Document&)
+{
+    return WTF::switchOn(property,
+        [&] (CSSPropertyID propertyId) {
+            if (auto* wrapper = CSSPropertyAnimationWrapperMap::singleton().wrapperForProperty(propertyId))
+                return wrapper->canInterpolate(a, b, CompositeOperation::Replace);
+            return true;
+        }, [&] (const AtomString& customProperty) {
+            auto [aCustomPropertyValue, bCustomPropertyValue] = customPropertyValuesForBlending(customProperty, a, b);
+            if (!aCustomPropertyValue || !bCustomPropertyValue || aCustomPropertyValue == bCustomPropertyValue)
+                return false;
+            auto& aVariantValue = aCustomPropertyValue->value();
+            auto& bVariantValue = bCustomPropertyValue->value();
+            if (aVariantValue.index() != bVariantValue.index())
+                return false;
+            return WTF::switchOn(aVariantValue,
+                [bVariantValue] (const CSSCustomPropertyValue::SyntaxValueList& aValueList) {
+                    auto bValueList = std::get<CSSCustomPropertyValue::SyntaxValueList>(bVariantValue);
+                    if (aValueList == bValueList)
+                        return false;
+                    if (auto firstValue = firstValueInSyntaxValueLists(aValueList, bValueList)) {
+                        // List sizes must match except for transform lists.
+                        if (!std::holds_alternative<CSSCustomPropertyValue::TransformSyntaxValue>(*firstValue)
+                            && aValueList.values.size() != bValueList.values.size()) {
+                            return false;
+                        }
+                        return typeOfSyntaxValueCanBeInterpolated(*firstValue);
+                    }
+                    return false;
+                },
+                [bVariantValue] (const CSSCustomPropertyValue::SyntaxValue& aSyntaxValue) {
+                    auto bSyntaxValue = std::get<CSSCustomPropertyValue::SyntaxValue>(bVariantValue);
+                    return aSyntaxValue != bSyntaxValue && typeOfSyntaxValueCanBeInterpolated(aSyntaxValue);
+                },
+                [] (auto&) {
+                    return false;
+                }
+            );
+        }
+    );
 }
 
 CSSPropertyID CSSPropertyAnimation::getPropertyAtIndex(int i, std::optional<bool>& isShorthand)
@@ -2701,6 +4691,22 @@ CSSPropertyID CSSPropertyAnimation::getPropertyAtIndex(int i, std::optional<bool
 
     AnimationPropertyWrapperBase* wrapper = map.wrapperForIndex(i);
     isShorthand = wrapper->isShorthandWrapper();
+    return wrapper->property();
+}
+
+std::optional<CSSPropertyID> CSSPropertyAnimation::getAcceleratedPropertyAtIndex(int i, const Settings& settings)
+{
+    // FIXME: We really ought to expose an iterator to go over all animatable properties.
+    // https://bugs.webkit.org/show_bug.cgi?id=252807
+    auto& map = CSSPropertyAnimationWrapperMap::singleton();
+
+    if (i < 0 || static_cast<unsigned>(i) >= map.size())
+        return std::nullopt;
+
+    auto* wrapper = map.wrapperForIndex(i);
+    if (wrapper->isShorthandWrapper() || !wrapper->animationIsAccelerated(settings))
+        return std::nullopt;
+
     return wrapper->property();
 }
 

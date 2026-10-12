@@ -25,22 +25,28 @@
 
 #pragma once
 
-
 #include "HTMLElement.h"
 
 namespace WebCore {
 
 class HTMLSlotElement final : public HTMLElement {
-    WTF_MAKE_ISO_ALLOCATED(HTMLSlotElement);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(HTMLSlotElement);
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(HTMLSlotElement);
 public:
+    using ElementOrText = std::variant<RefPtr<Element>, RefPtr<Text>>;
+
     static Ref<HTMLSlotElement> create(const QualifiedName&, Document&);
 
-    const Vector<WeakPtr<Node>>* assignedNodes() const;
+    const Vector<WeakPtr<Node, WeakPtrImplWithEventTargetData>>* assignedNodes() const;
     struct AssignedNodesOptions {
         bool flatten;
     };
     Vector<Ref<Node>> assignedNodes(const AssignedNodesOptions&) const;
     Vector<Ref<Element>> assignedElements(const AssignedNodesOptions&) const;
+
+    void assign(FixedVector<ElementOrText>&&);
+    const Vector<WeakPtr<Node, WeakPtrImplWithEventTargetData>>& manuallyAssignedNodes() const { return m_manuallyAssignedNodes; }
+    void removeManuallyAssignedNode(Node&);
 
     void enqueueSlotChangeEvent();
     void didRemoveFromSignalSlotList() { m_inSignalSlotList = false; }
@@ -59,6 +65,7 @@ private:
 
     bool m_inSignalSlotList { false };
     bool m_isInInsertedIntoAncestor { false };
+    Vector<WeakPtr<Node, WeakPtrImplWithEventTargetData>> m_manuallyAssignedNodes;
 };
 
 }

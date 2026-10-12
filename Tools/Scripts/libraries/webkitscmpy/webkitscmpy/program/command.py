@@ -1,4 +1,4 @@
-# Copyright (C) 2020, 2021 Apple Inc. All rights reserved.
+# Copyright (C) 2020-2024 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -23,19 +23,34 @@
 import os
 import platform
 import re
+import shutil
 import subprocess
 import sys
 import time
 
-from webkitcorepy import Terminal
-from webkitscmpy.commit import Commit
-from whichcraft import which
+from webkitcorepy import Terminal, run
+from webkitscmpy import local, Commit
 
 
 class Command(object):
     name = None
     aliases = []
     help = None
+
+    @classmethod
+    def write_branch_variables(cls, repository, branch, **variables):
+        if not isinstance(repository, local.Git):
+            return False
+        result = True
+        for key, value in variables.items():
+            if not value:
+                continue
+            for v in value if isinstance(value, (list, tuple)) else [value]:
+                result &= run(
+                    [repository.executable(), 'config', '--add', 'branch.{}.{}'.format(branch, key), str(v)],
+                    cwd=repository.root_path, capture_output=True,
+                ).returncode == 0
+        return result
 
     @classmethod
     def parser(cls, parser, loggers=None):
@@ -55,13 +70,14 @@ class FilteredCommand(Command):
     HASH = 'hash'
     REVISION = 'revision'
 
-    GIT_HEADER_RE = re.compile(r'^commit (?P<hash>[a-f0-9A-F]+)')
+    GIT_HEADER_RE = re.compile(r'^(commit )?(?P<hash>[a-f0-9A-F]+)')
     SVN_HEADER_RE = re.compile(r'^(?P<revision>r/d+) | ')
 
     REVISION_RES = (re.compile(r'^(?P<revision>\d+)\s'), re.compile(r'(?P<revision>[rR]\d+)'))
     HASH_RES = (re.compile(r'^(?P<hash>[a-f0-9A-F]{8}[a-f0-9A-F]+)\s'), re.compile(r'(?P<hash>[a-f0-9A-F]{8}[a-f0-9A-F]+)'))
     IDENTIFIER_RES = (re.compile(r'^(?P<identifier>(\d+\.)?\d+@\S*)'), re.compile(r'(?P<identifier>(\d+\.)?\d+@\S*)'))
     NO_FILTER_RES = [re.compile(r'    Canonical link:'), re.compile(r'    git-svn-id:')]
+    DIFF_RE = re.compile(r'^diff --git ')
 
     REPLACE_MODE = 0
     APPEND_MODE = 1
@@ -72,7 +88,7 @@ class FilteredCommand(Command):
         parser.add_argument(
             'args', nargs='*',
             type=str, default=None,
-            help='Arguments to be passed to tbe native source-code management tool',
+            help='Arguments to be passed to the native source-code management tool',
         )
         parser.add_argument(
             '--identifier', '-i',
@@ -104,6 +120,9 @@ class FilteredCommand(Command):
 
     @classmethod
     def pager(cls, args, repository, file=None, **kwargs):
+        if not repository:
+            sys.stderr.write('No repository provided\n')
+            return 1
         if not repository.path:
             sys.stderr.write("Cannot run '{}' on remote repository\n".format(cls.name))
             return 1
@@ -123,7 +142,7 @@ class FilteredCommand(Command):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
             )
-            more = subprocess.Popen([which('more')] + (['-F', '-R'] if platform.system() == 'Darwin' else []), stdin=child.stdout)
+            more = subprocess.Popen([shutil.which('more')] + (['-F', '-R'] if platform.system() == 'Darwin' else []), stdin=child.stdout)
 
             try:
                 while more.poll() is None and not child.poll():
@@ -136,14 +155,28 @@ class FilteredCommand(Command):
                 child_error = child.stderr.read()
                 if child_error:
                     (sys.stderr.buffer if sys.version_info > (3, 0) else sys.stderr).write(b'\n' + child_error)
-
-            return child.returncode
+                return child.returncode
 
         with Terminal.override_atty(sys.stdout, isatty=kwargs.get('isatty')), Terminal.override_atty(sys.stderr, isatty=kwargs.get('isatty')):
             return FilteredCommand.main(args, repository, command=cls.name, **kwargs)
 
     @classmethod
+    def replace(cls, arg, repository):
+        parsed = Commit.parse(arg, do_assert=False)
+        if not parsed:
+            return None
+        replacement = None
+        if repository.is_svn:
+            replacement = repository.cache.to_revision(hash=parsed.hash, identifier=str(parsed) if parsed.identifier else None)
+        if repository.is_git:
+            replacement = repository.cache.to_hash(revision=parsed.revision, identifier=str(parsed) if parsed.identifier else None)
+        return replacement
+
+    @classmethod
     def main(cls, args, repository, command=None, representation=None, **kwargs):
+        if not repository:
+            sys.stderr.write('No repository provided\n')
+            return 1
         if not repository.path:
             sys.stderr.write("Cannot run '{}' on remote repository\n".format(command))
             return 1
@@ -164,15 +197,15 @@ class FilteredCommand(Command):
             return 1
 
         for index in range(len(args)):
-            parsed = Commit.parse(args[index], do_assert=False)
-            if parsed:
-                replacement = None
-                if repository.is_svn:
-                    replacement = repository.cache.to_revision(hash=parsed.hash, identifier=str(parsed) if parsed.identifier else None)
-                if repository.is_git:
-                    replacement = repository.cache.to_hash(revision=parsed.revision, identifier=str(parsed) if parsed.identifier else None)
-                if replacement:
-                    args[index] = replacement
+            replacement = cls.replace(args[index], repository)
+            if replacement:
+                args[index] = replacement
+                continue
+            split = args[index].split('...')
+            if len(split) > 1:
+                args[index] = '...'.join([
+                    cls.replace(component, repository) or component for component in split
+                ])
                 continue
 
             for candidate in [
@@ -205,9 +238,9 @@ class FilteredCommand(Command):
                 if representation == 'hash':
                     reference = reference[:Commit.HASH_LABEL_SIZE]
                 if mode == cls.APPEND_MODE:
-                    reference = '{} ({})'.format(match.group(1), reference)
+                    reference = '{} ({})'.format(match.groups()[-1], reference)
                 if mode == cls.HEADER_MODE:
-                    alternates = [] if match.group(1).startswith(reference) else [match.group(1)]
+                    alternates = [] if match.groups()[-1].startswith(reference) else [match.groups()[-1]]
                     for repr in {'revision', 'hash', 'identifier'} - {'hash' if repository.is_git else 'revision', representation}:
                         if repr in kwargs:
                             continue
@@ -218,7 +251,7 @@ class FilteredCommand(Command):
                             other = other[:Commit.HASH_LABEL_SIZE]
                         alternates.append('r{}'.format(other) if isinstance(other, int) else other)
                     reference = '{} ({})'.format(reference, ', '.join(alternates))
-                return match.group(0).replace(match.group(1), reference)
+                return match.group(0).replace(match.groups()[-1], reference)
             return match.group(0)
 
         res = {}
@@ -234,24 +267,43 @@ class FilteredCommand(Command):
         try:
             line = log_output.stdout.readline()
             while line:
+                if cls.DIFF_RE.match(line):
+                    break
                 header = header_re.sub(
-                    lambda match: replace_line(match, mode=cls.HEADER_MODE, **{'hash' if repository.is_git else 'revision': match.group(1)}),
+                    lambda match: replace_line(match, mode=cls.HEADER_MODE, **{'hash' if repository.is_git else 'revision': match.groups()[-1]}),
                     line,
                 )
                 if header != line:
+                    index = 2 if header.startswith('commit') else 1
+                    header = header.split(' ')
                     with Terminal.Style(color=Terminal.Text.yellow, style=Terminal.Text.bold).apply(sys.stdout):
-                        sys.stdout.write(' '.join(header.split(' ')[:2]))
+                        sys.stdout.write(' '.join(header[:index]))
 
-                    sys.stdout.write(' ')
+                    if index < len(header):
+                        sys.stdout.write(' ')
+                    in_red = index
+                    while in_red < len(header):
+                        if len(header[in_red]) < 2:
+                            break
+                        if header[in_red][-1] == ',':
+                            in_red += 1
+                            continue
+                        if header[in_red][-1] == ')' or header[in_red][-2] == ')':
+                            in_red += 1
+                        break
                     with Terminal.Style(color=Terminal.Text.red).apply(sys.stdout):
-                        sys.stdout.write(' '.join(header.split(' ')[2:]))
+                        sys.stdout.write(' '.join(header[index:in_red]))
+
+                    if in_red < len(header):
+                        sys.stdout.write(' ')
+                    sys.stdout.write(' '.join(header[in_red:]))
 
                     line = log_output.stdout.readline()
                     continue
 
                 for repr, regexs in res.items():
                     line = regexs[0].sub(
-                        lambda match: replace_line(match, mode=cls.REPLACE_MODE, **{repr: match.group(1)}),
+                        lambda match: replace_line(match, mode=cls.REPLACE_MODE, **{repr: match.group()[-1]}),
                         line,
                     )
 
@@ -264,6 +316,20 @@ class FilteredCommand(Command):
 
                 sys.stdout.write(line)
 
+                line = log_output.stdout.readline()
+
+            while line:
+                color = None
+                if line.startswith('+') and not line.startswith('+++'):
+                    color = Terminal.Text.green
+                elif line.startswith('-') and not line.startswith('---'):
+                    color = Terminal.Text.red
+
+                if color:
+                    with Terminal.Style(color=color).apply(sys.stdout):
+                        sys.stdout.write(line)
+                else:
+                    sys.stdout.write(line)
                 line = log_output.stdout.readline()
 
         finally:

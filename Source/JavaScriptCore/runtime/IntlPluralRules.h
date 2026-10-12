@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2018 Andy VanWagoner (andy@vanwagoner.family)
- * Copyright (C) 2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2021-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,10 +28,15 @@
 
 #include "IntlNumberFormat.h"
 #include <unicode/unum.h>
-#include <unicode/upluralrules.h>
 #include <wtf/unicode/icu/ICUHelpers.h>
 
+struct UPluralRules;
+
 namespace JSC {
+
+struct UPluralRulesDeleter {
+    JS_EXPORT_PRIVATE void operator()(UPluralRules*);
+};
 
 enum class RelevantExtensionKey : uint8_t;
 
@@ -47,7 +52,7 @@ public:
     }
 
     template<typename CellType, SubspaceAccess mode>
-    static IsoSubspace* subspaceFor(VM& vm)
+    static GCClient::IsoSubspace* subspaceFor(VM& vm)
     {
         return vm.intlPluralRulesSpace<mode>();
     }
@@ -59,25 +64,36 @@ public:
 
     template<typename IntlType>
     friend void setNumberFormatDigitOptions(JSGlobalObject*, IntlType*, JSObject*, unsigned minimumFractionDigitsDefault, unsigned maximumFractionDigitsDefault, IntlNotation);
+    template<typename IntlType>
+    friend void appendNumberFormatDigitOptionsToSkeleton(IntlType*, StringBuilder&);
 
     void initializePluralRules(JSGlobalObject*, JSValue locales, JSValue options);
     JSValue select(JSGlobalObject*, double value) const;
     JSObject* resolvedOptions(JSGlobalObject*) const;
 
+#if HAVE(ICU_U_NUMBER_RANGE_FORMATTER)
+    JSValue selectRange(JSGlobalObject*, double start, double end) const;
+#endif
+
 private:
     IntlPluralRules(VM&, Structure*);
-    void finishCreation(VM&);
+    DECLARE_DEFAULT_FINISH_CREATION;
     DECLARE_VISIT_CHILDREN;
 
     static Vector<String> localeData(const String&, RelevantExtensionKey);
 
     enum class Type : bool { Cardinal, Ordinal };
 
-    using UPluralRulesDeleter = ICUDeleter<uplrules_close>;
-    using UNumberFormatDeleter = ICUDeleter<unum_close>;
-
     std::unique_ptr<UPluralRules, UPluralRulesDeleter> m_pluralRules;
+#if HAVE(ICU_U_NUMBER_FORMATTER)
+    std::unique_ptr<UNumberFormatter, UNumberFormatterDeleter> m_numberFormatter;
+#if HAVE(ICU_U_NUMBER_RANGE_FORMATTER)
+    std::unique_ptr<UNumberRangeFormatter, UNumberRangeFormatterDeleter> m_numberRangeFormatter;
+#endif
+#else
+    using UNumberFormatDeleter = ICUDeleter<unum_close>;
     std::unique_ptr<UNumberFormat, UNumberFormatDeleter> m_numberFormat;
+#endif
 
     String m_locale;
     unsigned m_minimumIntegerDigits { 1 };
@@ -85,6 +101,9 @@ private:
     unsigned m_maximumFractionDigits { 3 };
     unsigned m_minimumSignificantDigits { 0 };
     unsigned m_maximumSignificantDigits { 0 };
+    unsigned m_roundingIncrement { 1 };
+    IntlTrailingZeroDisplay m_trailingZeroDisplay { IntlTrailingZeroDisplay::Auto };
+    RoundingMode m_roundingMode { RoundingMode::HalfExpand };
     IntlRoundingType m_roundingType { IntlRoundingType::FractionDigits };
     Type m_type { Type::Cardinal };
 };

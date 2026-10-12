@@ -179,7 +179,7 @@ static void appendMessagePrefix(StringBuilder& builder, MessageSource source, Me
         break;
     }
 
-    builder.append("CONSOLE");
+    builder.append("CONSOLE"_s);
     if (!sourceString.isEmpty())
         builder.append(' ', sourceString);
     if (!typeString.isEmpty())
@@ -194,7 +194,7 @@ void ConsoleClient::printConsoleMessage(MessageSource source, MessageType type, 
 
     if (!url.isEmpty()) {
         appendURLAndPosition(builder, url, lineNumber, columnNumber);
-        builder.append(": ");
+        builder.append(": "_s);
     }
 
     appendMessagePrefix(builder, source, type, level);
@@ -210,11 +210,11 @@ void ConsoleClient::printConsoleMessageWithArguments(MessageSource source, Messa
     Ref<ScriptCallStack> callStack = createScriptCallStackForConsole(globalObject, stackSize);
     const ScriptCallFrame& lastCaller = callStack->at(0);
 
-    StringBuilder builder;
+    StringBuilder builder(StringBuilder::OverflowHandler::RecordOverflow);
 
     if (!lastCaller.sourceURL().isEmpty()) {
         appendURLAndPosition(builder, lastCaller.sourceURL(), lastCaller.lineNumber(), lastCaller.columnNumber());
-        builder.append(": ");
+        builder.append(": "_s);
     }
 
     appendMessagePrefix(builder, source, type, level);
@@ -226,7 +226,10 @@ void ConsoleClient::printConsoleMessageWithArguments(MessageSource source, Messa
         scope.clearException();
     }
 
-    WTFLogAlways("%s", builder.toString().utf8().data());
+    if (builder.hasOverflowed())
+        WTFLogAlways("Console message exceeded maximum length.");
+    else
+        WTFLogAlways("%s", builder.toString().utf8().data());
 
     if (isTraceMessage) {
         for (size_t i = 0; i < callStack->size(); ++i) {
@@ -236,7 +239,7 @@ void ConsoleClient::printConsoleMessageWithArguments(MessageSource source, Messa
                 functionName = "(unknown)"_s;
 
             StringBuilder callFrameBuilder;
-            callFrameBuilder.append(i, ": ", functionName, '(');
+            callFrameBuilder.append(i, ": "_s, functionName, '(');
             appendURLAndPosition(callFrameBuilder, callFrame.sourceURL(), callFrame.lineNumber(), callFrame.columnNumber());
             callFrameBuilder.append(')');
 

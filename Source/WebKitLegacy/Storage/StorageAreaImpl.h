@@ -25,6 +25,7 @@
 
 #pragma once
 
+#include "WebKit.h"
 #include <WebCore/SecurityOriginData.h>
 #include <WebCore/StorageArea.h>
 #include <WebCore/StorageMap.h>
@@ -43,15 +44,15 @@ class StorageAreaSync;
 
 class StorageAreaImpl : public WebCore::StorageArea {
 public:
-    static Ref<StorageAreaImpl> create(WebCore::StorageType, const WebCore::SecurityOriginData&, RefPtr<WebCore::StorageSyncManager>&&, unsigned quota);
+    static Ref<StorageAreaImpl> create(WebCore::StorageType, const WebCore::SecurityOrigin&, RefPtr<WebCore::StorageSyncManager>&&, unsigned quota);
     virtual ~StorageAreaImpl();
 
     unsigned length() override;
     String key(unsigned index) override;
     String item(const String& key) override;
-    void setItem(WebCore::Frame* sourceFrame, const String& key, const String& value, bool& quotaException) override;
-    void removeItem(WebCore::Frame* sourceFrame, const String& key) override;
-    void clear(WebCore::Frame* sourceFrame) override;
+    void setItem(WebCore::LocalFrame& sourceFrame, const String& key, const String& value, bool& quotaException) override;
+    void removeItem(WebCore::LocalFrame& sourceFrame, const String& key) override;
+    void clear(WebCore::LocalFrame& sourceFrame) override;
     bool contains(const String& key) override;
 
     WebCore::StorageType storageType() const override;
@@ -76,16 +77,16 @@ public:
     void sessionChanged(bool isNewSessionPersistent);
 
 private:
-    StorageAreaImpl(WebCore::StorageType, const WebCore::SecurityOriginData&, RefPtr<WebCore::StorageSyncManager>&&, unsigned quota);
+    StorageAreaImpl(WebCore::StorageType, const WebCore::SecurityOrigin&, RefPtr<WebCore::StorageSyncManager>&&, unsigned quota);
     explicit StorageAreaImpl(const StorageAreaImpl&);
 
     void blockUntilImportComplete() const;
     void closeDatabaseTimerFired();
 
-    void dispatchStorageEvent(const String& key, const String& oldValue, const String& newValue, WebCore::Frame* sourceFrame);
+    void dispatchStorageEvent(const String& key, const String& oldValue, const String& newValue, WebCore::LocalFrame& sourceFrame);
 
     WebCore::StorageType m_storageType;
-    WebCore::SecurityOriginData m_securityOrigin;
+    Ref<const WebCore::SecurityOrigin> m_securityOrigin;
     WebCore::StorageMap m_storageMap;
 
     RefPtr<StorageAreaSync> m_storageAreaSync;

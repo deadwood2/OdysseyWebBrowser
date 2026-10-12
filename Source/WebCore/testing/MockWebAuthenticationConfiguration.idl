@@ -75,6 +75,7 @@
     MockLocalConfiguration local;
     MockHidConfiguration hid;
     MockNfcConfiguration nfc;
+    MockCcidConfiguration ccid;
 };
 
 [
@@ -102,6 +103,9 @@
     boolean canDowngrade = false;
     boolean expectCancel = false;
     boolean supportClientPin = false;
+    boolean supportInternalUV = false;
+    long maxCredentialCountInList = 1;
+    long maxCredentialIdLength = 64;
 };
 
 [
@@ -111,4 +115,10 @@
     sequence<DOMString> payloadBase64;
     boolean multipleTags = false;
     boolean multiplePhysicalTags = false;
+};
+
+[
+    Conditional=WEB_AUTHN,
+] dictionary MockCcidConfiguration {
+    sequence<DOMString> payloadBase64;
 };

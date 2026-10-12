@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009-2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2009-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,19 +25,131 @@
 
 #pragma once
 
+#include <optional>
+#include <wtf/BitSet.h>
 #include <wtf/Forward.h>
-
-// This contains the values with which to compare the return value of applicationSDKVersion().
-#include <wtf/spi/darwin/dyldSPI.h>
 
 namespace WTF {
 
-// dyld_get_program_sdk_version() gives you the wrong answer in any process other than the UI process.
-// These functions are hooked up to give you the right answer.
-WTF_EXPORT_PRIVATE void setApplicationSDKVersion(uint32_t);
-WTF_EXPORT_PRIVATE uint32_t applicationSDKVersion();
+enum class SDKAlignedBehavior {
+    AllowsWheelEventGesturesToBecomeNonBlocking,
+    ApplicationStateTrackerDoesNotObserveWindow,
+    AuthorizationHeaderOnSameOriginRedirects,
+    BlanksViewOnJSPrompt,
+    BrowsingContextControllerSPIAccessRemoved,
+    ContextMenuTriggersLinkActivationNavigationType,
+    ConvertsInvalidURLsToBlank,
+    DataURLFragmentRemoval,
+    DecidesPolicyBeforeLoadingQuickLookPreview,
+    DefaultsToExcludingBackgroundsWhenPrinting,
+    DefaultsToPassiveTouchListenersOnDocument,
+    DefaultsToPassiveWheelListenersOnDocument,
+    DisallowsSettingAnyXHRHeaderFromFileURLs,
+    DoesNotDrainTheMicrotaskQueueWhenCallingObjC,
+    DoesNotParseStringEndingWithFullStopAsFloatingPointNumber,
+    DoesNotAddIntrinsicMarginsToFormControls,
+    DOMWindowReuseRestriction,
+    DownloadDelegatesCalledOnTheMainThread,
+    DropToNavigateDisallowedByDefault,
+    ExceptionsForDuplicateCompletionHandlerCalls,
+    ExceptionsForRelatedWebViewsUsingDifferentDataStores,
+    ExpiredOnlyReloadBehavior,
+    ForbidsDotPrefixedFonts,
+    FullySuspendsBackgroundContent,
+    FullySuspendsBackgroundContentImmediately,
+    HasUIContextMenuInteraction,
+    HTMLDocumentSupportedPropertyNames,
+    InitializeWebKit2MainThreadAssertion,
+    InspectableDefaultsToDisabled,
+    LazyGestureRecognizerInstallation,
+    LinkPreviewEnabledByDefault,
+    MainThreadReleaseAssertionInWebPageProxy,
+    MediaTypesRequiringUserActionForPlayback,
+    MinimizesLanguages,
+    ModernCompabilityModeByDefault,
+    NoClientCertificateLookup,
+    NoExpandoIndexedPropertiesOnWindow,
+    NoGetElementsByNameQuirk,
+    NoIMDbCSSOMViewScrollingQuirk,
+    NoLaBanquePostaleQuirks,
+    NoMoviStarPlusCORSPreflightQuirk,
+    NoPokerBrosBuiltInTagQuirk,
+    NoSearchInputIncrementalAttributeAndSearchEvent,
+    NoShowModalDialog,
+    NoTheSecretSocietyHiddenMysteryWindowOpenQuirk,
+    NoTypedArrayAPIQuirk,
+    NoUnconditionalUniversalSandboxExtension,
+    NoWeChatScrollingQuirk,
+    NoUNIQLOLazyIframeLoadingQuirk,
+    NullOriginForNonSpecialSchemedURLs,
+    ObservesClassProperty,
+    PictureInPictureMediaPlayback,
+    ProcessSwapOnCrossSiteNavigation,
+    PushStateFilePathRestriction,
+    RequiresUserGestureToLoadVideo,
+    RestrictsBaseURLSchemes,
+    RunningBoardThrottling,
+    ScrollViewContentInsetsAreNotObscuringInsets,
+    SendsNativeMouseEvents,
+    SessionCleanupByDefault,
+    SharedNetworkProcess,
+    SiteSpecificQuirksAreEnabledByDefault,
+    SnapshotAfterScreenUpdates,
+    SupportsDeviceOrientationAndMotionPermissionAPI,
+    SupportsInitConstructors,
+    SupportsiOSAppsOnMacOS,
+    SupportsOverflowHiddenOnMainFrame,
+    TimerThreadSafetyChecks,
+    UIScrollViewDoesNotApplyKeyboardInsetsUnconditionally,
+    UnprefixedPlaysInlineAttribute,
+    WebIconDatabaseWarning,
+    WebSQLDisabledByDefaultInLegacyWebKit,
+    WKContentViewDoesNotOverrideKeyCommands,
+    WKWebsiteDataStoreInitReturningNil,
+    UIBackForwardSkipsHistoryItemsWithoutUserGesture,
+    ProgrammaticFocusDuringUserScriptShowsInputViews,
+    UsesGameControllerPhysicalInputProfile,
+    ScreenOrientationAPIEnabled,
+    PopoverAttributeEnabled,
+    LiveRangeSelectionEnabledForAllApps,
+    DoesNotOverrideUAFromNSUserDefault,
+    EvaluateJavaScriptWithoutTransientActivation,
+    ResettingTransitionCancelsRunningTransitionQuirk,
+    OnlyLoadWellKnownAboutURLs,
+    AsyncFragmentNavigationPolicyDecision,
+    DoNotLoadStyleSheetIfHTTPStatusIsNotOK,
+    ScrollViewSubclassImplementsAddGestureRecognizer,
+    ThrowIfCanDeclareGlobalFunctionFails,
+    ThrowOnKVCInstanceVariableAccess,
+    LaxCookieSameSiteAttribute,
+    BlockOptionallyBlockableMixedContent,
+    UseCFNetworkNetworkLoader,
+    BlockCrossOriginRedirectDownloads,
+
+    NumberOfBehaviors
+};
+
+using SDKAlignedBehaviors = WTF::BitSet<static_cast<size_t>(SDKAlignedBehavior::NumberOfBehaviors), uint32_t>;
+
+WTF_EXPORT_PRIVATE const SDKAlignedBehaviors& sdkAlignedBehaviors();
+WTF_EXPORT_PRIVATE void setSDKAlignedBehaviors(SDKAlignedBehaviors);
+
+WTF_EXPORT_PRIVATE void enableAllSDKAlignedBehaviors();
+WTF_EXPORT_PRIVATE void disableAllSDKAlignedBehaviors();
+
+WTF_EXPORT_PRIVATE bool linkedOnOrAfterSDKWithBehavior(SDKAlignedBehavior);
+
+WTF_EXPORT_PRIVATE bool processIsExtension();
+WTF_EXPORT_PRIVATE void setProcessIsExtension(bool);
 
 }
 
-using WTF::setApplicationSDKVersion;
-using WTF::applicationSDKVersion;
+using WTF::disableAllSDKAlignedBehaviors;
+using WTF::enableAllSDKAlignedBehaviors;
+using WTF::linkedOnOrAfterSDKWithBehavior;
+using WTF::processIsExtension;
+using WTF::SDKAlignedBehavior;
+using WTF::sdkAlignedBehaviors;
+using WTF::SDKAlignedBehaviors;
+using WTF::setProcessIsExtension;
+using WTF::setSDKAlignedBehaviors;

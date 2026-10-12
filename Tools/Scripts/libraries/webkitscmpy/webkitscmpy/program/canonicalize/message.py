@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Copyright (C) 2020, 2021 Apple Inc. All rights reserved.
+# Copyright (C) 2020-2022 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -26,6 +26,7 @@ import os
 import sys
 
 from webkitscmpy.local import Git
+from webkitscmpy import Commit
 
 
 def main(inputfile, identifier_template):
@@ -56,10 +57,45 @@ def main(inputfile, identifier_template):
     if identifier_index and repository.GIT_SVN_REVISION.match(lines[-1]):
         identifier_index -= 1
 
+    # We're trying to cover cases where there is a space between link and git-svn-id:
+    #     <commit message content>
+    #
+    #     Canonical link: ...
+    #     git-svn-id: ...
+    # OR
+    #     <commit message content>
+    #     Canonical link: ...
+    #
+    #     git-svn-id: ...
     if identifier_index and lines[identifier_index - 1].startswith(identifier_template.format('').split(':')[0]):
         lines[identifier_index - 1] = identifier_template.format(commit)
+        identifier_index = identifier_index - 2
     else:
-        lines.insert(identifier_index, identifier_template.format(commit))
+        for index in [2, 3]:
+            if identifier_index - index > 0 and lines[identifier_index - index].startswith(identifier_template.format('').split(':')[0]):
+                del lines[identifier_index - index]
+                lines.insert(identifier_index - 1, identifier_template.format(commit))
+                identifier_index = identifier_index - 2
+                break
+        else:
+            lines.insert(identifier_index, identifier_template.format(commit))
+            identifier_index = identifier_index - 1
+
+    while identifier_index >= 0 and lines[identifier_index]:
+        if Commit.TRAILER_RE.match(lines[identifier_index]):
+            identifier_index -= 1
+        else:
+            lines.insert(identifier_index + 1, '')
+            break
+
+    # Turn multiple empty lines at the end of a commit into a single one
+    index = len(lines) - 1
+    while index and lines[index]:
+        index -= 1
+    index -= 1
+    while index and not lines[index]:
+        del lines[index]
+        index -= 1
 
     for line in lines:
         print(line)

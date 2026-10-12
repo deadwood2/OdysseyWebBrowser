@@ -42,6 +42,8 @@ namespace WTF {
     M(Process) \
     M(Threading) \
     M(MemoryPressure) \
+    M(SuspendableWorkQueue) \
+    M(NativePromise) \
 
 #undef DECLARE_LOG_CHANNEL
 #define DECLARE_LOG_CHANNEL(name) \

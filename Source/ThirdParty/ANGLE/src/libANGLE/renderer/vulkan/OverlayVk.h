@@ -25,34 +25,20 @@ class OverlayVk : public OverlayImpl
     OverlayVk(const gl::OverlayState &state);
     ~OverlayVk() override;
 
-    angle::Result init(const gl::Context *context) override;
     void onDestroy(const gl::Context *context) override;
 
     angle::Result onPresent(ContextVk *contextVk,
                             vk::ImageHelper *imageToPresent,
-                            const vk::ImageView *imageToPresentView);
+                            const vk::ImageView *imageToPresentView,
+                            bool is90DegreeRotation);
 
     uint32_t getEnabledWidgetCount() const { return mState.getEnabledWidgetCount(); }
 
   private:
     angle::Result createFont(ContextVk *contextVk);
-    angle::Result cullWidgets(ContextVk *contextVk);
-
-    bool mSupportsSubgroupBallot;
-    bool mSupportsSubgroupArithmetic;
-    bool mRefreshCulledWidgets;
-
-    // Cached size of subgroup as accepted by UtilsVk, deduced from hardware subgroup size.
-    uint32_t mSubgroupSize[2];
-
-    // Cached size of last presented image.  If the size changes, culling is repeated.
-    VkExtent2D mPresentImageExtent;
 
     vk::ImageHelper mFontImage;
     vk::ImageView mFontImageView;
-
-    vk::ImageHelper mCulledWidgets;
-    vk::ImageView mCulledWidgetsView;
 };
 
 }  // namespace rx

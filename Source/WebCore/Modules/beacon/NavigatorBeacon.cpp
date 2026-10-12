@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2017-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,11 +29,15 @@
 #include "CachedRawResource.h"
 #include "CachedResourceLoader.h"
 #include "Document.h"
-#include "Frame.h"
+#include "DocumentInlines.h"
+#include "DocumentLoader.h"
+#include "FrameDestructionObserverInlines.h"
 #include "HTTPParsers.h"
+#include "LocalFrame.h"
 #include "Navigator.h"
 #include "Page.h"
 #include <wtf/URL.h>
+#include <wtf/text/MakeString.h>
 
 namespace WebCore {
 
@@ -59,12 +63,12 @@ NavigatorBeacon* NavigatorBeacon::from(Navigator& navigator)
     return supplement;
 }
 
-const char* NavigatorBeacon::supplementName()
+ASCIILiteral NavigatorBeacon::supplementName()
 {
-    return "NavigatorBeacon";
+    return "NavigatorBeacon"_s;
 }
 
-void NavigatorBeacon::notifyFinished(CachedResource& resource, const NetworkLoadMetrics&)
+void NavigatorBeacon::notifyFinished(CachedResource& resource, const NetworkLoadMetrics&, LoadWillContinueInAnotherProcess)
 {
     if (!resource.resourceError().isNull())
         logError(resource.resourceError());
@@ -79,11 +83,11 @@ void NavigatorBeacon::logError(const ResourceError& error)
 {
     ASSERT(!error.isNull());
 
-    auto* frame = m_navigator.frame();
+    RefPtr frame = m_navigator.frame();
     if (!frame)
         return;
 
-    auto* document = frame->document();
+    RefPtr document = frame->document();
     if (!document)
         return;
 
@@ -106,22 +110,23 @@ ExceptionOr<bool> NavigatorBeacon::sendBeacon(Document& document, const String& 
     // Set parsedUrl to the result of the URL parser steps with url and base. If the algorithm returns an error, or if
     // parsedUrl's scheme is not "http" or "https", throw a "TypeError" exception and terminate these steps.
     if (!parsedUrl.isValid())
-        return Exception { TypeError, "This URL is invalid"_s };
+        return Exception { ExceptionCode::TypeError, "This URL is invalid"_s };
     if (!parsedUrl.protocolIsInHTTPFamily())
-        return Exception { TypeError, "Beacons can only be sent over HTTP(S)"_s };
+        return Exception { ExceptionCode::TypeError, "Beacons can only be sent over HTTP(S)"_s };
 
     if (!document.frame())
         return false;
 
-    auto& contentSecurityPolicy = *document.contentSecurityPolicy();
-    if (!document.shouldBypassMainWorldContentSecurityPolicy() && !contentSecurityPolicy.allowConnectToSource(parsedUrl)) {
+    if (!document.shouldBypassMainWorldContentSecurityPolicy() && !document.checkedContentSecurityPolicy()->allowConnectToSource(parsedUrl)) {
         // We simulate a network error so we return true here. This is consistent with Blink.
         return true;
     }
 
     ResourceRequest request(parsedUrl);
     request.setHTTPMethod("POST"_s);
-    request.setRequester(ResourceRequest::Requester::Beacon);
+    request.setRequester(ResourceRequestRequester::Beacon);
+    if (RefPtr documentLoader = document.loader())
+        request.setIsAppInitiated(documentLoader->lastNavigationWasAppInitiated());
 
     ResourceLoaderOptions options;
     options.credentials = FetchOptions::Credentials::Include;
@@ -136,18 +141,20 @@ ExceptionOr<bool> NavigatorBeacon::sendBeacon(Document& document, const String& 
         if (result.hasException())
             return result.releaseException();
         auto fetchBody = result.releaseReturnValue();
-        if (fetchBody.hasReadableStream())
-            return Exception { TypeError, "Beacons cannot send ReadableStream body"_s };
+        if (fetchBody.isReadableStream())
+            return Exception { ExceptionCode::TypeError, "Beacons cannot send ReadableStream body"_s };
 
         request.setHTTPBody(fetchBody.bodyAsFormData());
         if (!mimeType.isEmpty()) {
             request.setHTTPContentType(mimeType);
-            if (!isCrossOriginSafeRequestHeader(HTTPHeaderName::ContentType, mimeType))
+            if (!isCrossOriginSafeRequestHeader(HTTPHeaderName::ContentType, mimeType)) {
                 options.mode = FetchOptions::Mode::Cors;
+                options.httpHeadersToKeep.add(HTTPHeadersToKeepFromCleaning::ContentType);
+            }
         }
     }
 
-    auto cachedResource = document.cachedResourceLoader().requestBeaconResource({ WTFMove(request), options });
+    auto cachedResource = document.protectedCachedResourceLoader()->requestBeaconResource({ WTFMove(request), options });
     if (!cachedResource) {
         logError(cachedResource.error());
         return false;

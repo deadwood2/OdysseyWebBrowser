@@ -34,6 +34,7 @@
 
 namespace WebCore {
 
+class WeakPtrImplWithEventTargetData;
 class Navigator;
 
 class NavigatorCredentials final : public Supplement<Navigator> {
@@ -45,10 +46,10 @@ public:
     static CredentialsContainer* credentials(Navigator&);
 
 private:
-    CredentialsContainer* credentials(WeakPtr<Document>&&);
+    CredentialsContainer* credentials(WeakPtr<Document, WeakPtrImplWithEventTargetData>&&);
 
     static NavigatorCredentials* from(Navigator*);
-    static const char* supplementName();
+    static ASCIILiteral supplementName();
 
     RefPtr<CredentialsContainer> m_credentialsContainer;
 };

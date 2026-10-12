@@ -37,6 +37,7 @@
 #include <wtf/MathExtras.h>
 #include <wtf/MediaTime.h>
 #include <wtf/Nonmovable.h>
+#include <wtf/StdIntExtras.h>
 #include <wtf/StdLibExtras.h>
 #include <wtf/TriState.h>
 
@@ -72,7 +73,6 @@ class CLoop;
 
 struct ClassInfo;
 struct DumpContext;
-struct Instruction;
 struct MethodTable;
 enum class Unknown { };
 
@@ -87,7 +87,10 @@ enum PreferredPrimitiveType : uint8_t { NoPreference, PreferNumber, PreferString
 struct CallData;
 
 typedef int64_t EncodedJSValue;
-    
+
+inline void updateEncodedJSValueConcurrent(EncodedJSValue&, EncodedJSValue);
+inline void clearEncodedJSValueConcurrent(EncodedJSValue&);
+
 union EncodedValueDescriptor {
     int64_t asInt64;
 #if USE(JSVALUE32_64)
@@ -134,8 +137,10 @@ enum class SourceCodeRepresentation : uint8_t {
 };
 
 extern JS_EXPORT_PRIVATE const ASCIILiteral SymbolCoercionError;
+extern JS_EXPORT_PRIVATE std::atomic<unsigned> activeJSGlobalObjectSignpostIntervalCount;
 
 class JSValue {
+    friend struct OrderedHashTableTraits;
     friend struct EncodedJSValueHashTraits;
     friend struct EncodedJSValueWithRepresentationHashTraits;
     friend class AssemblyHelpers;
@@ -157,20 +162,30 @@ class JSValue {
 
 public:
 #if USE(JSVALUE32_64)
-    enum { Int32Tag =        0xffffffff };
-    enum { BooleanTag =      0xfffffffe };
-    enum { NullTag =         0xfffffffd };
-    enum { UndefinedTag =    0xfffffffc };
-    enum { CellTag =         0xfffffffb };
-    enum { EmptyValueTag =   0xfffffffa };
-    enum { DeletedValueTag = 0xfffffff9 };
+    static constexpr uint32_t Int32Tag =        0xffffffff;
+    static constexpr uint32_t BooleanTag =      0xfffffffe;
+    static constexpr uint32_t NullTag =         0xfffffffd;
+    static constexpr uint32_t UndefinedTag =    0xfffffffc;
+    static constexpr uint32_t CellTag =         0xfffffffb;
+    static constexpr uint32_t NativeCalleeTag = 0xfffffffa;
+    static constexpr uint32_t EmptyValueTag =   0xfffffff9;
+    static constexpr uint32_t DeletedValueTag = 0xfffffff8;
+    static constexpr uint32_t InvalidTag      = 0xfffffff7;
 
-    enum { LowestTag =  DeletedValueTag };
-
+    static constexpr uint32_t LowestTag =  InvalidTag;
 #endif
 
     static EncodedJSValue encode(JSValue);
     static JSValue decode(EncodedJSValue);
+
+    /* read a JSValue from storage not owned by this thread
+     * on 64-bit ports, or when JIT is not enabled, equivalent to
+     * JSValue::decode(*ptr) */
+#if USE(JSVALUE64) || !ENABLE(CONCURRENT_JS)
+    static JSValue decodeConcurrent(const EncodedJSValue*);
+#else
+    static JSValue decodeConcurrent(const volatile EncodedJSValue*);
+#endif
 
     enum JSNullTag { JSNull };
     enum JSUndefinedTag { JSUndefined };
@@ -181,6 +196,9 @@ public:
     enum EncodeAsBigInt32Tag { EncodeAsBigInt32 };
 #endif
     enum EncodeAsDoubleTag { EncodeAsDouble };
+#if ENABLE(WEBASSEMBLY) && USE(JSVALUE32_64)
+    enum EncodeAsUnboxedFloatTag { EncodeAsUnboxedFloat };
+#endif
 
     JSValue();
     JSValue(JSNullTag);
@@ -191,6 +209,9 @@ public:
     JSValue(const JSCell* ptr);
 #if USE(BIGINT32)
     JSValue(EncodeAsBigInt32Tag, int32_t);
+#endif
+#if ENABLE(WEBASSEMBLY) && USE(JSVALUE32_64)
+    JSValue(EncodeAsUnboxedFloatTag, float);
 #endif
 
     // Numbers
@@ -208,8 +229,7 @@ public:
     explicit JSValue(unsigned long long);
 
     explicit operator bool() const;
-    bool operator==(const JSValue& other) const;
-    bool operator!=(const JSValue& other) const;
+    bool operator==(const JSValue&) const;
 
     bool isInt32() const;
     bool isUInt32() const;
@@ -235,10 +255,10 @@ public:
 
     // Querying the type.
     bool isEmpty() const;
-    bool isCallable(VM&) const;
-    template<Concurrency> TriState isCallableWithConcurrency(VM&) const;
-    bool isConstructor(VM&) const;
-    template<Concurrency> TriState isConstructorWithConcurrency(VM&) const;
+    bool isCallable() const;
+    template<Concurrency> TriState isCallableWithConcurrency() const;
+    bool isConstructor() const;
+    template<Concurrency> TriState isConstructorWithConcurrency() const;
     bool isUndefined() const;
     bool isNull() const;
     bool isUndefinedOrNull() const;
@@ -251,14 +271,16 @@ public:
     bool isBigInt() const;
     bool isHeapBigInt() const;
     bool isBigInt32() const;
+    bool isZeroBigInt() const;
+    bool isNegativeBigInt() const;
     bool isSymbol() const;
     bool isPrimitive() const;
     bool isGetterSetter() const;
     bool isCustomGetterSetter() const;
     bool isObject() const;
-    bool inherits(VM&, const ClassInfo*) const;
-    template<typename Target> bool inherits(VM&) const;
-    const ClassInfo* classInfoOrNull(VM&) const;
+    bool inherits(const ClassInfo*) const;
+    template<typename Target> bool inherits() const;
+    const ClassInfo* classInfoOrNull() const;
 
     // Extracting the value.
     bool getString(JSGlobalObject*, WTF::String&) const;
@@ -289,19 +311,22 @@ public:
     Identifier toPropertyKey(JSGlobalObject*) const;
     JSValue toPropertyKeyValue(JSGlobalObject*) const;
     WTF::String toWTFString(JSGlobalObject*) const;
+    JS_EXPORT_PRIVATE WTF::String toWTFStringForConsole(JSGlobalObject*) const;
     JSObject* toObject(JSGlobalObject*) const;
 
     // Integer conversions.
     JS_EXPORT_PRIVATE double toIntegerPreserveNaN(JSGlobalObject*) const;
+    double toIntegerWithTruncation(JSGlobalObject*) const;
     double toIntegerOrInfinity(JSGlobalObject*) const;
     int32_t toInt32(JSGlobalObject*) const;
     uint32_t toUInt32(JSGlobalObject*) const;
-    uint32_t toIndex(JSGlobalObject*, const char* errorName) const;
-    double toLength(JSGlobalObject*) const;
+    uint32_t toIndex(JSGlobalObject*, ASCIILiteral errorName) const;
+    size_t toTypedArrayIndex(JSGlobalObject*, ASCIILiteral) const;
+    uint64_t toLength(JSGlobalObject*) const;
 
     JS_EXPORT_PRIVATE JSValue toBigInt(JSGlobalObject*) const;
     int64_t toBigInt64(JSGlobalObject*) const;
-    uint64_t toBigUInt64(JSGlobalObject*) const;
+    JS_EXPORT_PRIVATE uint64_t toBigUInt64(JSGlobalObject*) const;
 
     std::optional<uint32_t> toUInt32AfterToNumeric(JSGlobalObject*) const;
 
@@ -320,8 +345,8 @@ public:
     T getAs(JSGlobalObject*, PropertyNameType) const;
 
     bool getPropertySlot(JSGlobalObject*, PropertyName, PropertySlot&) const;
-    template<typename CallbackWhenNoException> typename std::result_of<CallbackWhenNoException(bool, PropertySlot&)>::type getPropertySlot(JSGlobalObject*, PropertyName, CallbackWhenNoException) const;
-    template<typename CallbackWhenNoException> typename std::result_of<CallbackWhenNoException(bool, PropertySlot&)>::type getPropertySlot(JSGlobalObject*, PropertyName, PropertySlot&, CallbackWhenNoException) const;
+    template<typename CallbackWhenNoException> typename std::invoke_result<CallbackWhenNoException, bool, PropertySlot&>::type getPropertySlot(JSGlobalObject*, PropertyName, CallbackWhenNoException) const;
+    template<typename CallbackWhenNoException> typename std::invoke_result<CallbackWhenNoException, bool, PropertySlot&>::type getPropertySlot(JSGlobalObject*, PropertyName, PropertySlot&, CallbackWhenNoException) const;
 
     bool getOwnPropertySlot(JSGlobalObject*, PropertyName, PropertySlot&) const;
 
@@ -344,7 +369,7 @@ public:
     bool isCell() const;
     JSCell* asCell() const;
 
-    Structure* structureOrNull(VM&) const;
+    Structure* structureOrNull() const;
 
     JS_EXPORT_PRIVATE void dump(PrintStream&) const;
     void dumpInContext(PrintStream&, DumpContext*) const;
@@ -360,8 +385,8 @@ public:
     static constexpr const int64_t notInt52 = static_cast<int64_t>(1) << numberOfInt52Bits;
     static constexpr const unsigned int52ShiftAmount = 12;
     
-    static ptrdiff_t offsetOfPayload() { return OBJECT_OFFSETOF(JSValue, u.asBits.payload); }
-    static ptrdiff_t offsetOfTag() { return OBJECT_OFFSETOF(JSValue, u.asBits.tag); }
+    static constexpr ptrdiff_t offsetOfPayload() { return OBJECT_OFFSETOF(JSValue, u.asBits.payload); }
+    static constexpr ptrdiff_t offsetOfTag() { return OBJECT_OFFSETOF(JSValue, u.asBits.tag); }
 
 #if USE(JSVALUE32_64)
     /*
@@ -403,7 +428,7 @@ public:
      * ranges to encode other values (however there are also other ranges of NaN space that
      * could have been selected).
      *
-     * This range of NaN space is represented by 64-bit numbers begining with the 15-bit
+     * This range of NaN space is represented by 64-bit numbers beginning with the 15-bit
      * hex patterns 0xFFFC and 0xFFFE - we rely on the fact that no valid double-precision
      * numbers will fall in these ranges.
      *
@@ -432,9 +457,9 @@ public:
      *     Null:      0x02
      *
      * These values have the following properties:
-     * - Bit 1 (OtherTag) is set for all four values, allowing real pointers to be
+     * - Bit 1 (0-indexed) is set (OtherTag) for all four values, allowing real pointers to be
      *   quickly distinguished from all immediate values, including these invalid pointers.
-     * - With bit 3 masked out (UndefinedTag), Undefined and Null share the
+     * - With bit 3 (0-indexed) masked out (UndefinedTag), Undefined and Null share the
      *   same value, allowing null & undefined to be quickly detected.
      *
      * No valid JSValue will have the bit pattern 0x0, this is used to represent array
@@ -462,7 +487,7 @@ public:
     static_assert(LowestOfHighBits & NumberTag);
     static_assert(!((LowestOfHighBits>>1) & NumberTag));
 
-    // All non-numeric (bool, null, undefined) immediates have bit 2 set.
+    // All non-numeric (bool, null, undefined) immediates have bit 1 (0-indexed) set.
     static constexpr int32_t OtherTag       = 0x2;
     static constexpr int32_t BoolTag        = 0x4;
     static constexpr int32_t UndefinedTag   = 0x8;
@@ -489,11 +514,11 @@ public:
     static constexpr int32_t ValueEmpty   = 0x0;
     static constexpr int32_t ValueDeleted = 0x4;
 
-    static constexpr int64_t WasmTag = OtherTag | 0x1;
-    static constexpr int64_t WasmMask = NumberTag | 0x7;
+    static constexpr int64_t NativeCalleeTag = OtherTag | 0x1;
+    static constexpr int64_t NativeCalleeMask = NumberTag | 0x7;
     // We tag Wasm non-JSCell pointers with a 3 at the bottom. We can test if a 64-bit JSValue pattern
     // is a Wasm callee by masking the upper 16 bits and the lower 3 bits, and seeing if
-    // the resulting value is 3. The full test is: x & WasmMask == WasmTag
+    // the resulting value is 3. The full test is: x & NativeCalleeMask == NativeCalleeTag
     // This works because the lower 3 bits of the non-number immediate values are as follows:
     // undefined: 0b010
     // null:      0b010
@@ -521,10 +546,47 @@ private:
     JS_EXPORT_PRIVATE JSString* toStringSlowCase(JSGlobalObject*, bool returnEmptyStringOnError) const;
     JS_EXPORT_PRIVATE WTF::String toWTFStringSlowCase(JSGlobalObject*) const;
     JS_EXPORT_PRIVATE JSObject* toObjectSlowCase(JSGlobalObject*) const;
-    JS_EXPORT_PRIVATE JSValue toThisSlowCase(JSGlobalObject*, ECMAMode) const;
+    JS_EXPORT_PRIVATE JSValue toThisSloppySlowCase(JSGlobalObject*) const;
 
     EncodedValueDescriptor u;
 };
+
+#if USE(JSVALUE32_64)
+struct OrderedHashTableTraits {
+    ALWAYS_INLINE static void set(JSValue* value, uint32_t number)
+    {
+        value->u.asBits.tag = JSValue::Int32Tag;
+        value->u.asBits.payload = number;
+    }
+    ALWAYS_INLINE static void increment(JSValue* value)
+    {
+        ASSERT(value->isInt32());
+        value->u.asBits.payload++;
+    }
+    ALWAYS_INLINE static void decrement(JSValue* value)
+    {
+        ASSERT(value->isInt32());
+        value->u.asBits.payload--;
+    }
+};
+#else
+struct OrderedHashTableTraits {
+    ALWAYS_INLINE static void set(JSValue* value, uint32_t number)
+    {
+        value->u.asInt64 = JSValue::NumberTag | number;
+    }
+    ALWAYS_INLINE static void increment(JSValue* value)
+    {
+        ASSERT(value->isInt32());
+        value->u.asInt64++;
+    }
+    ALWAYS_INLINE static void decrement(JSValue* value)
+    {
+        ASSERT(value->isInt32());
+        value->u.asInt64--;
+    }
+};
+#endif
 
 typedef IntHash<EncodedJSValue> EncodedJSValueHash;
 
@@ -588,6 +650,13 @@ inline JSValue jsBoolean(bool b)
 ALWAYS_INLINE JSValue jsBigInt32(int32_t intValue)
 {
     return JSValue(JSValue::EncodeAsBigInt32, intValue);
+}
+#endif
+
+#if ENABLE(WEBASSEMBLY) && USE(JSVALUE32_64)
+ALWAYS_INLINE JSValue wasmUnboxedFloat(float f)
+{
+    return JSValue(JSValue::EncodeAsUnboxedFloat, f);
 }
 #endif
 
@@ -672,16 +741,11 @@ ALWAYS_INLINE EncodedJSValue encodedJSValue()
 inline bool operator==(const JSValue a, const JSCell* b) { return a == JSValue(b); }
 inline bool operator==(const JSCell* a, const JSValue b) { return JSValue(a) == b; }
 
-inline bool operator!=(const JSValue a, const JSCell* b) { return a != JSValue(b); }
-inline bool operator!=(const JSCell* a, const JSValue b) { return JSValue(a) != b; }
-
-
 bool isThisValueAltered(const PutPropertySlot&, JSObject* baseObject);
 
 // See section 7.2.9: https://tc39.github.io/ecma262/#sec-samevalue
 bool sameValue(JSGlobalObject*, JSValue a, JSValue b);
 
-#if COMPILER(GCC_COMPATIBLE)
 ALWAYS_INLINE void ensureStillAliveHere(JSValue value)
 {
 #if USE(JSVALUE64)
@@ -690,9 +754,6 @@ ALWAYS_INLINE void ensureStillAliveHere(JSValue value)
     asm volatile ("" : : "g"(value.payload()) : "memory");
 #endif
 }
-#else
-JS_EXPORT_PRIVATE void ensureStillAliveHere(JSValue);
-#endif
 
 // Use EnsureStillAliveScope when you have a data structure that includes GC pointers, and you need
 // to remove it from the DOM and then use it in the same scope. For example, a 'once' event listener
@@ -717,5 +778,65 @@ public:
 private:
     JSValue m_value;
 };
+
+#if USE(JSVALUE64) || !ENABLE(CONCURRENT_JS)
+
+ALWAYS_INLINE JSValue JSValue::decodeConcurrent(const EncodedJSValue* encodedJSValue)
+{
+    return JSValue::decode(*encodedJSValue);
+}
+
+ALWAYS_INLINE void updateEncodedJSValueConcurrent(EncodedJSValue& dest, EncodedJSValue value)
+{
+    dest = value;
+}
+
+ALWAYS_INLINE void clearEncodedJSValueConcurrent(EncodedJSValue& dest)
+{
+    dest = JSValue::encode(JSValue());
+}
+
+#elif USE(JSVALUE32_64)
+
+inline JSValue JSValue::decodeConcurrent(const volatile EncodedJSValue *encodedJSValue)
+{
+    for (;;) {
+        auto v = JSValue::decode(reinterpret_cast<const volatile std::atomic<EncodedJSValue>*>(encodedJSValue)->load());
+        if (v.tag() != InvalidTag)
+            return v;
+    }
+}
+
+inline void updateEncodedJSValueConcurrent(EncodedJSValue& dest, EncodedJSValue value)
+{
+    auto destDesc = const_cast<volatile EncodedValueDescriptor*>(reinterpret_cast<EncodedValueDescriptor*>(&dest));
+
+    EncodedValueDescriptor desc;
+    memcpy(&desc, &value, sizeof(value));
+
+    auto destTag = const_cast<volatile int32_t*>(&destDesc->asBits.tag);
+    auto destPayload = const_cast<volatile int32_t*>(&destDesc->asBits.payload);
+
+    *destTag = JSValue::InvalidTag;
+    WTF::storeStoreFence();
+    *destPayload = desc.asBits.payload;
+    WTF::storeStoreFence();
+    *destTag = desc.asBits.tag;
+}
+
+inline void clearEncodedJSValueConcurrent(EncodedJSValue& dest)
+{
+    auto destDesc = const_cast<volatile EncodedValueDescriptor*>(reinterpret_cast<EncodedValueDescriptor*>(&dest));
+    auto destTag = const_cast<volatile int32_t*>(&destDesc->asBits.tag);
+    auto destPayload = const_cast<volatile int32_t*>(&destDesc->asBits.payload);
+
+    *destTag = JSValue::EmptyValueTag;
+    WTF::storeStoreFence();
+    *destPayload = 0;
+}
+
+#else
+#  error "Unsupported configuration"
+#endif
 
 } // namespace JSC

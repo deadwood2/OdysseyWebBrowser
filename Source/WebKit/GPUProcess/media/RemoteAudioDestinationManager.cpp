@@ -30,16 +30,21 @@
 
 #include "GPUConnectionToWebProcess.h"
 #include "GPUProcess.h"
+#include "Logging.h"
 #include <WebCore/AudioUtilities.h>
+#include <wtf/LoggerHelper.h>
+#include <wtf/TZoneMallocInlines.h>
 #include <wtf/ThreadSafeRefCounted.h>
 
 #if PLATFORM(COCOA)
-#include "SharedRingBufferStorage.h"
+#include "SharedCARingBuffer.h"
 #include <WebCore/AudioOutputUnitAdaptor.h>
 #include <WebCore/CAAudioStreamDescription.h>
 #include <WebCore/CARingBuffer.h>
 #include <WebCore/WebAudioBufferList.h>
 #endif
+
+#define MESSAGE_CHECK(assertion, message) MESSAGE_CHECK_WITH_MESSAGE_BASE(assertion, &connection->connection(), message)
 
 namespace WebKit {
 
@@ -48,17 +53,19 @@ class RemoteAudioDestination final
     : public WebCore::AudioUnitRenderer
 #endif
 {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED_INLINE(RemoteAudioDestination);
 public:
-    RemoteAudioDestination(GPUConnectionToWebProcess&, RemoteAudioDestinationIdentifier identifier, const String& inputDeviceId, uint32_t numberOfInputChannels, uint32_t numberOfOutputChannels, float sampleRate, float hardwareSampleRate, IPC::Semaphore&& renderSemaphore)
-        : m_id(identifier)
+    RemoteAudioDestination(GPUConnectionToWebProcess& connection, const String& inputDeviceId, uint32_t numberOfInputChannels, uint32_t numberOfOutputChannels, float sampleRate, float hardwareSampleRate, IPC::Semaphore&& renderSemaphore)
+        : m_renderSemaphore(WTFMove(renderSemaphore))
+        , m_logger(connection.logger())
+        , m_logIdentifier(LoggerHelper::uniqueLogIdentifier())
 #if PLATFORM(COCOA)
         , m_audioOutputUnitAdaptor(*this)
-        , m_ringBuffer(makeUniqueRef<WebCore::CARingBuffer>())
+        , m_numOutputChannels(numberOfOutputChannels)
 #endif
-        , m_renderSemaphore(WTFMove(renderSemaphore))
     {
         ASSERT(isMainRunLoop());
+        ALWAYS_LOG(LOGIDENTIFIER);
 #if PLATFORM(COCOA)
         m_audioOutputUnitAdaptor.configure(hardwareSampleRate, numberOfOutputChannels);
 #endif
@@ -67,24 +74,46 @@ public:
     ~RemoteAudioDestination()
     {
         ASSERT(isMainRunLoop());
+        ALWAYS_LOG(LOGIDENTIFIER);
         // Make sure we stop audio rendering and wait for it to finish before destruction.
         if (m_isPlaying)
             stop();
     }
 
 #if PLATFORM(COCOA)
-    void audioSamplesStorageChanged(const SharedMemory::IPCHandle& ipcHandle, const WebCore::CAAudioStreamDescription& description, uint64_t numberOfFrames)
+    void setSharedMemory(WebCore::SharedMemory::Handle&& handle)
     {
-        m_ringBuffer = WebCore::CARingBuffer::adoptStorage(makeUniqueRef<ReadOnlySharedRingBufferStorage>(ipcHandle.handle), description, numberOfFrames);
+        m_frameCount = WebCore::SharedMemory::map(WTFMove(handle), WebCore::SharedMemory::Protection::ReadWrite);
+    }
+
+    void audioSamplesStorageChanged(ConsumerSharedCARingBuffer::Handle&& handle)
+    {
+        bool wasPlaying = m_isPlaying;
+        if (m_isPlaying) {
+            stop();
+            ASSERT(!m_isPlaying);
+            if (m_isPlaying)
+                return;
+        }
+        m_ringBuffer = ConsumerSharedCARingBuffer::map(sizeof(Float32), m_numOutputChannels, WTFMove(handle));
+        if (!m_ringBuffer)
+            return;
+        if (wasPlaying) {
+            start();
+            ASSERT(m_isPlaying);
+        }
     }
 #endif
 
     void start()
     {
 #if PLATFORM(COCOA)
-        if (m_audioOutputUnitAdaptor.start())
+        if (m_audioOutputUnitAdaptor.start()) {
+            ERROR_LOG(LOGIDENTIFIER, "Failed to start AudioOutputUnit");
             return;
+        }
 
+        ALWAYS_LOG(LOGIDENTIFIER);
         m_isPlaying = true;
 #endif
     }
@@ -92,9 +121,12 @@ public:
     void stop()
     {
 #if PLATFORM(COCOA)
-        if (m_audioOutputUnitAdaptor.stop())
+        if (m_audioOutputUnitAdaptor.stop()) {
+            ERROR_LOG(LOGIDENTIFIER, "Failed to stop AudioOutputUnit");
             return;
+        }
 
+        ALWAYS_LOG(LOGIDENTIFIER);
         m_isPlaying = false;
 #endif
     }
@@ -103,6 +135,15 @@ public:
 
 private:
 #if PLATFORM(COCOA)
+    void incrementTotalFrameCount(UInt32 numberOfFrames)
+    {
+        static_assert(std::atomic<UInt32>::is_always_lock_free, "Shared memory atomic usage assumes lock free primitives are used");
+        if (m_frameCount) {
+            RELEASE_ASSERT(m_frameCount->size() == sizeof(std::atomic<uint32_t>));
+            WTF::atomicExchangeAdd(reinterpret_cast<uint32_t*>(m_frameCount->mutableSpan().data()), numberOfFrames);
+        }
+    }
+
     OSStatus render(double sampleTime, uint64_t hostTime, UInt32 numberOfFrames, AudioBufferList* ioData)
     {
         ASSERT(!isMainRunLoop());
@@ -113,27 +154,33 @@ private:
             status = noErr;
         }
 
-        for (unsigned i = 0; i < numberOfFrames; i += WebCore::AudioUtilities::renderQuantumSize) {
-            // Ask the audio thread in the WebContent process to render a quantum.
-            m_renderSemaphore.signal();
-        }
+        incrementTotalFrameCount(numberOfFrames);
+        m_renderSemaphore.signal();
 
         return status;
     }
 #endif
 
-    RemoteAudioDestinationIdentifier m_id;
+    Logger& logger() const { return m_logger; }
+    const void* logIdentifier() const { return m_logIdentifier; }
+    ASCIILiteral logClassName() const { return "RemoteAudioDestination"_s; }
+    WTFLogChannel& logChannel() const { return WebKit2LogMedia; }
+
+    IPC::Semaphore m_renderSemaphore;
+    bool m_isPlaying { false };
+    Ref<Logger> m_logger;
+    const void* m_logIdentifier;
 
 #if PLATFORM(COCOA)
     WebCore::AudioOutputUnitAdaptor m_audioOutputUnitAdaptor;
-
-    UniqueRef<WebCore::CARingBuffer> m_ringBuffer;
+    RefPtr<WebCore::SharedMemory> m_frameCount;
+    const uint32_t m_numOutputChannels;
+    std::unique_ptr<ConsumerSharedCARingBuffer> m_ringBuffer;
     uint64_t m_startFrame { 0 };
 #endif
-    IPC::Semaphore m_renderSemaphore;
-
-    bool m_isPlaying { false };
 };
+
+WTF_MAKE_TZONE_ALLOCATED_IMPL(RemoteAudioDestinationManager);
 
 RemoteAudioDestinationManager::RemoteAudioDestinationManager(GPUConnectionToWebProcess& connection)
     : m_gpuConnectionToWebProcess(connection)
@@ -142,25 +189,42 @@ RemoteAudioDestinationManager::RemoteAudioDestinationManager(GPUConnectionToWebP
 
 RemoteAudioDestinationManager::~RemoteAudioDestinationManager() = default;
 
-void RemoteAudioDestinationManager::createAudioDestination(const String& inputDeviceId, uint32_t numberOfInputChannels, uint32_t numberOfOutputChannels, float sampleRate, float hardwareSampleRate, IPC::Semaphore&& renderSemaphore, CompletionHandler<void(const WebKit::RemoteAudioDestinationIdentifier)>&& completionHandler)
+void RemoteAudioDestinationManager::createAudioDestination(RemoteAudioDestinationIdentifier identifier, const String& inputDeviceId, uint32_t numberOfInputChannels, uint32_t numberOfOutputChannels, float sampleRate, float hardwareSampleRate, IPC::Semaphore&& renderSemaphore, WebCore::SharedMemory::Handle&& handle)
 {
-    auto newID = RemoteAudioDestinationIdentifier::generateThreadSafe();
-    auto destination = makeUniqueRef<RemoteAudioDestination>(m_gpuConnectionToWebProcess, newID, inputDeviceId, numberOfInputChannels, numberOfOutputChannels, sampleRate, hardwareSampleRate, WTFMove(renderSemaphore));
-    m_audioDestinations.add(newID, WTFMove(destination));
-    completionHandler(newID);
+    auto connection = m_gpuConnectionToWebProcess.get();
+    if (!connection)
+        return;
+    MESSAGE_CHECK(!connection->isLockdownModeEnabled(), "Received a createAudioDestination() message from a webpage in Lockdown mode.");
+
+    auto destination = makeUniqueRef<RemoteAudioDestination>(*connection, inputDeviceId, numberOfInputChannels, numberOfOutputChannels, sampleRate, hardwareSampleRate, WTFMove(renderSemaphore));
+#if PLATFORM(COCOA)
+    destination->setSharedMemory(WTFMove(handle));
+#else
+    UNUSED_PARAM(handle);
+#endif
+    m_audioDestinations.add(identifier, WTFMove(destination));
 }
 
-void RemoteAudioDestinationManager::deleteAudioDestination(RemoteAudioDestinationIdentifier identifier, CompletionHandler<void()>&& completionHandler)
+void RemoteAudioDestinationManager::deleteAudioDestination(RemoteAudioDestinationIdentifier identifier)
 {
+    auto connection = m_gpuConnectionToWebProcess.get();
+    if (!connection)
+        return;
+    MESSAGE_CHECK(!connection->isLockdownModeEnabled(), "Received a deleteAudioDestination() message from a webpage in Lockdown mode.");
+
     m_audioDestinations.remove(identifier);
-    completionHandler();
 
     if (allowsExitUnderMemoryPressure())
-        m_gpuConnectionToWebProcess.gpuProcess().tryExitIfUnusedAndUnderMemoryPressure();
+        connection->gpuProcess().tryExitIfUnusedAndUnderMemoryPressure();
 }
 
 void RemoteAudioDestinationManager::startAudioDestination(RemoteAudioDestinationIdentifier identifier, CompletionHandler<void(bool)>&& completionHandler)
 {
+    auto connection = m_gpuConnectionToWebProcess.get();
+    if (!connection)
+        return completionHandler(false);
+    MESSAGE_CHECK(!connection->isLockdownModeEnabled(), "Received a startAudioDestination() message from a webpage in Lockdown mode.");
+
     bool isPlaying = false;
     if (auto* item = m_audioDestinations.get(identifier)) {
         item->start();
@@ -171,6 +235,11 @@ void RemoteAudioDestinationManager::startAudioDestination(RemoteAudioDestination
 
 void RemoteAudioDestinationManager::stopAudioDestination(RemoteAudioDestinationIdentifier identifier, CompletionHandler<void(bool)>&& completionHandler)
 {
+    auto connection = m_gpuConnectionToWebProcess.get();
+    if (!connection)
+        return completionHandler(false);
+    MESSAGE_CHECK(!connection->isLockdownModeEnabled(), "Received a stopAudioDestination() message from a webpage in Lockdown mode.");
+
     bool isPlaying = false;
     if (auto* item = m_audioDestinations.get(identifier)) {
         item->stop();
@@ -180,10 +249,10 @@ void RemoteAudioDestinationManager::stopAudioDestination(RemoteAudioDestinationI
 }
 
 #if PLATFORM(COCOA)
-void RemoteAudioDestinationManager::audioSamplesStorageChanged(RemoteAudioDestinationIdentifier identifier, const SharedMemory::IPCHandle& ipcHandle, const WebCore::CAAudioStreamDescription& description, uint64_t numberOfFrames)
+void RemoteAudioDestinationManager::audioSamplesStorageChanged(RemoteAudioDestinationIdentifier identifier, ConsumerSharedCARingBuffer::Handle&& handle)
 {
     if (auto* item = m_audioDestinations.get(identifier))
-        item->audioSamplesStorageChanged(ipcHandle, description, numberOfFrames);
+        item->audioSamplesStorageChanged(WTFMove(handle));
 }
 #endif
 
@@ -197,5 +266,7 @@ bool RemoteAudioDestinationManager::allowsExitUnderMemoryPressure() const
 }
 
 } // namespace WebKit
+
+#undef MESSAGE_CHECK
 
 #endif // ENABLE(GPU_PROCESS) && ENABLE(WEB_AUDIO)

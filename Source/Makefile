@@ -1,3 +1,14 @@
+ifeq ($(MAKECMDGOALS),installsrc)
+USE_WORKSPACE = NO
+endif
+
+ifneq ($(USE_WORKSPACE),NO)
+
+include ../Makefile.shared
+SCHEME = Everything up to WebKit
+
+else
+
 WEBINSPECTORUI_MODULE =
 
 TO_LOWER = $(shell echo $(1) | tr [:upper:] [:lower:])
@@ -17,7 +28,7 @@ ifeq (iosmac,$(SDK_VARIANT))
 	WEBINSPECTORUI_MODULE =
 endif
 
-MODULES = bmalloc WTF JavaScriptCore ThirdParty WebCore $(WEBINSPECTORUI_MODULE) WebKitLegacy WebKit
+MODULES = bmalloc WTF JavaScriptCore WebGPU ThirdParty WebCore $(WEBINSPECTORUI_MODULE) WebKitLegacy WebKit
 
 define build_target_for_each_module
 	for dir in $(MODULES); do \
@@ -51,3 +62,5 @@ clean:
 installsrc:
 	@$(build_target_for_each_module)
 	cp -R ../Source/cmake $(SRCROOT)/Source/
+
+endif # USE_WORKSPACE

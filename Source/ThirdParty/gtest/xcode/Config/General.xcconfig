@@ -7,19 +7,11 @@
 //  http://code.google.com/p/google-toolbox-for-mac/
 //
 
-#include? "../../../../../../Internal/Configurations/HaveInternalSDK.xcconfig"
-#include "SDKVariant.xcconfig"
-
-USE_INTERNAL_SDK = $(USE_INTERNAL_SDK_$(CONFIGURATION));
-USE_INTERNAL_SDK_Production = YES;
-USE_INTERNAL_SDK_Debug = $(HAVE_INTERNAL_SDK);
-USE_INTERNAL_SDK_Release = $(HAVE_INTERNAL_SDK);
+#include "../../../../../Configurations/CommonBase.xcconfig"
 
 GCC_VERSION = com.apple.compilers.llvm.clang.1_0;
 
-ARCHS = $(ARCHS_STANDARD_32_64_BIT);
-
-HEADER_SEARCH_PATHS = $(BUILT_PRODUCTS_DIR)/usr/local/include ../ ../include/
+HEADER_SEARCH_PATHS = ../ ../include/ $(BUILT_PRODUCTS_DIR)/usr/local/include
 
 // Zerolink prevents link warnings so turn it off
 ZERO_LINK = NO
@@ -28,7 +20,7 @@ ZERO_LINK = NO
 PREBINDING = NO
 
 // Strictest warning policy
-WARNING_CFLAGS = -Wall -Werror -Wendif-labels -Wnewline-eof -Wno-sign-compare -Wshadow;
+WARNING_CFLAGS = $(inherited) $(WK_FIXME_WARNING_CFLAGS) -Wendif-labels -Wnewline-eof -Wshadow;
 CLANG_WARN_BOOL_CONVERSION = YES;
 CLANG_WARN_CONSTANT_CONVERSION = YES;
 CLANG_WARN_EMPTY_BODY = YES;
@@ -37,12 +29,16 @@ CLANG_WARN_INT_CONVERSION = YES;
 CLANG_WARN_STRICT_PROTOTYPES = YES;
 CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 ENABLE_STRICT_OBJC_MSGSEND = YES;
+GCC_TREAT_WARNINGS_AS_ERRORS = YES;
 GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
 GCC_WARN_ABOUT_RETURN_TYPE = YES;
 GCC_WARN_UNDECLARED_SELECTOR = YES;
 GCC_WARN_UNINITIALIZED_AUTOS = YES;
 GCC_WARN_UNUSED_FUNCTION = YES;
 GCC_WARN_UNUSED_VARIABLE = YES;
+
+// Remove WK_FIXME_WARNING_CFLAGS once all warnings are fixed.
+WK_FIXME_WARNING_CFLAGS = -Wno-sign-compare -Wno-undef;
 
 // Work around Xcode bugs by using external strip. See:
 // http://lists.apple.com/archives/Xcode-users/2006/Feb/msg00050.html
@@ -52,7 +48,7 @@ SEPARATE_STRIP = YES
 GCC_C_LANGUAGE_STANDARD = c99
 
 // Force C++14
-CLANG_CXX_LANGUAGE_STANDARD = gnu++1z;
+CLANG_CXX_LANGUAGE_STANDARD = c++2b;
 
 // not sure why apple defaults this on, but it's pretty risky
 ALWAYS_SEARCH_USER_PATHS = NO
@@ -62,24 +58,12 @@ GCC_DYNAMIC_NO_PIC = YES
 
 CLANG_CXX_LIBRARY = libc++;
 
-// FIXME: Once <rdar://problem/70185899> is fixed, replace the following with
-// TARGET_MAC_OS_X_VERSION_MAJOR = $(MAC_OS_X_VERSION_MAJOR)
-TARGET_MACOS_11_VERSION_MAJOR = $(TARGET_MACOS_11_VERSION_MAJOR_$(MAC_OS_X_VERSION_MAJOR))
-TARGET_MACOS_11_VERSION_MAJOR_110100 = 110000
-TARGET_MACOS_11_VERSION_MAJOR_110200 = 110000
-TARGET_MACOS_11_VERSION_MAJOR_110300 = 110000
-TARGET_MACOS_11_VERSION_MAJOR_110400 = 110000
-TARGET_MACOS_11_VERSION_MAJOR_110500 = 110000
-TARGET_MACOS_11_VERSION_MAJOR_110600 = 110000
-
-TARGET_MAC_OS_X_VERSION_MAJOR = $(TARGET_MAC_OS_X_VERSION_MAJOR_$(TARGET_MACOS_11_VERSION_MAJOR))
-TARGET_MAC_OS_X_VERSION_MAJOR_110000 = 110000
-TARGET_MAC_OS_X_VERSION_MAJOR_ = $(MAC_OS_X_VERSION_MAJOR)
-
 COMBINE_HIDPI_IMAGES = YES;
 
 // VERSIONING BUILD SETTINGS (used in Info.plist)
 GTEST_VERSIONINFO_ABOUT =  © 2008 Google Inc.
 
-SUPPORTED_PLATFORMS = iphoneos iphonesimulator macosx appletvos appletvsimulator watchos watchsimulator;
+PRODUCT_BUNDLE_IDENTIFIER = com.google.$(PRODUCT_NAME:rfc1034identifier);
+
+SUPPORTED_PLATFORMS = iphoneos iphonesimulator macosx appletvos appletvsimulator watchos watchsimulator xros xrsimulator;
 SUPPORTS_MACCATALYST = YES;
