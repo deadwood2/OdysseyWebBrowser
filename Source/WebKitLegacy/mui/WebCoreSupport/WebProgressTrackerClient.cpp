@@ -41,7 +41,7 @@ WebProgressTrackerClient::~WebProgressTrackerClient()
 {
 }
 
-void WebProgressTrackerClient::progressStarted(WebCore::Frame&)
+void WebProgressTrackerClient::progressStarted(WebCore::LocalFrame&)
 {
 #ifdef BENCH_LOAD_TIME
     gettimeofday(&m_timerStart, NULL);
@@ -54,14 +54,14 @@ void WebProgressTrackerClient::progressStarted(WebCore::Frame&)
         webNotificationDelegate->startLoadNotification(m_webFrame);
 }
 
-void WebProgressTrackerClient::progressEstimateChanged(WebCore::Frame&)
+void WebProgressTrackerClient::progressEstimateChanged(WebCore::LocalFrame&)
 {
     SharedPtr<WebNotificationDelegate> webNotificationDelegate = m_webFrame->webView()->webNotificationDelegate();
     if (webNotificationDelegate)
         webNotificationDelegate->progressNotification(m_webFrame);
 }
 
-void WebProgressTrackerClient::progressFinished(WebCore::Frame&)
+void WebProgressTrackerClient::progressFinished(WebCore::LocalFrame&)
 {
     SharedPtr<WebNotificationDelegate> webNotificationDelegate = m_webFrame->webView()->webNotificationDelegate();
     if (webNotificationDelegate)

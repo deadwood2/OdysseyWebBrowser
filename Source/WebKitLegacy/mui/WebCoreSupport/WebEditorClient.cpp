@@ -135,12 +135,12 @@ void WebEditorUndoTarget::clear()
     m_actionName.clear();
 }
 
-bool WebEditorClient::canCopyCut(Frame*, bool defaultValue) const 
+bool WebEditorClient::canCopyCut(LocalFrame*, bool defaultValue) const 
 {
     return defaultValue;
 }
 
-bool WebEditorClient::canPaste(Frame*, bool defaultValue) const 
+bool WebEditorClient::canPaste(LocalFrame*, bool defaultValue) const 
 {
     return defaultValue;
 }
@@ -273,7 +273,7 @@ void WebEditorClient::respondToChangedContents()
         editing->webViewDidChange();
 }
 
-void WebEditorClient::respondToChangedSelection(Frame*)
+void WebEditorClient::respondToChangedSelection(LocalFrame*)
 {
     m_webView->selectionChanged();
     SharedPtr<WebEditingDelegate> editing = m_webView->webEditingDelegate();
@@ -281,7 +281,7 @@ void WebEditorClient::respondToChangedSelection(Frame*)
         editing->webViewDidChangeSelection();
 }
 
-void WebEditorClient::discardedComposition(Frame*)
+void WebEditorClient::discardedComposition(const Document&)
 {
     notImplemented();
 }
@@ -304,7 +304,7 @@ void WebEditorClient::willWriteSelectionToPasteboard(const std::optional<WebCore
     notImplemented();
 }
 
-void WebEditorClient::getClientPasteboardData(const std::optional<WebCore::SimpleRange>&, Vector<String>&, Vector<RefPtr<WebCore::SharedBuffer> >&)
+void WebEditorClient::getClientPasteboardData(const std::optional<WebCore::SimpleRange>&, Vector<std::pair<String, RefPtr<WebCore::SharedBuffer>>>&)
 {
     notImplemented();
 }
@@ -405,8 +405,10 @@ bool WebEditorClient::shouldChangeSelectedRange(const std::optional<WebCore::Sim
     return true; 
 }
 
-void WebEditorClient::textFieldDidBeginEditing(Element* e)
+void WebEditorClient::textFieldDidBeginEditing(Element& eRef)
 {
+    Element* e = &eRef;
+    UNUSED_VARIABLE(e);
     /*IWebFormDelegate* formDelegate;
     if (SUCCEEDED(m_webView->formDelegate(&formDelegate)) && formDelegate) {
         IDOMElement* domElement = DOMElement::createInstance(e);
@@ -422,27 +424,35 @@ void WebEditorClient::textFieldDidBeginEditing(Element* e)
     }*/
 }
 
-void WebEditorClient::textFieldDidEndEditing(Element* element)
+void WebEditorClient::textFieldDidEndEditing(Element& elementRef)
 {
+    Element* element = &elementRef;
+    UNUSED_VARIABLE(element);
     DoMethod(m_webView->viewWindow()->browser, MM_OWBBrowser_Autofill_HidePopup);
 }
 
-void WebEditorClient::textDidChangeInTextField(Element* element)
+void WebEditorClient::textDidChangeInTextField(Element& elementRef)
 {
+    Element* element = &elementRef;
+    UNUSED_VARIABLE(element);
     if (HTMLInputElement* inputElement = downcast<HTMLInputElement>(element))
     {
         DoMethod(m_webView->viewWindow()->browser, MM_OWBBrowser_Autofill_DidChangeInTextField, inputElement);
     }
 }
 
-bool WebEditorClient::doTextFieldCommandFromEvent(Element* e, KeyboardEvent* ke)
+bool WebEditorClient::doTextFieldCommandFromEvent(Element& eRef, KeyboardEvent* ke)
 {
+    Element* e = &eRef;
+    UNUSED_VARIABLE(e);
     // XXX: any better place to catch the event?
     return DoMethod(m_webView->viewWindow()->browser, MM_OWBBrowser_Autofill_HandleNavigationEvent, ke);
 }
 
-void WebEditorClient::textWillBeDeletedInTextField(Element* e)
+void WebEditorClient::textWillBeDeletedInTextField(Element& eRef)
 {
+    Element* e = &eRef;
+    UNUSED_VARIABLE(e);
     // We're using the deleteBackward command for all deletion operations since the autofill code treats all deletions the same way.
     /*IWebFormDelegate* formDelegate;
     if (SUCCEEDED(m_webView->formDelegate(&formDelegate)) && formDelegate) {
@@ -460,8 +470,10 @@ void WebEditorClient::textWillBeDeletedInTextField(Element* e)
     }*/
 }
 
-void WebEditorClient::textDidChangeInTextArea(Element* e)
+void WebEditorClient::textDidChangeInTextArea(Element& eRef)
 {
+    Element* e = &eRef;
+    UNUSED_VARIABLE(e);
     /*IWebFormDelegate* formDelegate;
     if (SUCCEEDED(m_webView->formDelegate(&formDelegate)) && formDelegate) {
         IDOMElement* domElement = DOMElement::createInstance(e);
@@ -484,36 +496,36 @@ static String undoNameForEditAction(EditAction editAction)
     switch (editAction) {
         case EditAction::Unspecified: 
         case EditAction::InsertReplacement:
-            return "";
-        case EditAction::SetColor: return "Set Color";
-        case EditAction::SetBackgroundColor: return "Set Background Color";
-        case EditAction::TurnOffKerning: return "Turn Off Kerning";
-        case EditAction::TightenKerning: return "Tighten Kerning";
-        case EditAction::LoosenKerning: return "Loosen Kerning";
-        case EditAction::UseStandardKerning: return "Use Standard Kerning";
-        case EditAction::TurnOffLigatures: return "Turn Off Ligatures";
-        case EditAction::UseStandardLigatures: return "Use Standard Ligatures";
-        case EditAction::UseAllLigatures: return "Use All Ligatures";
-        case EditAction::RaiseBaseline: return "Raise Baseline";
-        case EditAction::LowerBaseline: return "Lower Baseline";
-        case EditAction::SetTraditionalCharacterShape: return "Set Traditional Character Shape";
-        case EditAction::SetFont: return "Set Font";
-        case EditAction::ChangeAttributes: return "Change Attributes";
-        case EditAction::AlignLeft: return "Align Left";
-        case EditAction::AlignRight: return "Align Right";
-        case EditAction::Center: return "Center";
-        case EditAction::Justify: return "Justify";
-        case EditAction::SetBlockWritingDirection: return "Set Writing Direction";
-        case EditAction::Subscript: return "Subscript";
-        case EditAction::Superscript: return "Superscript";
-        case EditAction::Underline: return "Underline";
-        case EditAction::Outline: return "Outline";
-        case EditAction::Unscript: return "Unscript";
-        case EditAction::DeleteByDrag: return "Drag";
-        case EditAction::Cut: return "Cut";
-        case EditAction::Paste: return "Paste";
-        case EditAction::PasteFont: return "Paste Font";
-        case EditAction::PasteRuler: return "Paste Ruler";
+            return ""_s;
+        case EditAction::SetColor: return "Set Color"_s;
+        case EditAction::SetBackgroundColor: return "Set Background Color"_s;
+        case EditAction::TurnOffKerning: return "Turn Off Kerning"_s;
+        case EditAction::TightenKerning: return "Tighten Kerning"_s;
+        case EditAction::LoosenKerning: return "Loosen Kerning"_s;
+        case EditAction::UseStandardKerning: return "Use Standard Kerning"_s;
+        case EditAction::TurnOffLigatures: return "Turn Off Ligatures"_s;
+        case EditAction::UseStandardLigatures: return "Use Standard Ligatures"_s;
+        case EditAction::UseAllLigatures: return "Use All Ligatures"_s;
+        case EditAction::RaiseBaseline: return "Raise Baseline"_s;
+        case EditAction::LowerBaseline: return "Lower Baseline"_s;
+        case EditAction::SetTraditionalCharacterShape: return "Set Traditional Character Shape"_s;
+        case EditAction::SetFont: return "Set Font"_s;
+        case EditAction::ChangeAttributes: return "Change Attributes"_s;
+        case EditAction::AlignLeft: return "Align Left"_s;
+        case EditAction::AlignRight: return "Align Right"_s;
+        case EditAction::Center: return "Center"_s;
+        case EditAction::Justify: return "Justify"_s;
+        case EditAction::SetBlockWritingDirection: return "Set Writing Direction"_s;
+        case EditAction::Subscript: return "Subscript"_s;
+        case EditAction::Superscript: return "Superscript"_s;
+        case EditAction::Underline: return "Underline"_s;
+        case EditAction::Outline: return "Outline"_s;
+        case EditAction::Unscript: return "Unscript"_s;
+        case EditAction::DeleteByDrag: return "Drag"_s;
+        case EditAction::Cut: return "Cut"_s;
+        case EditAction::Paste: return "Paste"_s;
+        case EditAction::PasteFont: return "Paste Font"_s;
+        case EditAction::PasteRuler: return "Paste Ruler"_s;
         case EditAction::TypingDeleteSelection:
         case EditAction::TypingDeleteBackward:
         case EditAction::TypingDeleteForward:
@@ -528,26 +540,26 @@ static String undoNameForEditAction(EditAction editAction)
         case EditAction::TypingDeleteFinalComposition:
         case EditAction::TypingInsertPendingComposition:
         case EditAction::TypingInsertFinalComposition:
-            return "Typing";
-        case EditAction::CreateLink: return "Create Link";
-        case EditAction::Unlink: return "Unlink";
+            return "Typing"_s;
+        case EditAction::CreateLink: return "Create Link"_s;
+        case EditAction::Unlink: return "Unlink"_s;
         case EditAction::InsertUnorderedList:
         case EditAction::InsertOrderedList:
-            return "Insert List";
-        case EditAction::FormatBlock: return "Formatting";
+            return "Insert List"_s;
+        case EditAction::FormatBlock: return "Formatting"_s;
 #undef Indent
-        case (EditAction::Indent): return "Indent";
-        case EditAction::Outdent: return "Outdent";
-        case EditAction::Bold: return "Bold";
-        case EditAction::Italics: return "Italics";
-        case EditAction::Dictation: return "Dictation";
-        case EditAction::Delete: return "Delete";
+        case (EditAction::Indent): return "Indent"_s;
+        case EditAction::Outdent: return "Outdent"_s;
+        case EditAction::Bold: return "Bold"_s;
+        case EditAction::Italics: return "Italics"_s;
+        case EditAction::Dictation: return "Dictation"_s;
+        case EditAction::Delete: return "Delete"_s;
         case EditAction::Insert:
         case EditAction::InsertFromDrop:
-            return "Insert";
+            return "Insert"_s;
         case EditAction::ConvertToOrderedList:
         case EditAction::ConvertToUnorderedList:
-            return "Convert";
+            return "Convert"_s;
     }
     return String();
 }
@@ -878,7 +890,7 @@ void WebEditorClient::getGuessesForWord(const String& word, const String& contex
 
     if(start > 0 || len > 0)
     {
-        isolatedWord = String(text + start, len);
+        isolatedWord = String(std::span { text + start, static_cast<size_t>(len) });
     }
     else
     {

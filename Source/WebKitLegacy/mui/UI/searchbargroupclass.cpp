@@ -338,12 +338,12 @@ DEFSMETHOD(OWBWindow_LoadURL)
 
                 if(converted)
                 {
-                    String searchString = String::fromUTF8(converted).stripWhiteSpace();
-                    searchString.stripWhiteSpace();
+                    String searchString = String::fromUTF8(converted).trim(deprecatedIsSpaceOrNewline);
+                    searchString.trim(deprecatedIsSpaceOrNewline);
                     String encoded = encodeWithURLEscapeSequences(searchString);
-                    encoded.replace("+", "%2B");
-                    encoded.replace("%20", "+");
-                    encoded.replace("&", "%26");
+                    encoded = makeStringByReplacingAll(encoded, "+"_s, "%2B"_s);
+                    encoded = makeStringByReplacingAll(encoded, "%20"_s, "+"_s);
+                    encoded = makeStringByReplacingAll(encoded, "&"_s, "%26"_s);
                     data->url = createWithFormatAndArguments(fmt, encoded.utf8().data());
 
                     DoMethod(_win(obj), MM_OWBWindow_LoadURL, data->url.utf8().data(), NULL);
@@ -370,7 +370,7 @@ DEFSMETHOD(SearchBarGroup_LoadURLFromShortcut)
 
         for(size_t i = 0; i < sshortcuts->size(); i++)
         {
-            if((*sshortcuts)[i] == msg->shortcut)
+            if((*sshortcuts)[i] == String::fromLatin1(msg->shortcut))
             {
                 Vector<String> *srequests = (Vector<String> *) getv(data->gr_search, MA_SearchManagerGroup_Requests);
 
@@ -379,11 +379,11 @@ DEFSMETHOD(SearchBarGroup_LoadURLFromShortcut)
 
                 if(converted && fmt)
                 {
-                    String searchString = String::fromUTF8(converted).stripWhiteSpace();
+                    String searchString = String::fromUTF8(converted).trim(deprecatedIsSpaceOrNewline);
                     String encoded = encodeWithURLEscapeSequences(searchString);
-                    encoded.replace("+", "%2B");
-                    encoded.replace("%20", "+");
-                    encoded.replace("&", "%26");
+                    encoded = makeStringByReplacingAll(encoded, "+"_s, "%2B"_s);
+                    encoded = makeStringByReplacingAll(encoded, "%20"_s, "+"_s);
+                    encoded = makeStringByReplacingAll(encoded, "&"_s, "%26"_s);
                     data->url = createWithFormatAndArguments(fmt, encoded.utf8().data());
 
                     DoMethod(_win(obj), MM_OWBWindow_LoadURL, data->url.utf8().data(), NULL);

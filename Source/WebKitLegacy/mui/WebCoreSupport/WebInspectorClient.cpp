@@ -31,8 +31,8 @@
 #include <wtf/text/CString.h>
 #include <WebCore/IntRect.h>
 #include <WebCore/NotImplemented.h>
-#include <WebCore/Frame.h>
-#include <WebCore/FrameView.h>
+#include <WebCore/LocalFrame.h>
+#include <WebCore/LocalFrameView.h>
 #include <WebCore/InspectorController.h>
 #include <WebCore/Page.h>
 #include <wtf/text/WTFString.h>

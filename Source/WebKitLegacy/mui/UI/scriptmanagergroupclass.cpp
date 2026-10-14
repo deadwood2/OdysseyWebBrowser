@@ -90,16 +90,16 @@ static bool parse_script(ScriptEntry *entry)
 
         if(buffer)
         {
-            String fileContent = buffer;
+            String fileContent = String::fromLatin1(buffer);
             delete [] buffer;
-            Vector<String> lines = fileContent.split("\n");
+            Vector<String> lines = fileContent.split("\n"_s);
             bool inMetaData = false;
 
             for(size_t i = 0; i < lines.size(); i++)
             {    
                 if(!inMetaData)
                 {
-                    if(lines[i].find("==UserScript==") != notFound)
+                    if(lines[i].find("==UserScript=="_s) != notFound)
                     {
                         inMetaData = true;
                     }
@@ -108,34 +108,34 @@ static bool parse_script(ScriptEntry *entry)
                 {
                     size_t pos;
 
-                    if(lines[i].find("==/UserScript==") != notFound)
+                    if(lines[i].find("==/UserScript=="_s) != notFound)
                     {
                         inMetaData = false;
                     }
-                    else if((pos = lines[i].find("@name")) != notFound && (lines[i].find("@namespace") == notFound)) // Additional space/tab hack to avoid matching @namespace
+                    else if((pos = lines[i].find("@name"_s)) != notFound && (lines[i].find("@namespace"_s) == notFound)) // Additional space/tab hack to avoid matching @namespace
                     {
-                        entry->title = lines[i].substring(pos + 1 + strlen("@name")).stripWhiteSpace();
+                        entry->title = lines[i].substring(pos + 1 + strlen("@name")).trim(deprecatedIsSpaceOrNewline);
                     }
-                    else if((pos = lines[i].find("@description")) != notFound)
+                    else if((pos = lines[i].find("@description"_s)) != notFound)
                     {
                         if(entry->description.length() == 0) // Just the first line (we should use multiline)
                         {
-                            entry->description = lines[i].substring(pos + 1 + strlen("@decription")).stripWhiteSpace();
+                            entry->description = lines[i].substring(pos + 1 + strlen("@decription")).trim(deprecatedIsSpaceOrNewline);
                         }
                     }
-                    else if((pos = lines[i].find("@include")) != notFound)
+                    else if((pos = lines[i].find("@include"_s)) != notFound)
                     {
-                        entry->whitelist.append(lines[i].substring(pos + 1 + strlen("@include")).stripWhiteSpace());
+                        entry->whitelist.append(lines[i].substring(pos + 1 + strlen("@include")).trim(deprecatedIsSpaceOrNewline));
                     }
-                    else if((pos = lines[i].find("@exclude")) != notFound)
+                    else if((pos = lines[i].find("@exclude"_s)) != notFound)
                     {
-                        entry->blacklist.append(lines[i].substring(pos + 1 + strlen("@exclude")).stripWhiteSpace());
+                        entry->blacklist.append(lines[i].substring(pos + 1 + strlen("@exclude")).trim(deprecatedIsSpaceOrNewline));
                     }
                 }
             }
 
-            if(entry->title.isEmpty()) entry->title = "No name";
-            if(entry->description.isEmpty()) entry->description = "No description";
+            if(entry->title.isEmpty()) entry->title = "No name"_s;
+            if(entry->description.isEmpty()) entry->description = "No description"_s;
 
             res = true;
         }
@@ -148,7 +148,7 @@ static bool parse_script(ScriptEntry *entry)
 
 static void load_scripts(Object *obj, struct Data *data)
 {
-    OWBFile *scriptFile = new OWBFile("PROGDIR:Conf/userscripts.prefs");
+    OWBFile *scriptFile = new OWBFile("PROGDIR:Conf/userscripts.prefs"_s);
 
     if (!scriptFile)
         return;
@@ -160,15 +160,15 @@ static void load_scripts(Object *obj, struct Data *data)
     }
 
     char *buffer = scriptFile->read(scriptFile->getSize());
-    String fileBuffer = buffer;
+    String fileBuffer = String::fromLatin1(buffer);
     delete [] buffer;
     scriptFile->close();
     delete scriptFile;
 
-    Vector<String> scripts = fileBuffer.split("\n");
+    Vector<String> scripts = fileBuffer.split("\n"_s);
     for(size_t i = 0; i < scripts.size(); i++)
     {
-        Vector<String> scriptAttributes = scripts[i].split("\1");
+        Vector<String> scriptAttributes = scripts[i].split("\1"_s);
 
         if(scriptAttributes.size() == 4)
         {
@@ -177,18 +177,18 @@ static void load_scripts(Object *obj, struct Data *data)
             if(script)
             {
                 script->path    = scriptAttributes[0];
-                script->enabled = scriptAttributes[1] == "1";
+                script->enabled = scriptAttributes[1] == "1"_s;
 
                 if(parse_script(script))
                 {
                     if(scriptAttributes[2].length())
                     {
-                        script->whitelist = scriptAttributes[2].split("\2");
+                        script->whitelist = scriptAttributes[2].split("\2"_s);
                     }
 
                     if(scriptAttributes[3].length())
                     {
-                        script->blacklist = scriptAttributes[3].split("\2");
+                        script->blacklist = scriptAttributes[3].split("\2"_s);
                     }
 
                     scripts_list.append(script);
@@ -201,7 +201,7 @@ static void load_scripts(Object *obj, struct Data *data)
 
 void save_scripts()
 {
-    OWBFile *scriptFile = new OWBFile("PROGDIR:Conf/userscripts.prefs");
+    OWBFile *scriptFile = new OWBFile("PROGDIR:Conf/userscripts.prefs"_s);
     if(!scriptFile)
         return;
 
@@ -213,26 +213,26 @@ void save_scripts()
 
     for(size_t i = 0; i < scripts_list.size(); i++)
     {
-        String whitelisthosts = "", blacklisthosts = "";
+        String whitelisthosts = ""_s, blacklisthosts = ""_s;
         const char *enabled = scripts_list[i]->enabled ? "1" : "0";
 
         for(size_t j = 0; j < scripts_list[i]->whitelist.size(); j++)
         {
-                whitelisthosts.append(scripts_list[i]->whitelist[j]);
+                whitelisthosts = makeString(whitelisthosts, scripts_list[i]->whitelist[j]);
 
             if(j < scripts_list[i]->whitelist.size() - 1)
             {
-                    whitelisthosts.append("\2");
+                    whitelisthosts = makeString(whitelisthosts, "\2"_s);
             }
         }
 
         for(size_t j = 0; j < scripts_list[i]->blacklist.size(); j++)
         {
-                blacklisthosts.append(scripts_list[i]->blacklist[j]);
+                blacklisthosts = makeString(blacklisthosts, scripts_list[i]->blacklist[j]);
 
             if(j < scripts_list[i]->blacklist.size() - 1)
             {
-                    blacklisthosts.append("\2");
+                    blacklisthosts = makeString(blacklisthosts, "\2"_s);
             }
         }
 
@@ -398,7 +398,7 @@ DEFTMETHOD(ScriptManagerGroup_Add)
         
         if(script)
         {
-            script->path = file;
+            script->path = String::fromLatin1(file);
             script->enabled = true;
 
             if(parse_script(script))
@@ -553,11 +553,11 @@ DEFTMETHOD(ScriptManagerGroup_Change)
         newhost    = (char *) getv(data->st_whitelist_url, MUIA_String_Contents);
         DoMethod(data->lv_whitelist, MUIM_List_GetEntry, MUIV_List_GetEntry_Active, (String **) &host);
 
-        if(host && *host != newhost)
+        if(host && *host != String::fromLatin1(newhost))
         {
             int i = 0;
 
-            *host = newhost;
+            *host = String::fromLatin1(newhost);
             DoMethod(data->lv_whitelist, MUIM_List_Redraw, MUIV_List_Redraw_Active);
 
             script->whitelist.clear();
@@ -580,11 +580,11 @@ DEFTMETHOD(ScriptManagerGroup_Change)
         newhost    = (char *) getv(data->st_blacklist_url, MUIA_String_Contents);
         DoMethod(data->lv_blacklist, MUIM_List_GetEntry, MUIV_List_GetEntry_Active, (String **) &host);
 
-        if(host && *host != newhost)
+        if(host && *host != String::fromLatin1(newhost))
         {
             int i = 0;
 
-            *host = newhost;
+            *host = String::fromLatin1(newhost);
             DoMethod(data->lv_blacklist, MUIM_List_Redraw, MUIV_List_Redraw_Active);
 
             script->blacklist.clear();
@@ -621,7 +621,7 @@ DEFTMETHOD(ScriptManagerGroup_WhiteList_Add)
 
     if(script)
     {
-        String *host = new String("http://");
+        String *host = new String("http://"_s);
         script->whitelist.append(*host);
         DoMethod(data->lv_whitelist, MUIM_List_InsertSingle, host, MUIV_List_Insert_Bottom);
         set(data->lv_whitelist, MUIA_List_Active, MUIV_List_Active_Bottom);
@@ -678,7 +678,7 @@ DEFTMETHOD(ScriptManagerGroup_BlackList_Add)
 
     if(script)
     {
-        String *host = new String("http://");
+        String *host = new String("http://"_s);
         script->blacklist.append(*host);
         DoMethod(data->lv_blacklist, MUIM_List_InsertSingle, host, MUIV_List_Insert_Bottom);
         set(data->lv_blacklist, MUIA_List_Active, MUIV_List_Active_Bottom);
@@ -757,7 +757,7 @@ DEFSMETHOD(ScriptManagerGroup_InjectScripts)
 
                             auto userScript = std::make_unique<UserScript>(
                                                             String::fromUTF8(fileContent),
-                                                            URL(URL(), String(url)), // XXX: will be empty most of the time...
+                                                            URL(URL(), String::fromLatin1(url)), // XXX: will be empty most of the time...
                                                             Vector<String>(scripts_list[i]->whitelist),
                                                             Vector<String>(scripts_list[i]->blacklist),
                                                             UserScriptInjectionTime::DocumentEnd,
@@ -790,7 +790,7 @@ DEFSMETHOD(ScriptManagerGroup_ScriptsForURL)
     {
         if(scripts_list[i]->enabled)
         {
-            if(UserContentURLPattern::matchesPatterns(URL({ }, String(msg->url)), scripts_list[i]->whitelist, scripts_list[i]->blacklist))
+            if(UserContentURLPattern::matchesPatterns(URL({ }, String::fromLatin1(msg->url)), scripts_list[i]->whitelist, scripts_list[i]->blacklist))
             {
                 matchingscripts->append(scripts_list[i]);
             }

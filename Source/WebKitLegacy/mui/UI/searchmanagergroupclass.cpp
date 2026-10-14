@@ -88,7 +88,7 @@ struct Data
 
 static void load_searchengines(Object *obj, struct Data *data)
 {
-    OWBFile *searchFile = new OWBFile("PROGDIR:Conf/searchengines.prefs");
+    OWBFile *searchFile = new OWBFile("PROGDIR:Conf/searchengines.prefs"_s);
 
     if (!searchFile)
         return;
@@ -100,18 +100,18 @@ static void load_searchengines(Object *obj, struct Data *data)
     }
 
     char *buffer = searchFile->read(searchFile->getSize());
-    String fileBuffer = buffer;
+    String fileBuffer = String::fromLatin1(buffer);
     delete [] buffer;
     searchFile->close();
     delete searchFile;
 
-    Vector<String> lines = fileBuffer.split("\n");
+    Vector<String> lines = fileBuffer.split("\n"_s);
 
     set(data->lv_entries, MUIA_List_Quiet, TRUE);
 
     for(size_t i = 0; i < lines.size(); i++)
     {
-        Vector<String> searchAttributes = lines[i].split("\1");
+        Vector<String> searchAttributes = lines[i].split("\1"_s);
 
         if(searchAttributes.size() >= 2) // 1.10 introduced a 3rd field
         {
@@ -143,7 +143,7 @@ void save_searchengines(Object *obj, struct Data *data)
 {
     struct search_entry *se;
     ULONG i = 0;
-    OWBFile *searchFile = new OWBFile("PROGDIR:Conf/searchengines.prefs");
+    OWBFile *searchFile = new OWBFile("PROGDIR:Conf/searchengines.prefs"_s);
     if(!searchFile)
         return;
 
@@ -279,7 +279,7 @@ DEFGET
 
                     if (se)
                     {
-                        data->labels.append(String(se->label));
+                        data->labels.append(String::fromLatin1(se->label));
                         i++;
                     }
                 }
@@ -289,7 +289,7 @@ DEFGET
             {
                 for(i = 0; labels[i]; i++)
                 {
-                    data->labels.append(String(labels[i]));
+                    data->labels.append(String::fromLatin1(labels[i]));
                 }
             }
 
@@ -313,7 +313,7 @@ DEFGET
 
                     if (se)
                     {
-                        data->requests.append(String(se->request));
+                        data->requests.append(String::fromLatin1(se->request));
                         i++;
                     }
                 }
@@ -323,7 +323,7 @@ DEFGET
             {
                 for(i = 0; requests[i]; i++)
                 {
-                    data->requests.append(String(requests[i]));
+                    data->requests.append(String::fromLatin1(requests[i]));
                 }
             }
 
@@ -347,7 +347,7 @@ DEFGET
 
                     if (se)
                     {
-                        data->shortcuts.append(String(se->shortcut));
+                        data->shortcuts.append(String::fromLatin1(se->shortcut));
                         i++;
                     }
                 }
@@ -357,7 +357,7 @@ DEFGET
             {
                 for(i = 0; shortcuts[i]; i++)
                 {
-                    data->shortcuts.append(String(shortcuts[i]));
+                    data->shortcuts.append(String::fromLatin1(shortcuts[i]));
                 }
             }
 

@@ -45,69 +45,45 @@ WebDesktopNotificationsDelegate::WebDesktopNotificationsDelegate(WebView* webVie
 {
 }
 
-bool WebDesktopNotificationsDelegate::show(Notification* object)
+// OWB has no notification UI yet: notifications are logged and reported
+// as shown, as in OWB 2.34.
+bool WebDesktopNotificationsDelegate::show(ScriptExecutionContext& context, NotificationData&& data, RefPtr<NotificationResources>&&, CompletionHandler<void()>&& callback)
 {
-    if (object->scriptExecutionContext()->isWorkerGlobalScope())
-    return false;
+    if (context.isWorkerGlobalScope()) {
+        callback();
+        return false;
+    }
 
-    kprintf("show [%s]\n%s\n", object->title().latin1().data(), object->body().latin1().data());
-
+    kprintf("show [%s]\n%s\n", data.title.latin1().data(), data.body.latin1().data());
+    callback();
     return true;
 }
 
-void WebDesktopNotificationsDelegate::cancel(Notification* object)
+void WebDesktopNotificationsDelegate::cancel(NotificationData&&)
 {
-  D(kprintf("cancel\n"));
+    D(kprintf("cancel\n"));
 }
 
-void WebDesktopNotificationsDelegate::notificationObjectDestroyed(Notification*)
+void WebDesktopNotificationsDelegate::notificationObjectDestroyed(NotificationData&&)
 {
-  D(kprintf("objectdestroyed\n"));
+    D(kprintf("objectdestroyed\n"));
 }
 
-void WebDesktopNotificationsDelegate:: notificationControllerDestroyed()
+void WebDesktopNotificationsDelegate::notificationControllerDestroyed()
 {
-  D(kprintf("controllerdestroyed\n"));
+    D(kprintf("controllerdestroyed\n"));
 }
 
-#if ENABLE(LEGACY_NOTIFICATIONS)
-void WebDesktopNotificationsDelegate::requestPermission(WebCore::ScriptExecutionContext* context, PassRefPtr<VoidCallback> callback)
+void WebDesktopNotificationsDelegate::requestPermission(ScriptExecutionContext& context, PermissionHandler&& permissionHandler)
 {
-  D(kprintf("requestPermission (legacy)\n"));
-
-    NotificationClient::Permission permission = checkPermission(context);
-    if (permission != NotificationClient::PermissionNotAllowed) {
-        if (callback)
-            callback->handleEvent();
-        return;
-    }
-}
-#endif
-
-void WebDesktopNotificationsDelegate::requestPermission(WebCore::ScriptExecutionContext& context, PermissionHandler&& permissionHandler)
-{
-  D(kprintf("requestPermission\n"));
-
-    NotificationClient::Permission permission = checkPermission(&context);
-    if (permission != NotificationClient::Permission::Default) {
-        permissionHandler(permission);
-        return;
-    }
+    D(kprintf("requestPermission\n"));
+    // Always answer: an unanswered request leaves the page's promise pending.
+    permissionHandler(checkPermission(&context));
 }
 
-void WebDesktopNotificationsDelegate::cancelRequestsForPermission(ScriptExecutionContext*)
+NotificationClient::Permission WebDesktopNotificationsDelegate::checkPermission(ScriptExecutionContext*)
 {
-  D(kprintf("cancelRequestsForPermission\n"));
-}
-
-NotificationClient::Permission WebDesktopNotificationsDelegate::checkPermission(WebCore::ScriptExecutionContext*)
-{
-  D(kprintf("checkPermission\n"));
-    /*
-    int out = 0;
-    if (hasNotificationDelegate())
-      notificationDelegate()->checkNotificationPermission(SecurityOrigin::create(url)->toString(), &out);*/
-    //return NotificationClient::PermissionNotAllowed; // (NotificationClient::Permission) out;
+    D(kprintf("checkPermission\n"));
     return NotificationClient::Permission::Granted;
 }
 

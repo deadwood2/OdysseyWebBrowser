@@ -48,7 +48,7 @@
 
 using namespace WebCore;
 
-#define PASSWORDDB "PROGDIR:Conf/Passwords.db"
+#define PASSWORDDB "PROGDIR:Conf/Passwords.db"_s
 static SQLiteDatabase m_passwordDB;
 
 static HashMap<String, ExtCredential*> credentialMap;
@@ -108,7 +108,7 @@ DEFTMETHOD(PasswordManagerGroup_Load)
     }
 
     // Check that the database is correctly initialized.
-    if(!m_passwordDB.tableExists(String("passwords")))
+    if(!m_passwordDB.tableExists(String("passwords"_s)))
     {
         m_passwordDB.close();
         return 0;
@@ -138,12 +138,12 @@ DEFTMETHOD(PasswordManagerGroup_Load)
 
         if(type == CREDENTIAL_TYPE_AUTH)
         {
-            ExtCredential credential(user, password, CredentialPersistencePermanent, realm, flags);
+            ExtCredential credential(user, password, CredentialPersistence::Permanent, realm, flags);
             DoMethod(obj, MM_PasswordManagerGroup_Insert, &host, &credential);
         }
         else if(type == CREDENTIAL_TYPE_FORM)
         {
-            ExtCredential credential(user, password, CredentialPersistencePermanent, userField, passwordField, flags);
+            ExtCredential credential(user, password, CredentialPersistence::Permanent, userField, passwordField, flags);
             DoMethod(obj, MM_PasswordManagerGroup_Insert, &host, &credential);
         }
     }
@@ -198,7 +198,7 @@ DEFSMETHOD(PasswordManagerGroup_Insert)
     ExtCredential *credential = (ExtCredential *) msg->credential;
 
     /* Insertion in map and list */
-    if(credential->persistence() == CredentialPersistencePermanent)
+    if(credential->persistence() == CredentialPersistence::Permanent)
     {
         ExtCredential *newCredential = NULL;
 
@@ -280,7 +280,7 @@ DEFSMETHOD(PasswordManagerGroup_Insert)
                     if (!entry)
                         break;
 
-                    if (*host == entry->host)
+                    if (*host == String::fromLatin1(entry->host))
                     {
                         free(entry->realm);
                         free(entry->username);
@@ -325,7 +325,7 @@ DEFSMETHOD(PasswordManagerGroup_Insert)
                 return 0;
             }
 
-            if(!m_passwordDB.tableExists(String("passwords")))
+            if(!m_passwordDB.tableExists(String("passwords"_s)))
             {
                 m_passwordDB.executeCommand("CREATE TABLE passwords (host TEXT, realm TEXT, username TEXT, password TEXT, usernameField TEXT, passwordField TEXT, type INTEGER);"_s);
             }
@@ -389,7 +389,7 @@ DEFSMETHOD(PasswordManagerGroup_Remove)
         
         if(entry)
         {
-            host = entry->host;
+            host = String::fromLatin1(entry->host);
             DoMethod(data->lv_credentials, MUIM_List_Remove, MUIV_List_Remove_Active);
         }
     }
@@ -404,7 +404,7 @@ DEFSMETHOD(PasswordManagerGroup_Remove)
             if (!entry)
                 break;
 
-            if (host == entry->host)
+            if (host == String::fromLatin1(entry->host))
             {
                 DoMethod(data->lv_credentials, MUIM_List_Remove, i);
                 break;

@@ -53,7 +53,7 @@
 using namespace WebCore;
 using namespace std;
 
-#define HISTORYDB "PROGDIR:Conf/History.db"
+#define HISTORYDB "PROGDIR:Conf/History.db"_s
 static SQLiteDatabase m_historyDB;
 
 static std::vector<WebHistoryItem *> m_historyList;
@@ -75,7 +75,7 @@ bool WebHistory::loadHistoryFromDatabase(int sortCriterium, bool desc, std::vect
     }
 
     // Check that the database is correctly initialized.
-    if(!m_historyDB.tableExists(String("history")))
+    if(!m_historyDB.tableExists(String("history"_s)))
     {
         m_historyDB.close();
         return false;
@@ -107,14 +107,14 @@ bool WebHistory::loadHistoryFromDatabase(int sortCriterium, bool desc, std::vect
     snprintf(deleteStmt2buf, sizeof(deleteStmt2buf), "DELETE FROM history WHERE lastAccessed < (SELECT lastAccessed FROM history ORDER BY lastAccessed ASC LIMIT 1 OFFSET (SELECT count(*) FROM history) - min(%d, (SELECT count(*) FROM history)));", maxItems);
     m_historyDB.executeCommand(ASCIILiteral::fromLiteralUnsafe(deleteStmt2buf));
 
-    String request = "SELECT url, title, lastAccessed FROM history";
-    String end = ";";
+    String request = "SELECT url, title, lastAccessed FROM history"_s;
+    String end = ";"_s;
     String direction;
 
     if(desc)
-        direction = " DESC";
+        direction = " DESC"_s;
     else
-        direction = " ASC";
+        direction = " ASC"_s;
 
     switch(sortCriterium)
     {
@@ -123,22 +123,22 @@ bool WebHistory::loadHistoryFromDatabase(int sortCriterium, bool desc, std::vect
             break;
 
         case HISTORY_SORT_BY_URL:
-                request.append(" ORDER BY length(url), url");
-            request.append(direction);
+                request = makeString(request, " ORDER BY length(url), url"_s);
+            request = makeString(request, direction);
             break;
 
         case HISTORY_SORT_BY_TITLE:
-                request.append(" ORDER BY title");
-            request.append(direction);
+                request = makeString(request, " ORDER BY title"_s);
+            request = makeString(request, direction);
             break;
 
         case HISTORY_SORT_BY_ACCESSTIME:
-                request.append(" ORDER BY lastAccessed");
-            request.append(direction);
+                request = makeString(request, " ORDER BY lastAccessed"_s);
+            request = makeString(request, direction);
             break;
     }
 
-    request.append(end);
+    request = makeString(request, end);
 
     // Problem if the database is not connected
     auto select = m_historyDB.prepareStatement(ASCIILiteral::fromLiteralUnsafe(request.latin1().data()));
@@ -189,7 +189,7 @@ bool WebHistory::insertHistoryItemIntoDatabase(String& url, String& title, doubl
         return false;
     }
 
-    if(!m_historyDB.tableExists(String("history")))
+    if(!m_historyDB.tableExists(String("history"_s)))
     {
         m_historyDB.executeCommand("CREATE TABLE history (url TEXT, title TEXT, lastAccessed DOUBLE);"_s);
     }
@@ -316,10 +316,10 @@ WebHistoryItem* WebHistory::itemForURL(const char* url)
     for(unsigned int i=0; i < m_historyList.size(); i++)
     {
         char *wurl = (char *) m_historyList[i]->URLString();
-        WTF::String itemURL = wurl;
+        WTF::String itemURL = String::fromLatin1(wurl);
         free(wurl);
 
-        if(itemURL == url)
+        if(itemURL == String::fromLatin1(url))
         {
 
             return m_historyList[i];
@@ -336,7 +336,7 @@ void WebHistory::addVisitedLinksToVisitedLinkStore(WebVisitedLinkStore& visitedL
     for (auto * url : m_historyList)
     {
         char * wurl = (char *)url->URLString();
-        WTF::String u(wurl);
+        WTF::String u = String::fromLatin1(wurl);
         visitedLinkStore.addVisitedLink(u);
         free(wurl);
     }
@@ -390,10 +390,10 @@ void WebHistory::visitedURL(const char* url, const char* title, const char* http
     {
         WebHistoryItem *item = *(it);
         char *wurl = (char *) item->URLString();
-        WTF::String itemURL = wurl;
+        WTF::String itemURL = String::fromLatin1(wurl);
         free(wurl);
 
-        if(itemURL == url)
+        if(itemURL == String::fromLatin1(url))
         {
             m_historyList.erase(it, it+1);
             DoMethod(app, MM_History_Remove, item);

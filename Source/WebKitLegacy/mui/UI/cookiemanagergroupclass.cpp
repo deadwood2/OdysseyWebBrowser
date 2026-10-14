@@ -271,7 +271,7 @@ DEFTMETHOD(CookieManagerGroup_Clear)
 
     /* Remove from database */
     NetworkStorageSession& storageSession = NetworkStorageSessionMap::defaultStorageSession();
-    storageSession.deleteAllCookies();
+    storageSession.deleteAllCookies([] { });
 
     return 0;
 }
@@ -425,20 +425,20 @@ DEFTMETHOD(CookieManagerGroup_Remove)
 
         if(entry && entry->flags == COOKIEFLAG_COOKIE)
         {
-            String cookieURL = String(entry->protocol);
-            String domain = String(entry->domain);
-            cookieURL.append("://");
-            if(domain.startsWith("."))
+            String cookieURL = String::fromLatin1(entry->protocol);
+            String domain = String::fromLatin1(entry->domain);
+            cookieURL = makeString(cookieURL, "://"_s);
+            if(domain.startsWith("."_s))
                 domain = domain.substring(1);
-            cookieURL.append(domain);
-            cookieURL.append(entry->path);
+            cookieURL = makeString(cookieURL, domain);
+            cookieURL = makeString(cookieURL, String::fromLatin1(entry->path));
             URL url({ }, cookieURL);
-            storageSession.deleteCookie(url, entry->name);
+            storageSession.deleteCookie(url, String::fromLatin1(entry->name), [] { });
             DoMethod(data->lt_cookies, MUIM_Listtree_Remove, NULL, MUIV_Listtree_Remove_TreeNode_Active, 0);
         }
         else if(entry && entry->flags == COOKIEFLAG_DOMAIN)
         {
-            storageSession.cookieDatabase().deleteCookiesForHostname(entry->domain, IncludeHttpOnlyCookies::Yes);
+            storageSession.cookieDatabase().deleteCookiesForHostname(String::fromLatin1(entry->domain), IncludeHttpOnlyCookies::Yes);
             DoMethod(data->lt_cookies, MUIM_Listtree_Remove, NULL, MUIV_Listtree_Remove_TreeNode_Active, 0);
         }
     }

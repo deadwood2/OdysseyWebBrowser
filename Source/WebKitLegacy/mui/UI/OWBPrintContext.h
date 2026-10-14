@@ -30,8 +30,8 @@
 #define __OWBPRINTCONTEXT__
 
 #include <WebCore/GraphicsContext.h>
-#include <WebCore/Frame.h>
-#include <WebCore/FrameView.h>
+#include <WebCore/LocalFrame.h>
+#include <WebCore/LocalFrameView.h>
 #include <WebCore/PrintContext.h>
 
 #include <clib/debug_protos.h>
@@ -42,7 +42,7 @@ namespace WebCore {
 class OWBPrintContext : public PrintContext {
     WTF_MAKE_NONCOPYABLE(OWBPrintContext);
 public:
-    OWBPrintContext(Frame* frame)
+    OWBPrintContext(LocalFrame* frame)
         : PrintContext(frame)
         , m_printedPageWidth(0)
     {

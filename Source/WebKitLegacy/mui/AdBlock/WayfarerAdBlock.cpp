@@ -22,7 +22,7 @@
     DAMAGE. */
 
 #include <WebCore/DocumentLoader.h>
-#include <WebCore/Frame.h>
+#include <WebCore/LocalFrame.h>
 #include <WebCore/FrameLoader.h>
 #include "ABPFilterParser.h"
 #include "WebFrame.h"
@@ -35,8 +35,8 @@ std::vector<char>    g_urlFilterData;
 
 void initialize()
 {
-	WTF::String easyListPath = "PROGDIR:Conf/easylist.txt";
-	WTF::String easyListSerializedPath = "PROGDIR:Conf/easylist.dat";
+	WTF::String easyListPath = "PROGDIR:Conf/easylist.txt"_s;
+	WTF::String easyListSerializedPath = "PROGDIR:Conf/easylist.dat"_s;
 
 	WTF::FileSystemImpl::PlatformFileHandle fh = WTF::FileSystemImpl::openFile(easyListSerializedPath, WTF::FileSystemImpl::FileOpenMode::Read);
 
@@ -46,7 +46,7 @@ void initialize()
 		if (size > 0ll)
 		{
 			g_urlFilterData.resize(size + 1);
-			if (size == WTF::FileSystemImpl::readFromFile(fh, &g_urlFilterData[0], int(size)))
+			if (size == WTF::FileSystemImpl::readFromFile(fh, std::span { reinterpret_cast<uint8_t*>(&g_urlFilterData[0]), static_cast<size_t>(size) }))
 			{
 				g_urlFilterData[size] = 0; // terminate just in case
 				g_urlFilter.deserialize(&g_urlFilterData[0]);
@@ -71,17 +71,17 @@ void initialize()
 				char *buffer = (char *)malloc(size + 1);
 				if (buffer)
 				{
-					if (size == WTF::FileSystemImpl::readFromFile(fh, buffer, int(size)))
+					if (size == WTF::FileSystemImpl::readFromFile(fh, std::span { reinterpret_cast<uint8_t*>(buffer), static_cast<size_t>(size) }))
 					{
 						buffer[size] = 0; // terminate, parser expects this to be a null-term string
 //dprintf("Parsing easylist.txt; this will take a while... and will be faster on next launch!\n");
 						g_urlFilter.parse(buffer);
 						int ssize;
 						char *sbuffer = g_urlFilter.serialize(&ssize, false);
-						WTF::FileSystemImpl::PlatformFileHandle dfh = WTF::FileSystemImpl::openFile(easyListSerializedPath, WTF::FileSystemImpl::FileOpenMode::Write);
+						WTF::FileSystemImpl::PlatformFileHandle dfh = WTF::FileSystemImpl::openFile(easyListSerializedPath, WTF::FileSystemImpl::FileOpenMode::Truncate);
 						if (WTF::FileSystemImpl::invalidPlatformFileHandle != dfh)
 						{
-							if (ssize != WTF::FileSystemImpl::writeToFile(dfh, sbuffer, ssize))
+							if (ssize != WTF::FileSystemImpl::writeToFile(dfh, std::span { reinterpret_cast<const uint8_t*>(sbuffer), static_cast<size_t>(ssize) }))
 							{
 								WTF::FileSystemImpl::closeFile(dfh);
 								WTF::FileSystemImpl::deleteFile(easyListSerializedPath);

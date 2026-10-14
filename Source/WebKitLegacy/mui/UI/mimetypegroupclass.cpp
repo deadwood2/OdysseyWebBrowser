@@ -309,8 +309,8 @@ DEFTMETHOD(MimeTypeGroup_Refresh)
 
     if(mn)
     {
-        String mimetypestr = mn->mimetype;
-        Vector<String> types = mimetypestr.split("/");
+        String mimetypestr = String::fromLatin1(mn->mimetype);
+        Vector<String> types = mimetypestr.split("/"_s);
 
         set(data->bt_remove, MUIA_Disabled, mn->builtin);
         set(data->st_mimefamily, MUIA_Disabled, mn->builtin);
@@ -389,9 +389,9 @@ DEFTMETHOD(MimeTypeGroup_Change)
         String mimetype;
 
         free(mn->mimetype);
-        mimetype = (char *) getv(data->st_mimefamily, MUIA_String_Contents);
-        mimetype.append("/");
-        mimetype.append((char *) getv(data->st_mimetype, MUIA_String_Contents));
+        mimetype = String::fromLatin1((char *) getv(data->st_mimefamily, MUIA_String_Contents));
+        mimetype = makeString(mimetype, "/"_s);
+        mimetype = makeString(mimetype, String::fromLatin1((char *) getv(data->st_mimetype, MUIA_String_Contents)));
         mn->mimetype = strdup(mimetype.latin1().data());
 
         free(mn->extensions);
@@ -482,11 +482,16 @@ DEFMMETHOD(Import)
     for (auto it = tmp.begin(); it != tmp.end(); ++it)
         supportedImageMIMETypes.add(String(*it));
 
+    // 2.46 returns media types as a plain (case-sensitive) HashSet.
+    HashSet<String, ASCIICaseInsensitiveHash> mediaMIMETypes;
+    for (auto& type : MIMETypeRegistry::supportedMediaMIMETypes())
+        mediaMIMETypes.add(type);
+
     const HashSet<String, ASCIICaseInsensitiveHash>* supportedCategories[] =
     {
         &(supportedImageMIMETypes),
         &(MIMETypeRegistry::supportedNonImageMIMETypes()),
-        &(MIMETypeRegistry::supportedMediaMIMETypes()),
+        &mediaMIMETypes,
         NULL,
     };
 
@@ -510,14 +515,14 @@ DEFMMETHOD(Import)
         {
             String mimetype = *it;
             Vector<String> extensions = MIMETypeRegistry::extensionsForMIMEType(mimetype);
-            String extension = "";
+            String extension = ""_s;
 
             for(unsigned int i = 0; i < extensions.size(); i++)
             {
-                extension.append(extensions[i]);
+                extension = makeString(extension, extensions[i]);
                 if(i < extensions.size() - 1)
                 {
-                    extension.append(" ");
+                    extension = makeString(extension, " "_s);
                 }
             }
 
@@ -546,11 +551,11 @@ DEFMMETHOD(Import)
         if ((val = (char *)DoMethod(msg->dataspace, MUIM_Dataspace_Find, id)))
         {
             ULONG i;
-            String input = val;
-            Vector<String> mimetypes = input.split("\n");
+            String input = String::fromLatin1(val);
+            Vector<String> mimetypes = input.split("\n"_s);
             for(i = 0; i < mimetypes.size(); i++)
             {
-                Vector<String> mimetypeAttributes = mimetypes[i].split("\1");
+                Vector<String> mimetypeAttributes = mimetypes[i].split("\1"_s);
 
                 if(mimetypeAttributes.size() == 6)
                 {
@@ -581,7 +586,7 @@ DEFMMETHOD(Export)
     if((id=(muiNotifyData(obj)->mnd_ObjectID)))
     {
         APTR n;
-        String output = "";
+        String output = ""_s;
 
         ITERATELIST(n, &mimetype_list)
         {
@@ -589,7 +594,7 @@ DEFMMETHOD(Export)
 
             //if(!mn->builtin)
             {
-              output.append(createWithFormatAndArguments("%s\1%s\1%d\1%s\1%s\1%d\n", mn->mimetype, mn->extensions, mn->action, mn->viewer, mn->parameters, mn->builtin));
+              output = makeString(output, createWithFormatAndArguments("%s\1%s\1%d\1%s\1%s\1%d\n"_s, mn->mimetype, mn->extensions, mn->action, mn->viewer, mn->parameters, mn->builtin));
             }
         }
 

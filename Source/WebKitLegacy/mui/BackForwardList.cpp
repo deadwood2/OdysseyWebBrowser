@@ -26,7 +26,7 @@
 
 #include "BackForwardList.h"
 
-#include <WebCore/Frame.h>
+#include <WebCore/LocalFrame.h>
 #include <WebCore/FrameLoader.h>
 #include <WebCore/FrameLoaderClient.h>
 #include <WebCore/HistoryItem.h>

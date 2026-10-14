@@ -32,6 +32,9 @@
 #ifndef GeolocationClientMock_h
 #define GeolocationClientMock_h
 
+#include "config.h"
+#if ENABLE(GEOLOCATION)
+
 #include <WebCore/GeolocationClient.h>
 #include <WebCore/Timer.h>
 #include <wtf/HashSet.h>
@@ -96,4 +99,5 @@ private:
 
 }
 
+#endif // ENABLE(GEOLOCATION)
 #endif

@@ -28,6 +28,7 @@
 #pragma once
 
 #include <WebCore/BackForwardClient.h>
+#include <WebCore/FrameIdentifier.h>
 #include <wtf/HashSet.h>
 #include <wtf/Vector.h>
 
@@ -39,7 +40,9 @@ public:
     static Ref<BackForwardList> create() { return adoptRef(*new BackForwardList()); }
     virtual ~BackForwardList();
 
-    void addItem(Ref<WebCore::HistoryItem>&&) override;
+    void addItem(Ref<WebCore::HistoryItem>&&);
+    // 2.46 BackForwardClient: the frame identifier is not needed by OWB's list.
+    void addItem(WebCore::FrameIdentifier, Ref<WebCore::HistoryItem>&& item) override { addItem(WTFMove(item)); }
     void goBack();
     void goForward();
     void goToItem(WebCore::HistoryItem&) override;
@@ -59,6 +62,7 @@ public:
     unsigned backListCount() const final;
     unsigned forwardListCount() const final;
     bool containsItem(WebCore::HistoryItem*);
+    bool containsItem(const WebCore::HistoryItem& item) const final { return m_entryHash.contains(const_cast<WebCore::HistoryItem*>(&item)); }
 
     void close() override;
     bool closed();

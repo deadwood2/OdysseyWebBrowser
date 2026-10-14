@@ -29,6 +29,7 @@
  */
 
 #include "WebFrameNetworkingContext.h"
+#include <WebCore/SecurityOrigin.h>
 #include "WebDownload.h"
 #include "WebDownloadPrivate.h"
 
@@ -73,9 +74,9 @@ WebDownloadPrivate::WebDownloadPrivate()
         , state(WEBKIT_WEB_DOWNLOAD_STATE_ERROR)
         , outputChannel(0)
         , downloadClient(0)
-        , resourceHandle(0)
+        , resourceHandle(nullptr)
         , resourceRequest(0)
-        , dl(0)
+        , dl(nullptr)
         {}
 
 /*****************************************************************************************************/
@@ -104,7 +105,7 @@ public:
     void didStart();
     virtual void willSendRequestAsync(ResourceHandle*, ResourceRequest&&, ResourceResponse&&, CompletionHandler<void(ResourceRequest&&)>&&) override;
     virtual void didReceiveResponseAsync(ResourceHandle*, ResourceResponse&&, CompletionHandler<void()>&&) override;
-    virtual void didReceiveData(ResourceHandle*, const uint8_t*, unsigned, int) override;
+    void didReceiveData(ResourceHandle*, const SharedBuffer&, int) override;
     virtual void didFinishLoading(ResourceHandle*, const NetworkLoadMetrics&) override;
     virtual void didFail(ResourceHandle*, const ResourceError&) override;
     virtual void wasBlocked(ResourceHandle*) override;
@@ -157,7 +158,7 @@ void DownloadClient::didReceiveResponseAsync(ResourceHandle*, WebCore::ResourceR
             // Fail if not possible to open destination file to writing
             if(priv->outputChannel->open('a') == -1)
             {
-                ResourceError resourceError(String(WebKitErrorDomain), WebURLErrorCannotCreateFile, URL(), String("Can't create file"));
+                ResourceError resourceError(String::fromLatin1(WebKitErrorDomain), WebURLErrorCannotCreateFile, URL(), String("Can't create file"_s));
                 didFail(priv->resourceHandle.get(), resourceError);
                 completionHandler();
                 return;
@@ -167,7 +168,7 @@ void DownloadClient::didReceiveResponseAsync(ResourceHandle*, WebCore::ResourceR
         }
         else
         {
-            ResourceError resourceError(String(WebKitErrorDomain), WebURLErrorCannotCreateFile, URL(), String("Can't resume"));
+            ResourceError resourceError(String::fromLatin1(WebKitErrorDomain), WebURLErrorCannotCreateFile, URL(), String("Can't resume"_s));
             didFail(priv->resourceHandle.get(), resourceError);
             completionHandler();
             return;
@@ -175,7 +176,7 @@ void DownloadClient::didReceiveResponseAsync(ResourceHandle*, WebCore::ResourceR
     }
     else
     {
-        WTF::String suggestedFilename = webResponse->suggestedFilename();
+        WTF::String suggestedFilename = String::fromLatin1(webResponse->suggestedFilename());
         if(suggestedFilename.length() == 0)
         {
             suggestedFilename = response.url().string().substring(response.url().pathAfterLastSlash());
@@ -201,7 +202,7 @@ void DownloadClient::didReceiveResponseAsync(ResourceHandle*, WebCore::ResourceR
         // Fail if destination file path is not set
         if(priv->destinationPath.isEmpty())
         {
-            ResourceError resourceError(String(WebKitErrorDomain), WebURLErrorCannotCreateFile, URL(), String("Can't create file"));
+            ResourceError resourceError(String::fromLatin1(WebKitErrorDomain), WebURLErrorCannotCreateFile, URL(), String("Can't create file"_s));
             didFail(priv->resourceHandle.get(), resourceError);
             completionHandler();
             return;
@@ -222,7 +223,7 @@ void DownloadClient::didReceiveResponseAsync(ResourceHandle*, WebCore::ResourceR
             priv->resourceHandle->cancel();
             priv->resourceHandle = ResourceHandle::create2(new WebDownloadNetworkingContext(), *priv->resourceRequest, priv->downloadClient, false, false, false);
             // HACK to disable on-the-fly gzip decoding
-            if (priv->requestUri.endsWith(".gz") || priv->requestUri.endsWith(".tgz"))
+            if (priv->requestUri.endsWith(".gz"_s) || priv->requestUri.endsWith(".tgz"_s))
                 priv->resourceHandle->getInternal()->m_curlRequest->setDisableEncoding(true);
             priv->resourceHandle->getInternal()->m_curlRequest->setResumeOffset(priv->startOffset);
             priv->resourceHandle->getInternal()->m_curlRequest->start();
@@ -236,7 +237,7 @@ void DownloadClient::didReceiveResponseAsync(ResourceHandle*, WebCore::ResourceR
             // Fail if destination file already exists and can't be overwritten
             if(!priv->allowOverwrite && priv->outputChannel->open('r') != -1)
             {
-                ResourceError resourceError(String(WebKitErrorDomain), WebURLErrorCannotCreateFile, URL(), String("Can't create file"));
+                ResourceError resourceError(String::fromLatin1(WebKitErrorDomain), WebURLErrorCannotCreateFile, URL(), String("Can't create file"_s));
                 didFail(priv->resourceHandle.get(), resourceError);
                 completionHandler();
                 return;
@@ -247,7 +248,7 @@ void DownloadClient::didReceiveResponseAsync(ResourceHandle*, WebCore::ResourceR
             // Fail if not possible to open destination file to writing
             if(priv->outputChannel->open('w') == -1)
             {
-                ResourceError resourceError(String(WebKitErrorDomain), WebURLErrorCannotCreateFile, URL(), String("Can't create file"));
+                ResourceError resourceError(String::fromLatin1(WebKitErrorDomain), WebURLErrorCannotCreateFile, URL(), String("Can't create file"_s));
                 didFail(priv->resourceHandle.get(), resourceError);
                 completionHandler();
                 return;
@@ -260,8 +261,10 @@ void DownloadClient::didReceiveResponseAsync(ResourceHandle*, WebCore::ResourceR
     completionHandler();
 }
 
-void DownloadClient::didReceiveData(ResourceHandle*, const uint8_t* data, unsigned length, int lengthReceived)
+void DownloadClient::didReceiveData(ResourceHandle*, const SharedBuffer& buffer, int lengthReceived)
 {
+    const uint8_t* data = buffer.span().data();
+    unsigned length = buffer.size();
     if (!m_download->downloadDelegate())
         return;
 
@@ -495,7 +498,7 @@ void WebDownload::start(bool quiet)
         ResourceResponse response(m_response->resourceResponse());
         m_priv->resourceHandle->setClientInternal(m_priv->downloadClient);
         // HACK to disable on-the-fly gzip decoding
-        if (m_priv->requestUri.endsWith(".gz") || m_priv->requestUri.endsWith(".tgz"))
+        if (m_priv->requestUri.endsWith(".gz"_s) || m_priv->requestUri.endsWith(".tgz"_s))
             m_priv->resourceHandle->getInternal()->m_curlRequest->setDisableEncoding(true);
         m_priv->downloadClient->didStart();
         m_priv->downloadClient->didReceiveResponseAsync(m_priv->resourceHandle.get(), WTFMove(response) , [] { });
@@ -507,7 +510,7 @@ void WebDownload::start(bool quiet)
         if(m_priv->resourceHandle)
         {
             // HACK to disable on-the-fly gzip decoding
-            if (m_priv->requestUri.endsWith(".gz") || m_priv->requestUri.endsWith(".tgz"))
+            if (m_priv->requestUri.endsWith(".gz"_s) || m_priv->requestUri.endsWith(".tgz"_s))
                 m_priv->resourceHandle->getInternal()->m_curlRequest->setDisableEncoding(true);
             m_priv->resourceHandle->getInternal()->m_curlRequest->start();
         }
@@ -563,7 +566,7 @@ void WebDownload::setDeletesFileUponFailure(bool deletesFileUponFailure)
 
 void WebDownload::setDestination(const char* path, bool allowOverwrite, bool allowResume)
 {
-    m_priv->destinationPath = path;
+    m_priv->destinationPath = String::fromLatin1(path);
     m_priv->allowOverwrite = allowOverwrite;
     m_priv->allowResume = allowResume;
 }
@@ -585,5 +588,5 @@ void WebDownload::useCredential(WebURLCredential* credential, WebURLAuthenticati
 
 void WebDownload::setCommandUponCompletion(const char* command)
 {
-    m_priv->command = String(command);
+    m_priv->command = String::fromLatin1(command);
 }

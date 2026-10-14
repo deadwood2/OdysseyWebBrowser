@@ -39,7 +39,7 @@
 #include <wtf/text/WTFString.h>
 #include <WebCore/CachedResourceLoader.h>
 #include <WebCore/Document.h>
-#include <WebCore/Frame.h>
+#include <WebCore/LocalFrame.h>
 #include <WebCore/FrameLoader.h>
 #include <wtf/URL.h>
 #include <WebCore/SharedBuffer.h>
@@ -96,9 +96,12 @@ void WebDataSource::initWithRequest(WebMutableURLRequest* /*request*/)
 RefPtr<SharedBuffer> WebDataSource::data()
 {
     if (!m_loader)
-        return 0;
+        return nullptr;
 
-    return m_loader->mainResourceData();
+    // 2.46 keeps the main resource as a FragmentedSharedBuffer.
+    if (auto data = m_loader->mainResourceData())
+        return data->makeContiguous();
+    return nullptr;
 }
 
 // WebDocumentRepresentation* WebDataSource::representation()
@@ -180,9 +183,12 @@ WebResource* WebDataSource::subresourceForURL(String url)
     if (!cachedResource)
         return 0;
 
-    SharedBuffer* buffer = cachedResource->resourceBuffer();
+    // 2.46 keeps resources as FragmentedSharedBuffer; WebResource wants one contiguous buffer.
+    RefPtr<SharedBuffer> buffer;
+    if (auto* resourceBuffer = cachedResource->resourceBuffer())
+        buffer = resourceBuffer->makeContiguous();
 
-    return WebResource::createInstance(buffer, cachedResource->response());
+    return WebResource::createInstance(WTFMove(buffer), cachedResource->response());
 }
 
 void WebDataSource::addSubresource(WebResource* /*subresource*/)

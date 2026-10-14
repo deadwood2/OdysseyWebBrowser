@@ -50,7 +50,7 @@ namespace WebCore {
     class BALObject;
     class DocumentLoader;
     class DOMWrapperWorld;
-    class Frame;
+    class LocalFrame;
     class HTMLFrameOwnerElement;
     class IntRect;
     class Page;
@@ -96,14 +96,14 @@ typedef enum {
      * @param[in]: frame
      * @param[out]: WebFrame
      */
-WebFrame* kit(WebCore::Frame*);
+WebFrame* kit(WebCore::LocalFrame*);
 
     /**
      * get frame from a webFrame
      * @param[in]: WebFrame
      * @param[out]: frame
      */
-WEBKIT_OWB_API WebCore::Frame* core(WebFrame*);
+WEBKIT_OWB_API WebCore::LocalFrame* core(WebFrame*);
 
 class WEBKIT_OWB_API WebFrame
 {
@@ -601,8 +601,8 @@ public:
     void didChangeIcons(WebCore::DocumentLoader*);
 
 protected:
-     friend WebCore::Frame* core(WebFrame*);
-     friend WebCore::Frame* core(const WebFrame*);
+     friend WebCore::LocalFrame* core(WebFrame*);
+     friend WebCore::LocalFrame* core(const WebFrame*);
      friend class WebView;
      friend class WebFrameLoaderClient;
 
@@ -617,13 +617,13 @@ protected:
     /**
      *  init WebFrame
      */
-    WTF::Ref<WebCore::Frame> createSubframeWithOwnerElement(WebView*, WebCore::Page*, WebCore::HTMLFrameOwnerElement*); 
+    WTF::Ref<WebCore::LocalFrame> createSubframeWithOwnerElement(WebView*, WebCore::Page*, WebCore::HTMLFrameOwnerElement*); 
      void initWithWebView(WebView*, WebCore::Page*); 
 
     /**
      * get frame
      */
-    WebCore::Frame* impl();
+    WebCore::LocalFrame* impl();
 
     /**
      *  loadHTMLString

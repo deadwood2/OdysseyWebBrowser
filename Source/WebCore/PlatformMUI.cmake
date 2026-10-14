@@ -98,6 +98,7 @@ list(APPEND WebCore_SOURCES
     platform/image-decoders/cairo/ImageBackingStoreCairo.cpp
 
     platform/network/mui/CurlSSLHandleMUI.cpp
+    inspector/LegacyWebSocketInspectorInstrumentation.cpp
 
     platform/PlatformStrategies.cpp
 
@@ -107,6 +108,7 @@ list(APPEND WebCore_SOURCES
 )
 
 list(APPEND WebCore_PRIVATE_FRAMEWORK_HEADERS
+    inspector/LegacyWebSocketInspectorInstrumentation.h
     platform/mui/DataObjectMorphOS.h
     platform/mui/PopupMenuMorphOS.h
     platform/mui/SearchPopupMenuMorphOS.h

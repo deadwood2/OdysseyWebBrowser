@@ -28,6 +28,7 @@
  */
 
 #include <wtf/text/WTFString.h>
+#include <wtf/text/MakeString.h>
 #include <wtf/text/CString.h>
 
 #include <unistd.h>
@@ -385,12 +386,12 @@ static ULONG build_menu(Object *menu, Object *lt, struct MUIS_Listtree_TreeNode 
                         if(entry)
                         {
                             //char label[128];
-                            WTF::String truncatedTitle = node->title ? node->title : "";
+                            WTF::String truncatedTitle = String::fromLatin1(node->title ? node->title : "");
 
                             if(truncatedTitle.length() > 64)
                             {
-                                truncatedTitle.truncate(64);
-                                truncatedTitle.append("...");
+                                truncatedTitle = truncatedTitle.left(64);
+                                truncatedTitle = makeString(truncatedTitle, "..."_s);
                             }
 
                             /*

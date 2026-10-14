@@ -35,8 +35,8 @@
 #include <WebCore/Editor.h>
 #include "FileIOLinux.h"
 #include <WebCore/FocusController.h>
-#include <WebCore/Frame.h>
-#include <WebCore/FrameView.h>
+#include <WebCore/LocalFrame.h>
+#include <WebCore/LocalFrameView.h>
 #include <WebCore/GraphicsContext.h>
 #include <WebCore/InspectorController.h>
 #include <wtf/MainThread.h>
@@ -1456,7 +1456,7 @@ DEFSMETHOD(OWBWindow_LoadURL)
     if (widget && msg->url && *(msg->url))
     {
         Object *urlString = (Object *) getv(data->addressbargroup, MUIA_Popstring_String);
-        String url = String((const char *) msg->url).stripWhiteSpace();
+        String url = String::fromLatin1((const char *) msg->url).trim(deprecatedIsSpaceOrNewline);
         URL kurl({ }, url);
         size_t spacepos = url.find(' ');
 
@@ -1503,10 +1503,10 @@ DEFSMETHOD(OWBWindow_LoadURL)
         widget->webView->clearMainFrameName();
 
         // Handle protocols (any better place?)
-        if(kurl.protocolIs("about"))
+        if(kurl.protocolIs("about"_s))
         {
             // XXX: duplicate from owbbrowser about: handling...
-            OWBFile f("PROGDIR:resource/about.html");
+            OWBFile f("PROGDIR:resource/about.html"_s);
 
             if(f.open('r') != -1)
             {
@@ -1514,7 +1514,7 @@ DEFSMETHOD(OWBWindow_LoadURL)
 
                 if(fileContent)
                 {
-                    String content = fileContent;
+                    String content = String::fromLatin1(fileContent);
 
                     widget->webView->mainFrame()->loadHTMLString(content.utf8().data(), "about:");
 
@@ -1524,21 +1524,21 @@ DEFSMETHOD(OWBWindow_LoadURL)
                 f.close();
             }
         }
-        else if(kurl.string().startsWith("topsites"))
+        else if(kurl.string().startsWith("topsites"_s))
         {
             TopSitesManager::getInstance().generateTemplate(widget->webView, kurl.string());
         }
-        else if(kurl.protocolIs("javascript"))
+        else if(kurl.protocolIs("javascript"_s))
         {
             size_t scriptpos = kurl.string().find(':');
             if(scriptpos != notFound)
             {
                 String script = kurl.string().substring(scriptpos+1);
-                script = decodeURLEscapeSequences(script);
+                script = PAL::decodeURLEscapeSequences(script);
                 widget->webView->executeScript(script.utf8().data());
             }
         }
-        else if(kurl.protocolIs("data"))
+        else if(kurl.protocolIs("data"_s))
         {
             widget->webView->mainFrame()->loadURL(url.utf8().data());
         }
@@ -1551,11 +1551,11 @@ DEFSMETHOD(OWBWindow_LoadURL)
             {
                 String searchString = String::fromUTF8(converted);
                 free(converted);
-                searchString.stripWhiteSpace();
+                searchString.trim(deprecatedIsSpaceOrNewline);
                 searchString = encodeWithURLEscapeSequences(searchString);
-                searchString.replace("+", "%2B");
-                searchString.replace("%20", "+");
-                searchString.replace("&", "%26");
+                searchString = makeStringByReplacingAll(searchString, "+"_s, "%2B"_s);
+                searchString = makeStringByReplacingAll(searchString, "%20"_s, "+"_s);
+                searchString = makeStringByReplacingAll(searchString, "&"_s, "%26"_s);
                 widget->webView->mainFrame()->loadURL(createWithFormatAndArguments("https://www.google.com/search?ie=UTF-8&oe=UTF-8&sourceid=navclient&gfns=1&q=%s", searchString.utf8().data()).utf8().data());
             }
         }
@@ -1565,7 +1565,7 @@ DEFSMETHOD(OWBWindow_LoadURL)
             size_t pos = kurl.string().find(':');
             if(pos == notFound || pos > 5)
             {
-                widget->webView->mainFrame()->loadURL(String("https://" + url).utf8().data());
+                widget->webView->mainFrame()->loadURL(String(makeString("https://"_s, url)).utf8().data());
             }
             else
             {
@@ -1706,8 +1706,8 @@ DEFTMETHOD(OWBWindow_SaveAsSource)
         if(dataSource && !dataSource->isLoading())
         {
             char buffer[100];
-            URL url({ }, (char *)getv(data->active_browser, MA_OWBBrowser_URL));
-            char *name = strdup(decodeURLEscapeSequences(url.lastPathComponent()).latin1().data());
+            URL url({ }, String::fromLatin1((char *)getv(data->active_browser, MA_OWBBrowser_URL)));
+            char *name = strdup(PAL::decodeURLEscapeSequences(url.lastPathComponent()).latin1().data());
 
             if(name)
             {
@@ -1744,7 +1744,7 @@ DEFTMETHOD(OWBWindow_SaveAsSource)
 
                     if(f)
                     {
-                        fwrite(dataSource->data()->data(), dataSource->data()->size(), 1, f);
+                        fwrite(dataSource->data()->span().data(), dataSource->data()->size(), 1, f);
                         fclose(f);
                     }
 
@@ -1763,8 +1763,8 @@ DEFTMETHOD(OWBWindow_SaveAsPDF)
 {
     GETDATA;
     char buffer[100];
-    URL url({ }, (char *)getv(data->active_browser, MA_OWBBrowser_URL));
-    char *name = strdup(decodeURLEscapeSequences(url.lastPathComponent()).latin1().data());
+    URL url({ }, String::fromLatin1((char *)getv(data->active_browser, MA_OWBBrowser_URL)));
+    char *name = strdup(PAL::decodeURLEscapeSequences(url.lastPathComponent()).latin1().data());
 
     if(name)
     {
@@ -2534,19 +2534,19 @@ DEFSMETHOD(OWBWindow_UpdateUserScript)
     {
         Vector<ScriptEntry *> *scripts = (Vector<ScriptEntry *> *) DoMethod((Object *) getv(app, MA_OWBApp_ScriptManagerWindow), MM_ScriptManagerGroup_ScriptsForURL, msg->url);    
 
-        String shorthelp = "";
+        String shorthelp = ""_s;
         
         if(scripts->size())
         {
-            shorthelp = String(GSI(MSG_OWBWINDOW_RUNNING_USERSCRIPTS));
+            shorthelp = String::fromLatin1(GSI(MSG_OWBWINDOW_RUNNING_USERSCRIPTS));
         }
         
         for(size_t i = 0; i < scripts->size(); i++)
         {
-            shorthelp = shorthelp +  String(" - ") + (*scripts)[i]->title;
+            shorthelp = makeString(shorthelp, " - "_s, (*scripts)[i]->title);
             
             if(i < scripts->size() - 1)
-                shorthelp = shorthelp + String("\n");
+                shorthelp = makeString(shorthelp, String("\n"_s));
         }
         
         free(data->userscriptimage_shorthelp);
@@ -2739,7 +2739,7 @@ DEFSMETHOD(OWBWindow_UpdateMenu)
 
         ULONG found = FALSE;
         int index = getv(widget->browser, MA_OWBBrowser_UserAgent);
-        String useragent = (index != USERAGENT_DEFAULT) ? get_user_agent_strings()[index] : "";
+        String useragent = (index != USERAGENT_DEFAULT) ? String::fromLatin1(get_user_agent_strings()[index]) : emptyString();
         menu = (Object *) DoMethod(strip, MUIM_FindUData, MNA_SETTINGS_SPOOF_AS);
 
         FORCHILD(menu, MUIA_Family_List)
@@ -2748,7 +2748,7 @@ DEFSMETHOD(OWBWindow_UpdateMenu)
 
             if(menu_entry && ((SIPTR) menu_entry > MNA_DUMMY) && menu_entry->type == MENUTYPE_SPOOF)
             {
-                if(useragent == String((char *) menu_entry->data))
+                if(useragent == String::fromLatin1((char *) menu_entry->data))
                 {
                     DoMethod(strip, MUIM_SetUData, menu_entry, MUIA_Menuitem_Checked, TRUE);
                     found = TRUE;
@@ -2786,7 +2786,7 @@ DEFSMETHOD(Search)
             if(msg->flags & MV_FindText_MarkOnly)
             {
                 FindOptions opts;
-                if (!(msg->flags & MV_FindText_CaseSensitive)) opts.add(WebCore::CaseInsensitive);
+                if (!(msg->flags & MV_FindText_CaseSensitive)) opts.add(WebCore::FindOption::CaseInsensitive);
                 res = widget->webView->page()->markAllMatchesForText(searchString, opts, msg->flags & MV_FindText_ShowAllMatches, 512);
                 
                 if((msg->flags & MV_FindText_ShowAllMatches) == 0)
@@ -2797,11 +2797,11 @@ DEFSMETHOD(Search)
             else
             {
                 //widget->webView->page()->markAllMatchesForText(searchString, (msg->flags & MV_FindText_CaseSensitive) ? TextCaseSensitive : TextCaseInsensitive, msg->flags & MV_FindText_ShowAllMatches, 512);
-                FindOptions opts = WrapAround;
-                if (!(msg->flags & MV_FindText_CaseSensitive)) opts.add(CaseInsensitive);
-                if (msg->flags & MV_FindText_Previous) opts.add(Backwards);
+                FindOptions opts = WebCore::FindOption::WrapAround;
+                if (!(msg->flags & MV_FindText_CaseSensitive)) opts.add(WebCore::FindOption::CaseInsensitive);
+                if (msg->flags & MV_FindText_Previous) opts.add(WebCore::FindOption::Backwards);
 
-                res = widget->webView->page()->findString(searchString, opts);
+                res = widget->webView->page()->findString(searchString, opts).has_value();
             }
 
             free(converted);
@@ -3001,7 +3001,7 @@ static void completion_thread_start(void* p)
     Object * obj = arg->obj;
     GETDATA;
 
-    String prefixes[] = { String(""), String("http://"), String("http://www."), String("https://"), String("https://www.") };
+    String prefixes[] = { String(""_s), String("http://"_s), String("http://www."_s), String("https://"_s), String("https://www."_s) };
 
     WebHistory* history = WebHistory::sharedHistory();
     std::vector<WebHistoryItem *> *historyList;
@@ -3029,7 +3029,7 @@ static void completion_thread_start(void* p)
 
             if(item)
             {
-                String historyURL = item;
+                String historyURL = String::fromLatin1(item);
                 int offset = -1;
                 bool match = false;
 
@@ -3041,7 +3041,7 @@ static void completion_thread_start(void* p)
                     for(unsigned int j = 0; j < sizeof(prefixes)/sizeof(String); j++)
                     {
                         String urlToCompare = prefixes[j];
-                        urlToCompare.append(url);
+                        urlToCompare = makeString(urlToCompare, String::fromLatin1(url));
                         match = historyURL.startsWith(urlToCompare);
 
                         if(match)
@@ -3055,7 +3055,7 @@ static void completion_thread_start(void* p)
                 // Otherwise, match anything
                 else if(data->completion_mode_popup)
                 {
-                    offset = historyURL.find(url, 0);
+                    offset = historyURL.find(String::fromLatin1(url), 0);
                     match = offset != -1;
                 }
 
@@ -3125,7 +3125,7 @@ DEFSMETHOD(OWBWindow_AutoComplete)
 
     if(url && *url)
     {
-        data->url_to_complete = String(url);
+        data->url_to_complete = String::fromLatin1(url);
         data->completion_prevlen = msg->prevlen;
         data->completion_mode_string = getv(app, MA_OWBApp_URLCompletionType) & MV_OWBApp_URLCompletionType_Autocomplete;
         data->completion_mode_popup  = getv(app, MA_OWBApp_URLCompletionType) & MV_OWBApp_URLCompletionType_Popup;
@@ -3155,7 +3155,7 @@ DEFSMETHOD(OWBWindow_AutoComplete)
             arg->cl = cl;
             arg->obj = obj;
 
-            data->completion_thread = Thread::create("[OWB] Completion Thread", [arg] {
+            data->completion_thread = Thread::create("[OWB] Completion Thread"_s, [arg] {
                 completion_thread_start(arg);
             });
         }
@@ -3256,11 +3256,11 @@ DEFSMETHOD(OWBWindow_AddClosedView)
         }
 
         // truncate title
-        truncatedTitle = title;
+        truncatedTitle = String::fromLatin1(title);
         if(truncatedTitle.length() > 64)
         {
-            truncatedTitle.truncate(64);
-            truncatedTitle.append("...");
+            truncatedTitle = truncatedTitle.left(64);
+            truncatedTitle = makeString(truncatedTitle, "..."_s);
         }
 
         menu_entry = (struct menu_entry *) malloc(sizeof(*menu_entry) + strlen(url) + 1);
@@ -3347,8 +3347,8 @@ DEFSMETHOD(OWBWindow_AddHistoryItem)
         truncatedTitle = String::fromUTF8(titleptr);
         if(truncatedTitle.length() > 64)
         {
-            truncatedTitle.truncate(64);
-            truncatedTitle.append("...");
+            truncatedTitle = truncatedTitle.left(64);
+            truncatedTitle = makeString(truncatedTitle, "..."_s);
         }
 
         menu_entry = (struct menu_entry *) malloc(sizeof(*menu_entry) + strlen(url) + 1);

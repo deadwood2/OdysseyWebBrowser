@@ -31,6 +31,7 @@
 #endif
 
 #include <WebCore/ResourceResponse.h>
+#include <wtf/text/MakeString.h>
 #include "WebDownload.h"
 #include "WebDownloadPrivate.h"
 #include "WebURLResponse.h"
@@ -118,7 +119,7 @@ void DownloadDelegateMorphOS::decideDestinationWithSuggestedFilename(WebDownload
                                     TEXT tmpdate[50];
                                     TEXT tmptime[50];
                                     STRPTR strbuttons = GSI(MSG_DOWNLOADDELEGATE_OVERWRITE_OR_RESUME_ACTIONS);
-                                    String truncatedURI = truncate(String(localUri), 64);
+                                    String truncatedURI = truncate(String::fromLatin1(localUri), 64);
 
                                     dt.dat_Stamp.ds_Days    = fib->fib_Date.ds_Days;
                                     dt.dat_Stamp.ds_Minute  = fib->fib_Date.ds_Minute;
@@ -271,7 +272,7 @@ void DownloadDelegateMorphOS::didFinish(WebDownload* download)
     free(ptr);
 
     URL url = URL({ }, priv->requestUri);
-    url.setPassword("");
+    url.setPassword(""_s);
     ptr = strdup(url.string().utf8().data());
     stccpy(ccomment, ptr, sizeof(ccomment));
     free(ptr);
@@ -306,7 +307,7 @@ void DownloadDelegateMorphOS::didFailWithError(WebDownload* download, WebError* 
     {
         char cpath[1024];
         char ccomment[80];
-        String comment = String("FAILED ") + priv->requestUri ;
+        String comment = makeString(String("FAILED "_s), priv->requestUri) ;
         char *ptr;
 
         ptr = strdup(priv->destinationPath.latin1().data());
@@ -314,8 +315,8 @@ void DownloadDelegateMorphOS::didFailWithError(WebDownload* download, WebError* 
         free(ptr);
 
         URL url = URL({ }, priv->requestUri);
-        url.setPassword("");
-        comment = String("FAILED ") + url.string();
+        url.setPassword(""_s);
+        comment = makeString(String("FAILED "_s), url.string());
         ptr = strdup(comment.utf8().data());
         stccpy(ccomment, ptr, sizeof(ccomment));
         free(ptr);

@@ -112,7 +112,7 @@ DEFSMETHOD(DateTimeChooserPopup_DidSelect)
     char * value = (char *) getv(data->str_date, MUIA_String_Contents);
     value = "08/05/2014";
 
-    data->controller->didChooseValue(String(value));
+    data->controller->didChooseValue(String::fromLatin1(value));
 
     if(msg->close)
     {

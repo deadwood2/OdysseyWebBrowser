@@ -88,7 +88,7 @@ namespace WTF {
 namespace WebCore {
     class Application;
     class Element;
-    class FrameView;
+    class LocalFrameView;
     class Image;
     class IntPoint;
     class IntRect;
@@ -97,7 +97,6 @@ namespace WebCore {
     class Page;
     class ResourceRequest;
 }
-using namespace std;
 
 /**
   * get a webview from page
@@ -400,13 +399,13 @@ public:
         that are chosen for best results in rendering web pages.
         @param applicationName The application name
      */
-    virtual void setApplicationNameForUserAgent(const string& applicationName);
+    virtual void setApplicationNameForUserAgent(const std::string& applicationName);
 
     /**
      *  applicationNameForUserAgent 
      * The name of the application as used in the user-agent string.
      */
-    virtual const string& applicationNameForUserAgent();
+    virtual const std::string& applicationNameForUserAgent();
 
     /**
      *  setCustomUserAgent 
@@ -417,13 +416,13 @@ public:
         for best results rendering web pages.
         @param userAgentString The user agent description
      */
-    virtual void setCustomUserAgent(const string& userAgentString);
+    virtual void setCustomUserAgent(const std::string& userAgentString);
 
     /**
      *  customUserAgent 
      * @result The custom user-agent string or nil if no custom user-agent string has been set.
      */
-    virtual const string& customUserAgent();
+    virtual const std::string& customUserAgent();
 
     /**
      *  userAgentForURL 
@@ -431,7 +430,7 @@ public:
         @param URL The URL.
         @result The user-agent string for the supplied URL.
      */
-    virtual const string& userAgentForURL(const string& url);
+    virtual const std::string& userAgentForURL(const std::string& url);
 
     /**
      *  supportsTextEncoding 
@@ -1285,7 +1284,7 @@ public:
     /**
      * get user agent for url
      */
-    const string& userAgentForKURL(const string& url);
+    const std::string& userAgentForKURL(const std::string& url);
 
 
 
@@ -1559,12 +1558,12 @@ protected:
     /**
      *  scrollBackingStore 
      */
-    void scrollBackingStore(WebCore::FrameView*, int dx, int dy, const BalRectangle& scrollViewRect, const BalRectangle& clipRect);
+    void scrollBackingStore(WebCore::LocalFrameView*, int dx, int dy, const BalRectangle& scrollViewRect, const BalRectangle& clipRect);
 
     /**
      *  updateBackingStore 
      */
-    void updateBackingStore(WebCore::FrameView*, bool backingStoreCompletelyDirty = false);
+    void updateBackingStore(WebCore::LocalFrameView*, bool backingStoreCompletelyDirty = false);
 
     /**
      *  deleteBackingStore 
@@ -1716,12 +1715,12 @@ protected:
 
     bool m_userAgentOverridden;
     bool m_useBackForwardList;
-    string m_userAgentCustom;
-    string m_userAgentStandard;
+    std::string m_userAgentCustom;
+    std::string m_userAgentStandard;
     float m_zoomMultiplier;
     bool m_zoomsTextOnly;
-    string m_overrideEncoding;
-    string m_applicationName;
+    std::string m_overrideEncoding;
+    std::string m_applicationName;
     bool m_mouseActivated;
     // WebCore dragging logic needs to be able to inspect the drag data
     // this is updated in DragEnter/Leave/Drop
@@ -1737,7 +1736,7 @@ protected:
     bool m_hasCustomDropTarget;
     unsigned m_inIMEComposition;
     BalWidget* m_toolTipHwnd;
-    string m_toolTip;
+    std::string m_toolTip;
     bool m_deleteBackingStoreTimerActive;
 
     bool m_transparent;

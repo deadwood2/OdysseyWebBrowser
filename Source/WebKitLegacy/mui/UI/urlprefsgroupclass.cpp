@@ -339,7 +339,7 @@ DEFTMETHOD(URLPrefsGroup_Load)
 
     NEWLIST(&urlsetting_list);
 
-    OWBFile *urlFile = new OWBFile("PROGDIR:Conf/url.prefs");
+    OWBFile *urlFile = new OWBFile("PROGDIR:Conf/url.prefs"_s);
 
     if (!urlFile)
         return 0;
@@ -351,23 +351,23 @@ DEFTMETHOD(URLPrefsGroup_Load)
     }
 
     char *buffer = urlFile->read(urlFile->getSize());
-    String fileBuffer = buffer;
+    String fileBuffer = String::fromLatin1(buffer);
     delete [] buffer;
     urlFile->close();
     delete urlFile;
 
-    Vector<String> urlsettings = fileBuffer.split("\n");
+    Vector<String> urlsettings = fileBuffer.split("\n"_s);
 
     set(data->lv_url, MUIA_List_Quiet, TRUE);
 
     for(size_t i = 0; i < urlsettings.size(); i++)
     {
-        Vector<String> urlsettingsAttributes = urlsettings[i].split("\1");
+        Vector<String> urlsettingsAttributes = urlsettings[i].split("\1"_s);
 
         if(urlsettingsAttributes.size() >= 5)
         {
             ULONG cookiepolicy = 0;
-            String cookiefilter = ".*";
+            String cookiefilter = ".*"_s;
             ULONG localstorage = TRUE;
 
             if(urlsettingsAttributes.size() >= 7) // We added cookies later, hence this additional check
@@ -378,13 +378,13 @@ DEFTMETHOD(URLPrefsGroup_Load)
 
             if(urlsettingsAttributes.size() >= 8) // We added local storage, hence this additional check
             {
-                localstorage = urlsettingsAttributes[7] != "0";
+                localstorage = urlsettingsAttributes[7] != "0"_s;
             }
 
             urlsettingnode *un = urlsetting_create((char *) urlsettingsAttributes[0].latin1().data(),
-                                                   urlsettingsAttributes[1] != "0",
-                                                   urlsettingsAttributes[2] != "0",
-                                                   urlsettingsAttributes[3] != "0",
+                                                   urlsettingsAttributes[1] != "0"_s,
+                                                   urlsettingsAttributes[2] != "0"_s,
+                                                   urlsettingsAttributes[3] != "0"_s,
                                                    atoi(urlsettingsAttributes[4].latin1().data()),
                                                    cookiepolicy,
                                                    (char *) cookiefilter.latin1().data(),
@@ -408,7 +408,7 @@ DEFTMETHOD(URLPrefsGroup_Save)
     int i = 0;
     struct urlsettingnode * un;
 
-    OWBFile *urlFile = new OWBFile("PROGDIR:Conf/url.prefs");
+    OWBFile *urlFile = new OWBFile("PROGDIR:Conf/url.prefs"_s);
     if(!urlFile)
         return 0;
 
@@ -477,7 +477,7 @@ DEFSMETHOD(URLPrefsGroup_ApplySettingsForURL)
         if(getv(widget->browser, MA_OWBBrowser_PluginsEnabled) == PLUGINS_DEFAULT)
         {
             enabled = webView->preferences()->arePlugInsEnabled();
-            webView->page()->settings().setPluginsEnabled(enabled);
+            // No plug-ins in WebKit 2.46: the preference is ignored.
         }
 
         // User agent
@@ -488,25 +488,22 @@ DEFSMETHOD(URLPrefsGroup_ApplySettingsForURL)
 
         enabled = webView->preferences()->localStorageEnabled();
         webView->page()->settings().setLocalStorageEnabled(enabled);
-        webView->page()->settings().setOfflineWebApplicationCacheEnabled(enabled);
 
         // Search for URL settings
         ITERATELISTSAFE(n, m, &urlsetting_list)
         {
             struct urlsettingnode *un = (struct urlsettingnode *) n;
 
-            JSC::Yarr::RegularExpression re(un->urlpattern, JSC::Yarr::TextCaseInsensitive);
+            JSC::Yarr::RegularExpression re(String::fromLatin1(un->urlpattern), { JSC::Yarr::Flags::IgnoreCase });
 
-            if(re.match(msg->url) >=0)
+            if(re.match(String::fromLatin1(msg->url)) >=0)
             {
                 //kprintf("ApplySettingForURL pattern <%s> matches\n", un->urlpattern);
 
                 // Apply URL settings
                 webView->page()->settings().setScriptEnabled(un->settings.javascript != FALSE);
                 webView->page()->settings().setLoadsImagesAutomatically(un->settings.images != FALSE);
-                webView->page()->settings().setPluginsEnabled(un->settings.plugins != FALSE);
                 webView->page()->settings().setLocalStorageEnabled(un->settings.localstorage != FALSE);
-                webView->page()->settings().setOfflineWebApplicationCacheEnabled(un->settings.localstorage != FALSE);
                 webView->setCustomUserAgent(get_user_agent_strings()[un->settings.useragent]);
                 break;
             }
@@ -529,7 +526,7 @@ DEFSMETHOD(URLPrefsGroup_ApplySettingsForURL)
         // Plugins
         if(getv(widget->browser, MA_OWBBrowser_PluginsEnabled) != PLUGINS_DEFAULT)
         {
-            webView->page()->settings().setPluginsEnabled(getv(widget->browser, MA_OWBBrowser_PluginsEnabled) == PLUGINS_ENABLED);
+            // No plug-ins in WebKit 2.46: the setting is ignored.
         }
 
         // UserAgent
@@ -552,9 +549,9 @@ DEFSMETHOD(URLPrefsGroup_MatchesURL)
     {
         struct urlsettingnode *un = (struct urlsettingnode *) n;
 
-        JSC::Yarr::RegularExpression re(un->urlpattern, JSC::Yarr::TextCaseInsensitive);
+        JSC::Yarr::RegularExpression re(String::fromLatin1(un->urlpattern), { JSC::Yarr::Flags::IgnoreCase });
 
-        if(re.match(msg->url) >=0)
+        if(re.match(String::fromLatin1(msg->url)) >=0)
         {
             match = TRUE;
             break;
@@ -572,9 +569,9 @@ DEFSMETHOD(URLPrefsGroup_UserAgentForURL)
     {
         struct urlsettingnode *un = (struct urlsettingnode *) n;
 
-        JSC::Yarr::RegularExpression re(un->urlpattern, JSC::Yarr::TextCaseInsensitive);
+        JSC::Yarr::RegularExpression re(String::fromLatin1(un->urlpattern), { JSC::Yarr::Flags::IgnoreCase });
 
-        if(re.match(msg->url) >=0)
+        if(re.match(String::fromLatin1(msg->url)) >=0)
         {
             return (IPTR) get_user_agent_strings()[un->settings.useragent];
         }
@@ -603,13 +600,13 @@ DEFSMETHOD(URLPrefsGroup_CookiePolicyForURLAndName)
     {
         struct urlsettingnode *un = (struct urlsettingnode *) n;
 
-        JSC::Yarr::RegularExpression re_url(un->urlpattern, JSC::Yarr::TextCaseInsensitive);
+        JSC::Yarr::RegularExpression re_url(String::fromLatin1(un->urlpattern), { JSC::Yarr::Flags::IgnoreCase });
 
-        if(re_url.match(msg->url) >= 0)
+        if(re_url.match(String::fromLatin1(msg->url)) >= 0)
         {
-            JSC::Yarr::RegularExpression re_name(un->settings.cookiefilter, JSC::Yarr::TextCaseInsensitive);
+            JSC::Yarr::RegularExpression re_name(String::fromLatin1(un->settings.cookiefilter), { JSC::Yarr::Flags::IgnoreCase });
 
-            if(re_name.match(msg->name) >= 0)
+            if(re_name.match(String::fromLatin1(msg->name)) >= 0)
             {
                 switch(un->settings.cookiepolicy)
                 {

@@ -33,7 +33,7 @@
 #include <wtf/text/CString.h>
 #include "DOMCoreClasses.h"
 #include <WebCore/EventHandler.h>
-#include <WebCore/Frame.h>
+#include <WebCore/LocalFrame.h>
 #include <WebCore/HitTestResult.h>
 #include <WebCore/HTMLFormElement.h>
 #include <WebCore/MouseEvent.h>

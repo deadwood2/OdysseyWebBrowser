@@ -33,17 +33,18 @@
 class WebView;
 
 class WebContextMenuClient : public WebCore::ContextMenuClient {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     WebContextMenuClient(WebView*);
 
     virtual void contextMenuDestroyed();
 
     virtual void downloadURL(const URL&);
-    virtual void searchWithGoogle(const WebCore::Frame*);
-    virtual void lookUpInDictionary(WebCore::Frame*);
+    virtual void searchWithGoogle(const WebCore::LocalFrame*);
+    virtual void lookUpInDictionary(WebCore::LocalFrame*);
     virtual void speak(const WTF::String&);
     virtual void stopSpeaking();
-    virtual bool isSpeaking();
+    bool isSpeaking() const override;
 
 private:
     WebView* m_webView;

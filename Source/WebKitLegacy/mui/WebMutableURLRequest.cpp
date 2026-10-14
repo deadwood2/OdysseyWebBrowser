@@ -126,7 +126,7 @@ bool WebMutableURLRequest::HTTPShouldHandleCookies()
 
 void WebMutableURLRequest::initWithURL(const char* url, WebURLRequestCachePolicy cachePolicy, double timeoutInterval)
 {
-    m_request->setURL(URL({ }, url));
+    m_request->setURL(URL({ }, String::fromLatin1(url)));
     m_request->setCachePolicy(core(cachePolicy));
     m_request->setTimeoutInterval(timeoutInterval);
 }
@@ -158,7 +158,7 @@ const char* WebMutableURLRequest::protocol()
 
 const char* WebMutableURLRequest::valueForHTTPHeaderField(const char* field)
 {
-    return strdup(m_request->httpHeaderField(field).utf8().data());
+    return strdup(m_request->httpHeaderField(String::fromLatin1(field)).utf8().data());
 }
 
 bool WebMutableURLRequest::isEmpty()
@@ -197,7 +197,7 @@ void WebMutableURLRequest::setHTTPBodyStream(const char*)
 
 void WebMutableURLRequest::setHTTPMethod(const char* method)
 {
-    m_request->setHTTPMethod(method);
+    m_request->setHTTPMethod(String::fromLatin1(method));
 }
 
 void WebMutableURLRequest::setHTTPShouldHandleCookies(bool /*handleCookies*/)
@@ -216,12 +216,12 @@ void WebMutableURLRequest::setTimeoutInterval(double timeoutInterval)
 
 void WebMutableURLRequest::setURL(const char* url)
 {
-    m_request->setURL(URL({ }, url));
+    m_request->setURL(URL({ }, String::fromLatin1(url)));
 }
 
 void WebMutableURLRequest::setValue(const char* value, const char* field)
 {
-    m_request->setHTTPHeaderField(field, value);
+    m_request->setHTTPHeaderField(String::fromLatin1(field), String::fromLatin1(value));
 }
 
 void WebMutableURLRequest::setAllowsAnyHTTPSCertificate()
@@ -247,7 +247,7 @@ void WebMutableURLRequest::setFormData(const FormData* data)
 
 const FormData* WebMutableURLRequest::formData() const
 {
-    return m_request->httpBody();
+    return m_request->httpBody().get();
 }
 
 const HTTPHeaderMap& WebMutableURLRequest::httpHeaderFields() const

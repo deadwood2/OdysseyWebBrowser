@@ -83,7 +83,7 @@ DEFNEW
             data->coloradjust = coloradjust;
             data->controller = controller;
             data->source = source;
-            auto components = color->toSRGBALossy<uint8_t>();
+            auto components = color->toColorTypeLossy<WebCore::SRGBA<uint8_t>>().resolved();
 
             SetAttrs(data->coloradjust, MUIA_Coloradjust_Red,   components.red << 24,
                                         MUIA_Coloradjust_Green, components.green << 24,

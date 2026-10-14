@@ -95,7 +95,7 @@ static void cycles_init(void)
 
 void restore_download_state(Object *obj, struct Data *data)
 {
-    OWBFile *downloadFile = new OWBFile("PROGDIR:Conf/downloads.prefs");
+    OWBFile *downloadFile = new OWBFile("PROGDIR:Conf/downloads.prefs"_s);
 
     if (!downloadFile)
         return;
@@ -107,15 +107,15 @@ void restore_download_state(Object *obj, struct Data *data)
     }
 
     char *buffer = downloadFile->read(downloadFile->getSize());
-    String fileBuffer = buffer;
+    String fileBuffer = String::fromLatin1(buffer);
     delete [] buffer;
     downloadFile->close();
     delete downloadFile;
 
-    Vector<String> downloads = fileBuffer.split("\n");
+    Vector<String> downloads = fileBuffer.split("\n"_s);
     for(size_t i = 0; i < downloads.size(); i++)
     {
-        Vector<String> downloadAttributes = downloads[i].split("\1");
+        Vector<String> downloadAttributes = downloads[i].split("\1"_s);
 
         if(downloadAttributes.size() >= 5) // Now 6 for new format
         {
@@ -139,25 +139,25 @@ void restore_download_state(Object *obj, struct Data *data)
                 dl->iconimg   = NULL;
                 dl->iconobj   = NULL;
 
-                if(downloadAttributes[0] == "D")
+                if(downloadAttributes[0] == "D"_s)
                 {
                     dl->state = WEBKIT_WEB_DOWNLOAD_STATE_STARTED;
                     stccpy(dl->status, GSI(MSG_DOWNLOADGROUP_INTERRUPTED), sizeof(dl->status)); // Translate
                     DoMethod(data->lv_failed, MUIM_List_InsertSingle, dl, MUIV_List_Insert_Bottom);
                 }
-                else if(downloadAttributes[0] == "E")
+                else if(downloadAttributes[0] == "E"_s)
                 {
                     dl->state = WEBKIT_WEB_DOWNLOAD_STATE_ERROR;
                     stccpy(dl->status, downloadAttributes[1].latin1().data(), sizeof(dl->status));
                     DoMethod(data->lv_failed, MUIM_List_InsertSingle, dl, MUIV_List_Insert_Bottom);
                 }
-                else if(downloadAttributes[0] == "C")
+                else if(downloadAttributes[0] == "C"_s)
                 {
                     dl->state = WEBKIT_WEB_DOWNLOAD_STATE_CANCELLED;
                     stccpy(dl->status, GSI(MSG_DOWNLOADGROUP_CANCELLED_BY_USER), sizeof(dl->status));
                     DoMethod(data->lv_failed, MUIM_List_InsertSingle, dl, MUIV_List_Insert_Bottom);
                 }
-                else if(downloadAttributes[0] == "F")
+                else if(downloadAttributes[0] == "F"_s)
                 {
                     dl->state = WEBKIT_WEB_DOWNLOAD_STATE_FINISHED;
                     *dl->status = '\0';
@@ -177,7 +177,7 @@ void save_download_state()
     if(!getv(app, MA_OWBApp_DownloadSave))
         return;
 
-    OWBFile *downloadFile = new OWBFile("PROGDIR:Conf/downloads.prefs");
+    OWBFile *downloadFile = new OWBFile("PROGDIR:Conf/downloads.prefs"_s);
     if(!downloadFile)
         return;
 
@@ -212,14 +212,14 @@ void save_download_state()
         }
 
         // Shouldn't be needed, but filter potentially corrupted url
-        String url    = dl->url;
-        String status = dl->status;
-        if(url.startsWith("http") || url.startsWith("ftp"))
+        String url    = String::fromLatin1(dl->url);
+        String status = String::fromLatin1(dl->status);
+        if(url.startsWith("http"_s) || url.startsWith("ftp"_s))
         {
-            url.replace("\n", "\0");
-            url.replace("\r", "\0");
-            status.replace("\n", "\0");
-            status.replace("\r", "\0");
+            url = makeStringByReplacingAll(url, "\n"_s, "\0"_s);
+            url = makeStringByReplacingAll(url, "\r"_s, "\0"_s);
+            status = makeStringByReplacingAll(status, "\n"_s, "\0"_s);
+            status = makeStringByReplacingAll(status, "\r"_s, "\0"_s);
             downloadFile->write(createWithFormatAndArguments("%s\1%s\1%s\1%s\1%s\1%s\n", state, status.latin1().data(), url.latin1().data(), dl->path, dl->filename, dl->originurl));
         }
     }
@@ -770,7 +770,7 @@ DEFSMETHOD(Download_Retry)
 
                 if(downloadDelegate)
                 {
-                    URL url({ }, dl->url);
+                    URL url({ }, String::fromLatin1(dl->url));
                     WebDownload* download = WebDownload::createInstance(url, downloadDelegate);
                     download->start();
                 }

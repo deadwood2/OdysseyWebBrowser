@@ -162,7 +162,7 @@ WebDatabaseDetails* WebDatabaseManager::detailsForDatabase(const char* databaseN
     if (!webSecurityOrigin)
         return 0;
 
-    DatabaseDetails d = DatabaseManager::singleton().detailsForNameAndOrigin(databaseName, *webSecurityOrigin->securityOrigin());
+    DatabaseDetails d = DatabaseManager::singleton().detailsForNameAndOrigin(String::fromLatin1(databaseName), *webSecurityOrigin->securityOrigin());
     WebDatabaseDetails *details = WebDatabaseDetails::createInstance(strdup(d.name().utf8().data()), strdup(d.displayName().utf8().data()), d.expectedUsage(), d.currentUsage());
 
     delete webSecurityOrigin;
@@ -197,7 +197,7 @@ void WebDatabaseManager::setQuota(const char* origin, unsigned long long quota)
     if (this != s_sharedWebDatabaseManager)
         return;
 
-    DatabaseTracker::singleton().setQuota(SecurityOrigin::createFromString(origin).get().data(), quota);
+    DatabaseTracker::singleton().setQuota(SecurityOrigin::createFromString(String::fromLatin1(origin)).get().data(), quota);
 }
 
 void WebDatabaseManager::deleteDatabase(const char* databaseName, WebSecurityOrigin* origin)
@@ -209,7 +209,7 @@ void WebDatabaseManager::deleteDatabase(const char* databaseName, WebSecurityOri
     if (!webSecurityOrigin)
         return;
 
-    DatabaseTracker::singleton().deleteDatabase(webSecurityOrigin->securityOrigin()->data(), databaseName);
+    DatabaseTracker::singleton().deleteDatabase(webSecurityOrigin->securityOrigin()->data(), String::fromLatin1(databaseName));
 
     delete webSecurityOrigin;
 }
@@ -258,7 +258,7 @@ void WebDatabaseManager::dispatchDidModifyDatabase(WebSecurityOrigin* origin, co
         return;
     }
     */
-    m_webDatabaseTracker->dispatchDidModifyDatabase(origin->securityOrigin()->data(), databaseName);
+    m_webDatabaseTracker->dispatchDidModifyDatabase(origin->securityOrigin()->data(), String::fromLatin1(databaseName));
 }
 
 void WebKitInitializeWebDatabasesIfNecessary()
@@ -267,7 +267,7 @@ void WebKitInitializeWebDatabasesIfNecessary()
     if (initialized)
         return;
 
-    WTF::String databasesDirectory = FileSystem::pathByAppendingComponent("PROGDIR:", "Databases");
+    WTF::String databasesDirectory = FileSystem::pathByAppendingComponent("PROGDIR:"_s, "Databases"_s);
     WebCore::DatabaseManager::singleton().initialize(databasesDirectory);
 
     initialized = true;

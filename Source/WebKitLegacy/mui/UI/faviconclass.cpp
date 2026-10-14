@@ -151,23 +151,23 @@ STATIC VOID doset(struct Data *data, APTR obj, struct TagItem *taglist)
                     {
                         WebCore::BitmapImage* icon = 0;
 
-                        static RefPtr<WebCore::Image> defaultIcon = 0;
+                        static RefPtr<WebCore::Image> defaultIcon = nullptr;
                         if (!defaultIcon)
                             defaultIcon = WebCore::ImageAdapter::loadPlatformResource("urlIcon");
 
-                        static RefPtr<WebCore::Image> defaultFolderIcon = 0;
+                        static RefPtr<WebCore::Image> defaultFolderIcon = nullptr;
                         if (!defaultFolderIcon)
                             defaultFolderIcon = WebCore::ImageAdapter::loadPlatformResource("folderIcon");
 
-                        static RefPtr<WebCore::Image> defaultScriptIcon = 0;
+                        static RefPtr<WebCore::Image> defaultScriptIcon = nullptr;
                         if (!defaultScriptIcon)
                             defaultScriptIcon = WebCore::ImageAdapter::loadPlatformResource("scriptIcon");
 
-                        static RefPtr<WebCore::Image> topsitesIcon = 0;
+                        static RefPtr<WebCore::Image> topsitesIcon = nullptr;
                         if (!topsitesIcon)
                             topsitesIcon = WebCore::ImageAdapter::loadPlatformResource("topsitesIcon");
 
-                        static RefPtr<WebCore::Image> aboutIcon = 0;
+                        static RefPtr<WebCore::Image> aboutIcon = nullptr;
                         if (!aboutIcon)
                             aboutIcon = WebCore::ImageAdapter::loadPlatformResource("aboutIcon");
 
@@ -175,15 +175,15 @@ STATIC VOID doset(struct Data *data, APTR obj, struct TagItem *taglist)
                         {
                             icon = (WebCore::BitmapImage *) defaultFolderIcon.get();
                         }
-                        else if(URL({ }, data->url).protocolIs("javascript"))
+                        else if(URL({ }, String::fromLatin1(data->url)).protocolIs("javascript"_s))
                         {
                             icon = (WebCore::BitmapImage *) defaultScriptIcon.get();
                         }
-                        else if(URL({ }, data->url).string().startsWith("topsites"))
+                        else if(URL({ }, String::fromLatin1(data->url)).string().startsWith("topsites"_s))
                         {
                             icon = (WebCore::BitmapImage *) topsitesIcon.get();
                         }
-                        else if(URL({ }, data->url).protocolIs("about"))
+                        else if(URL({ }, String::fromLatin1(data->url)).protocolIs("about"_s))
                         {
                             icon = (WebCore::BitmapImage *) aboutIcon.get();
                         }
@@ -201,7 +201,7 @@ STATIC VOID doset(struct Data *data, APTR obj, struct TagItem *taglist)
 
                         if(icon)
                         {
-                                cairo_surface_t * icon_surface = icon->nativeImageForCurrentFrame()->platformImage().get();
+                                cairo_surface_t * icon_surface = icon->currentNativeImage()->platformImage().get();
 
                             if(!icon_surface)
                             {
@@ -209,7 +209,7 @@ STATIC VOID doset(struct Data *data, APTR obj, struct TagItem *taglist)
 
                                 if(icon)
                                 {
-                                  icon_surface = icon->nativeImageForCurrentFrame()->platformImage().get();
+                                  icon_surface = icon->currentNativeImage()->platformImage().get();
                                 }
                             }
                                     

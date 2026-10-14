@@ -30,6 +30,8 @@
 
 /* WebKit */
 #include <WebCore/GraphicsContext.h>
+#include "LocalMainFrame.h"
+#include <WebCore/RemoteUserInputEventData.h>
 #include <WebCore/BackForwardController.h>
 #include <WebCore/ContextMenu.h>
 #include <WebCore/ContextMenuController.h>
@@ -45,10 +47,10 @@
 #include <WebCore/Editor.h>
 #include "FileIOLinux.h"
 #include <WebCore/FocusController.h>
-#include <WebCore/Frame.h>
+#include <WebCore/LocalFrame.h>
 #include <WebCore/FrameLoader.h>
 #include <WebCore/FrameLoadRequest.h>
-#include <WebCore/FrameView.h>
+#include <WebCore/LocalFrameView.h>
 #include <WebCore/HostWindow.h>
 #include <WebCore/GraphicsContextCairo.h>
 #include <wtf/MainThread.h>
@@ -481,7 +483,7 @@ DEFNEW
 
         if(data->source_view)
         {
-            Frame* frame = core(data->view->webView->mainFrame());
+            LocalFrame* frame = core(data->view->webView->mainFrame());
 
             if (frame)
             {
@@ -491,16 +493,17 @@ DEFNEW
                 {
                     Object *browser = widget->browser;
                     String mimeType = frame->loader().documentLoader()->responseMIMEType();
-                    URL baseURL({ }, (char *) getv(browser, MA_OWBBrowser_URL));
-                    URL failingURL({ }, "");
+                    URL baseURL({ }, String::fromLatin1((char *) getv(browser, MA_OWBBrowser_URL)));
+                    URL failingURL({ }, ""_s);
                     ResourceRequest request(baseURL);
                     
-                    Frame* sourceFrame = core(((WebView *) data->source_view)->mainFrame());
-                    RefPtr<SharedBuffer> dataSource = sourceFrame->loader().documentLoader() ? sourceFrame->loader().documentLoader()->mainResourceData() : 0;
+                    LocalFrame* sourceFrame = core(((WebView *) data->source_view)->mainFrame());
+                    RefPtr<FragmentedSharedBuffer> fragmentedSource = sourceFrame->loader().documentLoader() ? sourceFrame->loader().documentLoader()->mainResourceData() : nullptr;
+                    RefPtr<SharedBuffer> dataSource = fragmentedSource ? fragmentedSource->makeContiguous().ptr() : nullptr;
 
                     if (!mimeType)
                     {
-                        mimeType = "text/html";
+                        mimeType = "text/html"_s;
                     }
 
                     if(dataSource)
@@ -1804,10 +1807,10 @@ DEFTMETHOD(OWBBrowser_AutoScroll_Perform)
 {
     GETDATA;
 
-    Frame* frame = &(data->view->webView->page()->focusController().focusedOrMainFrame());
+    LocalFrame* frame = data->view->webView->page()->focusController().focusedOrMainFrame();
     if(frame)
     {
-        FrameView *view = frame->view();
+        LocalFrameView *view = frame->view();
         if(view)
         {
             view->scrollBy(data->autoscroll_delta);
@@ -2198,10 +2201,10 @@ DEFMMETHOD(HandleEvent)
                     // Act depending on scrolling mode
                     if(data->scrolling_mode == 1)
                     {
-                      Frame* frame = &(data->view->webView->page()->focusController().focusedOrMainFrame());
+                      LocalFrame* frame = data->view->webView->page()->focusController().focusedOrMainFrame();
                         if(frame)
                         {
-                            FrameView *view = frame->view();
+                            LocalFrameView *view = frame->view();
                             if(view)
                             {
 #if OS(AROS)
@@ -2689,7 +2692,7 @@ DEFSMETHOD(OWBBrowser_PopupMenu)
     DoMethod(listview, MUIM_AskMinMax, &MinMaxInfo);
 
     rScreenCoords.setHeight(MinMaxInfo.DefHeight);
-    rScreenCoords.setWidth(max(rScreenCoords.width() + 13, (int) MinMaxInfo.DefWidth));
+    rScreenCoords.setWidth(std::max(rScreenCoords.width() + 13, (int) MinMaxInfo.DefWidth));
 
     /* Get offsets to compute absolute position of new window on the screen */
     IPTR winOffsetX, winOffsetY;
@@ -2724,7 +2727,7 @@ DEFMMETHOD(ContextMenuBuild)
 
     Page* page = core(data->view->webView);
     page->contextMenuController().clearContextMenu();
-    Frame* focusedFrame = &(page->focusController().focusedOrMainFrame());
+    LocalFrame* focusedFrame = page->focusController().focusedOrMainFrame();
 
     if (!focusedFrame->view())
         return DOSUPER;
@@ -2870,7 +2873,7 @@ DEFSMETHOD(OWBBrowser_Autofill_HandleNavigationEvent)
         const PlatformKeyboardEvent* keyEvent = event->underlyingPlatformEvent();
         if (keyEvent)
         {
-            if (keyEvent->type() == PlatformKeyboardEvent::RawKeyDown)
+            if (keyEvent->type() == PlatformEvent::Type::RawKeyDown)
             {
                 int virtualKey = keyEvent->windowsVirtualKeyCode();
 
@@ -3068,7 +3071,7 @@ DEFTMETHOD(OWBBrowser_ReturnFocus)
 DEFSMETHOD(OWBBrowser_Print)
 {
     GETDATA;
-    Frame* frame = core(data->view->webView->mainFrame());
+    LocalFrame* frame = core(data->view->webView->mainFrame());
 
     if(frame)
     {
@@ -3292,7 +3295,7 @@ DEFMMETHOD(CreateDragImage)
                 buffer = buffer.substring(0, 512);
             }
 
-            Vector<String> lines = buffer.split("\n");
+            Vector<String> lines = buffer.split("\n"_s);
 
             for(i = 0; i < lines.size(); i++)
             {
@@ -3444,9 +3447,9 @@ DEFMMETHOD(DragBegin)
     if(dataObject)
     {
         IntPoint position(data->last_position);
-        DragData dragData((DataObjectMorphOS *) dataObject, position, position, (DragOperation) data->dragoperation);
+        DragData dragData((DataObjectMorphOS *) dataObject, position, position, OptionSet<DragOperation>::fromRaw(static_cast<uint8_t>(data->dragoperation & 0x3f)));
         D(kprintf("dragEntered\n"));
-        /*DragOperation operation = */core(data->view->webView)->dragController().dragEntered(dragData);
+        /*DragOperation operation = */core(data->view->webView)->dragController().dragEnteredOrUpdated(*localMainFrame(core(data->view->webView)), DragData { dragData });
     }
 
     return 0;
@@ -3467,9 +3470,9 @@ DEFMMETHOD(DragReport)
     {
         IntPoint position(msg->x - _mleft(obj), msg->y - _mtop(obj));
         data->last_drag_position = position;
-        DragData dragData((DataObjectMorphOS *) dataObject, position, position, (DragOperation) data->dragoperation);
+        DragData dragData((DataObjectMorphOS *) dataObject, position, position, OptionSet<DragOperation>::fromRaw(static_cast<uint8_t>(data->dragoperation & 0x3f)));
         //D(kprintf("dragUpdated\n"));
-        /*DragOperation operation = */core(data->view->webView)->dragController().dragUpdated(dragData);
+        /*DragOperation operation = */core(data->view->webView)->dragController().dragEnteredOrUpdated(*localMainFrame(core(data->view->webView)), DragData { dragData });
     }
 
     return MUIV_DragReport_Continue;
@@ -3490,9 +3493,9 @@ DEFMMETHOD(DragFinish)
         if(!msg->dropfollows)
         {
             IntPoint position(data->last_drag_position);
-            DragData dragData((DataObjectMorphOS *) dataObject, position, position, (DragOperation) data->dragoperation);
+            DragData dragData((DataObjectMorphOS *) dataObject, position, position, OptionSet<DragOperation>::fromRaw(static_cast<uint8_t>(data->dragoperation & 0x3f)));
             D(kprintf("dragExited\n"));
-            core(data->view->webView)->dragController().dragExited(&dragData);
+            core(data->view->webView)->dragController().dragExited(*localMainFrame(core(data->view->webView)), DragData { dragData });
         }
 #endif
 
@@ -3514,7 +3517,7 @@ DEFMMETHOD(DragDrop)
         IntPoint position(data->last_drag_position.x(), data->last_drag_position.y());
 
         // Indicate where drop ended
-        Frame* frame = &(core(data->view->webView)->focusController().focusedOrMainFrame());
+        LocalFrame* frame = core(data->view->webView)->focusController().focusedOrMainFrame();
         if (frame)
         {
             IntuiMessage event;
@@ -3525,14 +3528,14 @@ DEFMMETHOD(DragDrop)
 
             PlatformMouseEvent pevent = PlatformMouseEvent(&event);
             D(kprintf("dragSourceEndedAt(%d %d)\n", position.x(), position.y()));
-            frame->eventHandler().dragSourceEndedAt(pevent, (DragOperation) data->dragoperation);
+            frame->eventHandler().dragSourceEndedAt(pevent, OptionSet<DragOperation>::fromRaw(static_cast<uint8_t>(data->dragoperation & 0x3f)));
         }
 
         // Perform the drag
         data->last_drag_position = position;
-        DragData dragData((DataObjectMorphOS *) dataObject, position, position, (DragOperation) data->dragoperation);
+        DragData dragData((DataObjectMorphOS *) dataObject, position, position, OptionSet<DragOperation>::fromRaw(static_cast<uint8_t>(data->dragoperation & 0x3f)));
         D(kprintf("performDrag\n"));
-        core(data->view->webView)->dragController().performDragOperation(dragData);
+        core(data->view->webView)->dragController().performDragOperation(DragData { dragData });
 #if OS(AROS) // AROS has asynchronous drag & drop by default
         D(kprintf("dragEnded\n"));
         core(data->view->webView)->dragController().dragEnded();
@@ -3570,12 +3573,12 @@ DEFMMETHOD(CreateShortHelp)
 {
     GETDATA;
     
-    Frame* frame = core(data->view->webView->mainFrame());
+    LocalFrame* frame = core(data->view->webView->mainFrame());
 
     if (!frame)
         return 0;
 
-    FrameView* v = frame->view();
+    LocalFrameView* v = frame->view();
 
     if(v)
     {
@@ -3609,8 +3612,8 @@ DEFMMETHOD(DeleteShortHelp)
 
 static inline void _AndRectRect(struct Rectangle *rect, const struct Rectangle *limit)
 {
-    rect->MinX = max(rect->MinX, limit->MinX);
-    rect->MinY = max(rect->MinY, limit->MinY);
+    rect->MinX = std::max(rect->MinX, limit->MinX);
+    rect->MinY = std::max(rect->MinY, limit->MinY);
     rect->MaxX = min(rect->MaxX, limit->MaxX);
     rect->MaxY = min(rect->MaxY, limit->MaxY);
 }

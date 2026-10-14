@@ -28,6 +28,7 @@
  */
 
 #include <wtf/text/WTFString.h>
+#include <wtf/text/MakeString.h>
 #include <wtf/text/CString.h>
 #include <wtf/URL.h>
 #if 0
@@ -821,14 +822,14 @@ DEFSMETHOD(Bookmarkgroup_AddLink)
     struct MUIS_Listtree_TreeNode *active = NULL, *entry = NULL, *parent = NULL;
     struct treedata newnode, *node;
     ULONG line;
-    String title = "";
-    String alias = "";
-    String address = "";
+    String title = ""_s;
+    String alias = ""_s;
+    String address = ""_s;
     char *ctitle, *calias, *caddress;
 
-    if(msg->title)   title = String(msg->title).replace("\"", "");
-    if(msg->alias)   alias =  String(msg->alias).replace("\"", "");
-    if(msg->address) address = String(msg->address).replace("\"", ""); //encodeWithURLEscapeSequences(msg->address);
+    if(msg->title)   title = makeStringByReplacingAll(String::fromLatin1((const char*) msg->title), "\""_s, ""_s);
+    if(msg->alias)   alias =  makeStringByReplacingAll(String::fromLatin1((const char*) msg->alias), "\""_s, ""_s);
+    if(msg->address) address = makeStringByReplacingAll(String::fromLatin1((const char*) msg->address), "\""_s, ""_s); //encodeWithURLEscapeSequences(msg->address);
 
     newnode.flags    = NODEFLAG_LINK;
     newnode.title    = (char*) strdup(title.latin1().data());
@@ -1371,9 +1372,9 @@ static void save_list(BPTR html, Object *lt, struct MUIS_Listtree_TreeNode *list
             {
                 STRPTR title,quicklink,alias,flags,address;
 
-                String wtitle = "";
-                String walias = "";
-                String waddress = "";
+                String wtitle = ""_s;
+                String walias = ""_s;
+                String waddress = ""_s;
 
                 if(node->title)   title = node->title; else title = "";
                 if(node->alias)   alias = node->alias; else alias = "";
@@ -1382,26 +1383,26 @@ static void save_list(BPTR html, Object *lt, struct MUIS_Listtree_TreeNode *list
                 // A couple safety checks
                 if(node->title)
                 {
-                    wtitle = String(title);
-                    wtitle.replace("\"", "");
-                    wtitle.replace("<", "");
-                    wtitle.replace(">", "");
+                    wtitle = String::fromLatin1(title);
+                    wtitle = makeStringByReplacingAll(wtitle, "\""_s, ""_s);
+                    wtitle = makeStringByReplacingAll(wtitle, "<"_s, ""_s);
+                    wtitle = makeStringByReplacingAll(wtitle, ">"_s, ""_s);
                 }
                 
                 if(node->alias)
                 {
-                    walias = String(alias);
-                    walias.replace("\"", "");
-                    walias.replace("<", "");
-                    walias.replace(">", "");
+                    walias = String::fromLatin1(alias);
+                    walias = makeStringByReplacingAll(walias, "\""_s, ""_s);
+                    walias = makeStringByReplacingAll(walias, "<"_s, ""_s);
+                    walias = makeStringByReplacingAll(walias, ">"_s, ""_s);
                 }
 
                 if(node->address)
                 {
-                    waddress = String(address);
-                    waddress.replace("\"", "");
-                    waddress.replace("<", "");
-                    waddress.replace(">", "");
+                    waddress = String::fromLatin1(address);
+                    waddress = makeStringByReplacingAll(waddress, "\""_s, ""_s);
+                    waddress = makeStringByReplacingAll(waddress, "<"_s, ""_s);
+                    waddress = makeStringByReplacingAll(waddress, ">"_s, ""_s);
                 }
 
                 title   = strdup(wtitle.latin1().data());
@@ -1655,11 +1656,11 @@ static void build_menu(Object *menu, Object *lt, struct MUIS_Listtree_TreeNode *
                             D(kprintf("Add link\n"));
 
                             // truncate title
-                            truncatedTitle = title;
+                            truncatedTitle = String::fromLatin1(title);
                             if(truncatedTitle.length() > 64)
                             {
-                                truncatedTitle.truncate(64);
-                                truncatedTitle.append("...");
+                                truncatedTitle = truncatedTitle.left(64);
+                                truncatedTitle = makeString(truncatedTitle, "..."_s);
                             }
 
                             menu_entry = (struct menu_entry *) malloc(sizeof(*menu_entry) + strlen(address) + 1);
@@ -2181,8 +2182,8 @@ static ULONG contains_entry(struct IClass *cl, Object *obj, struct MUIS_Listtree
                 {
                     if(node->address)
                     {
-                        URL kurl = URL({ }, url);
-                        URL kbookmark = URL({ }, node->address);
+                        URL kurl = URL({ }, String::fromLatin1(url));
+                        URL kbookmark = URL({ }, String::fromLatin1(node->address));
 
                         if(kurl == kbookmark)
                         {

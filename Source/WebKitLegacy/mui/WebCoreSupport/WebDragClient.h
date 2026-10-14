@@ -31,13 +31,14 @@
 class WebView;
 
 class WebDragClient : public WebCore::DragClient {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     WebDragClient(WebView*);
 
     virtual OptionSet<WebCore::DragSourceAction> dragSourceActionMaskForPoint(const WebCore::IntPoint&) override;
     virtual void willPerformDragDestinationAction(WebCore::DragDestinationAction, const WebCore::DragData&) override;
     virtual void willPerformDragSourceAction(WebCore::DragSourceAction, const WebCore::IntPoint&, WebCore::DataTransfer&) override;
-    virtual void startDrag(WebCore::DragItem, WebCore::DataTransfer&, WebCore::Frame&) override;
+    void startDrag(WebCore::DragItem, WebCore::DataTransfer&, WebCore::Frame&) override;
 private:
     WebView* m_webView;
     WebCore::DragImage m_dragImage;

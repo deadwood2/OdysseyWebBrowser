@@ -41,59 +41,62 @@ namespace WebCore {
     class Geolocation;
     class NotificationClient;
     class GraphicsLayer;
-    class Frame;
+    class LocalFrame;
+    class LocalFrame;
+    class LocalFrameView;
 }
 
 class WebChromeClient final : public WebCore::ChromeClient {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     WebChromeClient(WebView*);
 
     void chromeDestroyed() final;
 
     void setWindowRect(const WebCore::FloatRect&) final;
-    WebCore::FloatRect windowRect() final;
+    WebCore::FloatRect windowRect() const final;
     
-    WebCore::FloatRect pageRect() final;
+    WebCore::FloatRect pageRect() const final;
 
     void focus() final;
     void unfocus() final;
 
-    bool canTakeFocus(WebCore::FocusDirection) final;
+    bool canTakeFocus(WebCore::FocusDirection) const final;
     void takeFocus(WebCore::FocusDirection) final;
 
     void focusedElementChanged(WebCore::Element*) final;
     void focusedFrameChanged(WebCore::Frame*) final;
 
-    WebCore::Page* createWindow(WebCore::Frame&, const WebCore::WindowFeatures&, const WebCore::NavigationAction&) final;
+    WebCore::Page* createWindow(WebCore::LocalFrame&, const WebCore::WindowFeatures&, const WebCore::NavigationAction&) final;
     void show() final;
 
-    bool canRunModal() final;
+    bool canRunModal() const final;
     void runModal() final;
 
     void setToolbarsVisible(bool) final;
-    bool toolbarsVisible() final;
+    bool toolbarsVisible() const final;
     
     void setStatusbarVisible(bool) final;
-    bool statusbarVisible() final;
+    bool statusbarVisible() const final;
     
     void setScrollbarsVisible(bool) final;
-    bool scrollbarsVisible() final;
+    bool scrollbarsVisible() const final;
     
     void setMenubarVisible(bool) final;
-    bool menubarVisible() final;
+    bool menubarVisible() const final;
 
     void setResizable(bool) final;
 
     void addMessageToConsole(JSC::MessageSource, JSC::MessageLevel, const WTF::String& message, unsigned lineNumber, unsigned columnNumber, const WTF::String& url) final;
 
     bool canRunBeforeUnloadConfirmPanel() final;
-    bool runBeforeUnloadConfirmPanel(const WTF::String& message, WebCore::Frame&) final;
+    bool runBeforeUnloadConfirmPanel(const WTF::String& message, WebCore::LocalFrame&) final;
 
-    void closeWindowSoon() final;
+    void closeWindow() final;
 
-    void runJavaScriptAlert(WebCore::Frame&, const WTF::String&) final;
-    bool runJavaScriptConfirm(WebCore::Frame&, const WTF::String&) final;
-    bool runJavaScriptPrompt(WebCore::Frame&, const WTF::String& message, const WTF::String& defaultValue, WTF::String& result) final;
+    void runJavaScriptAlert(WebCore::LocalFrame&, const WTF::String&) final;
+    bool runJavaScriptConfirm(WebCore::LocalFrame&, const WTF::String&) final;
+    bool runJavaScriptPrompt(WebCore::LocalFrame&, const WTF::String& message, const WTF::String& defaultValue, WTF::String& result) final;
     void setStatusbarText(const WTF::String&) final;
 
     WebCore::KeyboardUIMode keyboardUIMode() final;
@@ -113,16 +116,16 @@ public:
     WebCore::IntPoint accessibilityScreenToRootView(const WebCore::IntPoint&) const final;
     WebCore::IntRect rootViewToAccessibilityScreen(const WebCore::IntRect&) const final;
     PlatformPageClient platformPageClient() const final;
-    void contentsSizeChanged(WebCore::Frame&, const WebCore::IntSize&) const final;
+    void contentsSizeChanged(WebCore::LocalFrame&, const WebCore::IntSize&) const final;
     void intrinsicContentsSizeChanged(const WebCore::IntSize&) const final;
 
-    void mouseDidMoveOverElement(const WebCore::HitTestResult&, unsigned modifierFlags, const WTF::String&, WebCore::TextDirection) final;
+    void mouseDidMoveOverElement(const WebCore::HitTestResult&, OptionSet<WebCore::PlatformEventModifier>, const WTF::String&, WebCore::TextDirection) final;
     bool shouldUnavailablePluginMessageBeButton(WebCore::RenderEmbeddedObject::PluginUnavailabilityReason) const final;
     void unavailablePluginButtonClicked(WebCore::Element&, WebCore::RenderEmbeddedObject::PluginUnavailabilityReason) const final;
 
-    void print(WebCore::Frame&, const WebCore::StringWithDirection&) final;
+    void print(WebCore::LocalFrame&, const WebCore::StringWithDirection&) final;
 
-    void exceededDatabaseQuota(WebCore::Frame&, const WTF::String&, WebCore::DatabaseDetails) final;
+    void exceededDatabaseQuota(WebCore::LocalFrame&, const WTF::String&, WebCore::DatabaseDetails) final;
 
     void reachedMaxAppCacheSize(int64_t spaceNeeded) final;
     void reachedApplicationCacheOriginQuota(WebCore::SecurityOrigin&, int64_t totalSpaceNeeded) final;
@@ -131,14 +134,14 @@ public:
     std::unique_ptr<WebCore::ColorChooser> createColorChooser(WebCore::ColorChooserClient&, const WebCore::Color&);
 #endif
 
-    void runOpenPanel(WebCore::Frame&, WebCore::FileChooser&) final;
+    void runOpenPanel(WebCore::LocalFrame&, WebCore::FileChooser&) final;
     void loadIconForFiles(const Vector<WTF::String>&, WebCore::FileIconLoader&) final;
 
     void setCursor(const WebCore::Cursor&) final;
     void setCursorHiddenUntilMouseMoves(bool) final;
 
     // Pass 0 as the GraphicsLayer to detatch the root layer.
-    void attachRootGraphicsLayer(WebCore::Frame&, WebCore::GraphicsLayer*) final;
+    void attachRootGraphicsLayer(WebCore::LocalFrame&, WebCore::GraphicsLayer*) final;
     void attachViewOverlayGraphicsLayer(WebCore::GraphicsLayer*) final;
     // Sets a flag to specify that the next time content is drawn to the window,
     // the changes appear on the screen in synchrony with updates to GraphicsLayers.
@@ -160,7 +163,7 @@ public:
 
 #if ENABLE(FULLSCREEN_API)
     bool supportsFullScreenForElement(const WebCore::Element&, bool withKeyboard) final;
-    void enterFullScreenForElement(WebCore::Element&) final;
+    void enterFullScreenForElement(WebCore::Element&, WebCore::HTMLMediaElementEnums::VideoFullscreenMode = WebCore::HTMLMediaElementEnums::VideoFullscreenModeStandard) final;
     void exitFullScreenForElement(WebCore::Element*) final;
 #endif
 
@@ -170,13 +173,20 @@ public:
 
     WebView* webView() { return m_webView; }
 
-    bool shouldUseTiledBackingForFrameView(const WebCore::FrameView&) const final;
+    bool shouldUseTiledBackingForFrameView(const WebCore::LocalFrameView&) const final;
 
     RefPtr<WebCore::Icon> createIconForFiles(const Vector<String>&) final;
 
     void didFinishLoadingImageForElement(WebCore::HTMLImageElement&) final;
 
+#if ENABLE(DATE_AND_TIME_INPUT_TYPES)
     std::unique_ptr<WebCore::DateTimeChooser> createDateTimeChooser(WebCore::DateTimeChooserClient&) final;
+#endif
+
+    // New in the 2.46 ChromeClient interface (no-ops, as in Wayfarer).
+    void rootFrameAdded(const WebCore::LocalFrame&) final { }
+    void rootFrameRemoved(const WebCore::LocalFrame&) final { }
+    void requestCookieConsent(CompletionHandler<void(WebCore::CookieConsentDecisionResult)>&&) final;
 
 private:
     WebView* m_webView;

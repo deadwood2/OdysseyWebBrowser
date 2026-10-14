@@ -67,12 +67,12 @@ const char* DOMCSSStyleDeclaration::cssText()
 void DOMCSSStyleDeclaration::setCssText(const char* cssText)
 {
     // FIXME: <rdar://5148045> return DOM exception info
-    m_style->setCssText(cssText);
+    m_style->setCssText(String::fromLatin1(cssText));
 }
 
 const char* DOMCSSStyleDeclaration::getPropertyValue(const char* propertyName)
 {
-    return m_style->getPropertyValue(propertyName).utf8().data();
+    return m_style->getPropertyValue(String::fromLatin1(propertyName)).utf8().data();
 }
 
 //DOMCSSValue* DOMCSSStyleDeclaration::getPropertyCSSValue(const char* /*propertyName*/)
@@ -93,7 +93,7 @@ const char* DOMCSSStyleDeclaration::getPropertyPriority(const char* /*propertyNa
 void DOMCSSStyleDeclaration::setProperty(const char* propertyName, const char* value, const char* priority)
 {
     // FIXME: <rdar://5148045> return DOM exception info
-    m_style->setProperty(propertyName, value, priority);
+    m_style->setProperty(String::fromLatin1(propertyName), String::fromLatin1(value), String::fromLatin1(priority));
 }
 
 unsigned DOMCSSStyleDeclaration::length()

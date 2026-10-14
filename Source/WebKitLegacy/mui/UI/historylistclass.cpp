@@ -333,9 +333,9 @@ DEFMMETHOD(List_Display)
 
         if(getv(obj, MA_HistoryList_Complete) && url)
         {
-            String fragment = witem->fragment();
-            String decoratedURL = url;
-            decoratedURL.replace(fragment, "\033b\033u\33P[ff------]" + fragment + "\033n\33P[80------]");
+            String fragment = String::fromLatin1(witem->fragment());
+            String decoratedURL = String::fromLatin1(url);
+            decoratedURL = makeStringByReplacingAll(decoratedURL, fragment, makeString(makeString("\033b\033u\33P[ff------]"_s, fragment), "\033n\33P[80------]"_s));
             stccpy(surl, decoratedURL.latin1().data(), sizeof(surl));
         }
         else
