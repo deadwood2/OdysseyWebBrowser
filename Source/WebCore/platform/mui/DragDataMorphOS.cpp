@@ -25,6 +25,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+
 #include "config.h"
 #include "DragData.h"
 
@@ -97,9 +98,8 @@ String DragData::asURL(FilenameConversionPolicy filenamePolicy, String* title) c
     if (!m_platformDragData->hasURL())
         return String();
     if (filenamePolicy != ConvertFilenames) {
-        URL url(URL(), m_platformDragData->url().string());
-        if (url.isLocalFile())
-            return String();
+        if (m_platformDragData->url().protocolIsFile())
+            return { };
     }
 
     String url(m_platformDragData->url().string());
@@ -107,4 +107,10 @@ String DragData::asURL(FilenameConversionPolicy filenamePolicy, String* title) c
         *title = m_platformDragData->urlLabel();
     return url;
 }
+
+bool DragData::shouldMatchStyleOnDrop() const
+{
+    return false;
+}
+
 }

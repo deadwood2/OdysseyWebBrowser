@@ -1,7 +1,7 @@
 include(platform/Cairo.cmake)
 include(platform/Curl.cmake)
+include(platform/OpenSSL.cmake)
 include(platform/ImageDecoders.cmake)
-include(platform/TextureMapper.cmake)
 include(platform/FreeType.cmake)
 
 list(APPEND WebCore_PRIVATE_INCLUDE_DIRECTORIES
@@ -97,12 +97,9 @@ list(APPEND WebCore_SOURCES
 
     platform/PlatformStrategies.cpp
 
-    platform/posix/SharedBufferPOSIX.cpp
 
     platform/text/Hyphenation.cpp
     platform/text/LocaleICU.cpp
-    platform/text/TextCodecICU.cpp
-    platform/text/TextEncodingDetectorICU.cpp
 )
 
 list(APPEND WebCore_PRIVATE_FRAMEWORK_HEADERS
@@ -134,3 +131,13 @@ list(APPEND WebCore_INCLUDE_DIRECTORIES
     ${ZLIB_INCLUDE_DIRS}
 )
 
+
+# 2.46: modern media controls are the only media controls left in WebCore
+# (the 2.34 MEDIA_CONTROLS_SCRIPT path is gone); same set as Wayfarer's port.
+list(APPEND WebCore_USER_AGENT_STYLE_SHEETS
+    ${WebCore_DERIVED_SOURCES_DIR}/ModernMediaControls.css
+)
+
+set(WebCore_USER_AGENT_SCRIPTS
+    ${WebCore_DERIVED_SOURCES_DIR}/ModernMediaControls.js
+)
