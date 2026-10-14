@@ -14,3 +14,6 @@ list(APPEND WTF_SOURCES
     generic/MainThreadGeneric.cpp
     unix/UniStdExtrasUnix.cpp
 )
+
+# RandomDevice uses OpenSSL RAND_bytes() on AROS.
+list(APPEND WTF_LIBRARIES OpenSSL::Crypto)
