@@ -1503,7 +1503,12 @@ DEFSMETHOD(OWBWindow_LoadURL)
         widget->webView->clearMainFrameName();
 
         // Handle protocols (any better place?)
-        if(kurl.protocolIs("about"_s))
+        if(kurl.isAboutBlank())
+        {
+            // A real empty document, handled by WebCore.
+            widget->webView->mainFrame()->loadURL("about:blank");
+        }
+        else if(kurl.protocolIs("about"_s))
         {
             // XXX: duplicate from owbbrowser about: handling...
             OWBFile f("PROGDIR:resource/about.html"_s);
@@ -1516,7 +1521,11 @@ DEFSMETHOD(OWBWindow_LoadURL)
                 {
                     String content = String::fromLatin1(fileContent);
 
-                    widget->webView->mainFrame()->loadHTMLString(content.utf8().data(), "about:");
+                    // WebKit 2.46 cancels main resource loads of about: URLs
+                    // other than about:blank and about:srcdoc (DocumentLoader::
+                    // shouldCancelLoadingAboutURL), so OWB's about page cannot
+                    // use "about:" as its base URL any more.
+                    widget->webView->mainFrame()->loadHTMLString(content.utf8().data(), "about:blank");
 
                     delete [] fileContent;
                 }
