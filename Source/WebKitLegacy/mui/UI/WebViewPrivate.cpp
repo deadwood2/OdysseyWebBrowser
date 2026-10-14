@@ -1342,7 +1342,7 @@ bool WebViewPrivate::onMouseButtonDown(BalEventButton event)
     PlatformMouseEvent mouseEvent = PlatformMouseEvent(&event);
 
     // If an url is mmb clicked, consider the event wasn't handled.
-    if(mouseEvent.type() == PlatformEvent::MousePressed && mouseEvent.button() == MiddleButton)
+    if(mouseEvent.type() == PlatformEvent::Type::MousePressed && mouseEvent.button() == MouseButton::Middle)
     {
         FrameView* v = frame->view();
 
@@ -1378,7 +1378,7 @@ bool WebViewPrivate::onMouseButtonUp(BalEventButton event)
     PlatformMouseEvent mouseEvent = PlatformMouseEvent(&event);
 
     /* XXX: Highly hacky IMO, not the right place for that */
-    if(mouseEvent.type() == PlatformEvent::MouseReleased && mouseEvent.button() == MiddleButton)
+    if(mouseEvent.type() == PlatformEvent::Type::MouseReleased && mouseEvent.button() == MouseButton::Middle)
     {
         FrameView* v = frame->view();
         if (!v) return handled;

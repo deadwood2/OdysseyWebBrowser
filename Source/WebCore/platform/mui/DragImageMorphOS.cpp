@@ -27,7 +27,6 @@
 #include "HostWindow.h"
 #include "Image.h"
 #include "RefPtrCairo.h"
-#include "gui.h"
 #include "TextFlags.h"
 #include "TextIndicator.h"
 #include "FontCascade.h"
@@ -41,6 +40,8 @@
 #include "Document.h"
 #include <wtf/URL.h>
 #include <cairo.h>
+// AROS/MUI headers last: their macros (set(), End) break WebCore headers.
+#include "gui.h"
 #include <clib/debug_protos.h>
 
 #define D(x)

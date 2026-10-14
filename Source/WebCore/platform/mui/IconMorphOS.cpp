@@ -39,11 +39,11 @@
 #include <cstdio>
 #include <clib/debug_protos.h>
 #include "utils.h"
+#include <wtf/text/MakeString.h>
 
 namespace WebCore {
 
 Icon::Icon()
-    :  m_icon(0)
 {
 }
 
@@ -56,11 +56,11 @@ Icon::~Icon()
 RefPtr<Icon> Icon::createIconForFiles(const Vector<String>& filenames)
 {
     if (filenames.isEmpty())
-        return 0;
+        return nullptr;
 
     // TODO: handle currentdir if only filename is given
 
-    String command = "GetDeficonPath PATH=\"" + filenames[0] + "\"";
+    String command = makeString("GetDeficonPath PATH=\""_s, filenames[0], "\""_s);
     String iconPath;
 
     // TODO: handle different file types in selection (use family or default if different)
@@ -69,13 +69,13 @@ RefPtr<Icon> Icon::createIconForFiles(const Vector<String>& filenames)
 
     if(rexx_send((char *) "AMBIENT", (char *) command.utf8().data()))
     {
-        iconPath = String(rexx_result());
+        iconPath = String::fromLatin1(rexx_result());
         RefPtr<Icon> icon = adoptRef(new Icon);
-        icon->m_icon = Image::loadPlatformResource(iconPath.utf8().data());
+        icon->m_icon = ImageAdapter::loadPlatformResource(iconPath.utf8().data());
         return icon;
     }
 
-    return 0;
+    return nullptr;
 }
 
 

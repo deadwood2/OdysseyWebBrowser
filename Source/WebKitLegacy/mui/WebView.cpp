@@ -2184,7 +2184,7 @@ void WebView::dragSourceEndedAt(const BalPoint& clientPoint, const BalPoint& scr
 {
     PlatformMouseEvent pme(clientPoint,
                            screenPoint,
-                           LeftButton, PlatformEvent::MouseMoved, 0, false, false, false,
+                           MouseButton::Left, PlatformEvent::Type::MouseMoved, 0, false, false, false,
                            false, WallTime::fromRawSeconds(0), WebCore::ForceAtClick, WebCore::OneFingerTap);
     m_page->mainFrame().eventHandler().dragSourceEndedAt(pme,
         static_cast<DragOperation>(operation));

@@ -111,9 +111,9 @@ STATIC VOID doset(struct Data *data, APTR obj, struct TagItem *taglist)
                 {
                     static RefPtr<WebCore::Image> defaultIcon = 0;
                     if (!defaultIcon)
-                        defaultIcon = WebCore::Image::loadPlatformResource("defaultIcon");
+                        defaultIcon = WebCore::ImageAdapter::loadPlatformResource("defaultIcon");
                                             
-                    RefPtr<WebCore::Image> image = WebCore::Image::loadPlatformResource(data->path);
+                    RefPtr<WebCore::Image> image = WebCore::ImageAdapter::loadPlatformResource(data->path);
                     WebCore::BitmapImage* icon = (WebCore::BitmapImage*) image.get();
 
                     if(icon)

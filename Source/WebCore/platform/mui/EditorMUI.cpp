@@ -43,7 +43,7 @@
 
 namespace WebCore {
 
-static RefPtr<DocumentFragment> createFragmentFromPasteboardData(Pasteboard& pasteboard, Frame& frame, const SimpleRange& range, bool allowPlainText, bool& chosePlainText)
+static RefPtr<DocumentFragment> createFragmentFromPasteboardData(Pasteboard& pasteboard, LocalFrame& frame, const SimpleRange& range, bool allowPlainText, bool& chosePlainText)
 {
     chosePlainText = false;
 
@@ -52,7 +52,7 @@ static RefPtr<DocumentFragment> createFragmentFromPasteboardData(Pasteboard& pas
 
     RefPtr<DataObjectMorphOS> dataObject = pasteboard.dataObject();
     if (dataObject->hasMarkup() && frame.document()) {
-        if (RefPtr<DocumentFragment> fragment = createFragmentFromMarkup(*frame.document(), dataObject->markup(), emptyString(), DisallowScriptingAndPluginContent))
+        if (RefPtr<DocumentFragment> fragment = createFragmentFromMarkup(*frame.document(), dataObject->markup(), emptyString(), { }))
             return fragment;
     }
 
@@ -75,7 +75,7 @@ void Editor::pasteWithPasteboard(Pasteboard* pasteboard, OptionSet<PasteOption> 
         return;
 
     bool chosePlainText;
-    RefPtr<DocumentFragment> fragment = createFragmentFromPasteboardData(*pasteboard, *m_document.frame(), *range,
+    RefPtr<DocumentFragment> fragment = createFragmentFromPasteboardData(*pasteboard, *document().frame(), *range,
         options.contains(PasteOption::AllowPlainText), chosePlainText);
     if (fragment && shouldInsertFragment(*fragment.get(), range, EditorInsertAction::Pasted))
         pasteAsFragment(fragment.releaseNonNull(), canSmartReplaceWithPasteboard(*pasteboard), chosePlainText,
@@ -84,7 +84,7 @@ void Editor::pasteWithPasteboard(Pasteboard* pasteboard, OptionSet<PasteOption> 
 
 RefPtr<DocumentFragment> Editor::webContentFromPasteboard(Pasteboard& pasteboard, const SimpleRange& context, bool allowPlainText, bool& chosePlainText)
 {
-    return createFragmentFromPasteboardData(pasteboard, *m_document.frame(), context, allowPlainText, chosePlainText);
+    return createFragmentFromPasteboardData(pasteboard, *document().frame(), context, allowPlainText, chosePlainText);
 }
 
 void Editor::writeImageToPasteboard(Pasteboard&, Element&, const URL&, const String&)
