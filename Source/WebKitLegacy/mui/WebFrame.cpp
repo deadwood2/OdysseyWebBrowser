@@ -28,6 +28,7 @@
 
 #include "WebEditorClient.h"
 #include "WebFrame.h"
+#include <WebCore/DocumentInlines.h>
 #include <WebCore/HistoryItem.h>
 #include "DefaultPolicyDelegate.h"
 #include "DOMCoreClasses.h"

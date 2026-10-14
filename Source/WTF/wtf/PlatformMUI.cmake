@@ -1,6 +1,7 @@
 list(APPEND WTF_SOURCES
     mui/execallocator.cpp
     OSAllocatorAROS.cpp
+    morphos/Signals.cpp
     posix/ThreadingPOSIX.cpp
     posix/FileSystemPOSIX.cpp
     generic/WorkQueueGeneric.cpp

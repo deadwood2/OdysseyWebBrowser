@@ -129,6 +129,12 @@ set(WebKit_OUTPUT_NAME webkitmui)
 add_definitions(-DUSER_AGENT_GTK_MAJOR_VERSION=601)
 add_definitions(-DUSER_AGENT_GTK_MINOR_VERSION=1)
 
+# JSC on 64-bit reserves its structure heap as one region aligned to its own
+# size (4 GB by default). AROS has no virtual memory, so that region is real
+# memory (plus alignment slack in allocator_getmem_aligned). 32 MB keeps the
+# StructureID encoding and fits a browser workload.
+add_definitions(-DSTRUCTURE_HEAP_ADDRESS_SIZE_IN_MB=32)
+
 # Libraries come from the AROS SDK directory (AROS_SDK_DIR, our sysroot
 # overlay), as static archives or link stubs. The cross build has no
 # pkg-config, so the imported targets WebKit's CMake expects are declared here.
@@ -169,7 +175,12 @@ set_property(TARGET OpenSSL::SSL APPEND PROPERTY INTERFACE_LINK_LIBRARIES OpenSS
 OWB_IMPORT(JPEG::JPEG libjpeg.a)
 OWB_IMPORT(PNG::PNG libpng.a)
 OWB_IMPORT(Fontconfig::Fontconfig libfontconfig.a)
-OWB_IMPORT(Freetype::Freetype libfreetype2.a)
+# The SDK's libfreetype2.a only has stubs for what freetype2.library exports,
+# which lacks the COLRv1 and variation calls 2.46 uses (FT_Get_Paint,
+# FT_Reference_Face, FT_Face_GetCharVariantIndex). Link the full static
+# FreeType 2.14.1 instead; cairo and fontconfig resolve to the same copy.
+OWB_IMPORT(Freetype::Freetype libfreetype2.static.a)
+set_property(TARGET Freetype::Freetype APPEND PROPERTY INTERFACE_LINK_LIBRARIES PNG::PNG ZLIB::ZLIB)
 set_property(TARGET Freetype::Freetype APPEND PROPERTY INTERFACE_INCLUDE_DIRECTORIES "${AROS_SDK_DIR}/include/freetype")
 # Built by scripts/build-deps-abiv11.sh into the overlay
 OWB_IMPORT(HarfBuzz::HarfBuzz libharfbuzz.a)
@@ -185,6 +196,12 @@ set_property(TARGET Brotli::dec APPEND PROPERTY INTERFACE_LINK_LIBRARIES Brotli:
 OWB_IMPORT(WebP::libwebp libwebp.a)
 OWB_IMPORT(WebP::demux libwebpdemux.a)
 OWB_IMPORT(WebP::mux libwebpmux.a)
+OWB_IMPORT(WebP::sharpyuv libsharpyuv.a)
+# Static archives: spell out the inter-library dependencies so the link order works.
+set_property(TARGET WebP::libwebp APPEND PROPERTY INTERFACE_LINK_LIBRARIES WebP::sharpyuv)
+set_property(TARGET WebP::demux APPEND PROPERTY INTERFACE_LINK_LIBRARIES WebP::libwebp)
+set_property(TARGET WebP::mux APPEND PROPERTY INTERFACE_LINK_LIBRARIES WebP::libwebp)
+set_property(TARGET WOFF2::dec APPEND PROPERTY INTERFACE_LINK_LIBRARIES WOFF2::common Brotli::dec)
 set(LIBXML2_INCLUDE_DIR ${AROS_SDK_DIR}/include/libxml2)
 set(CAIRO_INCLUDE_DIRS ${AROS_SDK_DIR}/include/cairo)
 set(FREETYPE_INCLUDE_DIRS ${AROS_SDK_DIR}/include/freetype)

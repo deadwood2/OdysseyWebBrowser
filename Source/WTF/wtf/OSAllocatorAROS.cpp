@@ -55,6 +55,32 @@ void* OSAllocator::reserveAndCommit(size_t bytes, Usage, bool, bool executable, 
     return allocateWithCheck(bytes, executable);
 }
 
+// try* variants (2.46): may fail and return null; no out-of-memory bailout.
+void* OSAllocator::tryReserveUncommitted(size_t bytes, Usage, bool, bool executable, bool, bool)
+{
+    return allocator_getmem_page_aligned(bytes, executable);
+}
+
+void* OSAllocator::tryReserveAndCommit(size_t bytes, Usage, bool, bool executable, bool, bool)
+{
+    return allocator_getmem_page_aligned(bytes, executable);
+}
+
+// Used for JSC's structure heap. AROS has no virtual memory: this allocates
+// (and zeroes) real memory, so its size is kept small for PLATFORM(MUI) with
+// STRUCTURE_HEAP_ADDRESS_SIZE_IN_MB (OptionsMUI.cmake). Not executable.
+void* OSAllocator::tryReserveUncommittedAligned(size_t bytes, size_t alignment, Usage, bool, bool executable, bool, bool)
+{
+    if (executable)
+        return nullptr;
+    return allocator_getmem_aligned(bytes, alignment);
+}
+
+// No memory protection on AROS.
+void OSAllocator::protect(void*, size_t, bool, bool)
+{
+}
+
 void OSAllocator::commit(void* address, size_t bytes, bool, bool)
 {
     memset(address, 0, bytes);

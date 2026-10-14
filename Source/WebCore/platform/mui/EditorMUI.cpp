@@ -95,4 +95,13 @@ void Editor::writeSelectionToPasteboard(Pasteboard& pasteboard)
 {
 }
 
+// No font copy/paste on AROS (same as Wayfarer's MorphOS port).
+void Editor::platformCopyFont()
+{
+}
+
+void Editor::platformPasteFont()
+{
+}
+
 } // namespace WebCore
