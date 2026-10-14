@@ -35,6 +35,8 @@ static struct Library *s_debugBase;
 #include <proto/debug.h>
 #include <libraries/debug.h>
 #include <proto/exec.h>
+#include <stdint.h>
+#include <stdio.h>
 
 #undef PAGESIZE
 #define PAGESIZE                (4096)
@@ -42,6 +44,12 @@ static struct Library *s_debugBase;
 
 static const ULONG BLOCKSIZES[] = {1024, 512, 256, 128, 64}; /* In pages */
 static const ULONG BLOCKSIZESCOUNT = sizeof(BLOCKSIZES)/sizeof(BLOCKSIZES[0]);
+
+/* The bitmap stores an allocation's page count in a LONG. */
+#define MAX_PAGES_PER_ALLOCATION ((size_t)0x7FFFFFFF)
+/* Self-test only: makes the next block record (1), backing memory (2) or
+ * bitmap (3) allocation in allocateNewBlock() fail once. */
+static int selfTestFailNext;
 
 class PageAllocator
 {
@@ -53,6 +61,7 @@ public:
     bool freePages(void * address, size_t count, void * caller);
     bool freePages(void * address, void * caller);
     size_t freePagesInBlockOf(void * address);   /* self-test only */
+    size_t blockCount() { size_t n = 0; void *x; ObtainSemaphore(&lock); ForeachNode(&blocks, x) n++; ReleaseSemaphore(&lock); return n; }   /* self-test only */
     size_t pagesToBlockEnd(void * address);      /* self-test only */
     int getAllocatedPagesCount();
 
@@ -68,7 +77,7 @@ private:
         IPTR        pb_EndAddress;
         ULONG       pb_Alignment;
         ULONG       pb_Flags;
-        WORD        *pb_PagesBitMap; /* 0 - free, -1 allocated, > 0 allocation size (only first page) */
+        LONG        *pb_PagesBitMap; /* 0 - free, -1 allocated, > 0 allocation size (only first page) */
         ULONG       pb_FreePages;
         ULONG       pb_TotalPages;
     };
@@ -122,6 +131,7 @@ PageAllocator::PageBlock * PageAllocator::allocateNewBlock(size_t count, ULONG f
     PageAllocator::PageBlock * block = (PageAllocator::PageBlock *)AllocMem(sizeof(PageAllocator::PageBlock), MEMF_ANY);
     if (!block)
         return NULL;
+    if (selfTestFailNext == 1) { selfTestFailNext = 0; FreeMem(block, sizeof(PageAllocator::PageBlock)); return NULL; }
 
     block->pb_Alignment = PAGESIZE;
     block->pb_Flags = flags;
@@ -136,14 +146,27 @@ retry:
     {
         allocationsize = (BLOCKSIZES[i] > count ? BLOCKSIZES[i] : count) * PAGESIZE;
         memoryblock = AllocMem(allocationsize + block->pb_Alignment, block->pb_Flags);
+        if (selfTestFailNext == 2 && memoryblock) { selfTestFailNext = 0; FreeMem(memoryblock, allocationsize + block->pb_Alignment); memoryblock = NULL; break; }
         i++;
+    }
+
+    LONG * bitmap = NULL;
+    if (memoryblock)
+    {
+        bitmap = (LONG *)AllocMem((allocationsize / PAGESIZE) * sizeof(LONG), MEMF_ANY | MEMF_CLEAR);
+        if (selfTestFailNext == 3 && bitmap) { selfTestFailNext = 0; FreeMem(bitmap, (allocationsize / PAGESIZE) * sizeof(LONG)); bitmap = NULL; }
+        if (!bitmap)
+        {
+            FreeMem(memoryblock, allocationsize + block->pb_Alignment);
+            memoryblock = NULL;
+        }
     }
 
     if (!memoryblock)
     {
-        /* Callers of the try* allocators handle a null result themselves
-         * (JSC shrinks its structure heap, the JIT pool is optional): no
-         * requester for them. */
+        /* Nothing of this block is published. Callers of the try*
+         * allocators handle a null result themselves (JSC shrinks its
+         * structure heap, the JIT pool is optional): no requester for them. */
         if (mayFail)
         {
             FreeMem(block, sizeof(PageAllocator::PageBlock));
@@ -151,7 +174,10 @@ retry:
         }
 
         if (aros_memory_allocation_error(allocationsize, block->pb_Alignment) == 2)
+        {
+            FreeMem(block, sizeof(PageAllocator::PageBlock));
             return NULL; /* quit */
+        }
 
         goto retry; /* retry */
     }
@@ -162,7 +188,7 @@ retry:
     block->pb_AllocAddress = (IPTR)memoryblock;
     block->pb_StartAddress = (IPTR)ALIGN(block->pb_AllocAddress, block->pb_Alignment);
     block->pb_EndAddress = block->pb_StartAddress + allocationsize;
-    block->pb_PagesBitMap = (WORD *)AllocMem(block->pb_TotalPages * sizeof(WORD), MEMF_ANY | MEMF_CLEAR);
+    block->pb_PagesBitMap = bitmap;
 
     AddTail(&blocks, (struct Node *)block);
 
@@ -181,7 +207,7 @@ void PageAllocator::freeBlock(PageAllocator::PageBlock * block)
     Remove((struct Node *)block);
 
     FreeMem((APTR)block->pb_AllocAddress, allocationsize + block->pb_Alignment);
-    FreeMem(block->pb_PagesBitMap, block->pb_TotalPages * sizeof(WORD));
+    FreeMem(block->pb_PagesBitMap, block->pb_TotalPages * sizeof(LONG));
     FreeMem(block, sizeof(PageAllocator::PageBlock));
     D(reportBlockUsage());
 }
@@ -264,8 +290,12 @@ void * PageAllocator::getPages(size_t count, size_t alignment, bool executable, 
     void * n; void * _return = NULL;
     ULONG flags = MEMF_ANY;
 
-    /* The allocation size lives in the head page's WORD of the bitmap. */
-    if (count >= 0x8000)
+    /* The allocation size lives in the head page's LONG of the bitmap; a
+     * zero-page request has no pages to hand out; the alignment slack below
+     * must not wrap either. */
+    if (count == 0 || count > MAX_PAGES_PER_ALLOCATION)
+        return NULL;
+    if (alignment > PAGESIZE && alignment / PAGESIZE - 1 > MAX_PAGES_PER_ALLOCATION - count)
         return NULL;
 
     if (executable) flags = MEMF_EXECUTABLE;
@@ -489,10 +519,13 @@ static PageAllocator allocator;
 
 /*************************************************************************************************/
 
-static inline int getPageCount(size_t bytes)
+/* Pages needed for bytes, rounded up; a size that would wrap the rounding
+ * maps to a count getPages() refuses. */
+static inline size_t getPageCount(size_t bytes)
 {
-    /* Round up size to next page size */
-    return (int)((bytes + PAGESIZE - 1) / PAGESIZE);
+    if (bytes > SIZE_MAX - (PAGESIZE - 1))
+        return SIZE_MAX;
+    return (bytes + PAGESIZE - 1) / PAGESIZE;
 }
 
 /* OWB_ALLOC_SELFTEST: once, at the first allocation, exercise the freeing
@@ -522,6 +555,24 @@ static void selfTestOnce()
     size_t after = allocator.freePagesInBlockOf(p);
     CHECK("free by stored size after partial free releases 6 pages", headOk && (after == mid + 6 || after == (size_t)-1));
     CHECK("double free by stored size rejected", !allocator.freePages(p, caller));
+    /* Failure injection into allocateNewBlock(): the block record (1), the
+     * backing memory (2) and the bitmap (3) each fail once; a may-fail
+     * request of a size no existing block can hold must return NULL and
+     * leave the block list as it was. */
+    size_t blocksBefore = allocator.blockCount();
+    for (int which = 1; which <= 3; which++)
+    {
+        selfTestFailNext = which;
+        void *q = allocator.getPages(BLOCKSIZES[BLOCKSIZESCOUNT - 1] + 1, PAGESIZE, false, true);
+        char name[64];
+        snprintf(name, sizeof(name), "may-fail request returns NULL when allocation %d fails", which);
+        CHECK(name, q == NULL && selfTestFailNext == 0 && allocator.blockCount() == blocksBefore);
+        if (q) allocator.freePages(q, caller);
+    }
+    CHECK("zero pages refused", allocator.getPages(0, PAGESIZE, false, true) == NULL);
+    CHECK("count above the representable maximum refused", allocator.getPages((size_t)MAX_PAGES_PER_ALLOCATION + 1, PAGESIZE, false, true) == NULL);
+    CHECK("SIZE_MAX bytes maps to a refused page count", getPageCount(SIZE_MAX) == SIZE_MAX);
+    CHECK("alignment slack that would wrap refused", allocator.getPages(MAX_PAGES_PER_ALLOCATION, 64 * PAGESIZE, false, true) == NULL);
 #undef CHECK
     bug("[ExecAllocator] self-test done: %d failure(s)\n", fails);
 }
@@ -529,7 +580,7 @@ static void selfTestOnce()
 void * allocator_getmem_page_aligned(size_t bytes, bool executable)
 {
     selfTestOnce();
-    int pagecount = getPageCount(bytes);
+    size_t pagecount = getPageCount(bytes);
     void * ptr = allocator.getPages(pagecount, executable);
 
     D(bug("A:getmem_page_aligned 0x%x -> pagecount %d \n", ptr, pagecount));
@@ -572,7 +623,7 @@ void * allocator_getmem_aligned(size_t bytes, size_t alignment)
     /* Can only allocate full pages */
     if (alignment < PAGESIZE) alignment = PAGESIZE;
 
-    int pagecount = getPageCount(bytes);
+    size_t pagecount = getPageCount(bytes);
     void * ptr = allocator.getPages(pagecount, alignment, false);
 
     if(ptr)
@@ -585,7 +636,7 @@ void allocator_freemem(void * address, size_t bytes)
 {
     D(bug("A:freemem 0x%x bytes %d \n", address, bytes));
 
-    int pagecount = getPageCount(bytes);
+    size_t pagecount = getPageCount(bytes);
     allocator.freePages(address, pagecount, __builtin_return_address(0));
 }
 
