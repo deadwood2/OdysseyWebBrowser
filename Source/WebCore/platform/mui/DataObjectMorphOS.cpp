@@ -22,7 +22,7 @@
 #include "markup.h"
 #include "SimpleRange.h"
 #include "TextIterator.h"
-#include <wtf/text/StringBuilder.h>
+#include <wtf/text/MakeString.h>
 
 namespace WebCore {
 
@@ -30,7 +30,7 @@ static void replaceNonBreakingSpaceWithSpace(String& str)
 {
     static const UChar NonBreakingSpaceCharacter = 0xA0;
     static const UChar SpaceCharacter = ' ';
-    str.replace(NonBreakingSpaceCharacter, SpaceCharacter);
+    str = makeStringByReplacingAll(str, NonBreakingSpaceCharacter, SpaceCharacter);
 }
 
 String DataObjectMorphOS::text() const
@@ -49,7 +49,7 @@ String DataObjectMorphOS::markup() const
 {
     if (m_range)
         return serializePreservingVisualAppearance(makeSimpleRange(*m_range), nullptr, AnnotateForInterchange::Yes, ConvertBlocksToInlines::No,
-            ResolveURLs::YesExcludingLocalFileURLsForPrivacy);
+            ResolveURLs::YesExcludingURLsForPrivacy);
     return m_markup;
 }
 
@@ -85,7 +85,7 @@ void DataObjectMorphOS::setURIList(const String& uriListString)
     bool setURL = false;
     for (size_t i = 0; i < uriList.size(); ++i) {
         String& line = uriList[i];
-        line = line.stripWhiteSpace();
+        line = line.trim(deprecatedIsSpaceOrNewline);
         if (line.isEmpty())
             continue;
         if (line[0] == '#')
@@ -113,25 +113,19 @@ void DataObjectMorphOS::setURL(const URL& url, const String& label)
     if (actualLabel.isEmpty())
         actualLabel = url.string();
 
-    StringBuilder markup;
-    markup.append("<a href=\"");
-    markup.append(url.string());
-    markup.append("\">");
-    markup.append(actualLabel);
-    markup.append("</a>");
-    setMarkup(markup.toString());
+    setMarkup(makeString("<a href=\""_s, url.string(), "\">"_s, actualLabel, "</a>"_s));
 }
 
 void DataObjectMorphOS::clearText()
 {
     m_range = nullptr;
-    m_text = "";
+    m_text = emptyString();
 }
 
 void DataObjectMorphOS::clearMarkup()
 {
     m_range = nullptr;
-    m_markup = "";
+    m_markup = emptyString();
 }
 
 String DataObjectMorphOS::urlLabel() const
@@ -147,9 +141,9 @@ String DataObjectMorphOS::urlLabel() const
 
 void DataObjectMorphOS::clearAllExceptFilenames()
 {
-    m_text = "";
-    m_markup = "";
-    m_uriList = "";
+    m_text = emptyString();
+    m_markup = emptyString();
+    m_uriList = emptyString();
     m_url = URL();
     m_image = nullptr;
     m_range = nullptr;
