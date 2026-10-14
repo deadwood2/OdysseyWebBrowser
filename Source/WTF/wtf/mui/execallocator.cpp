@@ -276,8 +276,15 @@ void * PageAllocator::getPages(size_t count, size_t alignment, bool executable)
         }
     }
 
-    /* If we are here, it means none of the blocks was big enough */
-    PageAllocator::PageBlock * block = allocateNewBlock(count, flags);
+    /* If we are here, it means none of the blocks was big enough. A new
+     * block starts at an arbitrary page, so for an alignment above one page
+     * it needs room for an aligned run of count pages: up to
+     * alignment / PAGESIZE - 1 pages before it (they stay usable for other
+     * allocations). JSC's structure heap needs 32 MB aligned to 32 MB. */
+    size_t needed = count;
+    if (alignment > PAGESIZE)
+        needed += alignment / PAGESIZE - 1;
+    PageAllocator::PageBlock * block = allocateNewBlock(needed, flags);
     if (block)
         _return = allocatePagesFromBlock(block, count, alignment);
     ReleaseSemaphore(&lock);
