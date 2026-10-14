@@ -476,6 +476,10 @@ WebView::WebView()
 #if ENABLE(WEB_AUDIO)
     settings.setWebAudioEnabled(true);
 #endif
+    // Compression Streams has no build switch (WebCore/Modules/compression is
+    // always built) but is off by default for WebKitLegacy in 2.46
+    // (UnifiedWebPreferences.yaml). Pages use it to unpack gzip data.
+    settings.setCompressionStreamEnabled(true);
 #if ENABLE(MEDIA_STREAM)
     provideUserMediaTo(m_page, new WebUserMediaClient(*this));
     settings.setMediaStreamEnabled(true);
