@@ -94,7 +94,7 @@ void OSAllocator::decommit(void* address, size_t bytes)
 
 void OSAllocator::releaseDecommitted(void* address, size_t bytes)
 {
-    allocator_freemem(address, bytes);
+    allocator_freemem_from(address, bytes, __builtin_return_address(0));
 }
 
 } // namespace WTF
