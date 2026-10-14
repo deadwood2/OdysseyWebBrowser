@@ -320,12 +320,18 @@ void WebFrame::loadURL(const char* url)
     if (!coreFrame)
         return;
 
+    std::string u;
     if (isAbsolute(url)) {
-        std::string u = "file://";
+        u = "file://";
         u += url;
-        coreFrame->loader().load(FrameLoadRequest(*coreFrame, ResourceRequest(URL(URL(), String::fromUTF8(u.c_str())))));
     } else
-        coreFrame->loader().load(FrameLoadRequest(*coreFrame, ResourceRequest(URL(URL(), String::fromUTF8(url)))));
+        u = url;
+    // Loads that come through this API are the user's (address bar, session,
+    // bookmarks, command line), not a page's. WebCore only lets the main frame
+    // navigate to a data: URL when the request is marked as such.
+    FrameLoadRequest frameLoadRequest(*coreFrame, ResourceRequest(URL(URL(), String::fromUTF8(u.c_str()))));
+    frameLoadRequest.setIsRequestFromClientOrUserInput();
+    coreFrame->loader().load(WTFMove(frameLoadRequest));
 }
 
 JSGlobalContextRef WebFrame::contextForScriptWorld(WebScriptWorld* world)
@@ -343,7 +349,9 @@ void WebFrame::loadRequest(WebMutableURLRequest* request)
     if (!coreFrame)
         return;
 
-    coreFrame->loader().load(FrameLoadRequest(*coreFrame, request->resourceRequest()));
+    FrameLoadRequest frameLoadRequest(*coreFrame, request->resourceRequest());
+    frameLoadRequest.setIsRequestFromClientOrUserInput();
+    coreFrame->loader().load(WTFMove(frameLoadRequest));
 }
 
 void WebFrame::loadHTMLString(const char* string, const char* baseURL, const char* unreachableURL)
