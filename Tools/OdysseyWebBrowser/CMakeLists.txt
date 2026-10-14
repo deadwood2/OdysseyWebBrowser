@@ -1,4 +1,5 @@
 set(OdysseyWebBrowser_SOURCES
+    aros_stack.c
     main.cpp
 )
 
