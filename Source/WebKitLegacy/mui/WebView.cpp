@@ -455,9 +455,7 @@ WebView::WebView()
     provideNotification(m_page, new WebDesktopNotificationsDelegate(this));
 #endif
 #if ENABLE(GEOLOCATION)
-#if ENABLE(GEOLOCATION)
     provideGeolocationTo(m_page, new WebGeolocationClient());
-#endif
 #endif
 #if ENABLE(DEVICE_ORIENTATION)
     provideDeviceMotionTo(m_page, new WebDeviceMotionClient());
@@ -779,7 +777,7 @@ void WebView::close()
     // Purge page cache
     // The easiest way to do that is to disable page cache
     // The preferences can be null.
-    if (m_preferences && m_preferences->usesPageCache())
+    if (m_page && m_preferences && m_preferences->usesPageCache())
         m_page->settings().setUsesBackForwardCache(false);
 
     if (m_page) {

@@ -1008,7 +1008,8 @@ DEFNEW
         setenv("JSC_useJIT", "false", 0);
     else if (!(diskobject && FindToolType(diskobject->do_ToolTypes, "FTL")))
         setenv("JSC_useFTLJIT", "false", 0);     /* as OWB 2.24: FTL off unless the icon asks for it */
-    setenv("JSC_useConcurrentJIT", "false", 0); /* concurrent compilation slowed DFG/FTL on AROS */
+    /* Concurrent compilation slowed DFG and FTL on AROS; the CONCURRENT_JIT tooltype asks for it. */
+    setenv("JSC_useConcurrentJIT", (diskobject && FindToolType(diskobject->do_ToolTypes, "CONCURRENT_JIT")) ? "true" : "false", 0);
 
     JSC::initialize();
     WTF::initializeMainThread();
@@ -1146,6 +1147,8 @@ DEFNEW
         // Notifications on app
         DoMethod(app, MUIM_Notify, MA_OWBApp_BookmarksChanged, MUIV_EveryTime, obj, 1, MM_OWBApp_BookmarksChanged);
     }
+    else if (diskobject)
+        FreeDiskObject(diskobject);
 
     return (IPTR)obj;
 }
@@ -2488,11 +2491,6 @@ void prefs_update(Object *obj, struct Data *data)
 
     /* security */
     sharedPreferences->setLocalStorageEnabled((bool) getv(data->prefswin, MA_OWBApp_EnableLocalStorage));
-
-    /* JavaScript JIT: chosen from the icon's tooltypes before JSC::initialize()
-     * (see DEFNEW); JSC::Options cannot be changed here any more. */
-    if (data->diskobject && FindToolType(data->diskobject->do_ToolTypes, "CONCURRENT_JIT"))
-        JSC::Options::useConcurrentJIT() = true;
 
 
 

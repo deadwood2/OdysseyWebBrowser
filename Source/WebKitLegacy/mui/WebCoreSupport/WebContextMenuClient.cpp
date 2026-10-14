@@ -89,7 +89,7 @@ void WebContextMenuClient::downloadURL(const URL& url)
 void WebContextMenuClient::searchWithGoogle(const LocalFrame* frame)
 {
     String searchString = frame->editor().selectedText();
-    searchString.trim(deprecatedIsSpaceOrNewline);
+    searchString = searchString.trim(deprecatedIsSpaceOrNewline);
     String encoded = encodeWithURLEscapeSequences(searchString);
     encoded = makeStringByReplacingAll(encoded, "%20"_s, "+"_s);
     

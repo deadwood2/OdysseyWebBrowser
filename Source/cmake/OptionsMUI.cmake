@@ -168,7 +168,8 @@ OWB_IMPORT(CURL::libcurl libcurl.a)
 OWB_IMPORT(OpenSSL::SSL libssl.a)
 OWB_IMPORT(OpenSSL::Crypto libcrypto.a)
 # Overlay versions (scripts/build-deps-abiv11.sh): curl 8.22 and OpenSSL 4.0.1
-# with threads; OpenSSL seeds from jitterentropy. curl defines SocketBase.
+# with threads; OpenSSL seeds from jitterentropy. OWB defines SocketBase and its
+# curl thread opens the library; libcurl only uses it (curl recipe patch 0004).
 OWB_IMPORT(JitterEntropy::JitterEntropy libjitterentropy.a)
 set_property(TARGET OpenSSL::Crypto APPEND PROPERTY INTERFACE_LINK_LIBRARIES JitterEntropy::JitterEntropy Threads::Threads)
 set_property(TARGET OpenSSL::SSL APPEND PROPERTY INTERFACE_LINK_LIBRARIES OpenSSL::Crypto)

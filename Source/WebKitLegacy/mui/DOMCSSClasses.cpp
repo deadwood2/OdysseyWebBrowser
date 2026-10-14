@@ -72,7 +72,7 @@ void DOMCSSStyleDeclaration::setCssText(const char* cssText)
 
 const char* DOMCSSStyleDeclaration::getPropertyValue(const char* propertyName)
 {
-    return m_style->getPropertyValue(String::fromLatin1(propertyName)).utf8().data();
+    return strdup(m_style->getPropertyValue(String::fromLatin1(propertyName)).utf8().data());
 }
 
 //DOMCSSValue* DOMCSSStyleDeclaration::getPropertyCSSValue(const char* /*propertyName*/)
