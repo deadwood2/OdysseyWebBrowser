@@ -999,6 +999,17 @@ DEFNEW
 
     menus_init();
 
+    /* JSC::initialize() reads the JSC_* variables and the options are fixed from
+     * then on; changing JSC::Options later faulted in getCTIStub() with the JIT
+     * off. The icon's tooltypes are therefore set as process variables first,
+     * without overwriting a JSC_* variable the user has set. */
+    diskobject = GetDiskObject(_ProgramName);
+    if (diskobject && FindToolType(diskobject->do_ToolTypes, "NO_JSC_JIT"))
+        setenv("JSC_useJIT", "false", 0);
+    else if (!(diskobject && FindToolType(diskobject->do_ToolTypes, "FTL")))
+        setenv("JSC_useFTLJIT", "false", 0);     /* as OWB 2.24: FTL off unless the icon asks for it */
+    setenv("JSC_useConcurrentJIT", "false", 0); /* concurrent compilation slowed DFG/FTL on AROS */
+
     JSC::initialize();
     WTF::initializeMainThread();
     WebPlatformStrategies::initialize();
@@ -1018,7 +1029,7 @@ DEFNEW
             MUIA_Application_Description, APPLICATION_DESCRIPTION,
             MUIA_Application_UsedClasses, classlist,
             MUIA_Application_Base       , APPLICATION_BASE,
-            MUIA_Application_DiskObject , diskobject = GetDiskObject(_ProgramName),
+            MUIA_Application_DiskObject , diskobject,
             MUIA_Application_Commands   , &rexxcommands,
             MUIA_Application_Menustrip  , menustrip = MUI_MakeObject(MUIO_MenustripNM, MenuData, MUIO_MenustripNM_CommandKeyCheck),
             SubWindow, prefswin = (Object *) NewObject(getprefswindowclass(), NULL, TAG_DONE),
@@ -2478,30 +2489,8 @@ void prefs_update(Object *obj, struct Data *data)
     /* security */
     sharedPreferences->setLocalStorageEnabled((bool) getv(data->prefswin, MA_OWBApp_EnableLocalStorage));
 
-    /* JavaScript JIT */
-    if (data->diskobject && FindToolType(data->diskobject->do_ToolTypes, "NO_JSC_JIT"))
-    {
-        JSC::Options::useJIT()              = false;
-        JSC::Options::useBaselineJIT()      = false;
-        JSC::Options::useDFGJIT()           = false;
-        JSC::Options::useFTLJIT()           = false;
-        JSC::Options::useRegExpJIT()        = false;
-    }
-    else
-    {
-        JSC::Options::useJIT()              = true;
-        JSC::Options::useBaselineJIT()      = true;
-        JSC::Options::useDFGJIT()           = true;
-        /* On 2.24 code base, not using FTL give slight better results in benchmars */
-        JSC::Options::useFTLJIT()           = false;
-        JSC::Options::useRegExpJIT()        = true;
-    }
-
-    /* Concurrent JS slows down DFG by 20% and FTL by 50%. Due to single core under AROS? */
-    JSC::Options::useConcurrentJIT()    = false;
-
-    if (data->diskobject && FindToolType(data->diskobject->do_ToolTypes, "FTL"))
-        JSC::Options::useFTLJIT() = true;
+    /* JavaScript JIT: chosen from the icon's tooltypes before JSC::initialize()
+     * (see DEFNEW); JSC::Options cannot be changed here any more. */
     if (data->diskobject && FindToolType(data->diskobject->do_ToolTypes, "CONCURRENT_JIT"))
         JSC::Options::useConcurrentJIT() = true;
 
