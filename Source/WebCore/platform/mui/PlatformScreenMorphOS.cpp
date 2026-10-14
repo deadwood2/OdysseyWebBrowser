@@ -36,6 +36,8 @@
 #include "ScrollView.h"
 #include "Widget.h"
 #include "FrameView.h"
+#include "Page.h"
+
 #include "FloatRect.h"
 #include <proto/intuition.h>
 #include <proto/graphics.h>
@@ -119,13 +121,18 @@ bool screenIsMonochrome(Widget* widget)
     return screenDepth(widget) < 2;
 }
 
+// OWB: Wayfarer moved screenRect to its WebKitLegacy/morphos WebPage.cpp;
+// OWB's mui layer has no such definition, so it stays here.
 FloatRect screenRect(Widget* widget)
 {
     int x = 0, y = 0, width = 800, height = 600;
 
-    if (widget->root()->hostWindow()->platformPageClient())
+    // 2.46 callers may pass a null widget or one not yet in a view tree.
+    auto* root = widget ? widget->root() : nullptr;
+    auto* hostWindow = root ? root->hostWindow() : nullptr;
+    if (hostWindow && hostWindow->platformPageClient())
     {
-        Object* window = widget->root()->hostWindow()->platformPageClient()->window;
+        Object* window = hostWindow->platformPageClient()->window;
         if (window)
         {
             struct Window* win;

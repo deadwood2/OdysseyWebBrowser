@@ -11,4 +11,5 @@ list(APPEND WTF_SOURCES
     generic/MemoryPressureHandlerGeneric.cpp
     generic/MemoryFootprintGeneric.cpp
     generic/MainThreadGeneric.cpp
+    unix/UniStdExtrasUnix.cpp
 )

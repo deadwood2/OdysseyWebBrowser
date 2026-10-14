@@ -3,4 +3,5 @@ list(APPEND PAL_SOURCES
     text/KillRing.cpp
     system/mui/SoundMorphOS.cpp
     system/ClockGeneric.cpp
+    unix/LoggingUnix.cpp
 )

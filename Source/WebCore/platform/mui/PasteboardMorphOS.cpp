@@ -34,7 +34,10 @@
 #include "DataObjectMorphOS.h"
 #include "DocumentFragment.h"
 #include "Editor.h"
-#include "Frame.h"
+#include "LocalFrame.h"
+#include "NativeImage.h"
+#include "NotImplemented.h"
+#include "RenderImage.h"
 #include "HTMLImageElement.h"
 #include "HTMLInputElement.h"
 #include "HTMLNames.h"
@@ -44,6 +47,7 @@
 #include "PasteboardHelper.h"
 #include "RenderImage.h"
 #include "markup.h"
+#include <wtf/text/StringBuilder.h>
 
 #if ENABLE(SVG)
 #include "SVGNames.h"
@@ -193,23 +197,23 @@ RefPtr<DataObjectMorphOS> Pasteboard::dataObject() const
 
 static ClipboardDataType dataObjectTypeFromHTMLClipboardType(const String& rawType)
 {
-    String type(rawType.stripWhiteSpace());
+    String type(rawType.trim(deprecatedIsSpaceOrNewline));
 
     D(kprintf("dataObjectTypeFromHTMLClipboardType %s\n", type.utf8().data()));
 
     // Two special cases for IE compatibility
-    if (type == "Text" || type == "text")
+    if (type == "Text"_s || type == "text"_s)
         return ClipboardDataTypeText;
-    if (type == "URL")
+    if (type == "URL"_s)
         return ClipboardDataTypeURL;
 
     // From the Mac port: Ignore any trailing charset - JS strings are
     // Unicode, which encapsulates the charset issue.
-    if (type == "text/plain" || type.startsWith("text/plain;"))
+    if (type == "text/plain"_s || type.startsWith("text/plain;"_s))
         return ClipboardDataTypeText;
-    if (type == "text/html" || type.startsWith("text/html;"))
+    if (type == "text/html"_s || type.startsWith("text/html;"_s))
         return ClipboardDataTypeMarkup;
-    if (type == "Files" || type == "text/uri-list" || type.startsWith("text/uri-list;"))
+    if (type == "Files"_s || type == "text/uri-list"_s || type.startsWith("text/uri-list;"_s))
         return ClipboardDataTypeURIList;
 
     // Not a known type, so just default to using the text portion.
@@ -257,7 +261,7 @@ void Pasteboard::writeString(const String& type, const String& data)
     return;
 }
 
-void Pasteboard::writeSelection(const SimpleRange& selectedRange, bool , Frame& frame, ShouldSerializeSelectedTextForDataTransfer shouldSerializeSelectedTextForDataTransfer)
+void Pasteboard::writeSelection(const SimpleRange& selectedRange, bool , LocalFrame& frame, ShouldSerializeSelectedTextForDataTransfer shouldSerializeSelectedTextForDataTransfer)
 {
     String text = shouldSerializeSelectedTextForDataTransfer == IncludeImageAltTextForDataTransfer ? frame.editor().selectedTextForDataTransfer() : frame.editor().selectedText();
 
@@ -299,7 +303,7 @@ void Pasteboard::write(const PasteboardURL& pasteboardURL)
 {
     D(kprintf("Pasteboard::writeURL %s %d\n", pasteboardURL.url.string().utf8().data(), m_morphosClipboard));
 
-    ASSERT(!url.isEmpty());
+    ASSERT(!pasteboardURL.url.isEmpty());
 
     if(m_morphosClipboard == 0)
     {
@@ -318,29 +322,27 @@ static URL getURLForImageNode(Node* node)
 {
     // FIXME: Later this code should be shared with Chromium somehow. Chances are all platforms want it.
     AtomString urlString;
-    if (is<HTMLImageElement>(node) || is<HTMLInputElement>(node))
-        urlString = downcast<Element>(node)->getAttribute(HTMLNames::srcAttr);
+    if (is<HTMLImageElement>(*node) || is<HTMLInputElement>(*node))
+        urlString = downcast<Element>(*node).getAttribute(HTMLNames::srcAttr);
 #if ENABLE(SVG)
     else if (node->hasTagName(SVGNames::imageTag))
         urlString = downcast<Element>(node)->getAttribute(XLinkNames::hrefAttr);
 #endif
     else if (node->hasTagName(HTMLNames::embedTag) || node->hasTagName(HTMLNames::objectTag)) {
-        Element* element = downcast<Element>(node);
-        urlString = element->imageSourceURL();
+        auto& element = downcast<Element>(*node);
+        urlString = element.imageSourceURL();
     }
-    return urlString.isEmpty() ? URL() : node->document().completeURL(stripLeadingAndTrailingHTMLSpaces(urlString));
+    return urlString.isEmpty() ? URL() : node->document().completeURL(urlString.string().trim(isASCIIWhitespace));
 }
 
 void Pasteboard::writeImage(Element& element, const URL&, const String& title)
 {
-    ASSERT(node);
-
     D(kprintf("Pasteboard::writeImage\n"));
 
-    if (!(element.renderer() && element.renderer()->isImage()))
+    if (!is<RenderImage>(element.renderer()))
         return;
 
-    RenderImage* renderer = downcast<RenderImage>(element.renderer());
+    auto* renderer = downcast<RenderImage>(element.renderer());
     CachedImage* cachedImage = renderer->cachedImage();
     if (!cachedImage || cachedImage->errorOccurred())
         return;
@@ -354,7 +356,8 @@ void Pasteboard::writeImage(Element& element, const URL&, const String& title)
 
         if(image)
         {
-            cairo_surface_t *surface = image->nativeImageForCurrentFrame()->platformImage().get();
+            auto nativeImage = image->currentNativeImage();
+            cairo_surface_t *surface = nativeImage ? nativeImage->platformImage().get() : nullptr;
             if(surface)
             {
                 ChkImage img;
@@ -383,7 +386,8 @@ void Pasteboard::writeImage(Element& element, const URL&, const String& title)
         m_dataObject->setMarkup(serializeFragment(element, SerializedNodes::SubtreeIncludingNode, nullptr, ResolveURLs::Yes));
     }
 
-    m_dataObject->setImage(image->nativeImageForCurrentFrame()->platformImage().get());
+    if (auto nativeImage = image->currentNativeImage())
+        m_dataObject->setImage(nativeImage->platformImage());
 }
 
 #if 0
@@ -458,11 +462,11 @@ bool Pasteboard::canSmartReplace()
     return false;
 }
 
-static String getPlainText(Frame* frame);
+static String getPlainText();
 
 static void setWithClipboardContents(Pasteboard *pasteboard, int clipboard)
 {
-    String text = getPlainText(0);
+    String text = getPlainText();
     if(clipboard == 0)
        pasteboard->dataObject()->setText(text);
 }
@@ -472,7 +476,7 @@ void Pasteboard::setDragImage(DragImage, const IntPoint& )
     D(kprintf("Pasteboard::setDragImage()\n"));
 }
 
-RefPtr<DocumentFragment> Pasteboard::documentFragment(Frame& frame, const SimpleRange& context,
+RefPtr<DocumentFragment> Pasteboard::documentFragment(LocalFrame& frame, const SimpleRange& context,
                                                           bool allowPlainText, bool& chosePlainText)
 {
 #warning "XXX: what to do here, exactly?"
@@ -484,32 +488,30 @@ RefPtr<DocumentFragment> Pasteboard::documentFragment(Frame& frame, const Simple
     chosePlainText = false;
 
     if (m_dataObject->hasMarkup()) {
-        RefPtr<DocumentFragment> fragment = createFragmentFromMarkup(*frame.document(), m_dataObject->markup(), emptyString(), DisallowScriptingAndPluginContent);
+        RefPtr<DocumentFragment> fragment = createFragmentFromMarkup(*frame.document(), m_dataObject->markup(), emptyString(), { });
         if (fragment)
             return fragment;
     }
 
     if (!allowPlainText)
-        return 0;
+        return nullptr;
 
     if (m_dataObject->hasText()) {
         chosePlainText = true;
-        RefPtr<DocumentFragment> fragment = createFragmentFromText(context, m_dataObject->text());
-        if (fragment)
-            return fragment;
+        return createFragmentFromText(context, m_dataObject->text());
     }
 
-    return 0;
+    return nullptr;
 }
 
-static void copycollection(String &str, CollectionItem* ci, uint32 codeSet)
+static void copycollection(StringBuilder& str, CollectionItem* ci, uint32 codeSet)
 {
     if (ci->ci_Next)
         copycollection(str, ci->ci_Next, codeSet);
 
     if (CODESET_UTF8 == codeSet)
     {
-        str.append(String::fromUTF8((const char *)ci->ci_Data, ci->ci_Size));
+        str.append(String::fromUTF8(std::span<const char>(static_cast<const char*>(ci->ci_Data), ci->ci_Size)));
     }
     else if (CODESET_LOCAL == codeSet)
     {
@@ -535,11 +537,11 @@ static void copycollection(String &str, CollectionItem* ci, uint32 codeSet)
     }
 }
 
-static String getPlainText(Frame* )
+static String getPlainText()
 {
     D(kprintf("Pasteboard::plainText()\n"));
 
-    String result;
+    StringBuilder result;
 
     if (IFFHandle *ih = AllocIFF()) {
         if (ClipboardHandle *ch = OpenClipboard(PRIMARY_CLIP)) {
@@ -578,7 +580,7 @@ static String getPlainText(Frame* )
         FreeIFF(ih);
     }
 
-    return result;
+    return result.toString();
 
 // XXX: use system or internal
 /*
@@ -588,7 +590,7 @@ static String getPlainText(Frame* )
 
 void Pasteboard::read(PasteboardPlainText& text, PlainTextURLReadingPolicy, std::optional<size_t>)
 {
-    m_dataObject->setText(getPlainText(0));
+    m_dataObject->setText(getPlainText());
     text.text = m_dataObject->text();
 }
 
@@ -619,21 +621,21 @@ Vector<String> Pasteboard::typesForLegacyUnsafeBindings()
 
     Vector<String> types;
     if (m_dataObject->hasText()) {
-        types.append(("text/plain"));
-        types.append(("Text"));
-        types.append(("text"));
+        types.append("text/plain"_s);
+        types.append("Text"_s);
+        types.append("text"_s);
     }
 
     if (m_dataObject->hasMarkup())
-        types.append(("text/html"));
+        types.append("text/html"_s);
 
     if (m_dataObject->hasURIList()) {
-        types.append(("text/uri-list"));
-        types.append(("URL"));
+        types.append("text/uri-list"_s);
+        types.append("URL"_s);
     }
 
     if (m_dataObject->hasFilenames())
-        types.append(("Files"));
+        types.append("Files"_s);
 
     return types;
 }
@@ -673,7 +675,7 @@ Vector<String> Pasteboard::readFilenames()
 }
 #endif
 
-void Pasteboard::writeMarkup(const String& markup)
+void Pasteboard::writeMarkup(const String&)
 {
 }
 
@@ -681,11 +683,19 @@ void Pasteboard::writeTrustworthyWebURLsPboardType(const PasteboardURL&)
 {
 }
 
+// Not implemented: rich copy (image, web content). EditorMUI's
+// writeImageToPasteboard/writeSelectionToPasteboard are empty too; plain-text
+// copy goes through WebView. PasteboardWebContent has no text/markup fields
+// under PLATFORM(MUI).
 void Pasteboard::write(const PasteboardImage&)
 {
 }
 
 void Pasteboard::write(const PasteboardWebContent&)
+{
+}
+
+void Pasteboard::write(const PasteboardBuffer&)
 {
 }
 
