@@ -27,7 +27,7 @@
  */
 
 #include <WebCore/Document.h>
-#include <WebCore/FrameView.h>
+#include <WebCore/LocalFrameView.h>
 #include <WebCore/GraphicsContextCairo.h>
 #include <WebCore/HostWindow.h>
 
@@ -74,7 +74,7 @@ struct Data
 #endif
 
     Object *browser;
-    Frame *frame;
+    LocalFrame *frame;
     TEXT  status[256];
     ULONG printing;
     ULONG quit;
@@ -284,14 +284,14 @@ DEFSMETHOD(PrinterWindow_PrintDocument)
 {
     GETDATA;
 
-    data->frame   = (Frame *)msg->frame;
+    data->frame   = (LocalFrame *)msg->frame;
     data->browser = NULL;
     data->close   = FALSE;
     data->quit    = FALSE;
 
     if(data->frame)
     {
-        FrameView* frameView = data->frame->view();
+        LocalFrameView* frameView = data->frame->view();
 
         if(frameView)
         {

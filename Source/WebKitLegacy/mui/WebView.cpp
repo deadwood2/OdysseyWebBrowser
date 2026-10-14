@@ -59,7 +59,9 @@
 #include "WebFrame.h"
 #include "WebFrameLoaderClient.h"
 #include "WebFrameLoadDelegate.h"
+#if ENABLE(GEOLOCATION)
 #include "WebGeolocationClient.h"
+#endif
 #include "WebGeolocationPosition.h"
 #include "WebGeolocationProvider.h"
 #include "WebHistoryDelegate.h"
@@ -109,14 +111,13 @@
 #include <WebCore/FocusController.h>
 #include <WebCore/FrameLoader.h>
 #include <WebCore/FrameTree.h>
-#include <WebCore/FrameView.h>
-#include <WebCore/Frame.h>
+#include <WebCore/LocalFrameView.h>
+#include <WebCore/LocalFrame.h>
 #include <WebCore/GeolocationController.h>
 #include <WebCore/GeolocationError.h>
 #include <WebCore/GraphicsContext.h>
 #include <WebCore/HistoryController.h>
 #include <WebCore/CookieJar.h>
-#include <WebCore/RuntimeEnabledFeatures.h>
 
 #include <WebCore/HitTestResult.h>
 #include <WebCore/IntPoint.h>
@@ -181,6 +182,15 @@
 #include <intuition/gadgetclass.h>
 #include "gui.h"
 #include "utils.h"
+#include "LegacyHistoryItemClient.h"
+#include "LegacySocketProvider.h"
+#include "WebCryptoClientMUI.h"
+#include <WebCore/DummyModelPlayerProvider.h>
+#include <WebCore/DummyStorageProvider.h>
+#include <WebCore/EmptyBadgeClient.h>
+#include <WebCore/WebRTCProvider.h>
+#include "LocalMainFrame.h"
+#include <WebCore/RemoteUserInputEventData.h>
 #undef set
 #undef get
 #undef String
@@ -222,12 +232,12 @@ void WebViewObserver::observe(const WTF::String &topic, const WTF::String &data,
     if (topic == WebIconDatabase::iconDatabaseDidAddIconNotification())
     m_webView->notifyDidAddIcon();
 #endif
-    if (topic == WebPreferences::webPreferencesChangedNotification())
+    if (topic == String::fromLatin1(WebPreferences::webPreferencesChangedNotification()))
         m_webView->notifyPreferencesChanged(static_cast<WebPreferences*>(userData));
 
-    if (topic == "PopupMenuHide")
+    if (topic == "PopupMenuHide"_s)
         m_webView->popupMenuHide();
-    if (topic == "PopupMenuShow")
+    if (topic == "PopupMenuShow"_s)
         m_webView->popupMenuShow(userData);
 }
 
@@ -262,10 +272,10 @@ void PreferencesChangedOrRemovedObserver::observe(const WTF::String &topic, cons
 
     WebCacheModel cacheModel = preferences->cacheModel();
 
-    if (topic == WebPreferences::webPreferencesChangedNotification())
+    if (topic == String::fromLatin1(WebPreferences::webPreferencesChangedNotification()))
         notifyPreferencesChanged(cacheModel);
 
-    if (topic == WebPreferences::webPreferencesRemovedNotification())
+    if (topic == String::fromLatin1(WebPreferences::webPreferencesRemovedNotification()))
         notifyPreferencesRemoved(cacheModel);
 }
 
@@ -314,7 +324,7 @@ static void WebKitEnableDiskCacheIfNecessary()
     if (initialized)
         return;
 
-    WTF::String path = FileSystem::pathByAppendingComponent("PROGDIR:Conf", "Cache");
+    WTF::String path = FileSystem::pathByAppendingComponent("PROGDIR:Conf"_s, "Cache"_s);
 
     if (!path.isNull())
         CurlCacheManager::singleton().setCacheDirectory(path);
@@ -382,8 +392,8 @@ WebView::WebView()
 
     initializeStaticObservers();
 
-    WebCore::ObserverServiceData::createObserverService()->registerObserver("PopupMenuShow", m_webViewObserver);
-    WebCore::ObserverServiceData::createObserverService()->registerObserver("PopupMenuHide", m_webViewObserver);
+    WebCore::ObserverServiceData::createObserverService()->registerObserver("PopupMenuShow"_s, m_webViewObserver);
+    WebCore::ObserverServiceData::createObserverService()->registerObserver("PopupMenuHide"_s, m_webViewObserver);
 
     WebPreferences* sharedPreferences = WebPreferences::sharedStandardPreferences();
     sharedPreferences->setContinuousSpellCheckingEnabled(getv(app, MA_OWBApp_ContinuousSpellChecking) != 0);
@@ -391,47 +401,63 @@ WebView::WebView()
     grammarCheckingEnabled = sharedPreferences->grammarCheckingEnabled();
     sharedPreferences->willAddToWebView();
     m_preferences = sharedPreferences;
-    m_webViewGroup = WebViewGroup::getOrCreate(String(), m_preferences->localStorageDatabasePath().c_str());
+    m_webViewGroup = WebViewGroup::getOrCreate(String(), String::fromLatin1(m_preferences->localStorageDatabasePath().c_str()));
     m_webViewGroup->addWebView(this);
 
     m_inspectorClient = new WebInspectorClient(this);
 
     WebFrame* webFrame = WebFrame::createInstance();
     auto storageProvider = PageStorageSessionProvider::create();
+    // 2.46: the Page owns its clients (UniqueRef) and creates the main frame's
+    // loader client through a creator (as Wayfarer's WebPage.cpp does).
     PageConfiguration configuration(
+        PageIdentifier::generate(),
         PAL::SessionID::defaultSessionID(),
         makeUniqueRef<WebEditorClient>(this),
-        SocketProvider::create(),
-        makeUniqueRef<LibWebRTCProvider>(),
+        LegacySocketProvider::create(),
+        WebRTCProvider::create(),
         CacheStorageProvider::create(),
         m_webViewGroup->userContentController(),
         BackForwardList::create(),
         CookieJar::create(storageProvider.copyRef()),
         makeUniqueRef<WebProgressTrackerClient>(webFrame),
-        makeUniqueRef<WebFrameLoaderClient>(webFrame),
+        CompletionHandler<UniqueRef<LocalFrameLoaderClient>(LocalFrame&)> { [webFrame](LocalFrame&) {
+            return makeUniqueRef<WebFrameLoaderClient>(webFrame);
+        } },
+        FrameIdentifier::generate(),
+        nullptr,
         makeUniqueRef<DummySpeechRecognitionProvider>(),
         makeUniqueRef<MediaRecorderProvider>(),
         WebBroadcastChannelRegistry::getOrCreate(false),
-        WebCore::DummyPermissionController::create()
+        makeUniqueRef<DummyStorageProvider>(),
+        makeUniqueRef<DummyModelPlayerProvider>(),
+        EmptyBadgeClient::create(),
+        LegacyHistoryItemClient::singleton(),
+#if ENABLE(CONTEXT_MENUS)
+        makeUniqueRef<WebContextMenuClient>(this),
+#endif
+        makeUniqueRef<WebChromeClient>(this),
+        makeUniqueRef<WebCryptoClient>()
     );
-    configuration.backForwardClient = BackForwardList::create();
-    configuration.chromeClient = new WebChromeClient(this);
-    configuration.contextMenuClient = new WebContextMenuClient(this);
     configuration.dragClient = makeUnique<WebDragClient>(this);
-    configuration.inspectorClient = m_inspectorClient;
+    configuration.inspectorClient = std::unique_ptr<WebCore::InspectorClient>(m_inspectorClient);
     configuration.applicationCacheStorage = &WebApplicationCache::storage();
     configuration.databaseProvider = &WebDatabaseProvider::singleton();
     configuration.storageNamespaceProvider = &m_webViewGroup->storageNamespaceProvider();
     configuration.visitedLinkStore = &WebVisitedLinkStore::singleton();
     configuration.pluginInfoProvider = &WebPluginInfoProvider::singleton();
 
-    m_page = new Page(WTFMove(configuration));
+    // m_page stays a raw pointer for OWB's code; the reference is released in
+    // the destructor (Page is reference counted since 2.4x).
+    m_page = &Page::create(WTFMove(configuration)).leakRef();
     storageProvider->setPage(*m_page);
 #if ENABLE(NOTIFICATIONS) || ENABLE(LEGACY_NOTIFICATIONS)
     provideNotification(m_page, new WebDesktopNotificationsDelegate(this));
 #endif
 #if ENABLE(GEOLOCATION)
+#if ENABLE(GEOLOCATION)
     provideGeolocationTo(m_page, new WebGeolocationClient());
+#endif
 #endif
 #if ENABLE(DEVICE_ORIENTATION)
     provideDeviceMotionTo(m_page, new WebDeviceMotionClient());
@@ -439,13 +465,13 @@ WebView::WebView()
 #endif
     WebCore::Settings& settings = m_page->settings();
     /* Defaults */
-    settings.setFTPDirectoryTemplatePath("PROGDIR:resource/FTPDirectoryTemplate.html");
+    settings.setFTPDirectoryTemplatePath("PROGDIR:resource/FTPDirectoryTemplate.html"_s);
 
 #if ENABLE(VIDEO)
     settings.setMediaEnabled(true);
     settings.setInvisibleAutoplayNotPermitted(true);
-    settings.setAudioPlaybackRequiresUserGesture(true);
-    settings.setVideoPlaybackRequiresUserGesture(true);
+    settings.setRequiresUserGestureForAudioPlayback(true);
+    settings.setRequiresUserGestureForVideoPlayback(true);
 #endif
 #if ENABLE(WEB_AUDIO)
     settings.setWebAudioEnabled(true);
@@ -466,19 +492,15 @@ WebView::WebView()
     settings.setLoadsImagesAutomatically(true);
     settings.setScriptEnabled(true);
     settings.setScriptMarkupEnabled(true);
-    settings.setDeferredCSSParserEnabled(true);
 //    settings.setDeviceWidth(1920);
 //    settings.setDeviceHeight(1080);
     settings.setShrinksStandaloneImagesToFit(true);
-    settings.setSubpixelAntialiasedLayerTextEnabled(true);
     settings.setAuthorAndUserStylesEnabled(true);
 //    settings.setFixedFontFamily("Courier New");
 //    settings.setDefaultFixedFontSize(13);
-    settings.setResizeObserverEnabled(true);
     settings.setEditingBehaviorType(EditingBehaviorType::Unix);
     settings.setShouldRespectImageOrientation(true);
     settings.setTextAreasAreResizable(true);
-    settings.setIntersectionObserverEnabled(true);
     settings.setDataTransferItemsEnabled(true);
 
     settings.setForceCompositingMode(false);
@@ -487,40 +509,30 @@ WebView::WebView()
     settings.setCanvasColorSpaceEnabled(true);
     settings.setAcceleratedCompositedAnimationsEnabled(false);
     settings.setAcceleratedCompositingForFixedPositionEnabled(false);
-    settings.setAcceleratedFiltersEnabled(false);
 
     settings.setWebGLEnabled(false);
 
     settings.setMaximumSourceBufferSize(32 * 1024 * 1024);
 
-    settings.setXSSAuditorEnabled(true);
     settings.setVisualViewportAPIEnabled(true);
 
     settings.setHiddenPageCSSAnimationSuspensionEnabled(true);
     settings.setAnimatedImageAsyncDecodingEnabled(false);
 
-    settings.setWebAnimationsCompositeOperationsEnabled(true);
-    settings.setWebAnimationsMutableTimelinesEnabled(true);
-    settings.setCSSCustomPropertiesAndValuesEnabled(true);
 
-    settings.setViewportFitEnabled(true);
-    settings.setConstantPropertiesEnabled(true);
 
     // the default
     settings.setTouchEventEmulationEnabled(false);
 
-    settings.setRequestAnimationFrameEnabled(true);
 //
 
 
 
-    RuntimeEnabledFeatures::sharedFeatures().setCSSPaintingAPIEnabled(true);
-    RuntimeEnabledFeatures::sharedFeatures().setCSSTypedOMEnabled(true);
-
-    RuntimeEnabledFeatures::sharedFeatures().setCSSLogicalEnabled(true);
-
-    RuntimeEnabledFeatures::sharedFeatures().setOffscreenCanvasEnabled(true);
-    RuntimeEnabledFeatures::sharedFeatures().setOffscreenCanvasInWorkersEnabled(true);
+    // 2.46: RuntimeEnabledFeatures is gone; these are page settings now.
+    // CSS Typed OM and CSS logical properties no longer have switches.
+    settings.setCSSPaintingAPIEnabled(true);
+    settings.setOffscreenCanvasEnabled(true);
+    settings.setOffscreenCanvasInWorkersEnabled(true);
 
 
     webFrame->initWithWebView(this, m_page); 
@@ -528,7 +540,7 @@ WebView::WebView()
     // webFrame is now owned by WebFrameLoaderClient and will be destroyed in
     // chain Page->MainFrame->FrameLoader->WebFrameLoaderClient
 
-    m_page->mainFrame().init();
+    localMainFrame(m_page)->init();
 }
 
 WebView::~WebView()
@@ -574,8 +586,8 @@ void initializeStaticObservers()
         return;
     initialized = true;
 
-    WebCore::ObserverServiceData::createObserverService()->registerObserver(WebPreferences::webPreferencesChangedNotification(), PreferencesChangedOrRemovedObserver::sharedInstance());
-    WebCore::ObserverServiceData::createObserverService()->registerObserver(WebPreferences::webPreferencesRemovedNotification(), PreferencesChangedOrRemovedObserver::sharedInstance());
+    WebCore::ObserverServiceData::createObserverService()->registerObserver(String::fromLatin1(WebPreferences::webPreferencesChangedNotification()), PreferencesChangedOrRemovedObserver::sharedInstance());
+    WebCore::ObserverServiceData::createObserverService()->registerObserver(String::fromLatin1(WebPreferences::webPreferencesRemovedNotification()), PreferencesChangedOrRemovedObserver::sharedInstance());
 
 }
 
@@ -766,22 +778,25 @@ void WebView::close()
     if (m_preferences && m_preferences->usesPageCache())
         m_page->settings().setUsesBackForwardCache(false);
 
-    if (m_page)
-        m_page->mainFrame().loader().detachFromParent(); 
+    if (m_page) {
+        if (auto* localMainFrame = dynamicDowncast<LocalFrame>(m_page->mainFrame()))
+            localMainFrame->loader().detachFromParent();
+    }
 
     m_inspectorClient = 0;
 
-    delete m_page;
-    m_page = 0;
+    if (m_page)
+        m_page->deref();
+    m_page = nullptr;
 
 #if 0
 // broken 2.18
     registerForIconNotification(false);
 #endif
-    WebCore::ObserverServiceData::createObserverService()->removeObserver(WebPreferences::webPreferencesChangedNotification(), m_webViewObserver);
-    WebCore::ObserverServiceData::createObserverService()->removeObserver("PopupMenuShow", m_webViewObserver);
-    WebCore::ObserverServiceData::createObserverService()->removeObserver("PopupMenuHide", m_webViewObserver);
-    const String& identifier = m_preferences ? m_preferences->identifier() : String();
+    WebCore::ObserverServiceData::createObserverService()->removeObserver(String::fromLatin1(WebPreferences::webPreferencesChangedNotification()), m_webViewObserver);
+    WebCore::ObserverServiceData::createObserverService()->removeObserver("PopupMenuShow"_s, m_webViewObserver);
+    WebCore::ObserverServiceData::createObserverService()->removeObserver("PopupMenuHide"_s, m_webViewObserver);
+    const String identifier = m_preferences ? String::fromLatin1(m_preferences->identifier()) : String();
     if (identifier != String())
         WebPreferences::removeReferenceForIdentifier(identifier.utf8().data());
 
@@ -828,13 +843,13 @@ void WebView::clearDirtyRegion()
     d->clearDirtyRegion();
 }
 
-void WebView::scrollBackingStore(FrameView* frameView, int dx, int dy, const BalRectangle& scrollViewRect, const BalRectangle& clipRect)
+void WebView::scrollBackingStore(LocalFrameView* frameView, int dx, int dy, const BalRectangle& scrollViewRect, const BalRectangle& clipRect)
 {
     //kprintf("WebView::scrollBackingStore\n");
     d->scrollBackingStore(frameView, dx, dy, scrollViewRect, clipRect);
 }
 
-void WebView::updateBackingStore(FrameView* frameView, bool backingStoreCompletelyDirty)
+void WebView::updateBackingStore(LocalFrameView* frameView, bool backingStoreCompletelyDirty)
 {
     //kprintf("WebView::updateBackingStore(completelyDirty %d\n", backingStoreCompletelyDirty);
     //frameView->updateBackingStore();
@@ -842,7 +857,7 @@ void WebView::updateBackingStore(FrameView* frameView, bool backingStoreComplete
 
 void WebView::selectionChanged() 
 {
-    Frame* targetFrame = &(m_page->focusController().focusedOrMainFrame());
+    LocalFrame* targetFrame = m_page->focusController().focusedOrMainFrame();
     if (!targetFrame || !targetFrame->editor().hasComposition())
         return;
     
@@ -940,7 +955,7 @@ void WebView::onUserEvent(BalUserEvent ev)
 
 bool WebView::defaultActionOnFocusedNode(BalEventKey event)
 {
-    Frame* frame = &(page()->focusController().focusedOrMainFrame());
+    LocalFrame* frame = page()->focusController().focusedOrMainFrame();
     if (!frame)
         return false;
     WebCore::Node* focusedNode = frame->document()->focusedElement();
@@ -948,9 +963,9 @@ bool WebView::defaultActionOnFocusedNode(BalEventKey event)
         return false;
 
     PlatformKeyboardEvent keyboardEvent(&event);
-    if (keyboardEvent.type() == PlatformKeyboardEvent::KeyDown) {
+    if (keyboardEvent.type() == PlatformEvent::Type::KeyDown) {
         // FIXME: We should tweak the parameters instead of hard coding them.
-        keyboardEvent.disambiguateKeyDownEvent(PlatformKeyboardEvent::RawKeyDown, false);
+        keyboardEvent.disambiguateKeyDownEvent(PlatformEvent::Type::RawKeyDown, false);
     }
     RefPtr<KeyboardEvent> keyEvent = KeyboardEvent::create(keyboardEvent, frame->document()->windowProxy());
     keyEvent->setTarget(focusedNode);
@@ -986,15 +1001,15 @@ void WebView::closeWindow()
 
 bool WebView::canHandleRequest(const WebCore::ResourceRequest& request)
 {
-    if (request.url().protocolIs("about"))
+    if (request.url().protocolIs("about"_s))
     {
         return true;
     }
-    else if (request.url().protocolIs("topsites"))
+    else if (request.url().protocolIs("topsites"_s))
     {
         return true;
     }
-    else if (request.url().protocolIs("mailto"))
+    else if (request.url().protocolIs("mailto"_s))
     {
         DoMethod(app, MM_OWBApp_MailTo, request.url().string().latin1().data());
         return false;
@@ -1175,16 +1190,16 @@ bool WebView::handleEditingKeyboardEvent(KeyboardEvent* evt)
 {
     WebCore::Node* node = downcast<WebCore::Node>(evt->target());
     ASSERT(node);
-    Frame* frame = node->document().frame();
+    LocalFrame* frame = node->document().frame();
     ASSERT(frame);
 
     const PlatformKeyboardEvent* keyEvent = evt->underlyingPlatformEvent();
     if (!keyEvent)  // do not treat this as text input if it's a system key event
         return false;
 
-    Editor::Command command = frame->editor().command(interpretKeyEvent(evt));
+    Editor::Command command = frame->editor().command(String::fromLatin1(interpretKeyEvent(evt)));
 
-    if (keyEvent->type() == PlatformKeyboardEvent::RawKeyDown) {
+    if (keyEvent->type() == PlatformEvent::Type::RawKeyDown) {
         // WebKit doesn't have enough information about mode to decide how commands that just insert text if executed via Editor should be treated,
         // so we leave it upon WebCore to either handle them immediately (e.g. Tab that changes focus) or let a keypress event be generated
         // (e.g. Tab that inserts a Tab character, or Enter).
@@ -1213,7 +1228,7 @@ bool WebView::developerExtrasEnabled() const
     //    return false;
 }
 
-const string& WebView::userAgentForURL(const string& url)
+const std::string& WebView::userAgentForURL(const std::string& url)
 {
     if (m_userAgentOverridden)
     {
@@ -1233,9 +1248,9 @@ const string& WebView::userAgentForURL(const string& url)
 
 bool WebView::canShowMIMEType(const char* mimeType)
 {
-    String type = String(mimeType).convertToLowercaseWithoutLocale();
-    Frame* coreFrame = core(m_mainFrame);
-    bool allowPlugins = coreFrame && coreFrame->arePluginsEnabled();
+    String type = String::fromLatin1(mimeType).convertToLowercaseWithoutLocale();
+    LocalFrame* coreFrame = core(m_mainFrame);
+    bool allowPlugins = false; // plug-ins were removed from WebKit (2.46)
     
     bool canShow = type.isEmpty()
     || MIMETypeRegistry::isSupportedImageMIMEType(type)
@@ -1278,11 +1293,13 @@ void WebView::initWithFrame(BalRectangle& frame, const char* frameName, const ch
     else
         d->setFrameRect(frame);
 
-    RefPtr<Frame> coreFrame = core(m_mainFrame);
-    m_page->mainFrame().tree().setName(frameName);
-    m_page->mainFrame().init(); 
+    RefPtr<LocalFrame> coreFrame = core(m_mainFrame);
+    if (auto* localMainFrame = dynamicDowncast<LocalFrame>(m_page->mainFrame())) {
+        localMainFrame->tree().setSpecifiedName(AtomString::fromLatin1(frameName));
+        localMainFrame->init();
+    }
     setGroupName(groupName);
-    WebCore::FrameView* frameView = coreFrame->view();
+    WebCore::LocalFrameView* frameView = coreFrame->view();
     d->initWithFrameView(frameView);
 
     initializeToolTipWindow();
@@ -1298,7 +1315,7 @@ void WebView::initWithFrame(BalRectangle& frame, const char* frameName, const ch
         didOneTimeInitialization = true;
     }
 
-    WebCore::ObserverServiceData::createObserverService()->registerObserver(WebPreferences::webPreferencesChangedNotification(), m_webViewObserver);
+    WebCore::ObserverServiceData::createObserverService()->registerObserver(String::fromLatin1(WebPreferences::webPreferencesChangedNotification()), m_webViewObserver);
     
     m_preferences->postPreferencesChangesNotification();
 
@@ -1310,9 +1327,10 @@ void WebView::initWithFrame(BalRectangle& frame, const char* frameName, const ch
     m_page->focusController().setFocused(true);
     m_page->settings().setMinimumDOMTimerInterval(Seconds(4.0/1000.0));
 
-    Frame* mainFrame = &(m_page->mainFrame());
-    Frame* focusedFrame = &(m_page->focusController().focusedOrMainFrame());
-    mainFrame->selection().setFocused(mainFrame == focusedFrame);
+    LocalFrame* mainFrame = dynamicDowncast<LocalFrame>(m_page->mainFrame());
+    LocalFrame* focusedFrame = m_page->focusController().focusedOrMainFrame();
+    if (mainFrame)
+        mainFrame->selection().setFocused(mainFrame == focusedFrame);
 }
 
 void WebView::initializeToolTipWindow()
@@ -1502,7 +1520,7 @@ WebFrame* WebView::mainFrame()
 
 WebFrame* WebView::focusedFrame()
 {
-    Frame* f = m_page->focusController().focusedFrame();
+    LocalFrame* f = dynamicDowncast<LocalFrame>(m_page->focusController().focusedFrame());
     if (!f)
         return 0;
 
@@ -1542,7 +1560,7 @@ void WebView::goBackOrForward(int steps)
 bool WebView::goToBackForwardItem(WebHistoryItem* item)
 {
     WebHistoryItemPrivate *priv = item->getPrivateItem(); 
-    m_page->goToItem(*priv->m_historyItem, FrameLoadType::IndexedBackForward, ShouldTreatAsContinuingLoad::No);
+    m_page->goToItem(m_page->mainFrame(), *priv->m_historyItem, FrameLoadType::IndexedBackForward, ShouldTreatAsContinuingLoad::No);
     return true;
 }
 
@@ -1570,7 +1588,7 @@ bool WebView::setZoomMultiplier(float multiplier, bool isTextOnly)
 
     m_zoomMultiplier = multiplier;
     m_zoomsTextOnly = isTextOnly;
-    Frame* coreFrame = core(m_mainFrame);
+    LocalFrame* coreFrame = core(m_mainFrame);
     if (coreFrame && coreFrame->document()) {
         if (m_zoomsTextOnly)
             coreFrame->setPageAndTextZoomFactors(1, multiplier);
@@ -1663,24 +1681,24 @@ void WebView::makeTextStandardSize()
 
 
 
-void WebView::setApplicationNameForUserAgent(const string& applicationName)
+void WebView::setApplicationNameForUserAgent(const std::string& applicationName)
 {
     m_applicationName = applicationName;
     m_userAgentStandard = "";
 }
 
-const string& WebView::applicationNameForUserAgent()
+const std::string& WebView::applicationNameForUserAgent()
 {
     return m_applicationName;
 }
 
-void WebView::setCustomUserAgent(const string& userAgentString)
+void WebView::setCustomUserAgent(const std::string& userAgentString)
 {
-    m_userAgentOverridden = userAgentString != string("");
+    m_userAgentOverridden = userAgentString != std::string("");
     m_userAgentCustom = userAgentString;
 }
 
-const string& WebView::customUserAgent()
+const std::string& WebView::customUserAgent()
 {
     return m_userAgentCustom;
 }
@@ -1695,11 +1713,11 @@ void WebView::setCustomTextEncodingName(const char* encodingName)
     if (!m_mainFrame)
         return ;
 
-    String oldEncoding = customTextEncodingName();
+    String oldEncoding = String::fromLatin1(customTextEncodingName());
 
-    if (oldEncoding != encodingName) {
-        if (Frame* coreFrame = core(m_mainFrame))
-            coreFrame->loader().reloadWithOverrideEncoding(encodingName);
+    if (oldEncoding != String::fromLatin1(encodingName)) {
+        if (LocalFrame* coreFrame = core(m_mainFrame))
+            coreFrame->loader().reloadWithOverrideEncoding(String::fromLatin1(encodingName));
     }
 }
 
@@ -1731,11 +1749,11 @@ const char* WebView::mediaStyle()
 
 const char* WebView::stringByEvaluatingJavaScriptFromString(const char* script)
 {
-    Frame* coreFrame = core(m_mainFrame);
+    LocalFrame* coreFrame = core(m_mainFrame);
     if (!coreFrame)
         return NULL; 
 
-    JSC::JSValue scriptExecutionResult = coreFrame->script().executeScriptIgnoringException(script, false);
+    JSC::JSValue scriptExecutionResult = coreFrame->script().executeScriptIgnoringException(String::fromLatin1(script), JSC::SourceTaintedOrigin::Untainted, false);
     if(!scriptExecutionResult)
         return NULL;
     else if (scriptExecutionResult.isString()) {
@@ -1751,11 +1769,11 @@ void WebView::executeScript(const char* script)
     if (!script)
         return;
 
-    Frame* coreFrame = core(m_mainFrame);
+    LocalFrame* coreFrame = core(m_mainFrame);
     if (!coreFrame)
         return ;
 
-    coreFrame->script().executeScriptIgnoringException(String::fromUTF8(script), true);
+    coreFrame->script().executeScriptIgnoringException(String::fromUTF8(script), JSC::SourceTaintedOrigin::Untainted, true);
 }
 
 WebScriptObject* WebView::windowScriptObject()
@@ -1775,9 +1793,9 @@ void WebView::setPreferences(WebPreferences* prefs)
 
     WebPreferences *oldPrefs = m_preferences;
 
-    WebCore::ObserverServiceData::createObserverService()->removeObserver(WebPreferences::webPreferencesChangedNotification(), m_webViewObserver);
+    WebCore::ObserverServiceData::createObserverService()->removeObserver(String::fromLatin1(WebPreferences::webPreferencesChangedNotification()), m_webViewObserver);
 
-    String identifier = oldPrefs->identifier();
+    String identifier = String::fromLatin1(oldPrefs->identifier());
     oldPrefs->didRemoveFromWebView();
     oldPrefs = 0; // Make sure we release the reference, since WebPreferences::removeReferenceForIdentifier will check for last reference to WebPreferences
     
@@ -1785,7 +1803,7 @@ void WebView::setPreferences(WebPreferences* prefs)
 
     m_preferences = prefs;
 
-    WebCore::ObserverServiceData::createObserverService()->registerObserver(WebPreferences::webPreferencesChangedNotification(), m_webViewObserver);
+    WebCore::ObserverServiceData::createObserverService()->registerObserver(String::fromLatin1(WebPreferences::webPreferencesChangedNotification()), m_webViewObserver);
 
     m_preferences->postPreferencesChangesNotification();
 }
@@ -1828,12 +1846,12 @@ bool WebView::searchFor(const char* str, bool forward, bool caseFlag, bool wrapF
     if (!m_page)
         return false;
     FindOptions opts;
-    if (wrapFlag) opts.add(WrapAround);
-    if (!caseFlag) opts.add(CaseInsensitive);
-    if (!forward) opts.add(Backwards);
+    if (wrapFlag) opts.add(WebCore::FindOption::WrapAround);
+    if (!caseFlag) opts.add(WebCore::FindOption::CaseInsensitive);
+    if (!forward) opts.add(WebCore::FindOption::Backwards);
 
     String searchString = String::fromUTF8(str);
-    return m_page->findString(searchString, opts);
+    return m_page->findString(searchString, opts).has_value();
 }
 
 bool WebView::active()
@@ -1883,8 +1901,8 @@ void WebView::updateFocusedAndActiveState()
     if(active)
     {
     FocusController *focusController = &(m_page->focusController());
-    Frame *frame = focusController->focusedFrame();
-    Frame* mainFrame = &(m_page->mainFrame());
+    LocalFrame *frame = dynamicDowncast<LocalFrame>(focusController->focusedFrame());
+    LocalFrame* mainFrame = localMainFrame(m_page);
     if (frame)
         focusController->setFocused(true);
     else if(mainFrame)
@@ -1901,10 +1919,10 @@ String buffer(const char* url)
 {
     String path;
     if (!url) {
-        path = OWB_DATA;
-        path.append("owbrc");
+        path = String::fromLatin1(OWB_DATA);
+        path = makeString(path, "owbrc"_s);
     } else
-        path = url;
+        path = String::fromLatin1(url);
 
     OWBFile *configFile = new OWBFile(path);
     if (!configFile)
@@ -1913,7 +1931,7 @@ String buffer(const char* url)
         delete configFile;
         return String();
     }
-    String buffer(configFile->read(configFile->getSize()));
+    String buffer = String::fromLatin1(configFile->read(configFile->getSize()));
     configFile->close();
     delete configFile;
 
@@ -1925,15 +1943,15 @@ void WebView::parseConfigFile(const char* url)
     int width = 0, height = 0;
     String fileBuffer = buffer(url);
     while (!fileBuffer.isEmpty()) {
-        size_t eol = fileBuffer.find("\n");
-        size_t delimiter = fileBuffer.find("=");
+        size_t eol = fileBuffer.find("\n"_s);
+        size_t delimiter = fileBuffer.find("="_s);
 
-        String keyword = fileBuffer.substring(0, delimiter).stripWhiteSpace();
-        String key = fileBuffer.substring(delimiter +  1, eol - delimiter).stripWhiteSpace();
+        String keyword = fileBuffer.substring(0, delimiter).trim(deprecatedIsSpaceOrNewline);
+        String key = fileBuffer.substring(delimiter +  1, eol - delimiter).trim(deprecatedIsSpaceOrNewline);
 
-        if (keyword == "width")
+        if (keyword == "width"_s)
             width = parseIntegerAllowingTrailingJunk<int>(key).value_or(0);
-        if (keyword == "height")
+        if (keyword == "height"_s)
             height = parseIntegerAllowingTrailingJunk<int>(key).value_or(0);
 
         //Remove processed line from the buffer
@@ -1948,7 +1966,7 @@ void WebView::parseConfigFile(const char* url)
 
 void WebView::executeCoreCommandByName(const char* name, const char* value)
 {
-    m_page->focusController().focusedOrMainFrame().editor().command(name).execute(value);
+    m_page->focusController().focusedOrMainFrame()->editor().command(String::fromLatin1(name)).execute(String::fromLatin1(value));
 }
 
 bool WebView::commandEnabled(const char* commandName)
@@ -1956,7 +1974,7 @@ bool WebView::commandEnabled(const char* commandName)
     if (!commandName)
         return false;
 
-    Editor::Command command = m_page->focusController().focusedOrMainFrame().editor().command(commandName);
+    Editor::Command command = m_page->focusController().focusedOrMainFrame()->editor().command(String::fromLatin1(commandName));
     return command.isEnabled();
 }
 
@@ -1967,9 +1985,9 @@ unsigned int WebView::markAllMatchesForText(const char* str, bool caseSensitive,
 
     WebCore::FindOptions options;
     if (!caseSensitive)
-        options.add(WebCore::CaseInsensitive);
+        options.add(WebCore::FindOption::CaseInsensitive);
 
-    return m_page->markAllMatchesForText(str, options, highlight, limit);
+    return m_page->markAllMatchesForText(String::fromLatin1(str), options, highlight, limit);
 }
 
 void WebView::unmarkAllTextMatches()
@@ -1982,7 +2000,7 @@ void WebView::unmarkAllTextMatches()
 
 BalRectangle WebView::selectionRect()
 {
-    WebCore::Frame* frame = &(m_page->focusController().focusedOrMainFrame());
+    WebCore::LocalFrame* frame = m_page->focusController().focusedOrMainFrame();
 
     if (frame) {
     IntRect ir = enclosingIntRect(frame->selection().selectionBounds());
@@ -1996,7 +2014,7 @@ BalRectangle WebView::selectionRect()
 
 void WebView::setGroupName(const char* groupName)
 {
-    m_page->setGroupName(groupName);
+    m_page->setGroupName(String::fromLatin1(groupName));
 }
     
 const char* WebView::groupName()
@@ -2030,7 +2048,7 @@ bool WebView::isLoading()
 
 WebHitTestResults* WebView::elementAtPoint(BalPoint& point)
 {
-    Frame* frame = core(m_mainFrame);
+    LocalFrame* frame = core(m_mainFrame);
     if (!frame)
         return 0;
 
@@ -2045,7 +2063,7 @@ WebHitTestResults* WebView::elementAtPoint(BalPoint& point)
 
 const char* WebView::selectedText()
 {
-    Frame* focusedFrame = (m_page) ? &(m_page->focusController().focusedOrMainFrame()) : 0;
+    LocalFrame* focusedFrame = (m_page) ? m_page->focusController().focusedOrMainFrame() : 0;
     if (!focusedFrame)
         return NULL;
 
@@ -2054,11 +2072,25 @@ const char* WebView::selectedText()
 
 void WebView::centerSelectionInVisibleArea()
 {
-    Frame* coreFrame = core(m_mainFrame);
+    LocalFrame* coreFrame = core(m_mainFrame);
     if (!coreFrame)
         return ;
 
     coreFrame->selection().revealSelection(SelectionRevealMode::Reveal, ScrollAlignment::alignCenterAlways);
+}
+
+// WebDragOperation and WebCore::DragOperation use the same bit values
+// (Copy=1 ... Delete=32); 2.46 passes allowed operations as an OptionSet.
+static OptionSet<DragOperation> toDragOperations(unsigned operations)
+{
+    return OptionSet<DragOperation>::fromRaw(static_cast<uint8_t>(operations & 0x3f));
+}
+
+static DragOperation dragOperationFromResult(const std::variant<std::optional<DragOperation>, RemoteUserInputEventData>& result)
+{
+    if (auto* operation = std::get_if<std::optional<DragOperation>>(&result); operation && *operation)
+        return **operation;
+    return { };
 }
 
 WebDragOperation WebView::dragEnter(WebDragData* webDragData, int identity,
@@ -2075,13 +2107,13 @@ WebDragOperation WebView::dragEnter(WebDragData* webDragData, int identity,
         m_currentDragData->platformDragData()->m_dragDataRef,
         clientPoint,
         screenPoint,
-        static_cast<DragOperation>(operationsAllowed));
+        toDragOperations(operationsAllowed));
 
     m_dropEffect = DropEffectDefault;
     m_dragTargetDispatch = true;
-    DragOperation effect = m_page->dragController().dragEntered(dragData).value();
+    DragOperation effect = dragOperationFromResult(m_page->dragController().dragEnteredOrUpdated(*localMainFrame(m_page), DragData { dragData }));
     // Mask the operation against the drag source's allowed operations.
-    if ((effect & dragData.draggingSourceOperationMask()) != effect)
+    if (!dragData.draggingSourceOperationMask().contains(effect))
         effect = { };
     m_dragTargetDispatch = false;
 
@@ -2102,13 +2134,13 @@ WebDragOperation WebView::dragOver(const BalPoint& clientPoint, const BalPoint& 
     m_currentDragData->platformDragData()->m_dragDataRef,
         clientPoint,
         screenPoint,
-        static_cast<DragOperation>(operationsAllowed));
+        toDragOperations(operationsAllowed));
 
     m_dropEffect = DropEffectDefault;
     m_dragTargetDispatch = true;
-    DragOperation effect = m_page->dragController().dragUpdated(dragData).value();
+    DragOperation effect = dragOperationFromResult(m_page->dragController().dragEnteredOrUpdated(*localMainFrame(m_page), DragData { dragData }));
     // Mask the operation against the drag source's allowed operations.
-    if ((effect & dragData.draggingSourceOperationMask()) != effect)
+    if (!dragData.draggingSourceOperationMask().contains(effect))
         effect = { };
     m_dragTargetDispatch = false;
 
@@ -2128,10 +2160,10 @@ void WebView::dragTargetDragLeave()
         m_currentDragData->platformDragData()->m_dragDataRef,
         IntPoint(),
         IntPoint(),
-        static_cast<DragOperation>(m_operationsAllowed));
+        toDragOperations(m_operationsAllowed));
 
     m_dragTargetDispatch = true;
-    m_page->dragController().dragExited(dragData);
+    m_page->dragController().dragExited(*localMainFrame(m_page), DragData { dragData });
     m_dragTargetDispatch = false;
 
     m_currentDragData = 0;
@@ -2161,10 +2193,10 @@ void WebView::dragTargetDrop(const BalPoint& clientPoint,
         m_currentDragData->platformDragData()->m_dragDataRef,
         clientPoint,
         screenPoint,
-        static_cast<DragOperation>(m_operationsAllowed));
+        toDragOperations(m_operationsAllowed));
 
     m_dragTargetDispatch = true;
-    m_page->dragController().performDragOperation(dragData);
+    m_page->dragController().performDragOperation(DragData { dragData });
     m_dragTargetDispatch = false;
 
     m_currentDragData = 0;
@@ -2184,10 +2216,10 @@ void WebView::dragSourceEndedAt(const BalPoint& clientPoint, const BalPoint& scr
 {
     PlatformMouseEvent pme(clientPoint,
                            screenPoint,
-                           MouseButton::Left, PlatformEvent::Type::MouseMoved, 0, false, false, false,
-                           false, WallTime::fromRawSeconds(0), WebCore::ForceAtClick, WebCore::OneFingerTap);
-    m_page->mainFrame().eventHandler().dragSourceEndedAt(pme,
-        static_cast<DragOperation>(operation));
+                           MouseButton::Left, PlatformEvent::Type::MouseMoved, 0, { },
+                           WallTime::fromRawSeconds(0), WebCore::ForceAtClick, WebCore::SyntheticClickType::OneFingerTap);
+    localMainFrame(m_page)->eventHandler().dragSourceEndedAt(pme,
+        toDragOperations(operation));
 }
 
 void WebView::dragSourceSystemDragEnded()
@@ -2244,7 +2276,7 @@ const char* WebView::mainFrameTitle()
 
 void WebView::registerURLSchemeAsLocal(const char* scheme)
 {
-    LegacySchemeRegistry::registerURLSchemeAsLocal(scheme);
+    LegacySchemeRegistry::registerURLSchemeAsLocal(String::fromLatin1(scheme));
 }
 
 void WebView::setSmartInsertDeleteEnabled(bool flag)
@@ -2318,35 +2350,35 @@ bool WebView::continuousCheckingAllowed()
 
 bool WebView::hasSelectedRange()
 {
-    return m_page->mainFrame().selection().isRange();
+    return localMainFrame(m_page)->selection().isRange();
 }
 
 bool WebView::cutEnabled()
 {
-    Editor &editor = m_page->focusController().focusedOrMainFrame().editor();
+    Editor &editor = m_page->focusController().focusedOrMainFrame()->editor();
     return editor.canCut() || editor.canDHTMLCut();
 }
 
 bool WebView::copyEnabled()
 {
-    Editor &editor = m_page->focusController().focusedOrMainFrame().editor();
+    Editor &editor = m_page->focusController().focusedOrMainFrame()->editor();
     return editor.canCopy() || editor.canDHTMLCopy();
 }
 
 bool WebView::pasteEnabled()
 {
-    Editor &editor = m_page->focusController().focusedOrMainFrame().editor();
-    return editor.canPaste() || editor.canDHTMLPaste();
+    Editor &editor = m_page->focusController().focusedOrMainFrame()->editor();
+    return editor.canEdit() || editor.canDHTMLPaste(); // Editor::canPaste() was canEdit()
 }
 
 bool WebView::deleteEnabled()
 {
-    return m_page->focusController().focusedOrMainFrame().editor().canDelete();
+    return m_page->focusController().focusedOrMainFrame()->editor().canDelete();
 }
 
 bool WebView::editingEnabled()
 {
-    return m_page->focusController().focusedOrMainFrame().editor().canEdit();
+    return m_page->focusController().focusedOrMainFrame()->editor().canEdit();
 }
 
 bool WebView::isGrammarCheckingEnabled()
@@ -2374,9 +2406,9 @@ void WebView::setGrammarCheckingEnabled(bool enabled)
 
 void WebView::replaceSelectionWithText(const char* text)
 {
-    Position start = m_page->mainFrame().selection().selection().start();
-    m_page->focusController().focusedOrMainFrame().editor().insertText(text, 0);
-    m_page->mainFrame().selection().setBase(start);
+    Position start = localMainFrame(m_page)->selection().selection().start();
+    m_page->focusController().focusedOrMainFrame()->editor().insertText(String::fromLatin1(text), 0);
+    localMainFrame(m_page)->selection().setBase(start);
 }
     
 void WebView::replaceSelectionWithMarkupString(const char* /*markupString*/)
@@ -2389,25 +2421,25 @@ void WebView::replaceSelectionWithArchive(WebArchive* /*archive*/)
     
 void WebView::deleteSelection()
 {
-    Editor &editor = m_page->focusController().focusedOrMainFrame().editor();
+    Editor &editor = m_page->focusController().focusedOrMainFrame()->editor();
     editor.deleteSelectionWithSmartDelete(editor.canSmartCopyOrDelete());
 }
 
 void WebView::clearSelection()
 {
-    m_page->focusController().focusedOrMainFrame().selection().clear();
+    m_page->focusController().focusedOrMainFrame()->selection().clear();
 }
 
 void WebView::clearMainFrameName()
 {
-    m_page->mainFrame().tree().clearName();
+    localMainFrame(m_page)->tree().clearName();
 }
 
 void WebView::copy()
 {
-    Frame &frame = m_page->focusController().focusedOrMainFrame();
+    LocalFrame &frame = *m_page->focusController().focusedOrMainFrame();
     if (enclosingTextFormControl(frame.selection().selection().start()))
-        frame.editor().command("Copy").execute();
+        frame.editor().command("Copy"_s).execute();
     else
     {
         /* Copying from HTML text, not from input/editor */
@@ -2417,17 +2449,17 @@ void WebView::copy()
 
 void WebView::cut()
 {
-    m_page->focusController().focusedOrMainFrame().editor().command("Cut").execute();
+    m_page->focusController().focusedOrMainFrame()->editor().command("Cut"_s).execute();
 }
 
 void WebView::paste()
 {
-    m_page->focusController().focusedOrMainFrame().editor().command("Paste").execute();
+    m_page->focusController().focusedOrMainFrame()->editor().command("Paste"_s).execute();
 }
 
 void WebView::copyURL(const char* url)
 {
-    m_page->focusController().focusedOrMainFrame().editor().copyURL(URL({ }, url), "");
+    m_page->focusController().focusedOrMainFrame()->editor().copyURL(URL({ }, String::fromLatin1(url)), emptyString());
 }
 
 
@@ -2441,7 +2473,7 @@ void WebView::pasteFont()
     
 void WebView::delete_()
 {
-    m_page->focusController().focusedOrMainFrame().editor().command("Delete").execute();
+    m_page->focusController().focusedOrMainFrame()->editor().command("Delete"_s).execute();
 }
     
 void WebView::pasteAsPlainText()
@@ -2519,7 +2551,7 @@ void WebView::notifyPreferencesChanged(WebPreferences* preferences)
 
     Settings* settings = &m_page->settings();
 
-    str = preferences->cursiveFontFamily().c_str();
+    str = String::fromLatin1(preferences->cursiveFontFamily().c_str());
     settings->setCursiveFontFamily(str);
 
     size = preferences->defaultFixedFontSize();
@@ -2528,13 +2560,13 @@ void WebView::notifyPreferencesChanged(WebPreferences* preferences)
     size = preferences->defaultFontSize();
     settings->setDefaultFontSize(size);
 
-    str = preferences->defaultTextEncodingName().c_str();
+    str = String::fromLatin1(preferences->defaultTextEncodingName().c_str());
     settings->setDefaultTextEncodingName(str);
 
-    str = preferences->fantasyFontFamily().c_str();
+    str = String::fromLatin1(preferences->fantasyFontFamily().c_str());
     settings->setFantasyFontFamily(str);
 
-    str = preferences->fixedFontFamily().c_str();
+    str = String::fromLatin1(preferences->fixedFontFamily().c_str());
     settings->setFixedFontFamily(str);
 
 #if ENABLE(VIDEO_TRACK)
@@ -2549,7 +2581,7 @@ void WebView::notifyPreferencesChanged(WebPreferences* preferences)
 #endif
 
     enabled = preferences->isJavaEnabled();
-    settings->setJavaEnabled(enabled);
+    // No Java in WebKit 2.46: the preference is ignored.
 
     enabled = preferences->javaScriptCanOpenWindowsAutomatically();
     settings->setJavaScriptCanOpenWindowsAutomatically(enabled);
@@ -2561,15 +2593,15 @@ void WebView::notifyPreferencesChanged(WebPreferences* preferences)
     settings->setMinimumLogicalFontSize(size);
 
     enabled = preferences->arePlugInsEnabled();
-    settings->setPluginsEnabled(!!enabled);
+    // No plug-ins in WebKit 2.46: the preference is ignored.
 
-    str = preferences->sansSerifFontFamily().c_str();
+    str = String::fromLatin1(preferences->sansSerifFontFamily().c_str());
     settings->setSansSerifFontFamily(str);
 
-    str = preferences->serifFontFamily().c_str();
+    str = String::fromLatin1(preferences->serifFontFamily().c_str());
     settings->setSerifFontFamily(str);
 
-    str = preferences->standardFontFamily().c_str();
+    str = String::fromLatin1(preferences->standardFontFamily().c_str());
     settings->setStandardFontFamily(str);
 
     /* Following ones need special care because they can be overridden by URLPrefs or temporary menu settings. */
@@ -2602,7 +2634,7 @@ void WebView::notifyPreferencesChanged(WebPreferences* preferences)
     if(applyDefault)
     {
         enabled = preferences->arePlugInsEnabled();
-        settings->setPluginsEnabled(!!enabled);
+        // No plug-ins in WebKit 2.46: the preference is ignored.
     }
 
     applyDefault = widget == NULL || (DoMethod(app, MM_URLPrefsGroup_MatchesURL, getv(widget->browser, MA_OWBBrowser_URL)) == 0);
@@ -2611,7 +2643,7 @@ void WebView::notifyPreferencesChanged(WebPreferences* preferences)
     {
         enabled = preferences->localStorageEnabled();
         settings->setLocalStorageEnabled(!!enabled);
-        settings->setOfflineWebApplicationCacheEnabled(!!enabled);
+        // No application cache in WebKit 2.46.
     }
 
     /* */
@@ -2624,7 +2656,7 @@ void WebView::notifyPreferencesChanged(WebPreferences* preferences)
 
     enabled = preferences->userStyleSheetEnabled();
     if (enabled) {
-        str = preferences->userStyleSheetLocation().c_str();
+        str = String::fromLatin1(preferences->userStyleSheetLocation().c_str());
         settings->setUserStyleSheetLocation(URL({ }, str));
     } else {
         settings->setUserStyleSheetLocation(URL());
@@ -2652,7 +2684,7 @@ void WebView::notifyPreferencesChanged(WebPreferences* preferences)
     settings->setNeedsSiteSpecificQuirks(s_allowSiteSpecificHacks);
 
     FontSmoothingType smoothingType = preferences->fontSmoothing();
-    settings->setFontRenderingMode(smoothingType != FontSmoothingTypeWindows ? FontRenderingMode::Normal : FontRenderingMode::Alternate);
+    // WebKit 2.46 has no font rendering mode setting: smoothingType is unused.
 
     enabled = preferences->databasesEnabled();
     DatabaseManager::singleton().setIsAvailable(enabled);
@@ -2670,7 +2702,7 @@ void WebView::notifyPreferencesChanged(WebPreferences* preferences)
     settings->setJavaScriptCanAccessClipboard(!!enabled);
 
     enabled = preferences->isFrameFlatteningEnabled();
-    settings->setFrameFlattening(enabled ? FrameFlattening::FullyEnabled : FrameFlattening::Disabled);
+    // No frame flattening in WebKit 2.46: the preference is ignored.
 
     enabled = preferences->showDebugBorders();
     settings->setShowDebugBorders(enabled);
@@ -2678,7 +2710,7 @@ void WebView::notifyPreferencesChanged(WebPreferences* preferences)
     enabled = preferences->showRepaintCounter();
     settings->setShowRepaintCounter(enabled);
 
-    str = preferences->localStorageDatabasePath().c_str();
+    str = String::fromLatin1(preferences->localStorageDatabasePath().c_str());
     settings->setLocalStorageDatabasePath(str);
 
     enabled = preferences->DNSPrefetchingEnabled();
@@ -2727,7 +2759,7 @@ void WebView::setViewWindow(BalWidget* view)
 BalPoint WebView::scrollOffset()
 {
     if (m_page) {
-        return IntPoint(m_page->mainFrame().view()->scrollPosition().x(), m_page->mainFrame().view()->scrollPosition().y());
+        return IntPoint(localMainFrame(m_page)->view()->scrollPosition().x(), localMainFrame(m_page)->view()->scrollPosition().y());
     } else
         return IntPoint();
 }
@@ -2736,7 +2768,7 @@ void WebView::scrollBy(BalPoint offset)
 {
     if (m_page) {
         IntPoint p(offset);
-        m_page->mainFrame().view()->scrollBy(IntSize(p.x(), p.y()));
+        localMainFrame(m_page)->view()->scrollBy(IntSize(p.x(), p.y()));
 #if OS(AROS)
         BalWidget *widget = m_viewWindow;
 
@@ -2762,16 +2794,16 @@ void WebView::scrollWithDirection(::ScrollDirection direction)
 {
     switch (direction) {
     case Up:
-        m_page->mainFrame().view()->scrollBy(IntSize(0, (int)-Scrollbar::pixelsPerLineStep()));
+        localMainFrame(m_page)->view()->scrollBy(IntSize(0, (int)-Scrollbar::pixelsPerLineStep()));
         break;
     case Down:
-        m_page->mainFrame().view()->scrollBy(IntSize(0, (int)Scrollbar::pixelsPerLineStep()));
+        localMainFrame(m_page)->view()->scrollBy(IntSize(0, (int)Scrollbar::pixelsPerLineStep()));
         break;
     case Left:
-        m_page->mainFrame().view()->scrollBy(IntSize((int)-Scrollbar::pixelsPerLineStep(), 0));
+        localMainFrame(m_page)->view()->scrollBy(IntSize((int)-Scrollbar::pixelsPerLineStep(), 0));
         break;
     case Right:
-        m_page->mainFrame().view()->scrollBy(IntSize((int)Scrollbar::pixelsPerLineStep(), 0));
+        localMainFrame(m_page)->view()->scrollBy(IntSize((int)Scrollbar::pixelsPerLineStep(), 0));
         break;
     default:
         ASSERT_NOT_REACHED();
@@ -2780,7 +2812,7 @@ void WebView::scrollWithDirection(::ScrollDirection direction)
 
 BalRectangle WebView::visibleContentRect()
 {
-    FloatRect visibleContent = m_page->mainFrame().view()->visibleContentRect();
+    FloatRect visibleContent = localMainFrame(m_page)->view()->visibleContentRect();
     return IntRect((int)visibleContent.x(), (int)visibleContent.y(), (int)visibleContent.maxX(), (int)visibleContent.maxY());
 }
 
@@ -2793,13 +2825,13 @@ bool WebView::canHandleRequest(WebMutableURLRequest *request)
 void WebView::clearFocusNode()
 {
     if (m_page)
-        m_page->focusController().setFocusedElement(nullptr, m_page->focusController().focusedOrMainFrame());
+        m_page->focusController().setFocusedElement(nullptr, *m_page->focusController().focusedOrMainFrame());
 }
 
 void WebView::setInitialFocus(bool forward)
 {
     if (m_page) {
-        Frame* frame = &(m_page->focusController().focusedOrMainFrame());
+        LocalFrame* frame = m_page->focusController().focusedOrMainFrame();
         frame->document()->setFocusedElement(0);
         m_page->focusController().setInitialFocus(forward ? WebCore::FocusDirection::Forward : WebCore::FocusDirection::Backward, 0);
     }
@@ -2852,7 +2884,7 @@ void WebView::loadBackForwardListFromOtherView(WebView* otherView)
             // If this item is showing , save away its current scroll and form state,
             // since that might have changed since loading and it is normally not saved
             // until we leave that page.
-            otherView->m_page->mainFrame().loader().history().saveDocumentAndScrollState();
+            otherView->localMainFrame(m_page)->loader().history().saveDocumentAndScrollState();
         }
         Ref<HistoryItem> newItem = otherBackForwardList->itemAtIndex(i)->copy();
         if (!i) 
@@ -2868,13 +2900,13 @@ void WebView::loadBackForwardListFromOtherView(WebView* otherView)
 void WebView::clearUndoRedoOperations()
 {
     if (m_page)
-    m_page->focusController().focusedOrMainFrame().editor().clearUndoRedoOperations();
+    m_page->focusController().focusedOrMainFrame()->editor().clearUndoRedoOperations();
 }
 
 bool WebView::shouldClose()
 {
     if (m_page)
-    return m_page->mainFrame().loader().shouldClose() ? true : false;
+    return localMainFrame(m_page)->loader().shouldClose() ? true : false;
     return true;
 }
 
@@ -2883,7 +2915,7 @@ void WebView::setProhibitsMainFrameScrolling(bool b)
     if (!m_page)
         return ;
 
-    m_page->mainFrame().view()->setProhibitsScrolling(b);
+    localMainFrame(m_page)->view()->setProhibitsScrolling(b);
 }
 
 void WebView::setShouldApplyMacFontAscentHack(bool b)
@@ -3035,12 +3067,12 @@ bool WebView::invalidateBackingStore(const WebCore::IntRect* rect)
 
 void WebView::addOriginAccessWhitelistEntry(const char* sourceOrigin, const char* destinationProtocol, const char* destinationHost, bool allowDestinationSubDomains) const
 {
-    SecurityPolicy::addOriginAccessAllowlistEntry(SecurityOrigin::createFromString(sourceOrigin), destinationProtocol, destinationHost, allowDestinationSubDomains);
+    SecurityPolicy::addOriginAccessAllowlistEntry(SecurityOrigin::createFromString(String::fromLatin1(sourceOrigin)), String::fromLatin1(destinationProtocol), String::fromLatin1(destinationHost), allowDestinationSubDomains);
 }
 
 void WebView::removeOriginAccessWhitelistEntry(const char* sourceOrigin, const char* destinationProtocol, const char* destinationHost, bool allowDestinationSubdomains) const
 {
-    SecurityPolicy::removeOriginAccessAllowlistEntry(SecurityOrigin::createFromString(sourceOrigin), destinationProtocol, destinationHost, allowDestinationSubdomains);
+    SecurityPolicy::removeOriginAccessAllowlistEntry(SecurityOrigin::createFromString(String::fromLatin1(sourceOrigin)), String::fromLatin1(destinationProtocol), String::fromLatin1(destinationHost), allowDestinationSubdomains);
 }
 
 void WebView::resetOriginAccessWhitelists() const
@@ -3066,7 +3098,7 @@ void WebView::addVisitedLinks(const char** visitedURLs, unsigned visitedURLCount
     {
         const char * url = visitedURLs[i];
         unsigned length = strlen(url);
-        visitedLinkStore.addVisitedLink(String(url, length));
+        visitedLinkStore.addVisitedLink(String(std::span { reinterpret_cast<const LChar*>(url), static_cast<size_t>(length) }));
     }
 }
 
@@ -3159,6 +3191,6 @@ bool WebView::screenshot(int &requested_width, int& requested_height, void *imag
 
 bool WebView::screenshot(char* path)
 {
-    String p = String(path);
+    String p = String::fromLatin1(path);
     return d->screenshot(p);
 }

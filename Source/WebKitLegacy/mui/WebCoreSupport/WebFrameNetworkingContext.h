@@ -29,9 +29,9 @@ public:
         if(frame())
             return frame()->document()->url().string();
         else
-            return WTF::String("");
+            return WTF::String(""_s);
     }
-    static Ref<WebFrameNetworkingContext> create(WebCore::Frame* frame, const WTF::String& userAgent)
+    static Ref<WebFrameNetworkingContext> create(WebCore::LocalFrame* frame, const WTF::String& userAgent)
     {
         return adoptRef(*new WebFrameNetworkingContext(frame, userAgent));
     }
@@ -41,7 +41,7 @@ public:
     static void destroyPrivateBrowsingSession();
 
 private:
-    explicit WebFrameNetworkingContext(WebCore::Frame* frame, const WTF::String& userAgent)
+    explicit WebFrameNetworkingContext(WebCore::LocalFrame* frame, const WTF::String& userAgent)
         : WebCore::FrameNetworkingContext(frame)
         , m_userAgent(userAgent)
     {

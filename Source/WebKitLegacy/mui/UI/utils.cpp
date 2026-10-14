@@ -27,6 +27,7 @@
  */
 
 #include <wtf/FileSystem.h>
+#include <wtf/text/MakeString.h>
 
 #include "utils.h"
 #include "owb_cat.h"
@@ -61,7 +62,7 @@ String truncate(const String& url, unsigned int size)
 {
     if (url.length() < size)
         return url;
-    return url.substring(0, size) + "...";
+    return makeString(url.substring(0, size), "..."_s);
 }
 
 ULONG strescape(CONST_STRPTR s, STRPTR out)
@@ -936,7 +937,7 @@ WTF::String createWithFormatAndArguments(const char *format, ...)
 
     va_end(args);
 
-    return WTF::String(buffer);
+    return String::fromLatin1(buffer);
 }
 
 #if OS(MORPHOS)

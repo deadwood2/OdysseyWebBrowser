@@ -33,7 +33,7 @@
 #define BOOKMARK_PATH       "PROGDIR:bookmarks.html"
 #define CONF_DIRECTORY        "PROGDIR:Conf/"
 #define SESSION_DIRECTORY   "PROGDIR:Conf/sessions/"
-#define SESSION_PATH        "PROGDIR:Conf/sessions/session.prefs"
+#define SESSION_PATH        "PROGDIR:Conf/sessions/session.prefs"_s
 #define SCRIPT_DIRECTORY    "PROGDIR:Scripts/"
 
 enum

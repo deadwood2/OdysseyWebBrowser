@@ -42,7 +42,7 @@ void DOMEventListener::handleEvent(DOMEvent* /*evt*/)
 // DOMEvent -------------------------------------------------------------------
 
 DOMEvent::DOMEvent(RefPtr<WebCore::Event>&& e)
-: m_event(0)
+: m_event(nullptr)
 {
     m_event = e;
 }
@@ -228,7 +228,7 @@ bool DOMKeyboardEvent::altGraphKey()
         return false;
     WebCore::KeyboardEvent* keyEvent = static_cast<WebCore::KeyboardEvent*>(m_event.get());
 
-    return keyEvent->altGraphKey() ? true : false;
+    return keyEvent->getModifierState("AltGraph"_s);
 }
 
 bool DOMKeyboardEvent::getModifierState(const char* /*keyIdentifierArg*/)

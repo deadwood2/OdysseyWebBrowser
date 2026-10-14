@@ -37,7 +37,7 @@
 
 #include <WebCore/ContextMenu.h>
 #include <WebCore/Event.h>
-#include <WebCore/Frame.h>
+#include <WebCore/LocalFrame.h>
 #include <WebCore/FrameLoader.h>
 #include <WebCore/FrameLoadRequest.h>
 #include <WebCore/Page.h>
@@ -57,7 +57,7 @@ WebContextMenuClient::WebContextMenuClient(WebView* webView)
 
 void WebContextMenuClient::contextMenuDestroyed()
 {
-    delete this;
+    // 2.46: the Page owns this client (UniqueRef) and destroys it.
 }
 
 #if 0
@@ -78,7 +78,7 @@ void WebContextMenuClient::downloadURL(const URL& url)
         char *tmp = (char *) m_webView->mainFrameURL();
         if(tmp)
         {
-            originURL = tmp;
+            originURL = String::fromLatin1(tmp);
             free(tmp);
         }
         WebDownload* download = WebDownload::createInstance(url, originURL, downloadDelegate);
@@ -86,25 +86,26 @@ void WebContextMenuClient::downloadURL(const URL& url)
     }
 }
 
-void WebContextMenuClient::searchWithGoogle(const Frame* frame)
+void WebContextMenuClient::searchWithGoogle(const LocalFrame* frame)
 {
     String searchString = frame->editor().selectedText();
-    searchString.stripWhiteSpace();
+    searchString.trim(deprecatedIsSpaceOrNewline);
     String encoded = encodeWithURLEscapeSequences(searchString);
-    encoded.replace("%20", "+");
+    encoded = makeStringByReplacingAll(encoded, "%20"_s, "+"_s);
     
-    String url("https://www.google.com/search?q=");
-    url.append(encoded);
-    url.append("&ie=UTF-8&oe=UTF-8");
+    String url = String::fromLatin1("https://www.google.com/search?q=");
+    url = makeString(url, encoded);
+    url = makeString(url, "&ie=UTF-8&oe=UTF-8"_s);
     auto searchURL = URL { { }, url };
 
     if (Page* page = frame->page()) {
-      UserGestureIndicator indicator(ProcessingUserGesture);
-      page->mainFrame().loader().changeLocation(searchURL, { }, nullptr, WebCore::ReferrerPolicy::EmptyString, WebCore::ShouldOpenExternalURLsPolicy::ShouldNotAllow);
+      UserGestureIndicator indicator(IsProcessingUserGesture::Yes);
+      if (auto* mainFrame = dynamicDowncast<LocalFrame>(page->mainFrame()))
+        mainFrame->loader().changeLocation(searchURL, { }, nullptr, WebCore::ReferrerPolicy::EmptyString, WebCore::ShouldOpenExternalURLsPolicy::ShouldNotAllow);
     };
 }
 
-void WebContextMenuClient::lookUpInDictionary(Frame*)
+void WebContextMenuClient::lookUpInDictionary(LocalFrame*)
 {
     notImplemented();
 }
@@ -119,7 +120,7 @@ void WebContextMenuClient::stopSpeaking()
     notImplemented();
 }
 
-bool WebContextMenuClient::isSpeaking()
+bool WebContextMenuClient::isSpeaking() const
 {
     return false;
 }

@@ -80,9 +80,9 @@ void WebDocumentLoader::attachToFrame()
     }
 }
 
-void WebDocumentLoader::detachFromFrame()
+void WebDocumentLoader::detachFromFrame(LoadWillContinueInAnotherProcess loadWillContinue)
 {
-    DocumentLoader::detachFromFrame();
+    DocumentLoader::detachFromFrame(loadWillContinue);
     m_detachedDataSource = m_dataSource;
     if (m_dataSource) {
         WebDataSource* dataSourceToBeReleased = m_dataSource;

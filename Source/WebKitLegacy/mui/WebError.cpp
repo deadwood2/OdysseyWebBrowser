@@ -60,7 +60,7 @@ WebError* WebError::createInstance()
 
 void WebError::init(const char* domain, int code, const char* url)
 {
-    m_error = new ResourceError(domain, code, URL({ }, url), String());
+    m_error = new ResourceError(String::fromLatin1(domain), code, URL({ }, String::fromLatin1(url)), String());
 }
   
 int WebError::code()
@@ -101,7 +101,7 @@ const char* WebError::failingURL()
 
 bool WebError::isPolicyChangeError()
 {
-    return m_error->domain() == String("WebKitErrorDomain")
+    return m_error->domain() == String("WebKitErrorDomain"_s)
         && m_error->errorCode() == WebKitErrorFrameLoadInterruptedByPolicyChange;
 }
 

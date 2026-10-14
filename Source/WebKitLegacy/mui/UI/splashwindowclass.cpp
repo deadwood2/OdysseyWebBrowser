@@ -29,7 +29,7 @@
 #include "WebFrame.h"
 #include "WebView.h"
 #include <WebCore/Page.h>
-#include <WebCore/Frame.h>
+#include <WebCore/LocalFrame.h>
 
 extern "C"
 {

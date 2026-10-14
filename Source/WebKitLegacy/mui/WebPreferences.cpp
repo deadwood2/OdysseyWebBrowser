@@ -84,7 +84,7 @@ WebPreferences* WebPreferences::createInstance()
 
 void WebPreferences::postPreferencesChangesNotification()
 {
-    WebCore::ObserverServiceData::createObserverService()->notifyObserver(webPreferencesChangedNotification(), "", this);
+    WebCore::ObserverServiceData::createObserverService()->notifyObserver(String::fromLatin1(webPreferencesChangedNotification()), ""_s, this);
 }
 
 WebPreferences* WebPreferences::getInstanceForIdentifier(const char* identifier)
@@ -252,25 +252,25 @@ string WebPreferences::stringValueForKey(const char* key)
 
 int WebPreferences::integerValueForKey(const char* key)
 {
-    String value(m_privatePrefs[key].c_str());
+    String value = String::fromLatin1(m_privatePrefs[key].c_str());
     return parseIntegerAllowingTrailingJunk<int>(value).value_or(0);
 }
 
 bool WebPreferences::boolValueForKey(const char* key)
 {
-    String value(m_privatePrefs[key].c_str());
+    String value = String::fromLatin1(m_privatePrefs[key].c_str());
     return (bool)parseIntegerAllowingTrailingJunk<int>(value).value_or(0);
 }
 
 float WebPreferences::floatValueForKey(const char* key)
 {
-    String value(m_privatePrefs[key].c_str());
+    String value = String::fromLatin1(m_privatePrefs[key].c_str());
     return value.toFloat();
 }
 
 unsigned int WebPreferences::longlongValueForKey(const char* key)
 {
-    String value(m_privatePrefs[key].c_str());
+    String value = String::fromLatin1(m_privatePrefs[key].c_str());
     return parseIntegerAllowingTrailingJunk<unsigned int>(value).value_or(0);
 }
 
@@ -1027,7 +1027,7 @@ void WebPreferences::didRemoveFromWebView()
 {
     ASSERT(m_numWebViews);
     if (--m_numWebViews == 0)
-        WebCore::ObserverServiceData::createObserverService()->notifyObserver(webPreferencesRemovedNotification(), "", this);
+        WebCore::ObserverServiceData::createObserverService()->notifyObserver(String::fromLatin1(webPreferencesRemovedNotification()), ""_s, this);
 }
 
 void WebPreferences::setOfflineWebApplicationCacheEnabled(bool enabled)

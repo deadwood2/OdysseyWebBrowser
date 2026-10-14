@@ -31,8 +31,8 @@
 #include "WebView.h"
 #include <WebCore/IntRect.h>
 #include <wtf/Vector.h>
-#include <WebCore/FrameView.h>
-#include <WebCore/Frame.h>
+#include <WebCore/LocalFrameView.h>
+#include <WebCore/LocalFrame.h>
 #include "BALBase.h"
 #include "cairo.h"
 #include "WebNotificationDelegate.h"
@@ -174,7 +174,7 @@ public:
         return 0;
     }
 
-    void initWithFrameView(WebCore::FrameView *frameView)
+    void initWithFrameView(WebCore::LocalFrameView *frameView)
     {
     }
 
@@ -246,7 +246,7 @@ public:
     
     void repaint(const WebCore::IntRect&, bool contentChanged, bool immediate = false, bool repaintContentOnly = false);
     
-    void scrollBackingStore(WebCore::FrameView*, int dx, int dy, const WebCore::IntRect& scrollViewRect, const WebCore::IntRect& clipRect);
+    void scrollBackingStore(WebCore::LocalFrameView*, int dx, int dy, const WebCore::IntRect& scrollViewRect, const WebCore::IntRect& clipRect);
     
     void resize(BalRectangle);
     void move(BalPoint, BalPoint);

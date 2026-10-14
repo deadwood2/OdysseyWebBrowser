@@ -85,26 +85,26 @@ static void create_icon_if_needed(Object *obj, struct downloadnode *dl, ULONG ty
     if(!dl->iconobj)
     {
         String command;
-        String iconPath = "defaultIcon"; // Default icon
+        String iconPath = "defaultIcon"_s; // Default icon
 
         if(type == MV_DownloadList_Type_InProgress) // Check against given mimetype
         {
             if(dl->mimetype)
             {
-                String mimetype = dl->mimetype;
+                String mimetype = String::fromLatin1(dl->mimetype);
 
-                command = "GetDeficonPath MIMETYPE=\"" + mimetype + "\"";
+                command = makeString(makeString("GetDeficonPath MIMETYPE=\""_s, mimetype), "\""_s);
                 if(rexx_send((char *) "AMBIENT", (char *) command.utf8().data()))
                 {
-                    iconPath = String(rexx_result());
+                    iconPath = String::fromLatin1(rexx_result());
                 }
                 else // Try again without "x-" prefix, ambient is not always compliant with naming
                 {
-                    mimetype.replace("x-", "");
-                    command = "GetDeficonPath MIMETYPE=\"" + mimetype + "\"";
+                    mimetype = makeStringByReplacingAll(mimetype, "x-"_s, ""_s);
+                    command = makeString(makeString("GetDeficonPath MIMETYPE=\""_s, mimetype), "\""_s);
                     if(rexx_send((char *) "AMBIENT", (char *) command.utf8().data()))
                     {
-                        iconPath = String(rexx_result());
+                        iconPath = String::fromLatin1(rexx_result());
                     }
                 }
             }
@@ -131,10 +131,10 @@ static void create_icon_if_needed(Object *obj, struct downloadnode *dl, ULONG ty
                     if(lock)
                     {
                         UnLock(lock);
-                        command = "GetDeficonPath PATH=\"" + String(path) + "\"";
+                        command = makeString(makeString("GetDeficonPath PATH=\""_s, String::fromLatin1(path)), "\""_s);
                         if(rexx_send((char *) "AMBIENT", (char *) command.utf8().data()))
                         {
-                            iconPath = String(rexx_result());
+                            iconPath = String::fromLatin1(rexx_result());
                         }
                     }
 

@@ -38,13 +38,14 @@ class WebFrame;
 #endif
 
 class WebProgressTrackerClient : public WebCore::ProgressTrackerClient {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     WebProgressTrackerClient(WebFrame* = nullptr);
     virtual ~WebProgressTrackerClient();
 
-    virtual void progressStarted(WebCore::Frame&) override;
-    virtual void progressEstimateChanged(WebCore::Frame&) override;
-    virtual void progressFinished(WebCore::Frame&) override;
+    virtual void progressStarted(WebCore::LocalFrame&) override;
+    virtual void progressEstimateChanged(WebCore::LocalFrame&) override;
+    virtual void progressFinished(WebCore::LocalFrame&) override;
 
 private:
     WebFrame* m_webFrame;

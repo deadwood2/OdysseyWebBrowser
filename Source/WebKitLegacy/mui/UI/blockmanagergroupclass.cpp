@@ -185,7 +185,7 @@ DEFTMETHOD(BlockManagerGroup_Add)
     {
         entry->rule = strdup("");
         entry->type = 1;
-        entry->ptr = AdBlock::addCacheEntry(entry->rule, entry->type);
+        entry->ptr = AdBlock::addCacheEntry(String::fromLatin1(entry->rule), entry->type);
         AdBlock::writeCache();
         AdBlock::flushCache();
 
@@ -256,11 +256,11 @@ DEFTMETHOD(BlockManagerGroup_Change)
         {
             AdBlock::removeCacheEntry(entry->ptr, entry->type);
             entry->type = getv(data->cy_type, MUIA_Cycle_Active);
-            entry->ptr = AdBlock::addCacheEntry(entry->rule, entry->type);
+            entry->ptr = AdBlock::addCacheEntry(String::fromLatin1(entry->rule), entry->type);
         }
         else
         {
-            AdBlock::updateCacheEntry(entry->rule, entry->type, entry->ptr);
+            AdBlock::updateCacheEntry(String::fromLatin1(entry->rule), entry->type, entry->ptr);
         }
 
         AdBlock::writeCache();

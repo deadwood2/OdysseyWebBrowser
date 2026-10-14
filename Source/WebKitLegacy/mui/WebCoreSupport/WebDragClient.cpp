@@ -39,8 +39,8 @@
 #include <WebCore/Font.h>
 #include <WebCore/FontDescription.h>
 #include <WebCore/FontSelector.h>
-#include <WebCore/Frame.h>
-#include <WebCore/FrameView.h>
+#include <WebCore/LocalFrame.h>
+#include <WebCore/LocalFrameView.h>
 #include <WebCore/GraphicsContext.h>
 #include <WebCore/Page.h>
 #include <WebCore/StringTruncator.h>
@@ -104,7 +104,7 @@ void WebDragClient::willPerformDragSourceAction(DragSourceAction action, const I
     // See WebKit/win/WebCoreSupport/WebDragClient.cpp for how to implement it.
 }
 
-void WebDragClient::startDrag(DragItem item, DataTransfer& dataTransfer, Frame& frame)
+void WebDragClient::startDrag(DragItem item, DataTransfer& dataTransfer, Frame&)
 {
     D(kprintf("startDrag image %p islink %d imageOrigin (%d %d) dragPoint (%d %d) clipboard %p\n", image, isLink, imageOrigin.x(), imageOrigin.y(), dragPoint.x(), dragPoint.y(), clipboard));
 

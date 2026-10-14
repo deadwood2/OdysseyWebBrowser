@@ -365,11 +365,11 @@ DEFMMETHOD(Import)
         if ((val = (char *)DoMethod(msg->dataspace, MUIM_Dataspace_Find, id)))
         {
             ULONG i;
-            String input = val;
-            Vector<String> menuItems = input.split("\n");
+            String input = String::fromLatin1(val);
+            Vector<String> menuItems = input.split("\n"_s);
             for(i = 0; i < menuItems.size(); i++)
             {
-                Vector<String> menuAttributes = menuItems[i].split("\1");
+                Vector<String> menuAttributes = menuItems[i].split("\1"_s);
 
                 if(menuAttributes.size() == 4)
                 {
@@ -399,12 +399,12 @@ DEFMMETHOD(Export)
     if((id=(muiNotifyData(obj)->mnd_ObjectID)))
     {
         APTR n;
-        String output = "";
+        String output = ""_s;
 
         ITERATELIST(n, &contextmenu_list)
         {
             struct contextmenunode *cn = (struct contextmenunode *) n;
-            output.append(createWithFormatAndArguments("%d\1%s\1%d\1%s\n", cn->category, cn->label, cn->commandType, cn->commandString));
+            output = makeString(output, createWithFormatAndArguments("%d\1%s\1%d\1%s\n"_s, cn->category, cn->label, cn->commandType, cn->commandString));
         }
 
         DoMethod(msg->dataspace, MUIM_Dataspace_Add, output.latin1().data(), output.length()+1, id);

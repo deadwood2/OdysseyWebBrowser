@@ -25,6 +25,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <wtf/text/MakeString.h>
 #include "config.h"
 #include <JavaScriptCore/RegularExpression.h>
 #include <WebCore/CachedResource.h>
@@ -57,7 +58,7 @@ namespace AdBlock {
 
 class AdPattern {
 public:
-	AdPattern() : m_string(""), m_re(JSC::Yarr::RegularExpression("", JSC::Yarr::TextCaseInsensitive)), m_types(0) { }
+	AdPattern() : m_string(emptyString()), m_re(JSC::Yarr::RegularExpression(""_s, { JSC::Yarr::Flags::IgnoreCase })), m_types(0) { }
 	AdPattern(String str, const JSC::Yarr::RegularExpression& re, int types)
 		: m_string(str), m_re(re), m_types(types) { }
     bool matches(const String& target, int type) {
@@ -94,7 +95,7 @@ static PatternMatcher ab_whiteList;
 AdPattern* PatternMatcher::addPattern(const String& pat)
 {
 	AdPattern *ret = 0;
-	size_t delim = pat.find("#");
+	size_t delim = pat.find("#"_s);
     String pattern, optpart;
 	if (delim == notFound) {
         delim = pat.length();
@@ -102,27 +103,27 @@ AdPattern* PatternMatcher::addPattern(const String& pat)
     optpart = pat.substring(delim+1);
     pattern = pat.left(delim);
 
-    Vector<String> opts = optpart.split(",");
+    Vector<String> opts = optpart.split(","_s);
     int types = -1;
     for (unsigned i = 0; i < opts.size(); i++) {
         const String &opt = opts[i];
-        if (opts[i] == "match-case") {
+        if (opts[i] == "match-case"_s) {
             continue;
         }
         bool invert = false;
         String typeOpt = opt;
         int typeMask = 0;
-        if (typeOpt.startsWith("~")) {
+        if (typeOpt.startsWith("~"_s)) {
             invert = true;
             typeOpt = typeOpt.substring(1);
         }
-        if (typeOpt == "image") {
+        if (typeOpt == "image"_s) {
             typeMask = 1<<to_underlying(WebCore::CachedResource::Type::ImageResource);
-        } else if (typeOpt == "stylesheet") {
+        } else if (typeOpt == "stylesheet"_s) {
             typeMask = 1<<to_underlying(WebCore::CachedResource::Type::CSSStyleSheet);
-        } else if (typeOpt == "script") {
+        } else if (typeOpt == "script"_s) {
             typeMask = 1<<to_underlying(WebCore::CachedResource::Type::Script);
-        } else if (typeOpt == "subdocument") {
+        } else if (typeOpt == "subdocument"_s) {
             typeMask = 1<<DOCUMENT_TYPE;
         }
         if (invert) {
@@ -138,22 +139,22 @@ AdPattern* PatternMatcher::addPattern(const String& pat)
     if (!types) {
 		return 0;
     }
-    if (pattern.startsWith("/") && pattern.endsWith("/")) {
+    if (pattern.startsWith("/"_s) && pattern.endsWith("/"_s)) {
         pattern = pattern.substring(1, pattern.length()-2);
-		ret = new AdPattern(pat, JSC::Yarr::RegularExpression(pattern, JSC::Yarr::TextCaseInsensitive), types);
+		ret = new AdPattern(pat, JSC::Yarr::RegularExpression(pattern, { JSC::Yarr::Flags::IgnoreCase }), types);
 		m_patterns.append(ret);
 		return ret;
     }
     int pos = 0;
-	JSC::Yarr::RegularExpression nonchar("\\W", JSC::Yarr::TextCaseInsensitive);
+	JSC::Yarr::RegularExpression nonchar("\\W"_s, { JSC::Yarr::Flags::IgnoreCase });
 	while ((pos = nonchar.match(pattern, pos)) >= 0) {
-        pattern.insert("\\", pos);
+        pattern = makeString(pattern.left(pos), "\\"_s, pattern.substring(pos));
         pos += 2;
     }
 
-	replace(pattern, JSC::Yarr::RegularExpression("\\\\\\*", JSC::Yarr::TextCaseInsensitive), ".*");
-	replace(pattern, JSC::Yarr::RegularExpression("^\\\\\\|", JSC::Yarr::TextCaseInsensitive), "^");
-	replace(pattern, JSC::Yarr::RegularExpression("\\\\\\|$", JSC::Yarr::TextCaseInsensitive), "$");
+	replace(pattern, JSC::Yarr::RegularExpression("\\\\\\*"_s, { JSC::Yarr::Flags::IgnoreCase }), ".*"_s);
+	replace(pattern, JSC::Yarr::RegularExpression("^\\\\\\|"_s, { JSC::Yarr::Flags::IgnoreCase }), "^"_s);
+	replace(pattern, JSC::Yarr::RegularExpression("\\\\\\|$"_s, { JSC::Yarr::Flags::IgnoreCase }), "$"_s);
 
 	/*
     String text = pat.left(delim).lower();
@@ -167,14 +168,14 @@ AdPattern* PatternMatcher::addPattern(const String& pat)
         }
     }
 	*/
-	ret = new AdPattern(pat, JSC::Yarr::RegularExpression(pattern, JSC::Yarr::TextCaseInsensitive), types);
+	ret = new AdPattern(pat, JSC::Yarr::RegularExpression(pattern, { JSC::Yarr::Flags::IgnoreCase }), types);
 	m_patterns.append(ret);
 	return ret;
 }
 
 bool PatternMatcher::updatePattern(const String& pat, AdPattern* newpattern)
 {
-	size_t delim = pat.find("#");
+	size_t delim = pat.find("#"_s);
     String pattern, optpart;
 	if (delim == notFound) {
         delim = pat.length();
@@ -182,27 +183,27 @@ bool PatternMatcher::updatePattern(const String& pat, AdPattern* newpattern)
     optpart = pat.substring(delim+1);
     pattern = pat.left(delim);
 
-    Vector<String> opts = optpart.split(",");
+    Vector<String> opts = optpart.split(","_s);
     int types = -1;
     for (unsigned i = 0; i < opts.size(); i++) {
         const String &opt = opts[i];
-        if (opts[i] == "match-case") {
+        if (opts[i] == "match-case"_s) {
             continue;
         }
         bool invert = false;
         String typeOpt = opt;
         int typeMask = 0;
-        if (typeOpt.startsWith("~")) {
+        if (typeOpt.startsWith("~"_s)) {
             invert = true;
             typeOpt = typeOpt.substring(1);
         }
-        if (typeOpt == "image") {
+        if (typeOpt == "image"_s) {
             typeMask = 1<<to_underlying(WebCore::CachedResource::Type::ImageResource);
-        } else if (typeOpt == "stylesheet") {
+        } else if (typeOpt == "stylesheet"_s) {
             typeMask = 1<<to_underlying(WebCore::CachedResource::Type::CSSStyleSheet);
-        } else if (typeOpt == "script") {
+        } else if (typeOpt == "script"_s) {
             typeMask = 1<<to_underlying(WebCore::CachedResource::Type::Script);
-        } else if (typeOpt == "subdocument") {
+        } else if (typeOpt == "subdocument"_s) {
             typeMask = 1<<DOCUMENT_TYPE;
         }
         if (invert) {
@@ -218,21 +219,21 @@ bool PatternMatcher::updatePattern(const String& pat, AdPattern* newpattern)
     if (!types) {
 		return false;
     }
-    if (pattern.startsWith("/") && pattern.endsWith("/")) {
+    if (pattern.startsWith("/"_s) && pattern.endsWith("/"_s)) {
         pattern = pattern.substring(1, pattern.length()-2);
-		*newpattern = AdPattern(pat, JSC::Yarr::RegularExpression(pattern, JSC::Yarr::TextCaseInsensitive), types);
+		*newpattern = AdPattern(pat, JSC::Yarr::RegularExpression(pattern, { JSC::Yarr::Flags::IgnoreCase }), types);
 		return true;
     }
     int pos = 0;
-	JSC::Yarr::RegularExpression nonchar("\\W", JSC::Yarr::TextCaseInsensitive);
+	JSC::Yarr::RegularExpression nonchar("\\W"_s, { JSC::Yarr::Flags::IgnoreCase });
 	while ((pos = nonchar.match(pattern, pos)) >= 0) {
-        pattern.insert("\\", pos);
+        pattern = makeString(pattern.left(pos), "\\"_s, pattern.substring(pos));
         pos += 2;
     }
 
-	replace(pattern, JSC::Yarr::RegularExpression("\\\\\\*", JSC::Yarr::TextCaseInsensitive), ".*");
-	replace(pattern, JSC::Yarr::RegularExpression("^\\\\\\|", JSC::Yarr::TextCaseInsensitive), "^");
-	replace(pattern, JSC::Yarr::RegularExpression("\\\\\\|$", JSC::Yarr::TextCaseInsensitive), "$");
+	replace(pattern, JSC::Yarr::RegularExpression("\\\\\\*"_s, { JSC::Yarr::Flags::IgnoreCase }), ".*"_s);
+	replace(pattern, JSC::Yarr::RegularExpression("^\\\\\\|"_s, { JSC::Yarr::Flags::IgnoreCase }), "^"_s);
+	replace(pattern, JSC::Yarr::RegularExpression("\\\\\\|$"_s, { JSC::Yarr::Flags::IgnoreCase }), "$"_s);
 
 	/*
     String text = pat.left(delim).lower();
@@ -246,7 +247,7 @@ bool PatternMatcher::updatePattern(const String& pat, AdPattern* newpattern)
         }
     }
 	*/
-	*newpattern = AdPattern(pat, JSC::Yarr::RegularExpression(pattern, JSC::Yarr::TextCaseInsensitive), types);
+	*newpattern = AdPattern(pat, JSC::Yarr::RegularExpression(pattern, { JSC::Yarr::Flags::IgnoreCase }), types);
 	return true;
 }
 
@@ -295,14 +296,14 @@ static CacheEntry* initialize()
         fgets(buf, 512, file);
 		while (fgets(buf, 512, file))
 		{
-            String line(buf);
-            line.replace("\n","");
-			if (line.startsWith("@@"))
+            String line = String::fromLatin1(buf);
+            line = makeStringByReplacingAll(line, "\n"_s,""_s);
+			if (line.startsWith("@@"_s))
 			{
 				AdPattern *pattern = ab_whiteList.addPattern(line.substring(2));
 				DoMethod(app, MM_BlockManagerGroup_DidInsert, line.substring(2).utf8().data(), 1, (void *) pattern);
 			}
-			else if (!line.startsWith("!") && !line.startsWith("#") && !line.isEmpty())
+			else if (!line.startsWith("!"_s) && !line.startsWith("#"_s) && !line.isEmpty())
 			{
 				AdPattern *pattern = ab_blackList.addPattern(line);
 				DoMethod(app, MM_BlockManagerGroup_DidInsert, line.utf8().data(), 0, (void *) pattern);
@@ -519,7 +520,7 @@ void blockResource(const URL& url, int type, int mode)
 
 static bool shouldBlock(const URL& url, int type)
 {
-    if (url.protocolIs("data")) { return false; }
+    if (url.protocolIs("data"_s)) { return false; }
     if (type < 0) { type = DOCUMENT_TYPE; }
 
     if (!ab_cache) {
