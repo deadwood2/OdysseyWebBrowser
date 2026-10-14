@@ -1,3 +1,15 @@
+# OWB targets AROS only. A configure or a CMake rerun during the build that
+# cannot find the AROS cross compiler must fail here, never fall back to the
+# host compiler or host system (CMAKE_SYSTEM_NAME Linux).
+if (NOT CMAKE_SYSTEM_NAME STREQUAL "Generic")
+    message(FATAL_ERROR "PORT=MUI: CMAKE_SYSTEM_NAME is '${CMAKE_SYSTEM_NAME}', expected 'Generic' from Source/cmake/AROS.cmake (configure with scripts/configure-abiv11.sh)")
+endif ()
+foreach (_owb_compiler CMAKE_C_COMPILER CMAKE_CXX_COMPILER)
+    if (NOT ${_owb_compiler} MATCHES "aros-g(cc|\\+\\+)$")
+        message(FATAL_ERROR "PORT=MUI: ${_owb_compiler} is '${${_owb_compiler}}', expected an x86_64-aros cross compiler")
+    endif ()
+endforeach ()
+
 include(GNUInstallDirs)
 
 # Odyssey Web Browser (AROS, PORT=MUI) on the Wayfarer 2.46.1 tree.
@@ -42,6 +54,17 @@ WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_APPLICATION_MANIFEST PRIVATE ON)
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_OFFSCREEN_CANVAS PRIVATE ON)
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_OFFSCREEN_CANVAS_IN_WORKERS PRIVATE ON)
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_NOTIFICATIONS PRIVATE ON)
+
+# Form input types OWB 2.34 had on (its MUI colour and date/time pickers,
+# WebKitLegacy/mui/UI/*chooser*). 2.46 also gates the shared date/time code
+# with DATE_AND_TIME_INPUT_TYPES.
+WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_INPUT_TYPE_COLOR PRIVATE ON)
+WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_DATE_AND_TIME_INPUT_TYPES PRIVATE ON)
+WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_INPUT_TYPE_DATE PRIVATE ON)
+WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_INPUT_TYPE_DATETIMELOCAL PRIVATE ON)
+WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_INPUT_TYPE_MONTH PRIVATE ON)
+WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_INPUT_TYPE_TIME PRIVATE ON)
+WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_INPUT_TYPE_WEEK PRIVATE ON)
 
 # Web fonts in WOFF2 (new for OWB; libwoff2/libbrotli built by build-deps)
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(USE_WOFF2 PUBLIC ON)
