@@ -1421,7 +1421,18 @@ bool WebViewPrivate::onMouseButtonUp(BalEventButton event)
                         *frame, features,
                         NavigationAction(*frame->document(), ResourceRequest(urlToLoad, frame->loader().outgoingReferrer()), InitiatedByMainFrame::Unknown, true /* user input */)
                         ))
+                {
                     newPage->chrome().show();
+                    // createWindow() hands back an empty page (WebCore navigates the
+                    // windows it asks for itself); this is the user's middle click, so
+                    // the link is loaded here, once, as a user request.
+                    if (auto* newFrame = dynamicDowncast<LocalFrame>(newPage->mainFrame()))
+                    {
+                        FrameLoadRequest request(*newFrame, ResourceRequest(urlToLoad, frame->loader().outgoingReferrer()));
+                        request.setIsRequestFromClientOrUserInput();
+                        newFrame->loader().load(WTFMove(request));
+                    }
+                }
             }
 
             handled = true;
