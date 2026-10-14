@@ -29,6 +29,12 @@
 #include <proto/alib.h>
 #include <exec/lists.h>
 #include <aros/debug.h>
+#include <stdlib.h>
+#define DebugBase s_debugBase
+static struct Library *s_debugBase;
+#include <proto/debug.h>
+#include <libraries/debug.h>
+#include <proto/exec.h>
 
 #undef PAGESIZE
 #define PAGESIZE                (4096)
@@ -44,8 +50,10 @@ public:
     ~PageAllocator();
     void * getPages(size_t count, bool executable);
     void * getPages(size_t count, size_t alignment, bool executable);
-    void freePages(void * address, size_t count);
-    void freePages(void * address);
+    bool freePages(void * address, size_t count, void * caller);
+    bool freePages(void * address, void * caller);
+    size_t freePagesInBlockOf(void * address);   /* self-test only */
+    size_t pagesToBlockEnd(void * address);      /* self-test only */
     int getAllocatedPagesCount();
 
 private:
@@ -68,6 +76,7 @@ private:
     void * allocatePagesFromBlock(PageAllocator::PageBlock * block, size_t count, size_t alignment);
     PageAllocator::PageBlock * allocateNewBlock(size_t count, ULONG flags);
     void freeBlock(PageAllocator::PageBlock * block);
+    PageAllocator::PageBlock * findBlock(IPTR addr);
     void reportBlockUsage();
 };
 
@@ -275,77 +284,166 @@ void * PageAllocator::getPages(size_t count, size_t alignment, bool executable)
     return _return;
 }
 
-/* This version relies on size passed as parameter.
- * Note that in such case, the following must be possible:
- * X = getPages(A)
- * freePages(X + Z, A - Z)
- * freePages(X, Z)
- */
-void PageAllocator::freePages(void * address, size_t count)
+/* Freeing contract (AROS port):
+ * - freePages(address, count): every page in [address, address + count pages)
+ *   must be inside one block and currently allocated. A sub-range of an
+ *   allocation is legal (partial release: X = getPages(A); freePages(X + Z, A - Z);
+ *   freePages(X, Z)).
+ * - freePages(address): address must be the first page of a live allocation;
+ *   its stored size is released, stopping at pages already released.
+ * A call that breaks the contract (unaligned address, address in no block,
+ * range beyond its block, a page that is not allocated, address that is not
+ * an allocation start) changes nothing and is reported. Unchecked, such calls
+ * write past pb_PagesBitMap or over-count pb_FreePages, so freeBlock() would
+ * FreeMem() a block still in use.
+ *
+ * Reports are made after the allocator semaphore is released: under the lock
+ * only an Anomaly record is filled in (no allocation, no library calls). */
+struct Anomaly
 {
-   void * n; IPTR addr = (IPTR)address;
+    const char *what;
+    IPTR addr;
+    size_t count;
+    void *caller;
+};
 
-   ObtainSemaphore(&lock);
-
-   ForeachNode(&blocks, n)
-   {
-       PageAllocator::PageBlock * block = (PageAllocator::PageBlock *)n;
-       if (addr >= block->pb_StartAddress && addr <= block->pb_EndAddress)
-       {
-           IPTR relative = addr - block->pb_StartAddress;
-           int pos = relative / PAGESIZE;
-           for (size_t i = 0; i < count; i++)
-               block->pb_PagesBitMap[i + pos] = 0;
-           block->pb_FreePages += count;
-
-           /* Check if block can be freed */
-           if (block->pb_FreePages == block->pb_TotalPages)
-               freeBlock(block);
-
-           ReleaseSemaphore(&lock);
-           return;
-       }
-   }
-
-   bug("[ExecAllocator]: Address 0x%p not part of any block!\n", (APTR)addr);
-   ReleaseSemaphore(&lock);
+static int s_anomalies;
+static void reportAnomaly(const Anomaly &a)
+{
+    if (!a.what || s_anomalies++ >= 64)
+        return;
+    STRPTR module = NULL, symbol = NULL;
+    APTR symbolStart = NULL;
+    if (!s_debugBase)
+        s_debugBase = OpenLibrary((CONST_STRPTR)"debug.library", 1);
+    if (s_debugBase)
+        DecodeLocation(a.caller, DL_ModuleName, (IPTR)&module, DL_SymbolName, (IPTR)&symbol,
+                       DL_SymbolStart, (IPTR)&symbolStart, TAG_DONE);
+    bug("[ExecAllocator] %s: address 0x%p pages %lu caller 0x%p %s %s+0x%lx (anomaly %d)\n",
+        a.what, (APTR)a.addr, (unsigned long)a.count, a.caller, module ? (char *)module : "?",
+        symbol ? (char *)symbol : "?", (unsigned long)((IPTR)a.caller - (IPTR)symbolStart), s_anomalies);
 }
 
-/* This version relies on allocation size stored internally */
-void PageAllocator::freePages(void * address)
+PageAllocator::PageBlock * PageAllocator::findBlock(IPTR addr)
 {
-   void * n; IPTR addr = (IPTR)address;
+    void * n;
+    ForeachNode(&blocks, n)
+    {
+        PageAllocator::PageBlock * block = (PageAllocator::PageBlock *)n;
+        if (addr >= block->pb_StartAddress && addr < block->pb_EndAddress)
+            return block;
+    }
+    return NULL;
+}
 
-   ObtainSemaphore(&lock);
+bool PageAllocator::freePages(void * address, size_t count, void * caller)
+{
+    IPTR addr = (IPTR)address;
+    Anomaly anomaly = { NULL, addr, count, caller };
+    bool accepted = false;
 
-   ForeachNode(&blocks, n)
-   {
-       PageAllocator::PageBlock * block = (PageAllocator::PageBlock *)n;
-       if (addr >= block->pb_StartAddress && addr <= block->pb_EndAddress)
-       {
-           IPTR relative = addr - block->pb_StartAddress;
-           int pos = relative / PAGESIZE;
-           size_t count = 0;
+    ObtainSemaphore(&lock);
+    PageAllocator::PageBlock * block = findBlock(addr);
+    if (!block)
+        anomaly.what = "free of an address in no block";
+    else
+    {
+        IPTR relative = addr - block->pb_StartAddress;
+        size_t pos = relative / PAGESIZE;         /* < pb_TotalPages: addr < pb_EndAddress */
+        size_t available = block->pb_TotalPages - pos;
+        if (relative % PAGESIZE)
+            anomaly.what = "free of an unaligned address";
+        else if (count > available)                /* no pos + count: it can wrap */
+            anomaly.what = "free beyond the end of its block";
+        else
+        {
+            size_t notAllocated = 0;
+            for (size_t i = 0; i < count; i++)
+                if (block->pb_PagesBitMap[pos + i] == 0)
+                    notAllocated++;
+            if (notAllocated)
+            {
+                anomaly.what = "free of pages that are not allocated (double free?)";
+                anomaly.count = notAllocated;
+            }
+            else
+            {
+                for (size_t i = 0; i < count; i++)
+                    block->pb_PagesBitMap[pos + i] = 0;
+                block->pb_FreePages += count;
+                accepted = true;
+                if (block->pb_FreePages == block->pb_TotalPages)
+                    freeBlock(block);
+            }
+        }
+    }
+    ReleaseSemaphore(&lock);
 
-           if (block->pb_PagesBitMap[pos] > 0)
-               count = (size_t)block->pb_PagesBitMap[pos];
-           /* TODO: implement else ? */
+    reportAnomaly(anomaly);
+    return accepted;
+}
 
-           for (size_t i = 0; i < count; i++)
-               block->pb_PagesBitMap[i + pos] = 0;
-           block->pb_FreePages += count;
+bool PageAllocator::freePages(void * address, void * caller)
+{
+    IPTR addr = (IPTR)address;
+    Anomaly anomaly = { NULL, addr, 0, caller };
+    bool accepted = false;
 
-           /* Check if block can be freed */
-           if (block->pb_FreePages == block->pb_TotalPages)
-               freeBlock(block);
+    ObtainSemaphore(&lock);
+    PageAllocator::PageBlock * block = findBlock(addr);
+    if (!block)
+        anomaly.what = "free of an address in no block";
+    else
+    {
+        IPTR relative = addr - block->pb_StartAddress;
+        size_t pos = relative / PAGESIZE;
+        if (relative % PAGESIZE)
+            anomaly.what = "free of an unaligned address";
+        else if (block->pb_PagesBitMap[pos] == 0)
+            anomaly.what = "double free (allocation already free)";
+        else if (block->pb_PagesBitMap[pos] < 0)
+            anomaly.what = "free of an address inside an allocation";
+        else
+        {
+            size_t count = (size_t)block->pb_PagesBitMap[pos];
+            size_t available = block->pb_TotalPages - pos;
+            if (count > available)
+                count = available;
+            /* Head page plus its continuation pages (-1); stop at a released
+             * page or another allocation's head (stale size after a legal
+             * partial release). */
+            size_t freed = 1;
+            block->pb_PagesBitMap[pos] = 0;
+            while (freed < count && block->pb_PagesBitMap[pos + freed] == -1)
+                block->pb_PagesBitMap[pos + freed++] = 0;
+            block->pb_FreePages += freed;
+            accepted = true;
+            if (block->pb_FreePages == block->pb_TotalPages)
+                freeBlock(block);
+        }
+    }
+    ReleaseSemaphore(&lock);
 
-           ReleaseSemaphore(&lock);
-           return;
-       }
-   }
+    reportAnomaly(anomaly);
+    return accepted;
+}
 
-   bug("[ExecAllocator]: Address 0x%p not part of any block!\n", (APTR)addr);
-   ReleaseSemaphore(&lock);
+size_t PageAllocator::freePagesInBlockOf(void * address)
+{
+    ObtainSemaphore(&lock);
+    PageAllocator::PageBlock * block = findBlock((IPTR)address);
+    size_t n = block ? block->pb_FreePages : (size_t)-1;
+    ReleaseSemaphore(&lock);
+    return n;
+}
+
+size_t PageAllocator::pagesToBlockEnd(void * address)
+{
+    ObtainSemaphore(&lock);
+    PageAllocator::PageBlock * block = findBlock((IPTR)address);
+    size_t n = block ? (block->pb_EndAddress - (IPTR)address) / PAGESIZE : 0;
+    ReleaseSemaphore(&lock);
+    return n;
 }
 
 int PageAllocator::getAllocatedPagesCount()
@@ -375,8 +473,40 @@ static inline int getPageCount(size_t bytes)
     return (int)((bytes + PAGESIZE - 1) / PAGESIZE);
 }
 
+/* OWB_ALLOC_SELFTEST: once, at the first allocation, exercise the freeing
+ * contract on a private 8-page allocation and print PASS/FAIL per case. The
+ * anomaly reports expected from the invalid cases follow each line. */
+static void selfTestOnce()
+{
+    static int done;
+    if (done)
+        return;
+    done = 1;
+    if (!getenv("OWB_ALLOC_SELFTEST"))
+        return;
+    void *caller = __builtin_return_address(0);
+    char *p = (char *)allocator.getPages(8, false);
+    size_t before = allocator.freePagesInBlockOf(p);
+    int fails = 0;
+#define CHECK(name, cond) do { bool ok_ = (cond); fails += !ok_; bug("[ExecAllocator] self-test %s: %s\n", ok_ ? "PASS" : "FAIL", name); } while (0)
+    CHECK("unaligned address rejected", !allocator.freePages(p + 100, 1, caller) && allocator.freePagesInBlockOf(p) == before);
+    CHECK("range beyond the block rejected", !allocator.freePages(p + 6 * PAGESIZE, allocator.pagesToBlockEnd(p + 6 * PAGESIZE) + 1, caller) && allocator.freePagesInBlockOf(p) == before);
+    CHECK("huge count rejected (no wrap)", !allocator.freePages(p + 6 * PAGESIZE, (size_t)-1, caller) && allocator.freePagesInBlockOf(p) == before);
+    CHECK("legal partial free of the tail", allocator.freePages(p + 6 * PAGESIZE, 2, caller) && allocator.freePagesInBlockOf(p) == before + 2);
+    CHECK("double free of the tail rejected", !allocator.freePages(p + 6 * PAGESIZE, 2, caller) && allocator.freePagesInBlockOf(p) == before + 2);
+    CHECK("address inside the allocation rejected", !allocator.freePages(p + 2 * PAGESIZE, caller) && allocator.freePagesInBlockOf(p) == before + 2);
+    size_t mid = allocator.freePagesInBlockOf(p);
+    bool headOk = allocator.freePages(p, caller);
+    size_t after = allocator.freePagesInBlockOf(p);
+    CHECK("free by stored size after partial free releases 6 pages", headOk && (after == mid + 6 || after == (size_t)-1));
+    CHECK("double free by stored size rejected", !allocator.freePages(p, caller));
+#undef CHECK
+    bug("[ExecAllocator] self-test done: %d failure(s)\n", fails);
+}
+
 void * allocator_getmem_page_aligned(size_t bytes, bool executable)
 {
+    selfTestOnce();
     int pagecount = getPageCount(bytes);
     void * ptr = allocator.getPages(pagecount, executable);
 
@@ -393,6 +523,7 @@ void * allocator_getmem_page_aligned(size_t bytes, bool executable)
 
 void * allocator_getmem_aligned(size_t bytes, size_t alignment)
 {
+    selfTestOnce();
     D(bug("A:getmem_aligned bytes %d, alignment %d \n", bytes, alignment));
 
     /* Can only allocate full pages */
@@ -412,7 +543,18 @@ void allocator_freemem(void * address, size_t bytes)
     D(bug("A:freemem 0x%x bytes %d \n", address, bytes));
 
     int pagecount = getPageCount(bytes);
-    allocator.freePages(address, pagecount);
+    allocator.freePages(address, pagecount, __builtin_return_address(0));
+}
+
+void allocator_freemem_from(void * address, size_t bytes, void * caller)
+{
+    allocator.freePages(address, getPageCount(bytes), caller);
+}
+
+void allocator_freemem_from(void * address, void * caller)
+{
+    if (address)
+        allocator.freePages(address, caller);
 }
 
 void allocator_freemem(void * address)
@@ -420,5 +562,5 @@ void allocator_freemem(void * address)
     D(bug("A:freemem 0x%x \n", address));
 
     if (address)
-        allocator.freePages(address);
+        allocator.freePages(address, __builtin_return_address(0));
 }
