@@ -58,12 +58,12 @@ void* OSAllocator::reserveAndCommit(size_t bytes, Usage, bool, bool executable, 
 // try* variants (2.46): may fail and return null; no out-of-memory bailout.
 void* OSAllocator::tryReserveUncommitted(size_t bytes, Usage, bool, bool executable, bool, bool)
 {
-    return allocator_getmem_page_aligned(bytes, executable);
+    return allocator_getmem_page_aligned_try(bytes, executable);
 }
 
 void* OSAllocator::tryReserveAndCommit(size_t bytes, Usage, bool, bool executable, bool, bool)
 {
-    return allocator_getmem_page_aligned(bytes, executable);
+    return allocator_getmem_page_aligned_try(bytes, executable);
 }
 
 // Used for JSC's structure heap. AROS has no virtual memory: this allocates
@@ -73,7 +73,7 @@ void* OSAllocator::tryReserveUncommittedAligned(size_t bytes, size_t alignment, 
 {
     if (executable)
         return nullptr;
-    return allocator_getmem_aligned(bytes, alignment);
+    return allocator_getmem_aligned_try(bytes, alignment);
 }
 
 // No memory protection on AROS.
