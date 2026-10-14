@@ -48,8 +48,8 @@ class PageAllocator
 public:
     PageAllocator();
     ~PageAllocator();
-    void * getPages(size_t count, bool executable);
-    void * getPages(size_t count, size_t alignment, bool executable);
+    void * getPages(size_t count, bool executable, bool mayFail = false);
+    void * getPages(size_t count, size_t alignment, bool executable, bool mayFail = false);
     bool freePages(void * address, size_t count, void * caller);
     bool freePages(void * address, void * caller);
     size_t freePagesInBlockOf(void * address);   /* self-test only */
@@ -74,7 +74,7 @@ private:
     };
 
     void * allocatePagesFromBlock(PageAllocator::PageBlock * block, size_t count, size_t alignment);
-    PageAllocator::PageBlock * allocateNewBlock(size_t count, ULONG flags);
+    PageAllocator::PageBlock * allocateNewBlock(size_t count, ULONG flags, bool mayFail);
     void freeBlock(PageAllocator::PageBlock * block);
     PageAllocator::PageBlock * findBlock(IPTR addr);
     void reportBlockUsage();
@@ -117,9 +117,11 @@ void PageAllocator::reportBlockUsage()
     bug("-------------------------\n");
 }
 
-PageAllocator::PageBlock * PageAllocator::allocateNewBlock(size_t count, ULONG flags)
+PageAllocator::PageBlock * PageAllocator::allocateNewBlock(size_t count, ULONG flags, bool mayFail)
 {
     PageAllocator::PageBlock * block = (PageAllocator::PageBlock *)AllocMem(sizeof(PageAllocator::PageBlock), MEMF_ANY);
+    if (!block)
+        return NULL;
 
     block->pb_Alignment = PAGESIZE;
     block->pb_Flags = flags;
@@ -139,6 +141,15 @@ retry:
 
     if (!memoryblock)
     {
+        /* Callers of the try* allocators handle a null result themselves
+         * (JSC shrinks its structure heap, the JIT pool is optional): no
+         * requester for them. */
+        if (mayFail)
+        {
+            FreeMem(block, sizeof(PageAllocator::PageBlock));
+            return NULL;
+        }
+
         if (aros_memory_allocation_error(allocationsize, block->pb_Alignment) == 2)
             return NULL; /* quit */
 
@@ -243,15 +254,19 @@ void * PageAllocator::allocatePagesFromBlock(PageAllocator::PageBlock * block,
     return NULL;
 }
 
-void * PageAllocator::getPages(size_t count, bool executable)
+void * PageAllocator::getPages(size_t count, bool executable, bool mayFail)
 {
-    return getPages(count, PAGESIZE, executable);
+    return getPages(count, PAGESIZE, executable, mayFail);
 }
 
-void * PageAllocator::getPages(size_t count, size_t alignment, bool executable)
+void * PageAllocator::getPages(size_t count, size_t alignment, bool executable, bool mayFail)
 {
     void * n; void * _return = NULL;
     ULONG flags = MEMF_ANY;
+
+    /* The allocation size lives in the head page's WORD of the bitmap. */
+    if (count >= 0x8000)
+        return NULL;
 
     if (executable) flags = MEMF_EXECUTABLE;
 
@@ -284,7 +299,7 @@ void * PageAllocator::getPages(size_t count, size_t alignment, bool executable)
     size_t needed = count;
     if (alignment > PAGESIZE)
         needed += alignment / PAGESIZE - 1;
-    PageAllocator::PageBlock * block = allocateNewBlock(needed, flags);
+    PageAllocator::PageBlock * block = allocateNewBlock(needed, flags, mayFail);
     if (block)
         _return = allocatePagesFromBlock(block, count, alignment);
     ReleaseSemaphore(&lock);
@@ -525,6 +540,27 @@ void * allocator_getmem_page_aligned(size_t bytes, bool executable)
     D(reservedAdd(bytes, u););
 
 
+    return ptr;
+}
+
+/* As allocator_getmem_page_aligned() and allocator_getmem_aligned(), but a
+ * failed AllocMem returns NULL instead of opening the retry/quit requester. */
+void * allocator_getmem_page_aligned_try(size_t bytes, bool executable)
+{
+    selfTestOnce();
+    void * ptr = allocator.getPages(getPageCount(bytes), executable, true);
+    if (ptr)
+        memset(ptr, 0, bytes);
+    return ptr;
+}
+
+void * allocator_getmem_aligned_try(size_t bytes, size_t alignment)
+{
+    selfTestOnce();
+    if (alignment < PAGESIZE) alignment = PAGESIZE;
+    void * ptr = allocator.getPages(getPageCount(bytes), alignment, false, true);
+    if (ptr)
+        memset(ptr, 0, bytes);
     return ptr;
 }
 
