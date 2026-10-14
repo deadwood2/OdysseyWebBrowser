@@ -153,17 +153,21 @@ Page* WebChromeClient::createWindow(LocalFrame&, const WindowFeatures& features,
 
     //kprintf("WebChromeClient::createWindow(url: <%s> framename: <%s> empty: %d)\n", frameLoadRequest.resourceRequest().url().string().utf8().data(), frameLoadRequest.frameName().utf8().data(),  frameLoadRequest.isEmpty());
 
+    // The new page is created empty: WebCore navigates the window it asked
+    // for (LocalDOMWindow::createWindow) with the page's own request, which
+    // keeps its origin and user-input state. Passing the URL here loaded it a
+    // second time as a user request.
     ULONG frame = navigationAction.isEmpty();
     ULONG privatebrowsing = getv(m_webView->viewWindow()->browser, MA_OWBBrowser_PrivateBrowsing);
     BalWidget *widget = NULL;
 
     if(features.newPagePolicy == NEWPAGE_POLICY_WINDOW)
     {
-        widget = (BalWidget *) DoMethod(app, MM_OWBApp_AddWindow, navigationAction.url().string().utf8().data(), frame, NULL, FALSE, &features, privatebrowsing);
+        widget = (BalWidget *) DoMethod(app, MM_OWBApp_AddWindow, NULL, frame, NULL, FALSE, &features, privatebrowsing);
     }
     else if(features.newPagePolicy == NEWPAGE_POLICY_TAB)
     {
-        widget = (BalWidget *) DoMethod(app, MM_OWBApp_AddBrowser, NULL, navigationAction.url().string().utf8().data(), frame, NULL, features.donotactivate? TRUE : FALSE, privatebrowsing, FALSE);
+        widget = (BalWidget *) DoMethod(app, MM_OWBApp_AddBrowser, NULL, NULL, frame, NULL, features.donotactivate? TRUE : FALSE, privatebrowsing, FALSE);
     }
     else /* User settings are considered for new page */
     {
@@ -171,11 +175,11 @@ Page* WebChromeClient::createWindow(LocalFrame&, const WindowFeatures& features,
 
         if(popuppolicy == MV_OWBApp_NewPagePolicy_Window)
         {
-            widget = (BalWidget *) DoMethod(app, MM_OWBApp_AddWindow, navigationAction.url().string().utf8().data(), frame, NULL, FALSE, &features, privatebrowsing);
+            widget = (BalWidget *) DoMethod(app, MM_OWBApp_AddWindow, NULL, frame, NULL, FALSE, &features, privatebrowsing);
         }
         else if(popuppolicy == MV_OWBApp_NewPagePolicy_Tab)
         {
-            widget = (BalWidget *) DoMethod(app, MM_OWBApp_AddBrowser, NULL, navigationAction.url().string().utf8().data(), frame, NULL, features.donotactivate? TRUE : FALSE, privatebrowsing, FALSE);
+            widget = (BalWidget *) DoMethod(app, MM_OWBApp_AddBrowser, NULL, NULL, frame, NULL, features.donotactivate? TRUE : FALSE, privatebrowsing, FALSE);
         }
     }
 
