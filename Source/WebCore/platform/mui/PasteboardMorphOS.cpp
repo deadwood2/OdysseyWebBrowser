@@ -279,7 +279,7 @@ void Pasteboard::writeSelection(const SimpleRange& selectedRange, bool , LocalFr
     m_dataObject->clearAll();
     m_dataObject->setText(text);
     m_dataObject->setMarkup(serializePreservingVisualAppearance(selectedRange, nullptr, AnnotateForInterchange::Yes,
-        ConvertBlocksToInlines::No, ResolveURLs::YesExcludingLocalFileURLsForPrivacy));
+        ConvertBlocksToInlines::No, ResolveURLs::YesExcludingURLsForPrivacy));
 }
 
 void Pasteboard::writePlainText(const String& text, SmartReplaceOption)

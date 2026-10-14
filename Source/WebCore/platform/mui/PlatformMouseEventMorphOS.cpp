@@ -64,24 +64,24 @@ PlatformMouseEvent::PlatformMouseEvent(BalEventButton *event)
     if (event->Qualifier & (IEQUALIFIER_LCOMMAND | IEQUALIFIER_RCOMMAND))
         m_modifiers.add(PlatformEvent::Modifier::MetaKey);
 
-    m_type = PlatformEvent::MouseMoved;
-    m_button = NoButton;
+    m_type = PlatformEvent::Type::MouseMoved;
+    m_button = MouseButton::None;
     m_clickCount = 0;
 
     if (IDCMP_MOUSEBUTTONS == event->Class)
     {
         if ((event->Code & ~IECODE_UP_PREFIX) == IECODE_LBUTTON)
-           m_button = LeftButton;
+           m_button = MouseButton::Left;
         else if ((event->Code & ~IECODE_UP_PREFIX) == IECODE_MBUTTON)
-            m_button = MiddleButton;
+            m_button = MouseButton::Middle;
         else if ((event->Code & ~IECODE_UP_PREFIX) == IECODE_RBUTTON)
-            m_button = RightButton;
+            m_button = MouseButton::Right;
 
-        if (NoButton != m_button)
+        if (MouseButton::None != m_button)
         {
             if (event->Code & IECODE_UP_PREFIX)
             {
-                m_type = PlatformEvent::MouseReleased;
+                m_type = PlatformEvent::Type::MouseReleased;
                 m_clickCount = 0;
             }
             else
@@ -103,7 +103,7 @@ PlatformMouseEvent::PlatformMouseEvent(BalEventButton *event)
                     isdouble = false;
                 }
 
-                m_type = PlatformEvent::MousePressed;
+                m_type = PlatformEvent::Type::MousePressed;
 
                 if(event->Code == IECODE_LBUTTON)
                     lastclick = MonotonicTime::now().secondsSinceEpoch().value();
@@ -113,11 +113,11 @@ PlatformMouseEvent::PlatformMouseEvent(BalEventButton *event)
     else
     { // IDCMP_MOUSEMOVE == event->Class
         if (event->Qualifier & IEQUALIFIER_LEFTBUTTON)
-            m_button = LeftButton;
+            m_button = MouseButton::Left;
         else if (event->Qualifier & IEQUALIFIER_MIDBUTTON)
-            m_button = MiddleButton;
+            m_button = MouseButton::Middle;
         else if (event->Qualifier & IEQUALIFIER_RBUTTON)
-            m_button = RightButton;
+            m_button = MouseButton::Right;
     }
 }
 

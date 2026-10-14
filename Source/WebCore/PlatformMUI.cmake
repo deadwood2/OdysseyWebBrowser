@@ -13,6 +13,8 @@ list(APPEND WebCore_PRIVATE_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/platform/graphics/opengl"
     "${WEBCORE_DIR}/platform/network/curl"
     "${WEBCORE_DIR}/platform/mui"
+    "${WEBCORE_DIR}/platform/adwaita"
+    "${WEBCORE_DIR}/rendering/adwaita"
     "${WEBCORE_DIR}/platform/bal"
     "${WEBCORE_DIR}/platform/mediacapabilities"
     "${WEBKITLEGACY_DIR}/mui/UI"
@@ -69,7 +71,6 @@ list(APPEND WebCore_SOURCES
     platform/mui/DragDataMorphOS.cpp
     platform/mui/DragImageMorphOS.cpp
     platform/mui/EditorMUI.cpp
-    platform/mui/EventHandlerMorphOS.cpp
     platform/mui/EventLoopMorphOS.cpp
     platform/mui/IconMorphOS.cpp
     platform/mui/ImageMorphOS.cpp
@@ -85,11 +86,14 @@ list(APPEND WebCore_SOURCES
     platform/mui/PlatformScreenMorphOS.cpp
     platform/mui/PlatformWheelEventMorphOS.cpp
     platform/mui/PopupMenuMorphOS.cpp
-    platform/mui/RenderThemeMorphOS.cpp
+    # 2.46: form controls are drawn by Wayfarer's Adwaita-based theme (as on
+    # MorphOS). OWB's 2.34 image theme (platform/mui/RenderThemeMorphOS.cpp)
+    # targets the removed 2.34 RenderTheme interface; kept for a later port.
+    rendering/adwaita/RenderThemeAdwaita.cpp
+    rendering/adwaita/RenderThemeMorphOS.cpp
+    platform/adwaita/ThemeAdwaita.cpp
     platform/mui/ScrollbarThemeMorphOS.cpp
     platform/mui/SearchPopupMenuMorphOS.cpp
-    platform/mui/SSLKeyGeneratorMorphOS.cpp
-    platform/mui/WidgetMorphOS.cpp
 
     platform/image-decoders/cairo/ImageBackingStoreCairo.cpp
 
@@ -135,6 +139,7 @@ list(APPEND WebCore_INCLUDE_DIRECTORIES
 # 2.46: modern media controls are the only media controls left in WebCore
 # (the 2.34 MEDIA_CONTROLS_SCRIPT path is gone); same set as Wayfarer's port.
 list(APPEND WebCore_USER_AGENT_STYLE_SHEETS
+    ${WEBCORE_DIR}/css/themeAdwaita.css
     ${WebCore_DERIVED_SOURCES_DIR}/ModernMediaControls.css
 )
 

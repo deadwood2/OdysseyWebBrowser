@@ -153,23 +153,23 @@ STATIC VOID doset(struct Data *data, APTR obj, struct TagItem *taglist)
 
                         static RefPtr<WebCore::Image> defaultIcon = 0;
                         if (!defaultIcon)
-                            defaultIcon = WebCore::Image::loadPlatformResource("urlIcon");
+                            defaultIcon = WebCore::ImageAdapter::loadPlatformResource("urlIcon");
 
                         static RefPtr<WebCore::Image> defaultFolderIcon = 0;
                         if (!defaultFolderIcon)
-                            defaultFolderIcon = WebCore::Image::loadPlatformResource("folderIcon");
+                            defaultFolderIcon = WebCore::ImageAdapter::loadPlatformResource("folderIcon");
 
                         static RefPtr<WebCore::Image> defaultScriptIcon = 0;
                         if (!defaultScriptIcon)
-                            defaultScriptIcon = WebCore::Image::loadPlatformResource("scriptIcon");
+                            defaultScriptIcon = WebCore::ImageAdapter::loadPlatformResource("scriptIcon");
 
                         static RefPtr<WebCore::Image> topsitesIcon = 0;
                         if (!topsitesIcon)
-                            topsitesIcon = WebCore::Image::loadPlatformResource("topsitesIcon");
+                            topsitesIcon = WebCore::ImageAdapter::loadPlatformResource("topsitesIcon");
 
                         static RefPtr<WebCore::Image> aboutIcon = 0;
                         if (!aboutIcon)
-                            aboutIcon = WebCore::Image::loadPlatformResource("aboutIcon");
+                            aboutIcon = WebCore::ImageAdapter::loadPlatformResource("aboutIcon");
 
                         if(data->isfolder)
                         {

@@ -29,11 +29,12 @@
 #include "SharedBuffer.h"
 #include <wtf/text/WTFString.h>
 #include <wtf/text/CString.h>
+#include <wtf/text/MakeString.h>
 #include <clib/debug_protos.h>
 
 namespace WebCore {
 
-void BitmapImage::invalidatePlatformData()
+void ImageAdapter::invalidate()
 {
 }
 
@@ -42,29 +43,25 @@ static RefPtr<SharedBuffer> loadResourceSharedBufferFallback()
     return SharedBuffer::create(); // TODO: fallback image?
 }
 
+// OWB resources: a bare name is PROGDIR:resource/<name>.png; a full path to
+// a .info icon (from Ambient, see IconMorphOS.cpp) is used as given.
 static RefPtr<SharedBuffer> loadResourceSharedBuffer(const char* name)
 {
-    String fullPath = "";
-    String fname = String(name);
+    String fname = String::fromLatin1(name);
+    String fullPath;
 
-    if(fname.find(':') == notFound || !fname.endsWith(".info"))
-    {
-    fullPath = RESOURCE_PATH;
-    fullPath.append(name);
-    fullPath.append(".png");
-    }
+    if (fname.find(':') == notFound || !fname.endsWith(".info"_s))
+        fullPath = makeString(RESOURCE_PATH ""_s, fname, ".png"_s);
     else
-    {
-    fullPath = String(name);
-    }
+        fullPath = fname;
 
     RefPtr<SharedBuffer> buffer = SharedBuffer::createWithContentsOfFile(fullPath);
-    if (buffer.get())
+    if (buffer)
         return buffer;
     return loadResourceSharedBufferFallback();
 }
 
-Ref<Image> Image::loadPlatformResource(const char* name)
+Ref<Image> ImageAdapter::loadPlatformResource(const char* name)
 {
     Ref<BitmapImage> img = BitmapImage::create();
     RefPtr<SharedBuffer> buffer = loadResourceSharedBuffer(name);
@@ -72,5 +69,4 @@ Ref<Image> Image::loadPlatformResource(const char* name)
     return img;
 }
 
-}    
-
+}
