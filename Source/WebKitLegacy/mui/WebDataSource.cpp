@@ -37,6 +37,7 @@
 #include "WebURLResponse.h"
 
 #include <wtf/text/WTFString.h>
+#include <WebCore/DocumentInlines.h>
 #include <WebCore/CachedResourceLoader.h>
 #include <WebCore/Document.h>
 #include <WebCore/LocalFrame.h>

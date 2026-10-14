@@ -27,6 +27,7 @@
  */
 
 #include "WebChromeClient.h"
+#include <WebCore/DocumentInlines.h>
 #include <WebCore/CookieConsentDecisionResult.h>
 #include "ColorChooserController.h"
 #include "DateTimeChooserController.h"

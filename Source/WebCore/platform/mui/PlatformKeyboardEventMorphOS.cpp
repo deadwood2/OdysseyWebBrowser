@@ -620,4 +620,23 @@ void PlatformKeyboardEvent::getCurrentModifierState(bool& shiftKey, bool& ctrlKe
     D(kprintf("getCurrentModifierState Shift %d Alt %d Ctrl %d Meta %d\n", shiftKey, altKey, ctrlKey, metaKey));
 }
 
+// 2.46: generic code asks for the modifier state as an OptionSet.
+OptionSet<PlatformEvent::Modifier> PlatformKeyboardEvent::currentStateOfModifierKeys()
+{
+    OptionSet<PlatformEvent::Modifier> modifiers;
+    bool shiftKey, ctrlKey, altKey, metaKey;
+    getCurrentModifierState(shiftKey, ctrlKey, altKey, metaKey);
+    if (shiftKey)
+        modifiers.add(PlatformEvent::Modifier::ShiftKey);
+    if (ctrlKey)
+        modifiers.add(PlatformEvent::Modifier::ControlKey);
+    if (altKey)
+        modifiers.add(PlatformEvent::Modifier::AltKey);
+    if (metaKey)
+        modifiers.add(PlatformEvent::Modifier::MetaKey);
+    if (currentCapsLockState())
+        modifiers.add(PlatformEvent::Modifier::CapsLockKey);
+    return modifiers;
+}
+
 }

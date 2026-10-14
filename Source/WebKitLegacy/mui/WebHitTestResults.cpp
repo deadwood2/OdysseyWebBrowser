@@ -32,6 +32,7 @@
 #include "WebFrameLoaderClient.h"
 
 #include <wtf/text/CString.h>
+#include <WebCore/FrameDestructionObserverInlines.h>
 #include <WebCore/Document.h>
 #include <WebCore/LocalFrame.h>
 #include <WebCore/HitTestResult.h>

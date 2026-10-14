@@ -99,6 +99,12 @@ list(APPEND WebCore_SOURCES
 
     platform/network/mui/CurlSSLHandleMUI.cpp
     inspector/LegacyWebSocketInspectorInstrumentation.cpp
+    # From Wayfarer's MorphOS port; no MorphOS-specific code in them.
+    accessibility/morphos/AXObjectCacheMorphOS.cpp
+    accessibility/morphos/AccessibilityObjectMorphOS.cpp
+    platform/morphos/SharedMemoryMorphOS.cpp
+    platform/graphics/morphos/SystemFontDatabaseMorphOS.cpp
+    platform/graphics/morphos/GraphicsLayerMorphOS.cpp
 
     platform/PlatformStrategies.cpp
 

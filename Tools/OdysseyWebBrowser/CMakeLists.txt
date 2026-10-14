@@ -17,7 +17,7 @@ set(OdysseyWebBrowser_LIBRARIES
     -lcairo
     -lpixman
     -lfontconfig
-    -lfreetype2
+    Freetype::Freetype
     -lxml2
     -lz
     -lcurl
