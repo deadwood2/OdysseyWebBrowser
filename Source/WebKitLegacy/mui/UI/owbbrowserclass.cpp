@@ -44,6 +44,7 @@
 #include <WebCore/DOMImplementation.h>
 #include <WebCore/DragController.h>
 #include <WebCore/DragData.h>
+#include <WebCore/DataObjectMorphOS.h>
 #include <WebCore/Editor.h>
 #include "FileIOLinux.h"
 #include <WebCore/FocusController.h>
@@ -223,6 +224,19 @@ struct EventHandlerNode
 };
 
 static APTR dataObject; // Move that
+
+// The data object of the drag in progress. AROS drag and drop is asynchronous:
+// WebCore releases the drag's pasteboard as soon as WebDragClient::startDrag()
+// returns, so the browser object keeps its own reference until the drag ends
+// (DragDrop resets the attribute) or another drag replaces it.
+static void setDragDataObject(APTR newObject)
+{
+    if (newObject)
+        ((WebCore::DataObjectMorphOS *) newObject)->ref();
+    if (dataObject)
+        ((WebCore::DataObjectMorphOS *) dataObject)->deref();
+    dataObject = newObject;
+}
 
 struct Data
 {
@@ -933,7 +947,7 @@ static void doset(APTR obj, struct Data *data, struct TagItem *tags)
 
         case MA_OWBBrowser_DragData:
         {
-            dataObject = (APTR) tag->ti_Data;
+            setDragDataObject((APTR) tag->ti_Data);
         }
         break;
 
@@ -3424,13 +3438,13 @@ DEFMMETHOD(DragQuery)
             D(kprintf("Source object is a browser dataObject %p\n", dataObject));
             if(obj != msg->obj)
             {
-                dataObject = (APTR) getv(msg->obj, MA_OWBBrowser_DragData);
+                setDragDataObject((APTR) getv(msg->obj, MA_OWBBrowser_DragData));
                 data->dragoperation = (LONG) getv(msg->obj, MA_OWBBrowser_DragOperation);
             }
         }
         else
         {
-            dataObject = 0;
+            setDragDataObject(0);
         }
 
         return (MUIV_DragQuery_Accept);
