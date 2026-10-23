@@ -1234,6 +1234,13 @@ DEFDISP
         JSC::JITWorklist::existingGlobalWorklistOrNull()->shutdown();
 #endif
 
+    /* Work queues of objects WebKit never destroys at exit (a window's
+     * SubtleCrypto queue, for one) still run their threads here. The AROS
+     * pthread library joins every remaining thread when the process exits,
+     * so without this the quit never ends after a page that used them.
+     * After the VM and the JIT worklist are gone nothing creates queues. */
+    RunLoop::stopAllForProcessExit();
+
     AdBlock::deinitialize();
 
     return DOSUPER;
