@@ -3116,7 +3116,9 @@ static void completion_thread_start(void* p)
                     ULONG markend = strlen(item) - 1;
                     ULONG cursorpos = markend;
 
-                    methodstack_push(data->addressbargroup, 5, MM_AddressBarGroup_CompleteString, strdup(item), cursorpos, markstart, markend);
+                    /* The main thread applies this later: pass the text it was computed for, so a
+                     * completion that arrives after more typing is dropped (see CompleteString). */
+                    methodstack_push(data->addressbargroup, 6, MM_AddressBarGroup_CompleteString, strdup(item), cursorpos, markstart, markend, strdup(url));
                     free(item);
                 }
             }

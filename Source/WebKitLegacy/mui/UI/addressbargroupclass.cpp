@@ -299,12 +299,20 @@ DEFSMETHOD(AddressBarGroup_CompleteString)
 {
     Object *urlString = (Object *) getv(obj, MUIA_Popstring_String);
 
-    nnset(urlString, MUIA_String_Contents, msg->url);
-    nnset(urlString, MUIA_Textinput_CursorPos, msg->cursorpos);
-    nnset(urlString, MUIA_Textinput_MarkStart, msg->markstart);
-    nnset(urlString, MUIA_Textinput_MarkEnd, msg->markend);
+    /* The completion was computed on the completion thread from an earlier copy of
+     * the field and can arrive late under a busy page. Apply it only while the field
+     * still holds that text; otherwise it would overwrite keys typed meanwhile. */
+    STRPTR current = (STRPTR) getv(urlString, MUIA_String_Contents);
+    if (msg->typed && current && !strcmp(current, msg->typed))
+    {
+        nnset(urlString, MUIA_String_Contents, msg->url);
+        nnset(urlString, MUIA_Textinput_CursorPos, msg->cursorpos);
+        nnset(urlString, MUIA_Textinput_MarkStart, msg->markstart);
+        nnset(urlString, MUIA_Textinput_MarkEnd, msg->markend);
+    }
 
     free(msg->url); // Allocated by caller (pushed), freed here.
+    free(msg->typed);
 
     return 0;
 }
