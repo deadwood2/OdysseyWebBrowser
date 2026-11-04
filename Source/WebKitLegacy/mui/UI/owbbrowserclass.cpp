@@ -1870,6 +1870,92 @@ static void autoscroll_remove(Object *obj, struct Data *data)
     }
 }
 
+#if OS(AROS)
+/* Menu shortcuts while the pointer is over the page.
+ *
+ * Zune sets WFLG_RMBTRAP on the window while the pointer is over an object
+ * with a context menu (this view). Intuition converts RAmiga+key into a menu
+ * pick only without WFLG_RMBTRAP, so over the page the key arrives here as
+ * IDCMP_RAWKEY and no menu item fires. These helpers resolve such a key
+ * against the window's menu strip and trigger the item the way Zune handles
+ * IDCMP_MENUPICK (checkmark toggle, trigger, menu action, return id).
+ * owb_trigger_menu_shortcut() is also used by the address field (urlstringclass),
+ * whose Zune string handler would otherwise get the key first as active object. */
+static IPTR attrOr(Object *o, ULONG attr, IPTR fallback)
+{
+    IPTR v = fallback;
+    GetAttr(attr, o, &v);
+    return v;
+}
+
+static Object *findShortcutItem(Object *parent, UBYTE key)
+{
+    struct MinList *list = (struct MinList *) attrOr(parent, MUIA_Family_List, 0);
+    if (!list)
+        return NULL;
+
+    Object *cstate = (Object *) list->mlh_Head;
+    Object *child;
+    while ((child = (Object *) NextObject(&cstate)))
+    {
+        if (!attrOr(child, MUIA_Menu_Enabled, TRUE) || !attrOr(child, MUIA_Menuitem_Enabled, TRUE))
+            continue;
+
+        STRPTR shortcut = (STRPTR) attrOr(child, MUIA_Menuitem_Shortcut, 0);
+        if (shortcut && (IPTR) shortcut != (IPTR) MUIV_Menuitem_Shortcut_Check
+            && shortcut[0] && !shortcut[1] && toupper((UBYTE) shortcut[0]) == key)
+            return child;
+
+        if (Object *found = findShortcutItem(child, key))
+            return found;
+    }
+    return NULL;
+}
+
+BOOL owb_trigger_menu_shortcut(Object *obj, struct IntuiMessage *imsg)
+{
+    struct InputEvent ie;
+    TEXT buffer[4];
+
+    ie.ie_NextEvent    = NULL;
+    ie.ie_Class        = IECLASS_RAWKEY;
+    ie.ie_SubClass     = 0;
+    ie.ie_Code         = imsg->Code;
+    ie.ie_Qualifier    = imsg->Qualifier & ~(IEQUALIFIER_LCOMMAND | IEQUALIFIER_RCOMMAND);
+    ie.ie_EventAddress = NULL;
+
+    if (MapRawKey(&ie, (STRPTR) buffer, sizeof(buffer), NULL) != 1)
+        return FALSE;
+
+    Object *window = _win(obj);
+    Object *strip = (Object *) attrOr(window, MUIA_Window_Menustrip, 0);
+    if (!strip)
+        return FALSE;
+
+    Object *item = findShortcutItem(strip, toupper((UBYTE) buffer[0]));
+    if (!item)
+        return FALSE;
+
+    if (attrOr(item, MUIA_Menuitem_Checkit, FALSE))
+    {
+        if (attrOr(item, MUIA_Menuitem_Toggle, FALSE))
+            set(item, MUIA_Menuitem_Checked, !attrOr(item, MUIA_Menuitem_Checked, FALSE));
+        else
+            set(item, MUIA_Menuitem_Checked, TRUE);
+    }
+
+    /* The caller is an object's event handler and the action may dispose that
+     * object (Close tab disposes this browser), so the action runs later from
+     * the application loop, where Zune also handles IDCMP_MENUPICK. */
+    IPTR udata = attrOr(item, MUIA_UserData, 0);
+    DoMethod(app, MUIM_Application_PushMethod, item, 3, MUIM_Set, MUIA_Menuitem_Trigger, TRUE);
+    DoMethod(app, MUIM_Application_PushMethod, app, 3, MUIM_Set, MUIA_Application_MenuAction, udata);
+    DoMethod(app, MUIM_Application_PushMethod, window, 3, MUIM_Set, MUIA_Window_MenuAction, udata);
+    DoMethod(app, MUIM_Application_ReturnID, udata);
+    return TRUE;
+}
+#endif
+
 DEFMMETHOD(HandleEvent)
 {
     IPTR rc = 0;
@@ -2345,7 +2431,18 @@ DEFMMETHOD(HandleEvent)
                     if (Code & IECODE_UP_PREFIX)
                         data->view->webView->onKeyUp(im);
                     else
-                        data->view->webView->onKeyDown(im);
+                    {
+                        bool handled = data->view->webView->onKeyDown(im);
+#if OS(AROS)
+                        /* A RAmiga key the page did not use (no editing command,
+                         * no script handling it) belongs to the menu strip. */
+                        if(!handled && (Qualifier & IEQUALIFIER_RCOMMAND) && !(Qualifier & IEQUALIFIER_REPEAT)
+                           && owb_trigger_menu_shortcut(obj, msg->imsg))
+                            rc = MUI_EventHandlerRC_Eat;
+#else
+                        (void) handled;
+#endif
+                    }
                 }
             }
             break;
