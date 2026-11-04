@@ -1303,6 +1303,7 @@ struct MP_AddressBarGroup_CompleteString {
     STACKED ULONG cursorpos;
     STACKED ULONG markstart;
     STACKED ULONG markend;
+    STACKED STRPTR typed;  /* text the completion was computed for; freed with url */
 };
 
 /* SearchBarGroup */
