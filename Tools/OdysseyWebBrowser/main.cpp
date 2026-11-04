@@ -327,7 +327,7 @@ void aros_timer_close();
 void main_loop(void)
 {
 	ULONG running = TRUE;
-	ULONG signals;
+	ULONG signals = 0;
 
 	setIsSafeToQuit(TRUE);
 	
