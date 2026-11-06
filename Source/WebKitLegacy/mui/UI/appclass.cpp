@@ -1024,7 +1024,7 @@ DEFNEW
 
     obj = (Object *) DoSuperNew(cl, obj,
             MUIA_Application_Title      , "Odyssey Web Browser",
-            MUIA_Application_Version    , "$VER: Odyssey Web Browser " VERSION " (" OWB_BUILD_DATE ")",
+            MUIA_Application_Version    , "$VER: Odyssey Web Browser " VERSION " (" OWB_BUILD_DATE ")" OWB_LABEL_SUFFIX,
             MUIA_Application_Copyright  , "©\n2014-2025 Krzysztof Smiechowicz\n2020 Jacek Piszczek\n2009-2014 Fabien Coeurjoly",
             MUIA_Application_Author     , "Fabien Coeurjoly",
             MUIA_Application_Description, APPLICATION_DESCRIPTION,
@@ -1886,7 +1886,7 @@ DEFTMETHOD(OWBApp_About)
     {
         data->aboutwin = AboutboxObject,
                             MUIA_Aboutbox_Credits, credits,
-                            MUIA_Aboutbox_Build, REVISION,
+                            MUIA_Aboutbox_Build, REVISION OWB_LABEL_SUFFIX,
                             End;
 
         if (data->aboutwin)
