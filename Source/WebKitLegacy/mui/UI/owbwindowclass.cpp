@@ -318,7 +318,7 @@ DEFNEW
         return 0;
 
     obj = (Object *) DoSuperNew(cl, obj,
-        MUIA_Window_ScreenTitle, "Odyssey Web Browser " VERSION " (" OWB_BUILD_DATE ")",
+        MUIA_Window_ScreenTitle, "Odyssey Web Browser " VERSION " (" OWB_BUILD_DATE ")" OWB_LABEL_SUFFIX,
         MUIA_Window_Title, DEFAULT_WINDOW_NAME,
         MUIA_Window_ID, MAKE_ID('O','W','B', id),
         MUIA_Window_Menustrip, menustrip = (Object *) MUI_MakeObject(MUIO_MenustripNM, MenuData, 0),
