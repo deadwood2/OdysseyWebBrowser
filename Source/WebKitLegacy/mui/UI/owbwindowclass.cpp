@@ -72,6 +72,7 @@
 #include <proto/iffparse.h>
 #include <proto/asl.h>
 #include <proto/dos.h>
+#include <proto/graphics.h>
 #include <datatypes/textclass.h>
 #include <workbench/workbench.h>
 
@@ -2417,6 +2418,17 @@ DEFSMETHOD(OWBWindow_UpdateProgress)
             format_size(received, sizeof(received), (QUAD) (widget->webView->page()->progress().totalBytesReceived()));
             format_size(total,    sizeof(total),    (QUAD) (widget->webView->page()->progress().totalPageAndResourceBytesToLoad()));
             snprintf(data->progressbuffer, sizeof(data->progressbuffer), GSI(MSG_OWBWINDOW_READ_PROGRESS), received, total);
+
+            /* Gauge draws its text unclipped: wider than the gauge, it runs over the window border. */
+            if (muiRenderInfo(data->progressgauge))
+            {
+                struct RastPort rp;
+
+                InitRastPort(&rp);
+                SetFont(&rp, _font(data->progressgauge));
+                if (TextLength(&rp, data->progressbuffer, strlen(data->progressbuffer)) > _mwidth(data->progressgauge))
+                    data->progressbuffer[0] = 0;
+            }
 
             SetAttrs(data->progressgauge,
                      MUIA_Gauge_InfoText, data->progressbuffer,
