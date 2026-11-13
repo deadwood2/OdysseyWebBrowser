@@ -27,6 +27,7 @@
  */
 
 #include "DOMCoreClasses.h"
+#include <WebCore/LocalDOMWindow.h>
 
 #include "DOMCSSClasses.h"
 #include "DOMEventsClasses.h"
@@ -356,7 +357,7 @@ DOMElement* DOMDocument::createElement(const char* tagName)
     if (!m_document)
         return 0;
 
-    return DOMElement::createInstance(m_document->createElementForBindings(tagName).releaseReturnValue().ptr());
+    return DOMElement::createInstance(m_document->createElementForBindings(AtomString::fromLatin1(tagName)).releaseReturnValue().ptr());
 }
 
 /*DOMDocumentFragment* DOMDocument::createDocumentFragment()
@@ -399,10 +400,10 @@ DOMNodeList* DOMDocument::getElementsByTagName(const char* tagName)
     if (!m_document)
         return 0;
     
-    String tagNameString(tagName);
+    String tagNameString = String::fromLatin1(tagName);
     RefPtr<WebCore::NodeList> elements;
     if (!tagNameString.isNull())
-        elements = m_document->getElementsByTagName(tagNameString);
+        elements = m_document->getElementsByTagName(AtomString { tagNameString });
 
     return DOMNodeList::createInstance(elements.get());
 }
@@ -427,11 +428,11 @@ DOMNodeList* DOMDocument::getElementsByTagNameNS(const char* namespaceURI, const
     if (!m_document)
         return 0;
 
-    String namespaceURIString(namespaceURI);
-    String localNameString(localName);
+    String namespaceURIString = String::fromLatin1(namespaceURI);
+    String localNameString = String::fromLatin1(localName);
     RefPtr<WebCore::NodeList> elements;
     if (!localNameString.isNull())
-        elements = m_document->getElementsByTagNameNS(namespaceURIString, localNameString);
+        elements = m_document->getElementsByTagNameNS(AtomString { namespaceURIString }, AtomString { localNameString });
     return DOMNodeList::createInstance(elements.get());
 }
 
@@ -440,7 +441,7 @@ DOMElement* DOMDocument::getElementById(const char* elementId)
     if (!m_document)
         return 0;
 
-    return DOMElement::createInstance(m_document->getElementById(String(elementId)));
+    return DOMElement::createInstance(m_document->getElementById(String::fromLatin1(elementId)).get());
 }
 
 // DOMDocument - DOMViewCSS --------------------------------------------------
@@ -452,19 +453,19 @@ DOMCSSStyleDeclaration* DOMDocument::getComputedStyle(DOMElement* elt, const cha
 
     Element* element = elt->element();
 
-    WebCore::DOMWindow* dv = m_document->domWindow();
+    WebCore::LocalDOMWindow* dv = m_document->domWindow();
     
     if (!dv)
         return 0;
     
-    return DOMCSSStyleDeclaration::createInstance(dv->getComputedStyle(*element, pseudoElt).ptr());
+    return DOMCSSStyleDeclaration::createInstance(dv->getComputedStyle(*element, String::fromLatin1(pseudoElt)).ptr());
 }
 
 // DOMDocument - DOMDocumentEvent --------------------------------------------
 
 DOMEvent* DOMDocument::createEvent(const char* eventType)
 {
-    return DOMEvent::createInstance(m_document->createEvent(eventType).releaseReturnValue());
+    return DOMEvent::createInstance(m_document->createEvent(String::fromLatin1(eventType)).releaseReturnValue());
 }
 
 // DOMDocument - DOMDocument --------------------------------------------------
@@ -528,7 +529,7 @@ const char* DOMElement::getAttribute(const char* name)
 {
     if (!m_element)
         return "";
-    return strdup(m_element->getAttribute(name).string().utf8().data());
+    return strdup(m_element->getAttribute(AtomString::fromLatin1(name)).string().utf8().data());
 }
     
 void DOMElement::setAttribute(const char* name, const char* value)
@@ -536,7 +537,8 @@ void DOMElement::setAttribute(const char* name, const char* value)
     if (!m_element)
         return;
 
-    m_element->setAttribute(name, value);
+    // 2.46: setAttribute(qualifiedName, value) reports invalid names as an exception.
+    (void)m_element->setAttribute(AtomString::fromLatin1(name), AtomString::fromLatin1(value));
 }
     
 void DOMElement::removeAttribute(const char* /*name*/)
@@ -678,7 +680,7 @@ const char * DOMElement::shadowPseudoId()
     if (!m_element)
         return "";
 
-    return strdup(m_element->shadowPseudoId().string().utf8().data());
+    return strdup(m_element->userAgentPart().string().utf8().data());
 }
 
 // DOMElementCSSInlineStyle --------------------------------------------------

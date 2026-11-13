@@ -327,7 +327,8 @@ void aros_timer_close();
 void main_loop(void)
 {
 	ULONG running = TRUE;
-	ULONG signals;
+	// NewInput reads the incoming wake bits before returning its wait mask.
+	ULONG signals = 0;
 
 	setIsSafeToQuit(TRUE);
 	

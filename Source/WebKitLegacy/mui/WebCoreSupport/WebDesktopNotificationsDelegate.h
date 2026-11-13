@@ -30,6 +30,8 @@
 
 #include <WebCore/Notification.h>
 #include <WebCore/NotificationClient.h>
+#include <WebCore/NotificationData.h>
+#include <WebCore/NotificationResources.h>
 
 class WebView;
 
@@ -38,18 +40,17 @@ namespace WebCore {
     class SecurityOrigin;
 }
 
-class WebDesktopNotificationsDelegate : public WebCore::NotificationClient {
+class WebDesktopNotificationsDelegate final : public WebCore::NotificationClient {
 public:
     WebDesktopNotificationsDelegate(WebView* view);
 
-    /* WebCore::NotificationClient interface */
-    virtual bool show(WebCore::Notification* object) override;
-    virtual void cancel(WebCore::Notification* object) override;
-    virtual void notificationObjectDestroyed(WebCore::Notification* object) override;
-    virtual void notificationControllerDestroyed() override;
-    virtual void requestPermission(WebCore::ScriptExecutionContext&, PermissionHandler&&) override;
-    virtual void cancelRequestsForPermission(WebCore::ScriptExecutionContext*);
-    virtual WebCore::NotificationClient::Permission checkPermission(WebCore::ScriptExecutionContext*) override;
+    /* WebCore::NotificationClient interface (2.46: NotificationData) */
+    bool show(WebCore::ScriptExecutionContext&, WebCore::NotificationData&&, RefPtr<WebCore::NotificationResources>&&, CompletionHandler<void()>&&) final;
+    void cancel(WebCore::NotificationData&&) final;
+    void notificationObjectDestroyed(WebCore::NotificationData&&) final;
+    void notificationControllerDestroyed() final;
+    void requestPermission(WebCore::ScriptExecutionContext&, PermissionHandler&&) final;
+    WebCore::NotificationClient::Permission checkPermission(WebCore::ScriptExecutionContext*) final;
 
 private:
     WebView* m_webView;

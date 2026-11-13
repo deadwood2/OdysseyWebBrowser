@@ -30,6 +30,8 @@
 #include "MIMETypeRegistry.h"
 
 #include "gui.h"
+#include <wtf/text/StringView.h>
+#include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
@@ -50,6 +52,7 @@ static const ExtensionMap extensionMap [] = {
     { textHtml, "htm" },
     { textHtml, "shtml" },
     { textHtml, "shtm" },
+    { textHtml, "php" },
     { "text/css", "css" },
     { "text/xml", "xml" },
     { "text/xsl", "xsl" },
@@ -79,6 +82,8 @@ static const ExtensionMap extensionMap [] = {
     { "application/rdf+xml", "rdf" },
     { "application/x-shockwave-flash", "swf" },
     { "application/x-futuresplash", "spl" },
+    { "text/vnd.wap.wml", "wml" },
+    { "application/vnd.wap.wmlc", "wmlc" },
 
     // Media types
 
@@ -164,30 +169,31 @@ static const ExtensionMap extensionMap [] = {
     { 0, 0 }
 };
 
-String MIMETypeRegistry::mimeTypeForExtension(const String &ext)
+String MIMETypeRegistry::mimeTypeForExtension(StringView ext)
 {
-    String s = ext.convertToLowercaseWithoutLocale();
+    String s = ext.convertToASCIILowercase();
     const ExtensionMap *e = extensionMap;
     while (e->extension) {
-        if (s == e->extension)
-            return e->mimeType;
+        if (s == StringView::fromLatin1(e->extension))
+            return String::fromLatin1(e->mimeType);
         ++e;
     }
 
-    if(ext != "")
+    // OWB: user-defined MIME types from the preferences (gui.h mimetype_list).
+    if (!s.isEmpty())
     {
         APTR n;
         ITERATELIST(n, &mimetype_list)
         {
             struct mimetypenode *mn = (struct mimetypenode *) n;
-            String extensions = mn->extensions;
-            Vector<String> listExtensions = extensions.split(" ");
+            String extensions = String::fromLatin1(mn->extensions);
+            Vector<String> listExtensions = extensions.split(' ');
 
             for(size_t i = 0; i < listExtensions.size(); i++)
             {
                 if(listExtensions[i] == s)
                 {
-                    return String(mn->mimetype);
+                    return String::fromLatin1(mn->mimetype);
                 }
             }
         }
@@ -199,11 +205,11 @@ String MIMETypeRegistry::mimeTypeForExtension(const String &ext)
 Vector<String> MIMETypeRegistry::extensionsForMIMEType(const String& type)
 {
     Vector<String> extensions;
-    String s = type.convertToLowercaseWithoutLocale();
+    String s = type.convertToASCIILowercase();
     const ExtensionMap *e = extensionMap;
     while (e->extension) {
-    if (s == e->mimeType)
-        extensions.append(e->extension);
+        if (s == StringView::fromLatin1(e->mimeType))
+            extensions.append(String::fromLatin1(e->extension));
         ++e;
     }
 
@@ -212,11 +218,11 @@ Vector<String> MIMETypeRegistry::extensionsForMIMEType(const String& type)
     {
         struct mimetypenode *mn = (struct mimetypenode *) n;
         
-        if(s == mn->mimetype)
+        if(s == StringView::fromLatin1(mn->mimetype))
         {
             Vector<String> newExtensions;
-            String strExtensions = mn->extensions;
-            newExtensions = strExtensions.split(" ");
+            String strExtensions = String::fromLatin1(mn->extensions);
+            newExtensions = strExtensions.split(' ');
             
             if(newExtensions.size())
                 extensions = newExtensions;
@@ -233,9 +239,13 @@ bool MIMETypeRegistry::isApplicationPluginMIMEType(const String&)
     return false;
 }
 
-String MIMETypeRegistry::preferredExtensionForMIMEType(const String &)
+String MIMETypeRegistry::preferredExtensionForMIMEType(const String& mimeType)
 {
-    return String();
+    // Wayfarer 2.46 answers this from its table; OWB returns the first known extension.
+    auto extensions = extensionsForMIMEType(mimeType);
+    if (!extensions.isEmpty())
+        return extensions[0];
+    return emptyString();
 }
 
 

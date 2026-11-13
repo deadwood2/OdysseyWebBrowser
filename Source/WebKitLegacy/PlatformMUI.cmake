@@ -150,7 +150,9 @@ list(APPEND WebKitLegacy_SOURCES
     mui/WebView.cpp
     mui/WebURLResponse.cpp
 
+    mui/WebCoreSupport/LegacyHistoryItemClient.cpp
     mui/WebCoreSupport/WebChromeClient.cpp
+    mui/WebCoreSupport/WebCryptoClientMUI.cpp
     mui/WebCoreSupport/WebContextMenuClient.cpp
     mui/WebCoreSupport/WebDesktopNotificationsDelegate.cpp
     mui/WebCoreSupport/WebDragClient.cpp

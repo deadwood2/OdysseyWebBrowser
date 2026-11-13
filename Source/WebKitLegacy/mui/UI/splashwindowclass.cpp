@@ -29,7 +29,7 @@
 #include "WebFrame.h"
 #include "WebView.h"
 #include <WebCore/Page.h>
-#include <WebCore/Frame.h>
+#include <WebCore/LocalFrame.h>
 
 extern "C"
 {
@@ -205,6 +205,7 @@ DEFNEW
             MUIA_Window_DragBar,     FALSE,
             MUIA_Window_CloseGadget, FALSE,
             MUIA_Window_SizeGadget,  FALSE,
+            MUIA_Window_Borderless,  TRUE,
             MUIA_Window_ID,          0,
 
             WindowContents, VGroup,

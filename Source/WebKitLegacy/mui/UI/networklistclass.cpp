@@ -27,6 +27,7 @@
  */
 
 #include "BALBase.h"
+#include <WebCore/SecurityOrigin.h>
 #include <wtf/text/WTFString.h>
 #include <wtf/text/CString.h>
 #include <WebCore/ResourceHandle.h>

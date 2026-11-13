@@ -27,6 +27,7 @@
  */
 
 #include <WebCore/NetworkingContext.h>
+#include <WebCore/SecurityOrigin.h>
 #include <WebCore/ResourceHandle.h>
 #include <WebCore/ResourceRequest.h>
 #include <WebCore/ResourceHandleClient.h>
@@ -536,14 +537,14 @@ DEFTMETHOD(SuggestPopString_Initiate)
         if(words.length() > 2)
         {
             String encoded = encodeWithURLEscapeSequences(words);
-            encoded.replace("+", "%2B");
-            encoded.replace("%20", "+");
-            encoded.replace("&", "%26");
+            encoded = makeStringByReplacingAll(encoded, "+"_s, "%2B"_s);
+            encoded = makeStringByReplacingAll(encoded, "%20"_s, "+"_s);
+            encoded = makeStringByReplacingAll(encoded, "&"_s, "%26"_s);
 
             DoMethod(data->lv_entries, MUIM_List_Clear);
 
             NetworkingContext* context = new SuggestNetworkingContext();
-            ResourceRequest request(URL(URL(), "https://google.com/complete/search?output=toolbar&ie=UTF-8&oe=UTF-8&q=" + encoded));
+            ResourceRequest request(URL(URL(), makeString("https://google.com/complete/search?output=toolbar&ie=UTF-8&oe=UTF-8&q="_s, encoded)));
 
             if(data->resource_handle)
             {
@@ -559,7 +560,7 @@ DEFTMETHOD(SuggestPopString_Initiate)
             }
 
             data->suggest_client = new SuggestClient(obj);
-            data->resource_handle = ResourceHandle::create(context, request, data->suggest_client, false, false, false, { }, false);
+            data->resource_handle = ResourceHandle::create(context, request, data->suggest_client, false, false, ContentEncodingSniffingPolicy::Default, { }, false);
         }
         else if(words.length() == 0)
         {

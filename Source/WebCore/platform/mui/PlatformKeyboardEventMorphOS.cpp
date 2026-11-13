@@ -33,11 +33,12 @@
 #include "Logging.h"
 #include "KeyboardCodes.h"
 #include "BALBase.h"
-#include "TextEncoding.h"
+#include <pal/text/TextEncoding.h>
 #include <wtf/text/CString.h>
 #include <wtf/text/WTFString.h>
 #include <wtf/ASCIICType.h>
 #include <wtf/HexNumber.h>
+#include <wtf/text/MakeString.h>
 
 #include <clib/debug_protos.h>
 #include <proto/keymap.h>
@@ -305,38 +306,38 @@ static String keyIdentifierForAmigaKeyCode(struct IntuiMessage *im)
     {
         switch (im->Code & ~IECODE_UP_PREFIX)
         {
-            case RAWKEY_INSERT:    return "Insert";   break;
-            case RAWKEY_PAGEUP:    return "PageUp";   break;
-            case RAWKEY_PAGEDOWN:  return "PageDown"; break;
-            case RAWKEY_F11:       return "F11";      break;
-            case RAWKEY_UP:        return "Up";       break;
-            case RAWKEY_DOWN:      return "Down";     break;
-            case RAWKEY_RIGHT:     return "Right";    break;
-            case RAWKEY_LEFT:      return "Left";     break;
-            case RAWKEY_F1:        return "F1";       break;
-            case RAWKEY_F2:        return "F2";       break;
-            case RAWKEY_F3:        return "F3";       break;
-            case RAWKEY_F4:        return "F4";       break;
-            case RAWKEY_F5:        return "F5";       break;
-            case RAWKEY_F6:        return "F6";       break;
-            case RAWKEY_F7:        return "F7";       break;
-            case RAWKEY_F8:        return "F8";       break;
-            case RAWKEY_F9:        return "F9";       break;
-            case RAWKEY_F10:       return "F10";      break;
-            case RAWKEY_HELP:      return "Help";     break;
-            case RAWKEY_LALT:      return "Alt";      break;
-            case RAWKEY_RALT:      return "AltGr";    break;
-            case RAWKEY_PAUSE:     return "Pause";    break;
-            case RAWKEY_F12:       return "F12";      break;
-            case RAWKEY_HOME:      return "Home";     break;
-            case RAWKEY_END:       return "End";      break;
-            case RAWKEY_PRTSCREEN: return "PrintScreen"; break;
+            case RAWKEY_INSERT:    return "Insert"_s;   break;
+            case RAWKEY_PAGEUP:    return "PageUp"_s;   break;
+            case RAWKEY_PAGEDOWN:  return "PageDown"_s; break;
+            case RAWKEY_F11:       return "F11"_s;      break;
+            case RAWKEY_UP:        return "Up"_s;       break;
+            case RAWKEY_DOWN:      return "Down"_s;     break;
+            case RAWKEY_RIGHT:     return "Right"_s;    break;
+            case RAWKEY_LEFT:      return "Left"_s;     break;
+            case RAWKEY_F1:        return "F1"_s;       break;
+            case RAWKEY_F2:        return "F2"_s;       break;
+            case RAWKEY_F3:        return "F3"_s;       break;
+            case RAWKEY_F4:        return "F4"_s;       break;
+            case RAWKEY_F5:        return "F5"_s;       break;
+            case RAWKEY_F6:        return "F6"_s;       break;
+            case RAWKEY_F7:        return "F7"_s;       break;
+            case RAWKEY_F8:        return "F8"_s;       break;
+            case RAWKEY_F9:        return "F9"_s;       break;
+            case RAWKEY_F10:       return "F10"_s;      break;
+            case RAWKEY_HELP:      return "Help"_s;     break;
+            case RAWKEY_LALT:      return "Alt"_s;      break;
+            case RAWKEY_RALT:      return "AltGr"_s;    break;
+            case RAWKEY_PAUSE:     return "Pause"_s;    break;
+            case RAWKEY_F12:       return "F12"_s;      break;
+            case RAWKEY_HOME:      return "Home"_s;     break;
+            case RAWKEY_END:       return "End"_s;      break;
+            case RAWKEY_PRTSCREEN: return "PrintScreen"_s; break;
             case RAWKEY_KP_ENTER:
-            case RAWKEY_RETURN:    return "Enter";    break;
-            case RAWKEY_DELETE:    return "U+007F";   break;
-            case RAWKEY_BACKSPACE: return "U+0008";   break;
-            case RAWKEY_TAB:       return "U+0009";   break;
-            case RAWKEY_SPACE:     return "U+0020";   break;
+            case RAWKEY_RETURN:    return "Enter"_s;    break;
+            case RAWKEY_DELETE:    return "U+007F"_s;   break;
+            case RAWKEY_BACKSPACE: return "U+0008"_s;   break;
+            case RAWKEY_TAB:       return "U+0009"_s;   break;
+            case RAWKEY_SPACE:     return "U+0020"_s;   break;
 
         default:
             {
@@ -356,23 +357,23 @@ static String keyIdentifierForAmigaKeyCode(struct IntuiMessage *im)
                     bool bMeta = im->Qualifier & (IEQUALIFIER_LCOMMAND | IEQUALIFIER_RCOMMAND);
 
                     if(bMeta && c == 'a')
-                        return "U+0001";
+                        return "U+0001"_s;
                     else if(bMeta && c == 'c')
-                        return "U+0003";
+                        return "U+0003"_s;
                     else if(bMeta && c == 'v')
-                        return "U+0016";
+                        return "U+0016"_s;
                     else if(bMeta && c == 'x')
-                        return "U+0018";
+                        return "U+0018"_s;
                     else if(c == 0xA4) // Euro
-                        return "U+20AC";
+                        return "U+20AC"_s;
                     else
-                        return makeString("U+", hex(toASCIIUpper(c), 4));
+                        return makeString("U+"_s, hex(toASCIIUpper(c), 4));
                 }     
             }
         }
     }
 
-    return "U+0000";
+    return "U+0000"_s;
 }
 
 PlatformKeyboardEvent::PlatformKeyboardEvent(BalEventKey* event)
@@ -381,7 +382,7 @@ PlatformKeyboardEvent::PlatformKeyboardEvent(BalEventKey* event)
     , m_isKeypad(event->Qualifier & IEQUALIFIER_NUMERICPAD)
     , m_balEventKey(event)
 {
-    m_type = PlatformEvent::KeyDown;
+    m_type = PlatformEvent::Type::KeyDown;
 
     m_modifiers = OptionSet<PlatformEvent::Modifier>();
 
@@ -405,7 +406,7 @@ PlatformKeyboardEvent::PlatformKeyboardEvent(BalEventKey* event)
     if (IDCMP_RAWKEY == event->Class)
     {
         if (event->Code & IECODE_UP_PREFIX)
-            m_type = PlatformEvent::KeyUp;
+            m_type = PlatformEvent::Type::KeyUp;
 
         switch (event->Code & ~IECODE_UP_PREFIX)
         {
@@ -527,7 +528,7 @@ PlatformKeyboardEvent::PlatformKeyboardEvent(BalEventKey* event)
         int length;
         struct InputEvent ievent;
         if (event->Code & IECODE_UP_PREFIX)
-            m_type = KeyUp;
+            m_type = PlatformEvent::Type::KeyUp;
 
         ievent.ie_Class = IECLASS_RAWKEY;
         ievent.ie_Code = event->Code;
@@ -574,21 +575,23 @@ PlatformKeyboardEvent::PlatformKeyboardEvent(BalEventKey* event)
 void PlatformKeyboardEvent::disambiguateKeyDownEvent(Type type, bool backwardCompatibilityMode)
 {
     // Can only change type from KeyDown to RawKeyDown or Char, as we lack information for other conversions.
-    ASSERT(m_type == PlatformEvent::KeyDown);
+    ASSERT(m_type == PlatformEvent::Type::KeyDown);
     m_type = type;
 
     if (backwardCompatibilityMode)
         return;
 
-    if (type == PlatformEvent::RawKeyDown)
+    if (type == PlatformEvent::Type::RawKeyDown)
     {
         m_text = String();
         m_unmodifiedText = String();
     }
     else
     {
-        if (m_text.isEmpty() && m_windowsVirtualKeyCode && m_balEventKey->Code < RAWKEY_ESCAPE)
-            m_text.append(UChar(m_windowsVirtualKeyCode));
+        if (m_text.isEmpty() && m_windowsVirtualKeyCode && m_balEventKey->Code < RAWKEY_ESCAPE) {
+            UChar character = m_windowsVirtualKeyCode;
+            m_text = String(std::span<const UChar> { &character, 1 });
+        }
 
         D(kprintf("DisambiguateKeyDownEvent <%s>\n", m_text.latin1().data()));
         m_keyIdentifier = String();
@@ -615,6 +618,25 @@ void PlatformKeyboardEvent::getCurrentModifierState(bool& shiftKey, bool& ctrlKe
     metaKey  = prev_MetaKey;
 
     D(kprintf("getCurrentModifierState Shift %d Alt %d Ctrl %d Meta %d\n", shiftKey, altKey, ctrlKey, metaKey));
+}
+
+// 2.46: generic code asks for the modifier state as an OptionSet.
+OptionSet<PlatformEvent::Modifier> PlatformKeyboardEvent::currentStateOfModifierKeys()
+{
+    OptionSet<PlatformEvent::Modifier> modifiers;
+    bool shiftKey, ctrlKey, altKey, metaKey;
+    getCurrentModifierState(shiftKey, ctrlKey, altKey, metaKey);
+    if (shiftKey)
+        modifiers.add(PlatformEvent::Modifier::ShiftKey);
+    if (ctrlKey)
+        modifiers.add(PlatformEvent::Modifier::ControlKey);
+    if (altKey)
+        modifiers.add(PlatformEvent::Modifier::AltKey);
+    if (metaKey)
+        modifiers.add(PlatformEvent::Modifier::MetaKey);
+    if (currentCapsLockState())
+        modifiers.add(PlatformEvent::Modifier::CapsLockKey);
+    return modifiers;
 }
 
 }

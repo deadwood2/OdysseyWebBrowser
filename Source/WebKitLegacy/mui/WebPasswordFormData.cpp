@@ -32,7 +32,7 @@
 
 #include <WebCore/Document.h>
 #include <WebCore/DocumentLoader.h>
-#include <WebCore/Frame.h>
+#include <WebCore/LocalFrame.h>
 #include <WebCore/FrameLoader.h>
 #include <WebCore/HTMLFormElement.h>
 #include <WebCore/HTMLInputElement.h>
@@ -128,7 +128,7 @@ void assemblePasswordFormResult(const URL& fullOrigin,
     // the page where the form was seen), and the "origin" components of the url
     // (scheme, host, and port).
     URL signonRealmURL = stripURL(fullOrigin);
-    signonRealmURL.setPath("");
+    signonRealmURL.setPath(""_s);
     result->signonRealm = signonRealmURL.string();
 
     if (submit)
@@ -163,7 +163,7 @@ WebPasswordFormData::WebPasswordFormData(HTMLFormElement *form)
     // Calculate the canonical action URL
     String action = form->action();
     if (action.isNull())
-        action = ""; // missing 'action' attribute implies current URL
+        action = ""_s; // missing 'action' attribute implies current URL
     URL fullAction = form->document().completeURL(action);
     if (!fullAction.isValid())
         return;

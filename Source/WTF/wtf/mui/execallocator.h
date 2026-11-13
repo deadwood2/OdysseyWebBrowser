@@ -30,7 +30,12 @@
 
 void * allocator_getmem_page_aligned(size_t bytes, bool executable);
 void * allocator_getmem_aligned(size_t bytes, size_t alignment);
+void * allocator_getmem_page_aligned_try(size_t bytes, bool executable);
+void * allocator_getmem_aligned_try(size_t bytes, size_t alignment);
 void   allocator_freemem(void * address, size_t bytes);
 void   allocator_freemem(void * address);
+/* Same, with the caller to name in anomaly reports (double frees etc.). */
+void   allocator_freemem_from(void * address, size_t bytes, void * caller);
+void   allocator_freemem_from(void * address, void * caller);
 
 #endif /* _EXEC_ALLOCATOR_ */

@@ -40,35 +40,35 @@ class ExtCredential {
 
 public:
     ExtCredential()
-    : m_user("")
-    , m_password("")
-    , m_realm("")
-    , m_userFieldName("")
-    , m_passwordFieldName("")
+    : m_user(emptyString())
+    , m_password(emptyString())
+    , m_realm(emptyString())
+    , m_userFieldName(emptyString())
+    , m_passwordFieldName(emptyString())
     , m_type(CREDENTIAL_TYPE_AUTH)
     , m_flags(0)
     {
     }
 
     ExtCredential(const String& user, const String& password, CredentialPersistence persistence, const String& realm, int flags)
-    : m_user(user.length() ? user : "")
-    , m_password(password.length() ? password : "")
+    : m_user(user.length() ? user : emptyString())
+    , m_password(password.length() ? password : emptyString())
     , m_persistence(persistence)
-    , m_realm(realm.length() ? realm : "")
-    , m_userFieldName("")
-    , m_passwordFieldName("")
+    , m_realm(realm.length() ? realm : emptyString())
+    , m_userFieldName(emptyString())
+    , m_passwordFieldName(emptyString())
     , m_type(CREDENTIAL_TYPE_AUTH)
     , m_flags(flags)
     {     
     }
 
     ExtCredential(const String& user, const String& password, CredentialPersistence persistence, const String& userFieldName, const String &passwordFieldName, int flags)
-    : m_user(user.length() ? user : "")
-    , m_password(password.length() ? password : "")
+    : m_user(user.length() ? user : emptyString())
+    , m_password(password.length() ? password : emptyString())
     , m_persistence(persistence)
-    , m_realm("")
-    , m_userFieldName(userFieldName.length() ? userFieldName : "")
-    , m_passwordFieldName(passwordFieldName.length() ? passwordFieldName : "")
+    , m_realm(emptyString())
+    , m_userFieldName(userFieldName.length() ? userFieldName : emptyString())
+    , m_passwordFieldName(passwordFieldName.length() ? passwordFieldName : emptyString())
     , m_type(CREDENTIAL_TYPE_FORM)
     , m_flags(flags)
     {
@@ -87,7 +87,7 @@ public:
     const int& type() const { return m_type; }
     const int& flags() const { return m_flags; }
 
-    void clear() { m_user = ""; m_password = ""; m_realm = ""; m_userFieldName = ""; m_passwordFieldName = ""; }
+    void clear() { m_user = ""_s; m_password = ""_s; m_realm = ""_s; m_userFieldName = ""_s; m_passwordFieldName = ""_s; }
     void setFlags(int flags) { m_flags = flags; };
     
 private:

@@ -39,7 +39,7 @@ class SuggestEntry
 public:
 
     SuggestEntry()
-        : m_suggestion("")
+        : m_suggestion(emptyString())
         , m_occurrences(0)
     {}
 

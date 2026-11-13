@@ -33,7 +33,7 @@
 #include <wtf/text/CString.h>
 #include <WebCore/Document.h>
 #include <WebCore/Element.h>
-#include <WebCore/FrameView.h>
+#include <WebCore/LocalFrameView.h>
 #include <WebCore/HTMLCollection.h>
 #include <WebCore/HTMLDocument.h>
 #include <WebCore/HTMLElement.h>
@@ -191,7 +191,7 @@ void DOMHTMLDocument::setCookie(const char* cookie)
     if (!m_document)
         return;
 
-    m_document->setCookie(cookie);
+    m_document->setCookie(String::fromLatin1(cookie));
 }
     
 void DOMHTMLDocument::open()
@@ -294,7 +294,7 @@ void DOMHTMLElement::setInnerText(const char* text)
 {
     ASSERT(m_element && m_element->isHTMLElement());
     HTMLElement* htmlEle = static_cast<HTMLElement*>(m_element);
-    htmlEle->setInnerText(text);
+    htmlEle->setInnerText(String::fromLatin1(text));
 }
 
 // DOMHTMLFormElement ---------------------------------------------------------
@@ -682,7 +682,7 @@ void DOMHTMLInputElement::setType(const char* type)
 {
     ASSERT(m_element && m_element->hasTagName(inputTag));
     HTMLInputElement* inputElement = static_cast<HTMLInputElement*>(m_element);
-    inputElement->setType(type);
+    inputElement->setType(AtomString::fromLatin1(type));
 }
     
 const char* DOMHTMLInputElement::useMap()
@@ -705,7 +705,7 @@ void DOMHTMLInputElement::setValue(const char* value)
 {
     ASSERT(m_element && m_element->hasTagName(inputTag));
     HTMLInputElement* inputElement = static_cast<HTMLInputElement*>(m_element);
-    inputElement->setValue(value);
+    inputElement->setValue(String::fromLatin1(value));
 }
     
 void DOMHTMLInputElement::select()
@@ -759,7 +759,7 @@ bool DOMHTMLInputElement::isTextField()
 BalRectangle DOMHTMLInputElement::rectOnScreen()
 {
     RenderObject* renderer = m_element->renderer();
-    FrameView* view = m_element->document().view();
+    LocalFrameView* view = m_element->document().view();
     if (!renderer || !view)
         return WebCore::IntRect();
 
@@ -904,7 +904,7 @@ void DOMHTMLTextAreaElement::setValue(const char* value)
 {
     ASSERT(m_element && m_element->hasTagName(textareaTag));
     HTMLTextAreaElement* textareaElement = static_cast<HTMLTextAreaElement*>(m_element);
-    textareaElement->setValue(value);
+    textareaElement->setValue(String::fromLatin1(value));
 }
     
 void DOMHTMLTextAreaElement::select()

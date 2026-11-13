@@ -17,6 +17,8 @@
  */
 
 #include "AutofillBackingStore.h"
+#include <wtf/NeverDestroyed.h>
+#include <wtf/text/MakeString.h>
 
 #include <wtf/FileSystem.h>
 #include <WebCore/SQLiteStatement.h>
@@ -34,7 +36,7 @@ AutofillBackingStore& autofillBackingStore()
     static NeverDestroyed<AutofillBackingStore> backingStore;
 
     if (!backingStore.get().m_database.isOpen())
-        backingStore.get().open("PROGDIR:Conf/AutoFill.db");
+        backingStore.get().open("PROGDIR:Conf/AutoFill.db"_s);
     return backingStore;
 }
 
@@ -59,7 +61,7 @@ bool AutofillBackingStore::open(const String& dbPath)
     HANDLE_SQL_EXEC_FAILURE(!m_database.open(dbPath), false,
         "Failed to open database file %s for autofill database", dbPath.utf8().data());
 
-    if (!m_database.tableExists("autofill")) {
+    if (!m_database.tableExists("autofill"_s)) {
         HANDLE_SQL_EXEC_FAILURE(!m_database.executeCommand("CREATE TABLE autofill (id INTEGER PRIMARY KEY, name VARCHAR NOT NULL, value VARCHAR NOT NULL, count INTEGER DEFAULT 1)"_s),
             false, "Failed to create table autofill for autofill database");
 
@@ -161,7 +163,7 @@ Vector<String> AutofillBackingStore::get(const String& name, const String& value
     if (name.isEmpty() || valueHint.isEmpty() || !m_getStatement)
         return candidates;
 
-    String value = "%" + valueHint + "%";
+    String value = makeString(makeString("%"_s, valueHint), "%"_s);
     m_getStatement->bindText(1, name);
     m_getStatement->bindText(2, value);
 

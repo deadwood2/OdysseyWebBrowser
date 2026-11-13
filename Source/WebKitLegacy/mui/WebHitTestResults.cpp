@@ -32,8 +32,9 @@
 #include "WebFrameLoaderClient.h"
 
 #include <wtf/text/CString.h>
+#include <WebCore/FrameDestructionObserverInlines.h>
 #include <WebCore/Document.h>
-#include <WebCore/Frame.h>
+#include <WebCore/LocalFrame.h>
 #include <WebCore/HitTestResult.h>
 #include <WebCore/FrameLoader.h>
 #include <WebCore/Image.h>
@@ -65,7 +66,7 @@ WebFrame* WebHitTestResults::frame()
 {
   if (!(m_result->innerNonSharedNode() && m_result->innerNonSharedNode()->document().frame()))
         return 0;
-    Frame* coreFrame = m_result->innerNonSharedNode()->document().frame();
+    LocalFrame* coreFrame = m_result->innerNonSharedNode()->document().frame();
     return static_cast<WebFrameLoaderClient&>(coreFrame->loader().client()).webFrame();
 }
 

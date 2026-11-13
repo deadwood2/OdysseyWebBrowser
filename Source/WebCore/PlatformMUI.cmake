@@ -1,7 +1,7 @@
 include(platform/Cairo.cmake)
 include(platform/Curl.cmake)
+include(platform/OpenSSL.cmake)
 include(platform/ImageDecoders.cmake)
-include(platform/TextureMapper.cmake)
 include(platform/FreeType.cmake)
 
 list(APPEND WebCore_PRIVATE_INCLUDE_DIRECTORIES
@@ -13,6 +13,8 @@ list(APPEND WebCore_PRIVATE_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/platform/graphics/opengl"
     "${WEBCORE_DIR}/platform/network/curl"
     "${WEBCORE_DIR}/platform/mui"
+    "${WEBCORE_DIR}/platform/adwaita"
+    "${WEBCORE_DIR}/rendering/adwaita"
     "${WEBCORE_DIR}/platform/bal"
     "${WEBCORE_DIR}/platform/mediacapabilities"
     "${WEBKITLEGACY_DIR}/mui/UI"
@@ -69,7 +71,6 @@ list(APPEND WebCore_SOURCES
     platform/mui/DragDataMorphOS.cpp
     platform/mui/DragImageMorphOS.cpp
     platform/mui/EditorMUI.cpp
-    platform/mui/EventHandlerMorphOS.cpp
     platform/mui/EventLoopMorphOS.cpp
     platform/mui/IconMorphOS.cpp
     platform/mui/ImageMorphOS.cpp
@@ -85,27 +86,35 @@ list(APPEND WebCore_SOURCES
     platform/mui/PlatformScreenMorphOS.cpp
     platform/mui/PlatformWheelEventMorphOS.cpp
     platform/mui/PopupMenuMorphOS.cpp
-    platform/mui/RenderThemeMorphOS.cpp
+    # 2.46: form controls are drawn by Wayfarer's Adwaita-based theme (as on
+    # MorphOS). OWB's 2.34 image theme (platform/mui/RenderThemeMorphOS.cpp)
+    # targets the removed 2.34 RenderTheme interface; kept for a later port.
+    rendering/adwaita/RenderThemeAdwaita.cpp
+    rendering/adwaita/RenderThemeMorphOS.cpp
+    platform/adwaita/ThemeAdwaita.cpp
     platform/mui/ScrollbarThemeMorphOS.cpp
     platform/mui/SearchPopupMenuMorphOS.cpp
-    platform/mui/SSLKeyGeneratorMorphOS.cpp
-    platform/mui/WidgetMorphOS.cpp
 
     platform/image-decoders/cairo/ImageBackingStoreCairo.cpp
 
     platform/network/mui/CurlSSLHandleMUI.cpp
+    inspector/LegacyWebSocketInspectorInstrumentation.cpp
+    # From Wayfarer's MorphOS port; no MorphOS-specific code in them.
+    accessibility/morphos/AXObjectCacheMorphOS.cpp
+    accessibility/morphos/AccessibilityObjectMorphOS.cpp
+    platform/morphos/SharedMemoryMorphOS.cpp
+    platform/graphics/morphos/SystemFontDatabaseMorphOS.cpp
+    platform/graphics/morphos/GraphicsLayerMorphOS.cpp
 
     platform/PlatformStrategies.cpp
 
-    platform/posix/SharedBufferPOSIX.cpp
 
     platform/text/Hyphenation.cpp
     platform/text/LocaleICU.cpp
-    platform/text/TextCodecICU.cpp
-    platform/text/TextEncodingDetectorICU.cpp
 )
 
 list(APPEND WebCore_PRIVATE_FRAMEWORK_HEADERS
+    inspector/LegacyWebSocketInspectorInstrumentation.h
     platform/mui/DataObjectMorphOS.h
     platform/mui/PopupMenuMorphOS.h
     platform/mui/SearchPopupMenuMorphOS.h
@@ -134,3 +143,14 @@ list(APPEND WebCore_INCLUDE_DIRECTORIES
     ${ZLIB_INCLUDE_DIRS}
 )
 
+
+# 2.46: modern media controls are the only media controls left in WebCore
+# (the 2.34 MEDIA_CONTROLS_SCRIPT path is gone); same set as Wayfarer's port.
+list(APPEND WebCore_USER_AGENT_STYLE_SHEETS
+    ${WEBCORE_DIR}/css/themeAdwaita.css
+    ${WebCore_DERIVED_SOURCES_DIR}/ModernMediaControls.css
+)
+
+set(WebCore_USER_AGENT_SCRIPTS
+    ${WebCore_DERIVED_SOURCES_DIR}/ModernMediaControls.js
+)

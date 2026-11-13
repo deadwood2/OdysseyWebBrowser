@@ -43,7 +43,7 @@
 #include <WebCore/FrameLoaderTypes.h>
 
 namespace WebCore {
-    class Frame;
+    class LocalFrame;
 }
 
 class WebFrame;

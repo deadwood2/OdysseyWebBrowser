@@ -26,6 +26,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include "WebHistoryItem.h"
+#include "LegacyHistoryItemClient.h"
 #include "WebHistoryItem_p.h"
 #include "BackForwardList.h"
 
@@ -59,7 +60,7 @@ WebHistoryItem::~WebHistoryItem()
 
 WebHistoryItem* WebHistoryItem::createInstance()
 {
-    WebHistoryItemPrivate *priv = new WebHistoryItemPrivate(HistoryItem::create());
+    WebHistoryItemPrivate *priv = new WebHistoryItemPrivate(HistoryItem::create(LegacyHistoryItemClient::singleton()));
     WebHistoryItem* instance = new WebHistoryItem(priv);
     return instance;
 }
@@ -83,7 +84,7 @@ bool WebHistoryItem::hasURLString()
 
 void WebHistoryItem::setTitle(const char* title)
 {
-    d->m_historyItem->setTitle(title);
+    d->m_historyItem->setTitle(String::fromLatin1(title));
 }
 
 const char* WebHistoryItem::RSSFeedReferrer()
@@ -93,7 +94,7 @@ const char* WebHistoryItem::RSSFeedReferrer()
 
 void WebHistoryItem::setRSSFeedReferrer(const char* url)
 {
-    d->m_historyItem->setReferrer(url);
+    d->m_historyItem->setReferrer(String::fromLatin1(url));
 }
 
 bool WebHistoryItem::hasPageCache()
@@ -109,7 +110,7 @@ void WebHistoryItem::setHasPageCache(bool /*hasCache*/)
 
 const char* WebHistoryItem::target()
 {
-    return strdup(d->m_historyItem->target().utf8().data());
+    return strdup(d->m_historyItem->target().string().utf8().data());
 }
 
 bool WebHistoryItem::isTargetItem()
@@ -137,14 +138,14 @@ std::vector<WebHistoryItem*> WebHistoryItem::children()
 void WebHistoryItem::initWithURLString(const char* urlString, const char* title, double lastVisited)
 {
     historyItemWrappers().remove(d->m_historyItem.get());
-    d->m_historyItem = HistoryItem::create(urlString, title);
+    d->m_historyItem = HistoryItem::create(LegacyHistoryItemClient::singleton(), String::fromLatin1(urlString), String::fromLatin1(title));
     historyItemWrappers().set(d->m_historyItem.get(), this);
 }
 
 void WebHistoryItem::initWithURLString(const String & urlString, const String & title, double lastVisited)
 {
     historyItemWrappers().remove(d->m_historyItem.get());
-    d->m_historyItem = HistoryItem::create(urlString, title);
+    d->m_historyItem = HistoryItem::create(LegacyHistoryItemClient::singleton(), urlString, title);
     historyItemWrappers().set(d->m_historyItem.get(), this);
 }
 

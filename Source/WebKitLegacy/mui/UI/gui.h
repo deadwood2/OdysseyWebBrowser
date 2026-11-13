@@ -33,7 +33,7 @@
 #define BOOKMARK_PATH       "PROGDIR:bookmarks.html"
 #define CONF_DIRECTORY        "PROGDIR:Conf/"
 #define SESSION_DIRECTORY   "PROGDIR:Conf/sessions/"
-#define SESSION_PATH        "PROGDIR:Conf/sessions/session.prefs"
+#define SESSION_PATH        "PROGDIR:Conf/sessions/session.prefs"_s
 #define SCRIPT_DIRECTORY    "PROGDIR:Scripts/"
 
 enum
@@ -339,6 +339,10 @@ extern Object *app;
 
 /* exported functions */
 ULONG is_morphos2(void);
+#if defined(__AROS__)
+/* owbbrowserclass.cpp: fire the window menu item for a RAmiga key delivered as IDCMP_RAWKEY */
+BOOL owb_trigger_menu_shortcut(Object *obj, struct IntuiMessage *imsg);
+#endif
 
 struct NotifyRequest *dosnotify_start(CONST_STRPTR name);
 void dosnotify_stop(struct NotifyRequest *nr);

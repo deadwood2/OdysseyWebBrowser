@@ -1,6 +1,7 @@
 list(APPEND WTF_SOURCES
     mui/execallocator.cpp
     OSAllocatorAROS.cpp
+    morphos/Signals.cpp
     posix/ThreadingPOSIX.cpp
     posix/FileSystemPOSIX.cpp
     generic/WorkQueueGeneric.cpp
@@ -11,4 +12,8 @@ list(APPEND WTF_SOURCES
     generic/MemoryPressureHandlerGeneric.cpp
     generic/MemoryFootprintGeneric.cpp
     generic/MainThreadGeneric.cpp
+    unix/UniStdExtrasUnix.cpp
 )
+
+# RandomDevice uses OpenSSL RAND_bytes() on AROS.
+list(APPEND WTF_LIBRARIES OpenSSL::Crypto)

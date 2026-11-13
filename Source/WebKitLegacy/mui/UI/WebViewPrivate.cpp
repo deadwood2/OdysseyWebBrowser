@@ -29,6 +29,8 @@
  */
 
 #include <WebCore/Editor.h>
+#include <WebCore/ScrollingCoordinatorTypes.h>
+#include <WebCore/HandleUserInputEventResult.h>
 #include "WebViewPrivate.h"
 #include <WebCore/Chrome.h>
 #include <wtf/text/CString.h>
@@ -38,10 +40,10 @@
 #include <WebCore/EventHandler.h>
 #include "FileIOLinux.h"
 #include <WebCore/FocusController.h>
-#include <WebCore/Frame.h>
+#include <WebCore/LocalFrame.h>
 #include <WebCore/FrameLoader.h>
 #include <WebCore/FrameLoadRequest.h>
-#include <WebCore/FrameView.h>
+#include <WebCore/LocalFrameView.h>
 #include <WebCore/GraphicsContext.h>
 #include <WebCore/GraphicsContextCairo.h>
 #include <WebCore/HitTestRequest.h>
@@ -262,7 +264,7 @@ void MorphOSWebFrameDelegate::didStartProvisionalLoad(WebFrame* webFrame)
     if (widget && widget->browser)
     {
         char *url = (char*) webFrame->url();
-        URL u({ }, url);
+        URL u({ }, String::fromLatin1(url));
 
         DoMethod(app, MM_URLPrefsGroup_ApplySettingsForURL, url, widget->webView);
 
@@ -276,8 +278,8 @@ void MorphOSWebFrameDelegate::didStartProvisionalLoad(WebFrame* webFrame)
         SetAttrs(widget->browser,
                  MA_OWBBrowser_Loading, TRUE,
                  MA_OWBBrowser_State, MV_OWBBrowser_State_Connecting,
-                 MA_OWBBrowser_Zone, u.protocolIs("file") ? MV_OWBBrowser_Zone_Local : MV_OWBBrowser_Zone_Internet,
-                 MA_OWBBrowser_Security, u.protocolIs("https") ? MV_OWBBrowser_Security_Secure : MV_OWBBrowser_Security_None,
+                 MA_OWBBrowser_Zone, u.protocolIs("file"_s) ? MV_OWBBrowser_Zone_Local : MV_OWBBrowser_Zone_Internet,
+                 MA_OWBBrowser_Security, u.protocolIs("https"_s) ? MV_OWBBrowser_Security_Secure : MV_OWBBrowser_Security_None,
                  TAG_DONE);
 
         if(widget->window && ((Object *)getv(widget->window, MA_OWBWindow_ActiveBrowser)) == widget->browser)
@@ -306,7 +308,7 @@ void MorphOSWebFrameDelegate::didCommitLoad(WebFrame* webFrame)
     if (widget && widget->browser)
     {
         char *url = (char*) webFrame->url();
-        URL u({ }, url);
+        URL u({ }, String::fromLatin1(url));
 
         DoMethod(widget->browser, MM_OWBBrowser_DidCommitLoad, webFrame);
 
@@ -315,8 +317,8 @@ void MorphOSWebFrameDelegate::didCommitLoad(WebFrame* webFrame)
         SetAttrs(widget->browser,
                  MA_OWBBrowser_Loading, TRUE,
                  MA_OWBBrowser_State, MV_OWBBrowser_State_Loading,
-                 MA_OWBBrowser_Zone, u.protocolIs("file") ? MV_OWBBrowser_Zone_Local : MV_OWBBrowser_Zone_Internet,
-                 MA_OWBBrowser_Security, u.protocolIs("https") ? MV_OWBBrowser_Security_Secure : MV_OWBBrowser_Security_None,
+                 MA_OWBBrowser_Zone, u.protocolIs("file"_s) ? MV_OWBBrowser_Zone_Local : MV_OWBBrowser_Zone_Internet,
+                 MA_OWBBrowser_Security, u.protocolIs("https"_s) ? MV_OWBBrowser_Security_Secure : MV_OWBBrowser_Security_None,
                  TAG_DONE);
 
         updateURL(widget->browser, url);
@@ -346,8 +348,8 @@ void MorphOSWebFrameDelegate::didFinishLoad(WebFrame* webFrame)
     if (widget && widget->browser)
     {
         char *url = (char *) mainFrame->url();
-        URL u({ }, url);
-        Frame* coreFrame = core(mainFrame);
+        URL u({ }, String::fromLatin1(url));
+        LocalFrame* coreFrame = core(mainFrame);
         String title = coreFrame->loader().documentLoader()->title().string;
 
         SetAttrs(widget->browser,
@@ -357,15 +359,15 @@ void MorphOSWebFrameDelegate::didFinishLoad(WebFrame* webFrame)
 
         if(title.isEmpty())
         {
-            if(u.protocolIs("file"))
+            if(u.protocolIs("file"_s))
             {
                 updateTitle(widget->browser, FilePart(url), false);
             }
-            else if(u.protocolIs("ftp"))
+            else if(u.protocolIs("ftp"_s))
             {
                 updateTitle(widget->browser, url, false);
             }
-            else if(u.protocolIs("topsites"))
+            else if(u.protocolIs("topsites"_s))
             {
                 updateTitle(widget->browser, "Top Sites", false);
             }
@@ -417,14 +419,14 @@ void MorphOSWebFrameDelegate::didFailLoad(WebFrame* webFrame, WebError* error)
         updateNavigation(widget->browser);
     }
 
-    if(error->resourceError().sslErrors())
+    if(error->resourceError().isCertificationVerificationError())
     {
         //kprintf("SSL Error %d\n", error->resourceError().sslErrors());
     }
 
     if(handleAsError)
     {
-        OWBFile f("PROGDIR:resource/error.html");
+        OWBFile f("PROGDIR:resource/error.html"_s);
 
         if(getv(app, MA_OWBApp_ErrorMode) == MV_OWBApp_ErrorMode_Page && f.open('r') != -1)
         {
@@ -449,7 +451,7 @@ void MorphOSWebFrameDelegate::didFailLoad(WebFrame* webFrame, WebError* error)
         {
             char errorstring[512];
             String shorterror = error->resourceError().failingURL().string();
-            shorterror.truncate(128);
+            shorterror = shorterror.left(128);
             ULONG len = strescape(shorterror.latin1().data(), NULL);
             char failingURL[len+1];
             strescape(shorterror.latin1().data(), failingURL);
@@ -759,7 +761,7 @@ WebViewPrivate::WebViewPrivate(WebView *webView)
 
 BalRectangle WebViewPrivate::onExpose(BalEventExpose event)
 {
-    Frame* frame = core(m_webView->mainFrame());
+    LocalFrame* frame = core(m_webView->mainFrame());
     if (!frame)
         return IntRect();
 
@@ -863,14 +865,14 @@ BalRectangle WebViewPrivate::onExpose(BalEventExpose event)
 
 static cairo_status_t writeFunction(void* output, const unsigned char* data, unsigned int length)
 {
-    if (!reinterpret_cast<Vector<unsigned char>*>(output)->tryAppend(data, length))
+    if (!reinterpret_cast<Vector<unsigned char>*>(output)->tryAppend(std::span { data, static_cast<size_t>(length) }))
         return CAIRO_STATUS_WRITE_ERROR;
     return CAIRO_STATUS_SUCCESS;
 }
 
 bool WebViewPrivate::screenshot(int &requested_width, int& requested_height, Vector<char> *imageData)
 {
-    Frame* frame = core(m_webView->mainFrame());
+    LocalFrame* frame = core(m_webView->mainFrame());
     if (frame && frame->view())
     {
         int view_width = m_rect.width();
@@ -917,7 +919,7 @@ bool WebViewPrivate::screenshot(int &requested_width, int& requested_height, Vec
 
 bool WebViewPrivate::screenshot(String& path)
 {
-    Frame* frame = core(m_webView->mainFrame());
+    LocalFrame* frame = core(m_webView->mainFrame());
     if (frame && frame->view())
     {
         int view_width = m_rect.width();
@@ -961,7 +963,7 @@ bool WebViewPrivate::screenshot(String& path)
 bool WebViewPrivate::onKeyDown(BalEventKey event)
 {
     bool handled = false;
-    Frame* frame = &(m_webView->page()->focusController().focusedOrMainFrame());
+    LocalFrame* frame = m_webView->page()->focusController().focusedOrMainFrame();
     if (!frame)
         return false;
     PlatformKeyboardEvent keyboardEvent(&event);
@@ -980,7 +982,7 @@ bool WebViewPrivate::onKeyDown(BalEventKey event)
 
     if (IDCMP_RAWKEY == event.Class)
     {
-        FrameView* view = frame->view();
+        LocalFrameView* view = frame->view();
         WebCore::ScrollDirection direction;
         ScrollGranularity granularity;
 
@@ -1005,89 +1007,89 @@ bool WebViewPrivate::onKeyDown(BalEventKey event)
                 break;
 
             case RAWKEY_DOWN:
-                direction = ScrollDown;
+                direction = WebCore::ScrollDirection::ScrollDown;
 
                 if(event.Qualifier & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT))
                 {
-                    granularity = ScrollByPage;
+                    granularity = WebCore::ScrollGranularity::Page;
                 }
                 else
                 {
-                    granularity = ScrollByLine;
+                    granularity = WebCore::ScrollGranularity::Line;
                 }
                 break;
 
             case RAWKEY_UP:                   
-                direction = ScrollUp;
+                direction = WebCore::ScrollDirection::ScrollUp;
 
                 if(event.Qualifier & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT))
                 {
-                    granularity = ScrollByPage;
+                    granularity = WebCore::ScrollGranularity::Page;
                 }
                 else
                 {
-                    granularity = ScrollByLine;
+                    granularity = WebCore::ScrollGranularity::Line;
                 }
                 break;
 
             case RAWKEY_RIGHT:
-                direction = ScrollRight;
+                direction = WebCore::ScrollDirection::ScrollRight;
 
                 if(event.Qualifier & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT))
                 {
-                    granularity = ScrollByPage;
+                    granularity = WebCore::ScrollGranularity::Page;
                 }
                 else
                 {
-                    granularity = ScrollByLine;
+                    granularity = WebCore::ScrollGranularity::Line;
                 }
                 break;
 
             case RAWKEY_LEFT:
-                direction = ScrollLeft;
+                direction = WebCore::ScrollDirection::ScrollLeft;
 
                 if(event.Qualifier & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT))
                 {
-                    granularity = ScrollByPage;
+                    granularity = WebCore::ScrollGranularity::Page;
                 }
                 else
                 {
-                    granularity = ScrollByLine;
+                    granularity = WebCore::ScrollGranularity::Line;
                 }
                 break;
 
             case RAWKEY_SPACE:
-                granularity = ScrollByPage;
+                granularity = WebCore::ScrollGranularity::Page;
 
                 if(event.Qualifier & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT))
                 {
-                    direction = ScrollUp;
+                    direction = WebCore::ScrollDirection::ScrollUp;
                 }
                 else
                 {
-                    direction = ScrollDown;
+                    direction = WebCore::ScrollDirection::ScrollDown;
                 }
                 break;
 
             case RAWKEY_PAGEDOWN:
-                granularity = ScrollByPage;
-                direction = ScrollDown;
+                granularity = WebCore::ScrollGranularity::Page;
+                direction = WebCore::ScrollDirection::ScrollDown;
                 break;
 
             case RAWKEY_BACKSPACE:
             case RAWKEY_PAGEUP:
-                granularity = ScrollByPage;
-                direction = ScrollUp;
+                granularity = WebCore::ScrollGranularity::Page;
+                direction = WebCore::ScrollDirection::ScrollUp;
                 break;
 
             case RAWKEY_HOME:
-                granularity = ScrollByDocument;
-                direction = ScrollUp;
+                granularity = WebCore::ScrollGranularity::Document;
+                direction = WebCore::ScrollDirection::ScrollUp;
                 break;
 
             case RAWKEY_END:
-                granularity = ScrollByDocument;
-                direction = ScrollDown;
+                granularity = WebCore::ScrollGranularity::Document;
+                direction = WebCore::ScrollDirection::ScrollDown;
                 break;
         }
 
@@ -1099,22 +1101,22 @@ bool WebViewPrivate::onKeyDown(BalEventKey event)
 
             switch(direction)
             {
-                case ScrollDown:
+                case WebCore::ScrollDirection::ScrollDown:
                     visible = view->visibleHeight();
                     total   = view->contentsHeight();
                     deltaY  = 1;
                     break;
-                case ScrollUp:
+                case WebCore::ScrollDirection::ScrollUp:
                     visible = view->visibleHeight();
                     total   = view->contentsHeight();
                     deltaY  = -1;
                     break;
-                case ScrollRight:
+                case WebCore::ScrollDirection::ScrollRight:
                     visible = view->visibleWidth();
                     total   = view->contentsWidth();
                     deltaX  = 1;
                     break;
-                case ScrollLeft:
+                case WebCore::ScrollDirection::ScrollLeft:
                     visible = view->visibleWidth();
                     total   = view->contentsWidth();
                     deltaX  = -1;
@@ -1123,16 +1125,16 @@ bool WebViewPrivate::onKeyDown(BalEventKey event)
 
             switch(granularity)
             {
-                case ScrollByPage:
-                    step = max(max<int>(visible * Scrollbar::minFractionToStepWhenPaging(), visible - Scrollbar::maxOverlapBetweenPages()), 1);
+                case WebCore::ScrollGranularity::Page:
+                    step = std::max(std::max<int>(visible * Scrollbar::minFractionToStepWhenPaging(), visible - Scrollbar::maxOverlapBetweenPages()), 1);
                     break;
-                case ScrollByLine:
+                case WebCore::ScrollGranularity::Line:
                     step = Scrollbar::pixelsPerLineStep();
                     break;
-                case ScrollByDocument:
+                case WebCore::ScrollGranularity::Document:
                     step = total;
                     break;
-                case ScrollByPixel:
+                case WebCore::ScrollGranularity::Pixel:
                     step = 1;
                     break;
             }
@@ -1312,7 +1314,7 @@ bool WebViewPrivate::onKeyDown(BalEventKey event)
 
 bool WebViewPrivate::onKeyUp(BalEventKey event)
 {
-    Frame* frame = &(m_webView->page()->focusController().focusedOrMainFrame());
+    LocalFrame* frame = m_webView->page()->focusController().focusedOrMainFrame();
     if (!frame)
         return false;
     PlatformKeyboardEvent keyboardEvent(&event);
@@ -1325,15 +1327,15 @@ bool WebViewPrivate::onKeyUp(BalEventKey event)
 
 bool WebViewPrivate::onMouseMotion(BalEventMotion event)
 {
-    Frame* frame = core(m_webView->mainFrame());
+    LocalFrame* frame = core(m_webView->mainFrame());
     if (!frame)
         return false;
-    return frame->eventHandler().mouseMoved(PlatformMouseEvent(&event));
+    return frame->eventHandler().mouseMoved(PlatformMouseEvent(&event)).wasHandled();
 }
 
 bool WebViewPrivate::onMouseButtonDown(BalEventButton event)
 {
-    Frame* frame = core(m_webView->mainFrame());
+    LocalFrame* frame = core(m_webView->mainFrame());
     bool handled = false;
 
     if (!frame)
@@ -1342,9 +1344,9 @@ bool WebViewPrivate::onMouseButtonDown(BalEventButton event)
     PlatformMouseEvent mouseEvent = PlatformMouseEvent(&event);
 
     // If an url is mmb clicked, consider the event wasn't handled.
-    if(mouseEvent.type() == PlatformEvent::MousePressed && mouseEvent.button() == MiddleButton)
+    if(mouseEvent.type() == PlatformEvent::Type::MousePressed && mouseEvent.button() == MouseButton::Middle)
     {
-        FrameView* v = frame->view();
+        LocalFrameView* v = frame->view();
 
         if(v)
         {
@@ -1363,13 +1365,13 @@ bool WebViewPrivate::onMouseButtonDown(BalEventButton event)
         return handled;
     }
 
-    handled = frame->eventHandler().handleMousePressEvent(PlatformMouseEvent(mouseEvent));
+    handled = frame->eventHandler().handleMousePressEvent(PlatformMouseEvent(mouseEvent)).wasHandled();
     return handled;
 }
 
 bool WebViewPrivate::onMouseButtonUp(BalEventButton event)
 {
-    Frame* frame = core(m_webView->mainFrame());
+    LocalFrame* frame = core(m_webView->mainFrame());
     bool handled = false;
 
     if(!frame)
@@ -1378,9 +1380,9 @@ bool WebViewPrivate::onMouseButtonUp(BalEventButton event)
     PlatformMouseEvent mouseEvent = PlatformMouseEvent(&event);
 
     /* XXX: Highly hacky IMO, not the right place for that */
-    if(mouseEvent.type() == PlatformEvent::MouseReleased && mouseEvent.button() == MiddleButton)
+    if(mouseEvent.type() == PlatformEvent::Type::MouseReleased && mouseEvent.button() == MouseButton::Middle)
     {
-        FrameView* v = frame->view();
+        LocalFrameView* v = frame->view();
         if (!v) return handled;
 
         IntPoint viewportPos = v->windowToContents(mouseEvent.position());
@@ -1415,11 +1417,22 @@ bool WebViewPrivate::onMouseButtonUp(BalEventButton event)
                         break;
                 }
 
-                if (Page* newPage = oldPage->chrome().createWindow(
+                if (RefPtr newPage = oldPage->chrome().createWindow(
                         *frame, features,
-                        NavigationAction(*frame->document(), ResourceRequest(urlToLoad, frame->loader().outgoingReferrer()), InitiatedByMainFrame::Unknown)
+                        NavigationAction(*frame->document(), ResourceRequest(urlToLoad, frame->loader().outgoingReferrer()), InitiatedByMainFrame::Unknown, true /* user input */)
                         ))
+                {
                     newPage->chrome().show();
+                    // createWindow() hands back an empty page (WebCore navigates the
+                    // windows it asks for itself); this is the user's middle click, so
+                    // the link is loaded here, once, as a user request.
+                    if (auto* newFrame = dynamicDowncast<LocalFrame>(newPage->mainFrame()))
+                    {
+                        FrameLoadRequest request(*newFrame, ResourceRequest(urlToLoad, frame->loader().outgoingReferrer()));
+                        request.setIsRequestFromClientOrUserInput();
+                        newFrame->loader().load(WTFMove(request));
+                    }
+                }
             }
 
             handled = true;
@@ -1428,22 +1441,22 @@ bool WebViewPrivate::onMouseButtonUp(BalEventButton event)
         return handled;
     }
 
-    handled = frame->eventHandler().handleMouseReleaseEvent(mouseEvent);
+    handled = frame->eventHandler().handleMouseReleaseEvent(mouseEvent).wasHandled();
     return handled;
 }
 
 bool WebViewPrivate::onScroll(BalEventScroll event)
 {
-    Frame* frame = core(m_webView->mainFrame());
+    LocalFrame* frame = core(m_webView->mainFrame());
     if (!frame)
         return false;
     PlatformWheelEvent wheelEvent(&event);
-    return frame->eventHandler().handleWheelEvent(wheelEvent, { WheelEventProcessingSteps::MainThreadForScrolling, WheelEventProcessingSteps::MainThreadForBlockingDOMEventDispatch });
+    return frame->eventHandler().handleWheelEvent(wheelEvent, { WheelEventProcessingSteps::SynchronousScrolling, WheelEventProcessingSteps::BlockingDOMEventDispatch }).wasHandled();
 }
 
 void WebViewPrivate::onResize(BalResizeEvent event)
 {
-    Frame* frame = core(m_webView->mainFrame());
+    LocalFrame* frame = core(m_webView->mainFrame());
     if (!frame)
         return;
     m_rect.setWidth(event.w);
@@ -1513,7 +1526,7 @@ void WebViewPrivate::repaint(const WebCore::IntRect& windowRect, bool contentCha
     if (contentChanged) {
         m_webView->addToDirtyRegion(rect);
 #if 0
-        Frame* focusedFrame = m_webView->page()->focusController()->focusedFrame();
+        LocalFrame* focusedFrame = m_webView->page()->focusController()->focusedFrame();
         if (focusedFrame) {
             Scrollbar* hBar = focusedFrame->view()->horizontalScrollbar();
             Scrollbar* vBar = focusedFrame->view()->verticalScrollbar();
@@ -1545,7 +1558,7 @@ void WebViewPrivate::repaint(const WebCore::IntRect& windowRect, bool contentCha
     }
 }
 
-void WebViewPrivate::scrollBackingStore(WebCore::FrameView* view, int dx, int dy, const WebCore::IntRect& scrollViewRect, const WebCore::IntRect& clipRect)
+void WebViewPrivate::scrollBackingStore(WebCore::LocalFrameView* view, int dx, int dy, const WebCore::IntRect& scrollViewRect, const WebCore::IntRect& clipRect)
 {
     double start = 0;
     if(renderBenchmark)
@@ -1668,7 +1681,7 @@ void WebViewPrivate::closeWindow()
 
 void WebViewPrivate::requestMemoryRelease()
 {
-    MemoryPressureHandler::singleton().setUnderMemoryPressure(true);
+    MemoryPressureHandler::singleton().beginSimulatedMemoryPressure();
     MemoryPressureHandler::singleton().releaseMemory(Critical::Yes, Synchronous::Yes);
-    MemoryPressureHandler::singleton().setUnderMemoryPressure(false);
+    MemoryPressureHandler::singleton().endSimulatedMemoryPressure();
 }

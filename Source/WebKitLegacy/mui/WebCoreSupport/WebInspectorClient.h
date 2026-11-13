@@ -47,6 +47,7 @@ class WebNodeHighlight;
 class WebView;
 
 class WebInspectorClient final : public WebCore::InspectorClient, public Inspector::FrontendChannel {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     explicit WebInspectorClient(WebView*);
 

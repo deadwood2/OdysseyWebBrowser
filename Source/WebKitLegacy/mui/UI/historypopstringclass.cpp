@@ -74,7 +74,10 @@ MUI_HOOK(history_popopen, APTR pop, APTR win)
 {
     Object *list = (Object *)getv((Object *)pop, MUIA_Listview_List);
 
-    SetAttrs((Object *) win, MUIA_Window_DefaultObject, list, MUIA_Window_ActiveObject, list, TAG_DONE);
+    /* Open the list window inactive: completion opens it while the user types, and
+     * an active pop-up took the keys meant for the address field. Up/Down still move
+     * the list from the field. Zune reopens its pop-ups inactive for the same reason. */
+    SetAttrs((Object *) win, MUIA_Window_DefaultObject, list, MUIA_Window_ActiveObject, list, MUIA_Window_Activate, FALSE, TAG_DONE);
     set(list, MUIA_List_Active, MUIV_List_Active_Off/*0*/);
 
     return (TRUE);

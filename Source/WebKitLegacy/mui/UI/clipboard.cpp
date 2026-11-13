@@ -112,7 +112,7 @@ static void copycollection(String &str, CollectionItem* ci, uint32 codeSet)
 
     if (CODESET_UTF8 == codeSet)
     {
-        str = String::fromUTF8((const char *)ci->ci_Data, ci->ci_Size);
+        str = String::fromUTF8(std::span { (const char *)ci->ci_Data, static_cast<size_t>(ci->ci_Size) });
     }
     else if (CODESET_LOCAL == codeSet)
     {

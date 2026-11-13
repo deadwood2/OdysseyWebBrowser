@@ -46,6 +46,10 @@ enum {
 struct Data
 {
     Object *menu;
+#if defined(__AROS__)
+    ULONG shortcutsAdded;
+    struct MUI_EventHandlerNode shortcutNode;
+#endif
 /*
     ULONG added;
     struct MUI_EventHandlerNode ehnode;
@@ -239,6 +243,59 @@ DEFMMETHOD(DragFinish)
     return DOSUPER;
 }
 
+#if defined(__AROS__)
+/* Menu shortcuts while the address field is active and the pointer is over the
+ * page: Intuition then delivers RAmiga+key as IDCMP_RAWKEY (see owbbrowserclass),
+ * and Zune gives it to the active object's handlers first, so the string class
+ * would insert the letter. This handler, above the string's own priority 0, fires
+ * the menu item instead. Keys without a menu item (editing keys such as Amiga
+ * C/V/X) and plain typing go on to the string unchanged. */
+DEFMMETHOD(Setup)
+{
+    GETDATA;
+
+    if (!DOSUPER)
+        return 0;
+
+    data->shortcutNode.ehn_Object   = obj;
+    data->shortcutNode.ehn_Class    = cl;
+    data->shortcutNode.ehn_Priority = 1;
+    data->shortcutNode.ehn_Flags    = MUI_EHF_GUIMODE;
+    data->shortcutNode.ehn_Events   = IDCMP_RAWKEY;
+    DoMethod(_win(obj), MUIM_Window_AddEventHandler, &data->shortcutNode);
+    data->shortcutsAdded = TRUE;
+    return TRUE;
+}
+
+DEFMMETHOD(Cleanup)
+{
+    GETDATA;
+
+    if (data->shortcutsAdded)
+    {
+        DoMethod(_win(obj), MUIM_Window_RemEventHandler, &data->shortcutNode);
+        data->shortcutsAdded = FALSE;
+    }
+    return DOSUPER;
+}
+
+DEFMMETHOD(HandleEvent)
+{
+    struct IntuiMessage *imsg = msg->imsg;
+
+    /* Only for the active field: otherwise the page gets the key first (owbbrowserclass). */
+    if (imsg && imsg->Class == IDCMP_RAWKEY
+        && getv(_win(obj), MUIA_Window_ActiveObject) == (IPTR) obj
+        && (imsg->Qualifier & IEQUALIFIER_RCOMMAND)
+        && !(imsg->Qualifier & IEQUALIFIER_REPEAT)
+        && !(imsg->Code & IECODE_UP_PREFIX)
+        && owb_trigger_menu_shortcut(obj, imsg))
+        return MUI_EventHandlerRC_Eat;
+
+    return 0;
+}
+#endif
+
 
 BEGINMTABLE
 DECNEW
@@ -254,6 +311,11 @@ DECMMETHOD(ContextMenuChoice)
 DECMMETHOD(DragQuery)
 DECMMETHOD(DragDrop)
 DECMMETHOD(DragFinish)
+#if defined(__AROS__)
+DECMMETHOD(Setup)
+DECMMETHOD(Cleanup)
+DECMMETHOD(HandleEvent)
+#endif
 ENDMTABLE
 
 DECSUBCLASS_NC(MUIC_String, urlstringclass)

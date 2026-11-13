@@ -27,6 +27,8 @@
  */
 
 #include "WebChromeClient.h"
+#include <WebCore/DocumentInlines.h>
+#include <WebCore/CookieConsentDecisionResult.h>
 #include "ColorChooserController.h"
 #include "DateTimeChooserController.h"
 #include <WebCore/ColorChooser.h>
@@ -51,8 +53,8 @@
 #include <WebCore/ContextMenu.h>
 #include <WebCore/FileChooser.h>
 #include <WebCore/FloatRect.h>
-#include <WebCore/Frame.h>
-#include <WebCore/FrameView.h>
+#include <WebCore/LocalFrame.h>
+#include <WebCore/LocalFrameView.h>
 #include <WebCore/HTMLNames.h>
 #include <WebCore/Icon.h>
 #include <WebCore/IntRect.h>
@@ -87,19 +89,27 @@ WebChromeClient::WebChromeClient(WebView* webView)
 
 void WebChromeClient::chromeDestroyed()
 {
-    delete this;
+    // 2.46: the Page owns this client (UniqueRef) and destroys it.
 }
 
 void WebChromeClient::setWindowRect(const FloatRect& r)
 {
 }
 
-FloatRect WebChromeClient::windowRect()
+FloatRect WebChromeClient::windowRect() const
 {
-    return FloatRect();
+    BalWidget* widget = m_webView->viewWindow();
+    Object* browser = widget ? widget->browser : nullptr;
+
+    if (browser && muiRenderInfo(browser) && _window(browser)) {
+        struct Window* window = _window(browser);
+        return FloatRect(window->LeftEdge, window->TopEdge, window->Width, window->Height);
+    }
+
+    return pageRect();
 }
 
-FloatRect WebChromeClient::pageRect()
+FloatRect WebChromeClient::pageRect() const
 {
     IntRect p(m_webView->frameRect());
     return FloatRect(p);
@@ -120,7 +130,7 @@ void WebChromeClient::unfocus()
     m_webView->clearFocus();
 }
 
-bool WebChromeClient::canTakeFocus(FocusDirection direction)
+bool WebChromeClient::canTakeFocus(FocusDirection direction) const
 {
     // FIXME: Win uses its IWebUIDelegate here.
     return true;
@@ -141,7 +151,7 @@ void WebChromeClient::focusedFrameChanged(WebCore::Frame*)
 {
 }
 
-Page* WebChromeClient::createWindow(Frame&, const WindowFeatures& features, const WebCore::NavigationAction& navigationAction)
+Page* WebChromeClient::createWindow(LocalFrame&, const WindowFeatures& features, const WebCore::NavigationAction& navigationAction)
 {
     if (features.dialog)
     {
@@ -151,17 +161,21 @@ Page* WebChromeClient::createWindow(Frame&, const WindowFeatures& features, cons
 
     //kprintf("WebChromeClient::createWindow(url: <%s> framename: <%s> empty: %d)\n", frameLoadRequest.resourceRequest().url().string().utf8().data(), frameLoadRequest.frameName().utf8().data(),  frameLoadRequest.isEmpty());
 
+    // The new page is created empty: WebCore navigates the window it asked
+    // for (LocalDOMWindow::createWindow) with the page's own request, which
+    // keeps its origin and user-input state. Passing the URL here loaded it a
+    // second time as a user request.
     ULONG frame = navigationAction.isEmpty();
     ULONG privatebrowsing = getv(m_webView->viewWindow()->browser, MA_OWBBrowser_PrivateBrowsing);
     BalWidget *widget = NULL;
 
     if(features.newPagePolicy == NEWPAGE_POLICY_WINDOW)
     {
-        widget = (BalWidget *) DoMethod(app, MM_OWBApp_AddWindow, navigationAction.url().string().utf8().data(), frame, NULL, FALSE, &features, privatebrowsing);
+        widget = (BalWidget *) DoMethod(app, MM_OWBApp_AddWindow, NULL, frame, NULL, FALSE, &features, privatebrowsing);
     }
     else if(features.newPagePolicy == NEWPAGE_POLICY_TAB)
     {
-        widget = (BalWidget *) DoMethod(app, MM_OWBApp_AddBrowser, NULL, navigationAction.url().string().utf8().data(), frame, NULL, features.donotactivate? TRUE : FALSE, privatebrowsing, FALSE);
+        widget = (BalWidget *) DoMethod(app, MM_OWBApp_AddBrowser, NULL, NULL, frame, NULL, features.donotactivate? TRUE : FALSE, privatebrowsing, FALSE);
     }
     else /* User settings are considered for new page */
     {
@@ -169,11 +183,11 @@ Page* WebChromeClient::createWindow(Frame&, const WindowFeatures& features, cons
 
         if(popuppolicy == MV_OWBApp_NewPagePolicy_Window)
         {
-            widget = (BalWidget *) DoMethod(app, MM_OWBApp_AddWindow, navigationAction.url().string().utf8().data(), frame, NULL, FALSE, &features, privatebrowsing);
+            widget = (BalWidget *) DoMethod(app, MM_OWBApp_AddWindow, NULL, frame, NULL, FALSE, &features, privatebrowsing);
         }
         else if(popuppolicy == MV_OWBApp_NewPagePolicy_Tab)
         {
-            widget = (BalWidget *) DoMethod(app, MM_OWBApp_AddBrowser, NULL, navigationAction.url().string().utf8().data(), frame, NULL, features.donotactivate? TRUE : FALSE, privatebrowsing, FALSE);
+            widget = (BalWidget *) DoMethod(app, MM_OWBApp_AddBrowser, NULL, NULL, frame, NULL, features.donotactivate? TRUE : FALSE, privatebrowsing, FALSE);
         }
     }
 
@@ -189,7 +203,7 @@ void WebChromeClient::show()
 {
 }
 
-bool WebChromeClient::canRunModal()
+bool WebChromeClient::canRunModal() const
 {
     return false;
 }
@@ -203,7 +217,7 @@ void WebChromeClient::setToolbarsVisible(bool visible)
     m_webView->setToolbarsVisible(visible);
 }
 
-bool WebChromeClient::toolbarsVisible()
+bool WebChromeClient::toolbarsVisible() const
 {
     return m_webView->toolbarsVisible();
 }
@@ -213,7 +227,7 @@ void WebChromeClient::setStatusbarVisible(bool visible)
     m_webView->setStatusbarVisible(visible);
 }
 
-bool WebChromeClient::statusbarVisible()
+bool WebChromeClient::statusbarVisible() const
 {
     return m_webView->statusbarVisible();
 }
@@ -225,7 +239,7 @@ void WebChromeClient::setScrollbarsVisible(bool b)
         webFrame->setAllowsScrolling(b);
 }
 
-bool WebChromeClient::scrollbarsVisible()
+bool WebChromeClient::scrollbarsVisible() const
 {
     WebFrame* webFrame = m_webView->topLevelFrame();
     bool b = false;
@@ -240,7 +254,7 @@ void WebChromeClient::setMenubarVisible(bool visible)
     m_webView->setMenubarVisible(visible);
 }
 
-bool WebChromeClient::menubarVisible()
+bool WebChromeClient::menubarVisible() const
 {
     return m_webView->menubarVisible();
 }
@@ -261,13 +275,13 @@ bool WebChromeClient::canRunBeforeUnloadConfirmPanel()
     return false;
 }
 
-bool WebChromeClient::runBeforeUnloadConfirmPanel(const String& message, Frame& frame)
+bool WebChromeClient::runBeforeUnloadConfirmPanel(const String& message, LocalFrame& frame)
 {
     kprintf("runBeforeUnloadConfirmPanel: %s\n", message.utf8().data());
     return false;
 }
 
-void WebChromeClient::closeWindowSoon()
+void WebChromeClient::closeWindow()
 {
     // We need to remove the parent WebView from WebViewSets here, before it actually
     // closes, to make sure that JavaScript code that executes before it closes
@@ -287,14 +301,14 @@ void WebChromeClient::closeWindowSoon()
     m_webView->closeWindowSoon();
 }
 
-void WebChromeClient::runJavaScriptAlert(Frame& frame, const String& message)
+void WebChromeClient::runJavaScriptAlert(LocalFrame& frame, const String& message)
 {
     SharedPtr<JSActionDelegate> jsActionDelegate = m_webView->jsActionDelegate();
     if (jsActionDelegate)
         jsActionDelegate->jsAlert(m_webView->mainFrame(), message.utf8().data());
 }
 
-bool WebChromeClient::runJavaScriptConfirm(Frame& frame, const String& message)
+bool WebChromeClient::runJavaScriptConfirm(LocalFrame& frame, const String& message)
 {
     SharedPtr<JSActionDelegate> jsActionDelegate = m_webView->jsActionDelegate();
     if (jsActionDelegate)
@@ -302,7 +316,7 @@ bool WebChromeClient::runJavaScriptConfirm(Frame& frame, const String& message)
     return false;
 }
 
-bool WebChromeClient::runJavaScriptPrompt(Frame& frame, const String& message, const String& defaultValue, String& result)
+bool WebChromeClient::runJavaScriptPrompt(LocalFrame& frame, const String& message, const String& defaultValue, String& result)
 {
     char* value = 0;
     SharedPtr<JSActionDelegate> jsActionDelegate = m_webView->jsActionDelegate();
@@ -310,7 +324,7 @@ bool WebChromeClient::runJavaScriptPrompt(Frame& frame, const String& message, c
     {
         if(jsActionDelegate->jsPrompt(m_webView->mainFrame(), message.utf8().data(), defaultValue.utf8().data(), &value))
         {
-            result = value;
+            result = String::fromLatin1(value);
             free(value);
             return true;
         }
@@ -388,7 +402,7 @@ PlatformPageClient WebChromeClient::platformPageClient() const
     return m_webView->viewWindow();
 } 
 
-void WebChromeClient::contentsSizeChanged(Frame&, const IntSize&) const
+void WebChromeClient::contentsSizeChanged(LocalFrame&, const IntSize&) const
 {
 }
 
@@ -398,7 +412,7 @@ void WebChromeClient::intrinsicContentsSizeChanged(const IntSize&) const
 }
 
 
-void WebChromeClient::mouseDidMoveOverElement(const HitTestResult& result, unsigned modifierFlags, const WTF::String& toolTip, WebCore::TextDirection)
+void WebChromeClient::mouseDidMoveOverElement(const HitTestResult& result, OptionSet<PlatformEventModifier>, const WTF::String& toolTip, WebCore::TextDirection)
 {
     m_webView->setToolTip(toolTip.utf8().data());
 }
@@ -417,12 +431,12 @@ void WebChromeClient::unavailablePluginButtonClicked(Element& element, RenderEmb
         DoMethod(widget->window, MM_OWBWindow_LoadURL, "http://fabportnawak.free.fr/owb/plugins/"); // Just a test
 }
 
-void WebChromeClient::print(Frame& frame, const WebCore::StringWithDirection&)
+void WebChromeClient::print(LocalFrame& frame, const WebCore::StringWithDirection&)
 {
     DoMethod((Object *) getv(app, MA_OWBApp_PrinterWindow), MM_PrinterWindow_PrintDocument, &frame);
 }
 
-void WebChromeClient::exceededDatabaseQuota(Frame& frame, const String& databaseIdentifier, DatabaseDetails)
+void WebChromeClient::exceededDatabaseQuota(LocalFrame& frame, const String& databaseIdentifier, DatabaseDetails)
 {
     WebSecurityOrigin *origin = WebSecurityOrigin::createInstance(&frame.document()->securityOrigin());
     SharedPtr<JSActionDelegate> jsActionDelegate = m_webView->jsActionDelegate();
@@ -464,7 +478,7 @@ std::unique_ptr<ColorChooser> WebChromeClient::createColorChooser(ColorChooserCl
 }
 #endif
 
-void WebChromeClient::runOpenPanel(Frame&, FileChooser& prpFileChooser)
+void WebChromeClient::runOpenPanel(LocalFrame&, FileChooser& prpFileChooser)
 {
     FileChooser& chooser = prpFileChooser;
     bool multiFile = chooser.settings().allowsMultipleFiles;
@@ -487,7 +501,7 @@ void WebChromeClient::runOpenPanel(Frame&, FileChooser& prpFileChooser)
             for(i = 0; i < count; i++)
             {
                 //kprintf("file = %s\n", files[i]);
-                names.append(String(files[i]));
+                names.append(String::fromLatin1(files[i]));
             }
 
             chooser.chooseFiles(names);
@@ -505,7 +519,7 @@ void WebChromeClient::runOpenPanel(Frame&, FileChooser& prpFileChooser)
         if(file)
         {
             //kprintf("file = %s\n", file);
-            chooser.chooseFile(String(file));
+            chooser.chooseFile(String::fromLatin1(file));
             FreeVecTaskPooled(file);
         }
     }
@@ -553,11 +567,11 @@ void WebChromeClient::triggerRenderingUpdate()
     m_webView->paint();
 }
 
-void WebChromeClient::attachRootGraphicsLayer(WebCore::Frame& frame, WebCore::GraphicsLayer* layer)
+void WebChromeClient::attachRootGraphicsLayer(WebCore::LocalFrame& frame, WebCore::GraphicsLayer* layer)
 {
 }
 
-bool WebChromeClient::shouldUseTiledBackingForFrameView(const WebCore::FrameView&) const
+bool WebChromeClient::shouldUseTiledBackingForFrameView(const WebCore::LocalFrameView&) const
 {
     return false;
 }
@@ -588,7 +602,7 @@ bool WebChromeClient::supportsFullScreenForElement(const WebCore::Element& eleme
 #endif
 }
 
-void WebChromeClient::enterFullScreenForElement(WebCore::Element& element)
+void WebChromeClient::enterFullScreenForElement(WebCore::Element& element, WebCore::HTMLMediaElementEnums::VideoFullscreenMode)
 {
     //kprintf("enterFullScreenForElement\n");
     element.document().fullscreenManager().willEnterFullscreen(element);
@@ -647,11 +661,12 @@ void WebChromeClient::didFinishLoadingImageForElement(WebCore::HTMLImageElement&
 {
 }
 
+#if ENABLE(DATE_AND_TIME_INPUT_TYPES)
 std::unique_ptr<WebCore::DateTimeChooser> WebChromeClient::createDateTimeChooser(WebCore::DateTimeChooserClient&)
 {
-asm("int3");
     return nullptr;
 }
+#endif
 
 //void WebChromeClient::fullScreenRendererChanged(RenderBox*)
 //{
@@ -710,3 +725,9 @@ asm("int3");
 //}
 //#endif
 //
+
+// No cookie consent UI in OWB (same answer as Wayfarer).
+void WebChromeClient::requestCookieConsent(CompletionHandler<void(CookieConsentDecisionResult)>&& completion)
+{
+    completion(CookieConsentDecisionResult::NotSupported);
+}

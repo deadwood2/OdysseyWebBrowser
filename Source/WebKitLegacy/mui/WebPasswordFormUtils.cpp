@@ -41,6 +41,7 @@
 //   toolkit/components/passwordmgr/base/nsPasswordManager.cpp
 
 #include "WebPasswordFormUtils.h"
+#include <WebCore/FormListedElement.h>
 
 #include <WebCore/HTMLFormElement.h>
 #include <WebCore/HTMLInputElement.h>
@@ -61,7 +62,7 @@ void findPasswordFormFields(HTMLFormElement* form, PasswordFormFields* fields)
 
     int firstPasswordIndex = 0;
     // First, find the password fields and activated submit button
-    const Vector<Ref<FormAssociatedElement>> formElements = form->copyAssociatedElementsVector();
+    const Vector<Ref<FormListedElement>> formElements = form->copyListedElementsVector();
     for (size_t i = 0; i < formElements.size(); i++) {
         if (!formElements[i]->isFormControlElement())
             continue;

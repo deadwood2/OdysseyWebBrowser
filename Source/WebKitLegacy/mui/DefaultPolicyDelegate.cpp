@@ -135,7 +135,7 @@ void DefaultPolicyDelegate::decidePolicyForNavigationAction(WebView* webView,
             {
                 // A file URL shouldn't fall through to here, but if it did,
                 // it would be a security risk to open it.
-                if (!String(url).startsWith("file:"))
+                if (!String::fromLatin1(url).startsWith("file:"_s))
                 {
                     // FIXME: Open the URL not by means of a webframe, but by handing it over to the system and letting it determine how to open that particular URL scheme.  See documentation for [NSWorkspace openURL]
                     ;
@@ -174,10 +174,10 @@ void DefaultPolicyDelegate::unableToImplementPolicyWithError(
 {
     char *frameNameStr = (char *) frame->name();
     String errorStr;
-    errorStr = error->localizedDescription();
+    errorStr = String::fromLatin1(error->localizedDescription());
 
     String frameName;
-    frameName = frameNameStr;
+    frameName = String::fromLatin1(frameNameStr);
 
     free(frameNameStr);
 

@@ -31,7 +31,6 @@
 //#include "MediaControlElements.h"
 #include "Page.h"
 #include "PaintInfo.h"
-#include "RenderFullScreen.h"
 #include "RenderProgress.h"
 #include "RenderSlider.h"
 #include "RenderView.h"
@@ -359,8 +358,8 @@ bool RenderThemeBal::paintSearchFieldCancelButton(const RenderBox& object, const
     // to the bottom of the field. This would look better with the text.
     bounds.setY(parentBox.y() + (parentBox.height() - bounds.height() + 1) / 2);
 
-    static Image& cancelImage = Image::loadPlatformResource("SearchCancel").leakRef();
-    static Image& cancelPressedImage = Image::loadPlatformResource("SearchCancelPressed").leakRef();
+    static Image& cancelImage = ImageAdapter::loadPlatformResource("SearchCancel").leakRef();
+    static Image& cancelPressedImage = ImageAdapter::loadPlatformResource("SearchCancelPressed").leakRef();
     paintInfo.context().drawImage(isPressed(object) ? cancelPressedImage : cancelImage, bounds);
     return false;
 }
@@ -955,12 +954,12 @@ bool RenderThemeBal::paintMediaPlayButton(const RenderObject& object, const Pain
     if (!mediaElement)
         return false;
 
-    static Image& mediaPlay = Image::loadPlatformResource("MediaTheme/Play").leakRef();
-    static Image& mediaPause = Image::loadPlatformResource("MediaTheme/Pause").leakRef();
-    static Image& mediaPlayHovered = Image::loadPlatformResource("MediaTheme/PlayHovered").leakRef();
-    static Image& mediaPauseHovered = Image::loadPlatformResource("MediaTheme/PauseHovered").leakRef();
-    static Image& mediaPlayPressed = Image::loadPlatformResource("MediaTheme/PlayPressed").leakRef();
-    static Image& mediaPausePressed = Image::loadPlatformResource("MediaTheme/PausePressed").leakRef();
+    static Image& mediaPlay = ImageAdapter::loadPlatformResource("MediaTheme/Play").leakRef();
+    static Image& mediaPause = ImageAdapter::loadPlatformResource("MediaTheme/Pause").leakRef();
+    static Image& mediaPlayHovered = ImageAdapter::loadPlatformResource("MediaTheme/PlayHovered").leakRef();
+    static Image& mediaPauseHovered = ImageAdapter::loadPlatformResource("MediaTheme/PauseHovered").leakRef();
+    static Image& mediaPlayPressed = ImageAdapter::loadPlatformResource("MediaTheme/PlayPressed").leakRef();
+    static Image& mediaPausePressed = ImageAdapter::loadPlatformResource("MediaTheme/PausePressed").leakRef();
 
     if (isPressed(object))
         return paintMediaButton(paintInfo.context(), rect, mediaElement->canPlay() ? &mediaPlayPressed : &mediaPausePressed);
@@ -984,12 +983,12 @@ bool RenderThemeBal::paintMediaMuteButton(const RenderObject& object, const Pain
     if (!mediaElement)
         return false;
 
-    static Image& mediaMute = Image::loadPlatformResource("MediaTheme/SoundMute").leakRef();
-    static Image& mediaUnmute = Image::loadPlatformResource("MediaTheme/SoundUnmute").leakRef();
-    static Image& mediaMuteHovered = Image::loadPlatformResource("MediaTheme/SoundMuteHovered").leakRef();
-    static Image& mediaUnmuteHovered = Image::loadPlatformResource("MediaTheme/SoundUnmuteHovered").leakRef();
-    static Image& mediaMutePressed = Image::loadPlatformResource("MediaTheme/SoundMutePressed").leakRef();
-    static Image& mediaUnmutePressed = Image::loadPlatformResource("MediaTheme/SoundUnmutePressed").leakRef();
+    static Image& mediaMute = ImageAdapter::loadPlatformResource("MediaTheme/SoundMute").leakRef();
+    static Image& mediaUnmute = ImageAdapter::loadPlatformResource("MediaTheme/SoundUnmute").leakRef();
+    static Image& mediaMuteHovered = ImageAdapter::loadPlatformResource("MediaTheme/SoundMuteHovered").leakRef();
+    static Image& mediaUnmuteHovered = ImageAdapter::loadPlatformResource("MediaTheme/SoundUnmuteHovered").leakRef();
+    static Image& mediaMutePressed = ImageAdapter::loadPlatformResource("MediaTheme/SoundMutePressed").leakRef();
+    static Image& mediaUnmutePressed = ImageAdapter::loadPlatformResource("MediaTheme/SoundUnmutePressed").leakRef();
 
     if (isPressed(object))
         return paintMediaButton(paintInfo.context(), rect, mediaElement->muted() || !mediaElement->volume() ? &mediaUnmutePressed : &mediaMutePressed);
@@ -1012,9 +1011,9 @@ bool RenderThemeBal::paintMediaFullscreenButton(const RenderObject& object, cons
     if (!mediaElement)
         return false;
 
-    static Image& mediaEnterFullscreen = Image::loadPlatformResource("MediaTheme/FullScreen").leakRef();
-    static Image& mediaEnterFullscreenHovered = Image::loadPlatformResource("MediaTheme/FullScreenHovered").leakRef();
-    static Image& mediaEnterFullscreenPressed = Image::loadPlatformResource("MediaTheme/FullScreenPressed").leakRef();
+    static Image& mediaEnterFullscreen = ImageAdapter::loadPlatformResource("MediaTheme/FullScreen").leakRef();
+    static Image& mediaEnterFullscreenHovered = ImageAdapter::loadPlatformResource("MediaTheme/FullScreenHovered").leakRef();
+    static Image& mediaEnterFullscreenPressed = ImageAdapter::loadPlatformResource("MediaTheme/FullScreenPressed").leakRef();
 
     Image* buttonImage;
     if (isPressed(object))
@@ -1024,7 +1023,7 @@ bool RenderThemeBal::paintMediaFullscreenButton(const RenderObject& object, cons
     else
         buttonImage = &mediaEnterFullscreen;
 #if 0//ENABLE(FULLSCREEN_API)
-    static Image* mediaExitFullscreen = Image::loadPlatformResource("MediaTheme/FullScreen").leakRef();
+    static Image* mediaExitFullscreen = ImageAdapter::loadPlatformResource("MediaTheme/FullScreen").leakRef();
 
     if (mediaElement->document()->webkitIsFullScreen() && mediaElement->document()->webkitCurrentFullScreenElement() == mediaElement)
         buttonImage = mediaExitFullscreen;
@@ -1132,7 +1131,7 @@ static Image* platformResource(const char* name)
         gMediaControlImageMap = new MediaControlImageMap();
     if (Image* image = gMediaControlImageMap->get(name))
         return image;
-    if (Image* image = Image::loadPlatformResource(name).ptr()) {
+    if (Image* image = ImageAdapter::loadPlatformResource(name).ptr()) {
         gMediaControlImageMap->set(name, image);
         return image;
     }
@@ -1218,7 +1217,7 @@ bool RenderThemeBal::paintMediaSliderThumb(const RenderObject& object, const Pai
 {
     UNUSED_PARAM(object);
 
-    static Image& mediaSliderThumb = Image::loadPlatformResource("MediaTheme/SliderThumb").leakRef();
+    static Image& mediaSliderThumb = ImageAdapter::loadPlatformResource("MediaTheme/SliderThumb").leakRef();
     return paintMediaButton(paintInfo.context(), rect, &mediaSliderThumb);
 }
 
@@ -1245,7 +1244,7 @@ bool RenderThemeBal::paintMediaVolumeSliderTrack(const RenderObject& object, con
 bool RenderThemeBal::paintMediaVolumeSliderThumb(const RenderObject& object, const PaintInfo& paintInfo, const IntRect& rect)
 {
 #if ENABLE(VIDEO)
-    static Image& mediaVolumeThumb = Image::loadPlatformResource("MediaTheme/VolumeSliderThumb").leakRef();
+    static Image& mediaVolumeThumb = ImageAdapter::loadPlatformResource("MediaTheme/VolumeSliderThumb").leakRef();
     UNUSED_PARAM(object);
 
     return paintMediaButton(paintInfo.context(), rect, &mediaVolumeThumb);

@@ -1,4 +1,5 @@
 set(OdysseyWebBrowser_SOURCES
+    aros_stack.c
     main.cpp
 )
 
@@ -17,7 +18,7 @@ set(OdysseyWebBrowser_LIBRARIES
     -lcairo
     -lpixman
     -lfontconfig
-    -lfreetype2
+    Freetype::Freetype
     -lxml2
     -lz
     -lcurl
