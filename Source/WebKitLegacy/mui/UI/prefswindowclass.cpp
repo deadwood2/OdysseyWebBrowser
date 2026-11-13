@@ -275,7 +275,7 @@ STATIC CONST CONST_STRPTR useragents_labels[] =
 #elif OS(MORPHOS)
 #define OSHEADER "Macintosh; PowerPC MorphOS %u.%u"
 #endif
-const char verfmt[] = "Mozilla/5.0 (" OSHEADER ") AppleWebKit/" WEBKITVER " (KHTML, like Gecko) Version/14.0.2 Safari/" WEBKITVER " Odyssey/" VERSION;
+const char verfmt[] = "Mozilla/5.0 (" OSHEADER ") AppleWebKit/" WEBKITVER " (KHTML, like Gecko) Version/18.0 Safari/" WEBKITVER " Odyssey/" VERSION;
 STATIC char odysseyuseragent[sizeof(verfmt) + 2 * (10 - 2)];
 
 void init_useragent()
