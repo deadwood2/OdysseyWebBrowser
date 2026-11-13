@@ -98,7 +98,15 @@ void WebChromeClient::setWindowRect(const FloatRect& r)
 
 FloatRect WebChromeClient::windowRect() const
 {
-    return FloatRect();
+    BalWidget* widget = m_webView->viewWindow();
+    Object* browser = widget ? widget->browser : nullptr;
+
+    if (browser && muiRenderInfo(browser) && _window(browser)) {
+        struct Window* window = _window(browser);
+        return FloatRect(window->LeftEdge, window->TopEdge, window->Width, window->Height);
+    }
+
+    return pageRect();
 }
 
 FloatRect WebChromeClient::pageRect() const
