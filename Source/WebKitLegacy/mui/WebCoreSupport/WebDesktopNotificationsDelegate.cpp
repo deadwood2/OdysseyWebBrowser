@@ -54,7 +54,7 @@ bool WebDesktopNotificationsDelegate::show(ScriptExecutionContext& context, Noti
         return false;
     }
 
-    kprintf("show [%s]\n%s\n", data.title.latin1().data(), data.body.latin1().data());
+    D(kprintf("show [%s]\n%s\n", data.title.latin1().data(), data.body.latin1().data()));
     callback();
     return true;
 }

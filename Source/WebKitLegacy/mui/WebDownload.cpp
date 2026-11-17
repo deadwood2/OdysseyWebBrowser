@@ -176,7 +176,9 @@ void DownloadClient::didReceiveResponseAsync(ResourceHandle*, WebCore::ResourceR
     }
     else
     {
-        WTF::String suggestedFilename = String::fromLatin1(webResponse->suggestedFilename());
+        const char* suggestedName = webResponse->suggestedFilename(); // strdup of UTF-8
+        WTF::String suggestedFilename = String::fromUTF8(suggestedName);
+        free(const_cast<char*>(suggestedName));
         if(suggestedFilename.length() == 0)
         {
             suggestedFilename = response.url().string().substring(response.url().pathAfterLastSlash());
